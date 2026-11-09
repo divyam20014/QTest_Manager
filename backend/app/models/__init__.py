@@ -1,6 +1,7 @@
 from app.models.audit import AuditLog
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
+from app.models.idempotency import IdempotencyKey
 from app.models.identity import (
     MfaChallenge,
     Permission,
@@ -40,4 +41,5 @@ __all__ = [
     "Defect",
     "DefectLink",
     "AuditLog",
+    "IdempotencyKey",
 ]

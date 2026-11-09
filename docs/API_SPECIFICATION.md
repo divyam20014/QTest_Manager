@@ -33,14 +33,15 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | DELETE | /users/{id} | deactivate (blocked if last admin) | admin |
 | POST | /users/{id}/reset-password | admin-initiated password reset; revokes all of that user's existing sessions (ADR-032) | admin |
 | POST | /users/{id}/gdpr-erase | pseudonymize PII (ADR-009) | admin |
+| GET | /users/me/history | self-service account history (creation, profile/role edits, password resets, own login/MFA events) (ADR-039) | all (scoped to caller's own account) |
 
 ## Project Management (FR-PROJ)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | /projects | list (scoped to assigned for Tester); supports `search`/`domain`/`status`/`priority`/`sort`/`page`/`page_size`, returns `{items, total}` incl. per-project metrics (ADR-033) | all |
-| POST | /projects | create | admin, manager |
+| POST | /projects | create; accepts optional `Idempotency-Key` header to dedupe a retried/duplicated request (ADR-040) | admin, manager |
 | GET | /projects/{id} | detail | assigned/all per role |
-| PATCH | /projects/{id} | update | admin, manager (assigned) |
+| PATCH | /projects/{id} | update; response includes `version` (incremented per update); optional `expected_version` in the request body enables opt-in optimistic-concurrency (409 on a stale version, ADR-040) | admin, manager (assigned) |
 | DELETE | /projects/{id} | delete (blocked if active runs exist) | admin, manager (assigned) |
 | POST | /projects/{id}/members | assign user | admin, manager |
 | DELETE | /projects/{id}/members/{userId} | unassign | admin, manager |
@@ -49,7 +50,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | /projects/{id}/test-cases | list; supports `search`/`priority`/`status`/`assignee_id`/`sort`/`page`/`page_size`, returns `{items, total}` (ADR-034) | all (assigned) |
-| POST | /projects/{id}/test-cases | create (status=draft, version 1) | all (assigned) |
+| POST | /projects/{id}/test-cases | create (status=draft, version 1); accepts optional `Idempotency-Key` header (ADR-040) | all (assigned) |
 | GET | /test-cases/{id} | detail incl. current version+steps | all (assigned) |
 | GET | /test-cases/{id}/versions | version history (ADR-003) | all (assigned) |
 | GET | /test-cases/{id}/versions/compare?from=&to= | per-step + title/description diff between two versions (ADR-034) | all (assigned) |
@@ -59,7 +60,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | POST | /test-cases/{id}/deprecate | → deprecated (terminal; ADR-034) | manager, admin |
 | DELETE | /test-cases/{id} | delete (tester: own drafts only) | role-gated per matrix |
 | GET | /test-cases/{id}/attachments | list attachments (ADR-012, GAP-15) | all (assigned) |
-| POST | /test-cases/{id}/attachments | upload (multipart, 10MB cap, file-type allowlist per ADR-034) | testcase.edit (admin/manager/tester) |
+| POST | /test-cases/{id}/attachments | upload (multipart, 10MB cap, file-type allowlist per ADR-034, plus magic-byte/content-signature validation per ADR-040) | testcase.edit (admin/manager/tester) |
 | GET | /attachments/{id}/download | download file bytes | all (assigned to the owning test case's project) |
 | DELETE | /attachments/{id} | delete | testcase.edit (admin/manager/tester) |
 
@@ -92,7 +93,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | /defects | filter by project/status/severity/test_run_id/test_case_id/reported_by/created_from/created_to (ADR-037) | all (scoped) |
-| POST | /defects | create (standalone, in-run, or from execution_steps.id) | all |
+| POST | /defects | create (standalone, in-run, or from execution_steps.id); accepts optional `Idempotency-Key` header (ADR-040) | all |
 | GET | /defects/{id} | detail incl. links, execution evidence, test case version + traceability chain (ADR-037) | all (scoped) |
 | GET | /defects/{id}/history | status-change/creation history from audit_logs (ADR-037) | all (scoped) |
 | PATCH | /defects/{id}/status | state machine transition; Closed requires `verification_confirmed: true` (ADR-037) | role-gated (tester cannot close) |
@@ -112,7 +113,8 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Administration & Audit (FR-ADM-002)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | /audit-logs | filterable (action, entity_type, user_id), paginated (max 200/page), read-only (ADR-029) | admin (`audit.view`) |
+| GET | /audit-logs | filterable (action, entity_type, entity_id, user_id, date_from, date_to), paginated (max 200/page), full record incl. metadata/prev_hash (ADR-029, ADR-039), read-only | admin (`audit.view`) |
+| GET | /audit-logs/export | CSV export of the full (unpaginated, capped at 50k rows) filtered audit trail — same filters as the list endpoint (ADR-039) | admin (`audit.view`) |
 | GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side; returns valid/checked_count/broken_at_id (ADR-029) | admin (`audit.view`) |
 | GET | /settings | tenant config (currency, timezone, MFA mode) | admin |
 | PATCH | /settings | update tenant config | admin |

@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     func,
@@ -54,6 +55,10 @@ class Project(Base, TenantScopedMixin):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Optimistic concurrency control (GAP-68): incremented on every update.
+    # A caller may pass ProjectUpdateRequest.expected_version to detect a
+    # concurrent edit (409) instead of silently losing their write.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
 class ProjectMember(Base):

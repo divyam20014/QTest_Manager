@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
+from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
 from app.schemas.project import (
     ProjectCreateRequest,
@@ -50,10 +51,22 @@ def list_projects(
 @router.post("")
 def create_project(
     req: ProjectCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ctx: SessionContext = Depends(require_permission("project.create")),
     db: Session = Depends(get_db),
 ) -> dict:
-    project = project_service.create_project(db, ctx.tenant_id, ctx.user_id, req)
+    project = with_idempotency(
+        db,
+        ctx.tenant_id,
+        ctx.user_id,
+        "project.create",
+        idempotency_key,
+        create=lambda: project_service.create_project(db, ctx.tenant_id, ctx.user_id, req),
+        get_by_id=lambda eid: project_service.get_project(
+            db, ctx.tenant_id, ctx.role_code, ctx.user_id, eid
+        ),
+        entity_id_of=lambda p: p.id,
+    )
     return envelope(project_service.to_out(db, project).model_dump(mode="json"))
 
 

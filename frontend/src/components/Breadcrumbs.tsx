@@ -13,6 +13,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   defects: 'Defects',
   reporting: 'Reporting',
   admin: 'Administration',
+  account: 'My Account',
 }
 
 function isId(segment: string) {

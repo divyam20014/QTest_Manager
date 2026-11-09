@@ -115,6 +115,7 @@ def to_out(db: Session, project: Project, metrics: _ProjectMetrics | None = None
         owner_id=project.owner_id,
         assigned_user_ids=_assigned_user_ids(db, project.id),
         created_at=project.created_at,
+        version=project.version,
         test_case_count=metrics.test_case_count,
         approved_test_case_count=metrics.approved_test_case_count,
         test_run_count=metrics.test_run_count,
@@ -192,10 +193,17 @@ def list_projects(
     return list(db.execute(query).scalars()), total
 
 
-def _get_project_or_404(db: Session, tenant_id: UUID, project_id: UUID) -> Project:
-    project = db.execute(
-        select(Project).where(Project.tenant_id == tenant_id, Project.id == project_id)
-    ).scalar_one_or_none()
+def _get_project_or_404(
+    db: Session, tenant_id: UUID, project_id: UUID, *, for_update: bool = False
+) -> Project:
+    query = select(Project).where(Project.tenant_id == tenant_id, Project.id == project_id)
+    if for_update:
+        # GAP-68: row-locked so a concurrent update_project() call blocks
+        # until this transaction commits/rolls back, instead of both
+        # reading the same pre-update `version` and racing past the
+        # expected_version check below.
+        query = query.with_for_update()
+    project = db.execute(query).scalar_one_or_none()
     if project is None:
         raise NotFoundError("Project not found")
     return project
@@ -278,14 +286,30 @@ def update_project(
     project_id: UUID,
     req: ProjectUpdateRequest,
 ) -> Project:
-    project = _get_project_or_404(db, tenant_id, project_id)
+    project = _get_project_or_404(db, tenant_id, project_id, for_update=True)
     _require_manager_assigned_or_admin(db, project, role_code, actor_user_id)
 
     changes = req.model_dump(exclude_unset=True)
+    expected_version = changes.pop("expected_version", None)
+    current_version = project.version
+    if expected_version is not None and expected_version != current_version:
+        # Captured current_version above: db.rollback() expires every
+        # object in the session, and re-accessing project.version after
+        # that would trigger a reload query that runs without tenant
+        # context (the RLS GUC is transaction-local and resets on
+        # rollback), raising ObjectDeletedError instead of this message.
+        db.rollback()
+        raise ConflictError(
+            f"Project was changed by someone else (expected version {expected_version}, "
+            f"current version {current_version}). Reload and retry."
+        )
+
     if "manager_user_id" in changes:
         _validate_manager_user_id(db, tenant_id, changes["manager_user_id"])
     for field, value in changes.items():
         setattr(project, field, value)
+    if changes:
+        project.version += 1
 
     effective_start = project.start_date
     effective_end = project.end_date

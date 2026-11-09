@@ -13,6 +13,7 @@ import { TestRunsList } from '@/routes/execution/TestRunsList'
 import { Administration } from '@/routes/admin/Administration'
 import { ProjectDetail } from '@/routes/projects/ProjectDetail'
 import { ProjectsList } from '@/routes/projects/ProjectsList'
+import { MyAccount } from '@/routes/MyAccount'
 import { CompliancePrintView } from '@/routes/reporting/CompliancePrintView'
 import { Reporting } from '@/routes/reporting/Reporting'
 import { TestCaseDetail } from '@/routes/testcases/TestCaseDetail'
@@ -38,6 +39,7 @@ export function App() {
           <Route path="/defects/:defectId" element={<DefectDetail />} />
           <Route path="/reporting" element={<Reporting />} />
           <Route path="/admin" element={<Administration />} />
+          <Route path="/account" element={<MyAccount />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

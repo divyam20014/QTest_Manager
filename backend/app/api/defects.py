@@ -1,11 +1,12 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
+from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
 from app.schemas.defect import (
     DefectCreateRequest,
@@ -50,10 +51,24 @@ def list_defects(
 @router.post("")
 def create_defect(
     req: DefectCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ctx: SessionContext = Depends(require_permission("defect.create")),
     db: Session = Depends(get_db),
 ) -> dict:
-    defect = defect_service.create_defect(db, ctx.tenant_id, ctx.role_code, ctx.user_id, req)
+    defect = with_idempotency(
+        db,
+        ctx.tenant_id,
+        ctx.user_id,
+        "defect.create",
+        idempotency_key,
+        create=lambda: defect_service.create_defect(
+            db, ctx.tenant_id, ctx.role_code, ctx.user_id, req
+        ),
+        get_by_id=lambda eid: defect_service.get_defect(
+            db, ctx.tenant_id, ctx.role_code, ctx.user_id, eid
+        ),
+        entity_id_of=lambda d: d.id,
+    )
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
 
 

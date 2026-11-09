@@ -42,6 +42,12 @@ class ProjectUpdateRequest(BaseModel):
     budget: Decimal | None = Field(default=None, ge=0)
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     region: str | None = Field(default=None, min_length=1)
+    # Optimistic concurrency control (GAP-68): pass the project's current
+    # `version` (from a prior GET/PATCH response) to detect a concurrent
+    # edit -- the update is rejected with 409 if it doesn't match, instead
+    # of silently overwriting another caller's change. Omit to keep the
+    # previous last-write-wins behavior unchanged.
+    expected_version: int | None = None
 
 
 class ProjectOut(BaseModel):
@@ -60,6 +66,7 @@ class ProjectOut(BaseModel):
     owner_id: UUID
     assigned_user_ids: list[UUID]
     created_at: datetime
+    version: int
     test_case_count: int = 0
     approved_test_case_count: int = 0
     test_run_count: int = 0

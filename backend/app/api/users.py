@@ -3,11 +3,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, require_any_permission, require_permission
+from app.core.auth import (
+    SessionContext,
+    get_current_context,
+    require_any_permission,
+    require_permission,
+)
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.user import PasswordResetRequest, UserCreateRequest, UserUpdateRequest
-from app.services import user_service
+from app.services import audit_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -19,6 +24,17 @@ def list_users(
 ) -> dict:
     users = user_service.list_users(db, ctx.tenant_id)
     return envelope([user_service.to_out(db, u).model_dump() for u in users])
+
+
+@router.get("/me/history")
+def own_history(
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Self-service account history: no permission beyond being signed in,
+    since this is always scoped to the caller's own user entity."""
+    logs = audit_service.get_own_history(db, ctx.tenant_id, ctx.user_id)
+    return envelope([log.model_dump(mode="json") for log in logs])
 
 
 @router.post("")

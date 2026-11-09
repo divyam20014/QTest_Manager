@@ -32,6 +32,11 @@ export function UsersRoles() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   })
 
+  const activateMutation = useMutation({
+    mutationFn: (id: string) => updateUser(id, { is_active: true }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  })
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -60,6 +65,7 @@ export function UsersRoles() {
                 isSelf={u.id === currentUser?.user_id}
                 onRoleChange={(role) => roleMutation.mutate({ id: u.id, role })}
                 onDeactivate={() => deactivateMutation.mutate(u.id)}
+                onActivate={() => activateMutation.mutate(u.id)}
                 onResetPassword={() => setResetTarget(u)}
               />
             ))}
@@ -81,12 +87,14 @@ function UserRow({
   isSelf,
   onRoleChange,
   onDeactivate,
+  onActivate,
   onResetPassword,
 }: {
   user: User
   isSelf: boolean
   onRoleChange: (role: RoleCode) => void
   onDeactivate: () => void
+  onActivate: () => void
   onResetPassword: () => void
 }) {
   return (
@@ -121,6 +129,11 @@ function UserRow({
           {user.is_active && !isSelf && (
             <Button variant="outline" size="sm" onClick={onDeactivate}>
               Deactivate
+            </Button>
+          )}
+          {!user.is_active && (
+            <Button variant="outline" size="sm" onClick={onActivate}>
+              Activate
             </Button>
           )}
         </div>

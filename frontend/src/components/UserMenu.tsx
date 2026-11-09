@@ -1,5 +1,6 @@
-import { LogOut, User as UserIcon } from 'lucide-react'
+import { History, LogOut, User as UserIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 
@@ -46,6 +47,14 @@ export function UserMenu({
           <div className="px-2 py-1.5 text-xs text-[var(--muted-foreground)]">
             Signed in as <span className="font-medium text-[var(--foreground)]">{name}</span>
           </div>
+          <Link
+            to="/account"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
+          >
+            <History className="size-4" />
+            My Account
+          </Link>
           <button
             type="button"
             onClick={onLogout}

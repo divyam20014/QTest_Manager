@@ -85,6 +85,8 @@ Status values: `Not Started`, `In Progress`, `Implemented (unverified)`, `Done (
 | BR-83 | Reporting Period header and per-project detailed test case/defect tables in the compliance CSV export (GAP-62) | ADR-038 | Done (dashboard/reporting hardening pass) |
 | BR-84 | UI disclosure of what "Assignee" grouping means per metric (GAP-63) | ADR-027, ADR-038 | Done (dashboard/reporting hardening pass) |
 | BR-85 | Compliance export numeric-accuracy tests against a known dataset (GAP-64) | — | Done (dashboard/reporting hardening pass) |
+| BR-86 | Audit log detail/expand view with full metadata/prev_hash, entity ID + date-range + user filters, CSV export, and self-service "My Account" history page; reactivate control for deactivated users (GAP-65) | ADR-039 | Done (system administration/audit hardening pass) |
+| BR-87 | File upload content-sniffing (magic-byte/text validation beyond extension), opt-in `Idempotency-Key` dedup on defect/project/test-case creation, and opt-in optimistic-concurrency `expected_version` on project updates (GAP-66, GAP-67, GAP-68) | ADR-040 | Done (post-QA-engagement fix pass) |
 | BR-24 | Defect status transitions strictly sequential, no reopen-from-Closed | ADR-026 | Done |
 | BR-25 | Real-time KPI dashboard cards (projects, test cases, runs, defects) | FR-DASH-001 | Done |
 | BR-26 | Recent operational activity stream (last 10 audit events) | FR-DASH-003 | Done |

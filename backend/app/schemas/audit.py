@@ -6,11 +6,14 @@ from pydantic import BaseModel
 
 class AuditLogOut(BaseModel):
     id: UUID
+    tenant_id: UUID
     user_id: UUID | None
     user_name: str | None
     action: str
     entity_type: str
     entity_id: UUID
+    metadata: dict | None
+    prev_hash: str
     record_hash: str
     created_at: datetime
 

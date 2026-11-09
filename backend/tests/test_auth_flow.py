@@ -152,6 +152,13 @@ def test_user_management_and_last_admin_guard(client: TestClient, platform_admin
     )
     assert dup_response.status_code == 409
 
+    # Reactivating a deactivated user is supported via the same PATCH.
+    reactivate_response = client.patch(
+        f"/api/v1/users/{manager_id}", json={"is_active": True}
+    )
+    assert reactivate_response.status_code == 200
+    assert reactivate_response.json()["data"]["is_active"] is True
+
 
 def test_gdpr_erase_pseudonymizes_pii(client: TestClient, platform_admin: dict) -> None:
     bootstrap = _bootstrap_tenant(client, platform_admin)

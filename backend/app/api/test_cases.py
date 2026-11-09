@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
+from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
 from app.schemas.test_case import (
     TestCaseCreateRequest,
@@ -51,11 +52,23 @@ def list_test_cases(
 def create_test_case(
     project_id: UUID,
     req: TestCaseCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ctx: SessionContext = Depends(require_permission("testcase.create")),
     db: Session = Depends(get_db),
 ) -> dict:
-    case = test_case_service.create_test_case(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, req
+    case = with_idempotency(
+        db,
+        ctx.tenant_id,
+        ctx.user_id,
+        "testcase.create",
+        idempotency_key,
+        create=lambda: test_case_service.create_test_case(
+            db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, req
+        ),
+        get_by_id=lambda eid: test_case_service.get_test_case(
+            db, ctx.tenant_id, ctx.role_code, ctx.user_id, eid
+        ),
+        entity_id_of=lambda c: c.id,
     )
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
