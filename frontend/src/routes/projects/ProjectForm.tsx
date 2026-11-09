@@ -19,6 +19,7 @@ const schema = z
     priority: z.enum(PRIORITIES),
     status: z.enum(STATUSES),
     manager_name: z.string().min(1, 'Required'),
+    manager_user_id: z.string().optional(),
     start_date: z.string().min(1, 'Required'),
     end_date: z.string().min(1, 'Required'),
     budget: z
@@ -39,19 +40,23 @@ export function ProjectForm({
   submitLabel,
   isSubmitting,
   serverError,
+  users = [],
 }: {
   defaultValues: ProjectFormValues
   onSubmit: (values: ProjectCreateRequest) => void
   submitLabel: string
   isSubmitting: boolean
   serverError?: string | null
+  users?: { id: string; name: string }[]
 }) {
   const form = useForm<ProjectFormValues>({ resolver: zodResolver(schema), defaultValues })
 
   return (
     <form
       className="flex flex-col gap-3"
-      onSubmit={form.handleSubmit((values) => onSubmit(values))}
+      onSubmit={form.handleSubmit((values) =>
+        onSubmit({ ...values, manager_user_id: values.manager_user_id || null }),
+      )}
     >
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="name">Name</Label>
@@ -99,6 +104,20 @@ export function ProjectForm({
         <Label htmlFor="manager_name">Manager name</Label>
         <Input id="manager_name" {...form.register('manager_name')} />
       </div>
+
+      {users.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="manager_user_id">Linked manager account (optional)</Label>
+          <Select id="manager_user_id" {...form.register('manager_user_id')}>
+            <option value="">Not linked to a user account</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">

@@ -1,5 +1,6 @@
 import io
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
@@ -95,7 +96,7 @@ def test_valid_rows_import_successfully(client: TestClient, platform_admin: dict
     assert report["created_count"] == 2
     assert report["error_count"] == 0
 
-    cases = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]
+    cases = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]["items"]
     assert len(cases) == 2
     approved = next(c for c in cases if c["title"] == "Verify NCB Retention")
     assert approved["status"] == "approved"
@@ -128,7 +129,7 @@ def test_invalid_rows_reported_without_blocking_valid_rows(
     assert any("does not match an active user" in e for r in error_rows for e in r["errors"])
     assert any("Malformed step" in e for r in error_rows for e in r["errors"])
 
-    cases = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]
+    cases = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]["items"]
     assert len(cases) == 1
     assert cases[0]["title"] == "Valid Row Title Here"
 
@@ -267,5 +268,161 @@ def test_bulk_import_2000_rows_http_round_trip(client: TestClient, platform_admi
     assert report["created_count"] == 2000
     assert report["error_count"] == 0
 
-    cases = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]
-    assert len(cases) == 2000
+    # The list endpoint paginates (max page_size 100); confirm the total
+    # count reflects all 2000 imported rows rather than fetching every page.
+    listing = client.get(
+        f"/api/v1/projects/{project['id']}/test-cases", params={"page_size": 100}
+    ).json()["data"]
+    assert listing["total"] == 2000
+    assert len(listing["items"]) == 100
+
+
+def test_empty_file_rejected(client: TestClient, platform_admin: dict) -> None:
+    _, _ = _setup_admin_and_project(client, platform_admin, "Empty File Project")
+    files = {"file": ("import.csv", io.BytesIO(b""), "text/csv")}
+    response = client.post("/api/v1/test-cases/import", files=files)
+    assert response.status_code == 422
+    assert "empty" in response.json()["error"]["message"].lower()
+
+
+def test_non_csv_extension_rejected(client: TestClient, platform_admin: dict) -> None:
+    _, _ = _setup_admin_and_project(client, platform_admin, "Wrong Extension Project")
+    files = {"file": ("import.txt", io.BytesIO(b"Title,Project Name\n"), "text/plain")}
+    response = client.post("/api/v1/test-cases/import", files=files)
+    assert response.status_code == 422
+    assert ".csv" in response.json()["error"]["message"]
+
+
+def test_file_exceeding_size_limit_rejected(client: TestClient, platform_admin: dict) -> None:
+    _, _ = _setup_admin_and_project(client, platform_admin, "Oversized File Project")
+    oversized = b"x" * (5 * 1024 * 1024 + 1)
+    files = {"file": ("import.csv", io.BytesIO(oversized), "text/csv")}
+    response = client.post("/api/v1/test-cases/import", files=files)
+    assert response.status_code == 422
+    assert "exceeds" in response.json()["error"]["message"].lower()
+
+
+def test_row_count_exceeding_cap_rejected(client: TestClient, platform_admin: dict) -> None:
+    _, _ = _setup_admin_and_project(client, platform_admin, "Too Many Rows Project")
+    csv_text = _generate_bulk_csv("Too Many Rows Project", 2001)
+    response = client.post(
+        "/api/v1/test-cases/import",
+        files={"file": ("import.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")},
+    )
+    assert response.status_code == 422
+    message = response.json()["error"]["message"]
+    assert "2000" in message or "2,000" in message
+
+
+def test_duplicate_title_within_batch_rejected(client: TestClient, platform_admin: dict) -> None:
+    _, project = _setup_admin_and_project(client, platform_admin, "Dedup Batch Project")
+    csv_text = (
+        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
+        '"Verify Duplicate Handling Here","Dedup Batch Project","High","Draft",,'
+        '"Do something|Expected outcome"\n'
+        '"Verify Duplicate Handling Here","Dedup Batch Project","High","Draft",,'
+        '"Do something|Expected outcome"\n'
+    )
+    report = _upload_csv(client, csv_text)
+    assert report["total_rows"] == 2
+    assert report["created_count"] == 1
+    assert report["error_count"] == 1
+    assert "Duplicate title" in report["rows"][0]["errors"][0]
+
+    listing = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]
+    assert listing["total"] == 1
+
+
+def test_duplicate_title_against_existing_case_rejected(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project = _setup_admin_and_project(client, platform_admin, "Dedup Existing Project")
+    client.post(
+        f"/api/v1/projects/{project['id']}/test-cases",
+        json={
+            "title": "Already Exists In Project",
+            "priority": "Low",
+            "steps": [{"action": "a", "expected": "b"}],
+        },
+    )
+    csv_text = (
+        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
+        '"Already Exists In Project","Dedup Existing Project","High","Draft",,'
+        '"Do something|Expected outcome"\n'
+    )
+    report = _upload_csv(client, csv_text)
+    assert report["total_rows"] == 1
+    assert report["created_count"] == 0
+    assert report["error_count"] == 1
+    assert "already exists" in report["rows"][0]["errors"][0].lower()
+
+
+def test_same_title_in_different_projects_is_not_a_duplicate(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _setup_admin_and_project(client, platform_admin, "Shared Title Project A")
+    _create_project(client, "Shared Title Project B")
+    csv_text = (
+        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
+        '"Verify Shared Title Case","Shared Title Project A","High","Draft",,'
+        '"Do something|Expected outcome"\n'
+        '"Verify Shared Title Case","Shared Title Project B","High","Draft",,'
+        '"Do something|Expected outcome"\n'
+    )
+    report = _upload_csv(client, csv_text)
+    assert report["total_rows"] == 2
+    assert report["created_count"] == 2
+    assert report["error_count"] == 0
+
+
+def test_special_characters_in_fields_round_trip(client: TestClient, platform_admin: dict) -> None:
+    _, project = _setup_admin_and_project(client, platform_admin, "Spécial Çhars Project")
+    csv_text = (
+        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
+        '"Vérify “Smart Quotes”, Emoji 🚀 & Comma","Spécial Çhars Project","High","Draft",,'
+        '"Type \"\"quoted\"\" value|Résult contains é, ü, 中文"\n'
+    )
+    report = _upload_csv(client, csv_text)
+    assert report["total_rows"] == 1
+    assert report["created_count"] == 1
+    assert report["error_count"] == 0
+
+    listing = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]["items"]
+    case = listing[0]
+    assert "Smart Quotes" in case["title"]
+    assert "🚀" in case["title"]
+    assert case["steps"][0]["expected"] == "Résult contains é, ü, 中文"
+
+
+def test_concurrent_imports_do_not_corrupt_data(client: TestClient, platform_admin: dict) -> None:
+    _, project = _setup_admin_and_project(client, platform_admin, "Concurrent Import Project")
+
+    def _make_csv(prefix: str) -> str:
+        lines = ["Title,Project Name,Priority,Status,Assignee Email,Steps"]
+        for i in range(25):
+            lines.append(
+                f'"{prefix} Case Number {i:03d}","Concurrent Import Project","Medium","Draft",,'
+                f'"Do action {i}|Expect outcome {i}"'
+            )
+        return "\n".join(lines) + "\n"
+
+    def _run_import(prefix: str) -> dict:
+        thread_client = TestClient(client.app)
+        thread_client.cookies.update(client.cookies)
+        return _upload_csv(thread_client, _make_csv(prefix))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        future_a = pool.submit(_run_import, "Alpha")
+        future_b = pool.submit(_run_import, "Beta")
+        report_a = future_a.result()
+        report_b = future_b.result()
+
+    assert report_a["created_count"] == 25
+    assert report_b["created_count"] == 25
+    assert report_a["error_count"] == 0
+    assert report_b["error_count"] == 0
+
+    listing = client.get(
+        f"/api/v1/projects/{project['id']}/test-cases", params={"page_size": 100}
+    ).json()["data"]
+    assert listing["total"] == 50

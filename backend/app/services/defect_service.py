@@ -2,25 +2,30 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
+from app.models.audit import AuditLog
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
+from app.models.identity import User
 from app.models.project import Project
-from app.models.test_case import TestCase, TestCaseVersionStep
+from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.schemas.defect import (
     DefectCreateRequest,
+    DefectHistoryEntryOut,
     DefectLinkCreateRequest,
     DefectLinkOut,
     DefectOut,
     DefectStatus,
+    ExecutionEvidenceOut,
     LinkableType,
     LinkType,
     Severity,
+    Verdict,
 )
 from app.services.project_service import is_assigned
 
@@ -63,6 +68,7 @@ def create_defect(
     test_run_id: UUID | None = None
     test_case_version_step_id: UUID | None = None
     title = req.title
+    expected_result = req.expected_result
 
     if req.execution_step_id is not None:
         step = db.execute(
@@ -92,6 +98,17 @@ def create_defect(
         if title is None:
             # FR-EXEC-003's auto-suggested title.
             title = f"Step {version_step.step_number} Failed: {version_step.action}"
+        if expected_result is None:
+            expected_result = version_step.expected
+    elif req.test_run_id is not None:
+        # In-run, not-step-specific: a general issue about this run.
+        run_only = db.execute(
+            select(TestRun).where(TestRun.tenant_id == tenant_id, TestRun.id == req.test_run_id)
+        ).scalar_one_or_none()
+        if run_only is None:
+            raise NotFoundError("Test run not found")
+        project_id = run_only.project_id
+        test_run_id = run_only.id
     else:
         assert req.project_id is not None  # enforced by the schema validator
         project_id = req.project_id
@@ -99,7 +116,7 @@ def create_defect(
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
 
-    assert title is not None  # enforced by the schema validator for the standalone path
+    assert title is not None  # enforced by the schema validator for the standalone/in-run path
 
     defect = Defect(
         tenant_id=tenant_id,
@@ -111,6 +128,9 @@ def create_defect(
         title=title,
         severity=req.severity,
         description=req.description,
+        actual_result=req.actual_result,
+        expected_result=expected_result,
+        environment=req.environment,
         reported_by=actor_user_id,
     )
     db.add(defect)
@@ -156,6 +176,10 @@ def list_defects(
     status: str | None,
     severity: str | None,
     test_run_id: UUID | None = None,
+    reported_by: UUID | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    test_case_id: UUID | None = None,
 ) -> list[Defect]:
     query = select(Defect).where(Defect.tenant_id == tenant_id)
 
@@ -166,17 +190,41 @@ def list_defects(
     elif role_code == "tester":
         query = query.where(Defect.project_id.in_(_assigned_project_ids(db, user_id)))
 
+    if test_case_id is not None:
+        # Reverse navigation (test case -> its defects): visibility is
+        # already scoped above by project_id/tester-assignment, this just
+        # narrows further to one case.
+        query = query.where(Defect.test_case_id == test_case_id)
+
     if status is not None:
         query = query.where(Defect.status == status)
     if severity is not None:
         query = query.where(Defect.severity == severity)
+    if reported_by is not None:
+        query = query.where(Defect.reported_by == reported_by)
+    if created_from is not None:
+        query = query.where(Defect.created_at >= created_from)
+    if created_to is not None:
+        query = query.where(Defect.created_at <= created_to)
     if test_run_id is not None:
         # GAP-20: lets a client (e.g. the Execution Console) ask "which
         # steps in this specific run already have a defect reported?" in
         # one batched call, scoped to this run so defects from other runs
         # against the same step definition (test_case_version_step_id,
-        # which persists across reruns) don't false-positive.
-        query = query.where(Defect.test_run_id == test_run_id)
+        # which persists across reruns) don't false-positive. Also matches
+        # defects *linked* (not originally created from) a step in this
+        # run, so "link to existing defect" shows up as reported too.
+        run_step_ids = select(ExecutionStep.id).where(
+            ExecutionStep.test_run_case_id.in_(
+                select(TestRunCase.id).where(TestRunCase.test_run_id == test_run_id)
+            )
+        )
+        linked_defect_ids = select(DefectLink.defect_id).where(
+            DefectLink.linkable_type == "execution_step", DefectLink.linkable_id.in_(run_step_ids)
+        )
+        query = query.where(
+            or_(Defect.test_run_id == test_run_id, Defect.id.in_(linked_defect_ids))
+        )
 
     return list(db.execute(query.order_by(Defect.created_at.desc())).scalars())
 
@@ -188,14 +236,23 @@ def update_status(
     actor_user_id: UUID,
     defect_id: UUID,
     new_status: str,
+    verification_confirmed: bool = False,
 ) -> Defect:
     defect = _get_defect_or_404(db, tenant_id, defect_id)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
 
-    if new_status == "Closed" and role_code not in ("admin", "manager"):
+    if new_status == "Closed":
         # BRD §3.2: "Update Defect Status to 'Closed': Tester No."
-        raise ForbiddenError("Only Admin/Manager can close a defect")
+        if role_code not in ("admin", "manager"):
+            raise ForbiddenError("Only Admin/Manager can close a defect")
+        # Spec: "Closing requires verification confirmation" -- a distinct
+        # explicit gesture, not merely that Verified exists earlier in the
+        # sequence.
+        if not verification_confirmed:
+            raise ValidationAppError(
+                "Closing a defect requires explicit verification confirmation"
+            )
 
     current_index = STATUS_ORDER.index(cast(DefectStatus, defect.status))
     try:
@@ -267,6 +324,90 @@ def add_link(
     return defect
 
 
+def get_defect_history(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, defect_id: UUID
+) -> list[DefectHistoryEntryOut]:
+    """Status changes and other important updates for this defect (spec H),
+    reusing the existing hash-chained audit_logs table filtered by entity
+    rather than a separate history table -- defects are never updated
+    outside of record_audit_event-covered paths, so audit_logs is already
+    complete for this purpose."""
+    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    project = _get_project_or_404(db, tenant_id, defect.project_id)
+    _require_project_access(db, project, role_code, user_id)
+    set_tenant_context(db, str(tenant_id))
+
+    rows = db.execute(
+        select(AuditLog, User.name)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.entity_type == "defect",
+            AuditLog.entity_id == defect_id,
+        )
+        .order_by(AuditLog.created_at.asc())
+    ).all()
+    return [
+        DefectHistoryEntryOut(
+            id=log.id,
+            action=log.action,
+            user_id=log.user_id,
+            user_name=user_name,
+            event_metadata=log.event_metadata or {},
+            created_at=log.created_at,
+        )
+        for log, user_name in rows
+    ]
+
+
+def _execution_evidence(db: Session, defect: Defect) -> ExecutionEvidenceOut | None:
+    """Resolves the originating execution_steps row for a step-linked
+    defect, if one can still be found (defect.test_run_id +
+    test_case_id + test_case_version_step_id together pin it uniquely,
+    since ExecutionStep has no direct FK back to Defect)."""
+    if (
+        defect.test_run_id is None
+        or defect.test_case_id is None
+        or defect.test_case_version_step_id is None
+    ):
+        return None
+
+    run_case = db.execute(
+        select(TestRunCase).where(
+            TestRunCase.test_run_id == defect.test_run_id,
+            TestRunCase.test_case_id == defect.test_case_id,
+        )
+    ).scalar_one_or_none()
+    if run_case is None:
+        return None
+
+    step = db.execute(
+        select(ExecutionStep).where(
+            ExecutionStep.test_run_case_id == run_case.id,
+            ExecutionStep.test_case_version_step_id == defect.test_case_version_step_id,
+        )
+    ).scalar_one_or_none()
+    if step is None:
+        return None
+
+    executed_by_name = None
+    if step.executed_by is not None:
+        executed_by_name = db.execute(
+            select(User.name).where(User.id == step.executed_by)
+        ).scalar_one_or_none()
+
+    return ExecutionEvidenceOut(
+        execution_step_id=step.id,
+        test_run_case_id=run_case.id,
+        verdict=cast(Verdict, step.verdict) if step.verdict is not None else None,
+        opened_at=step.opened_at,
+        closed_at=step.closed_at,
+        duration_ms=step.duration_ms,
+        executed_by=step.executed_by,
+        executed_by_name=executed_by_name,
+    )
+
+
 def to_out(db: Session, defect: Defect) -> DefectOut:
     # See ARCHITECTURE_DECISIONS.md ADR-007 addendum.
     set_tenant_context(db, str(defect.tenant_id))
@@ -277,6 +418,14 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
     if defect.test_case_id is not None:
         test_case_title = db.execute(
             select(TestCase.title).where(TestCase.id == defect.test_case_id)
+        ).scalar_one()
+
+    test_case_version_number: int | None = None
+    if defect.test_case_version_id is not None:
+        test_case_version_number = db.execute(
+            select(TestCaseVersion.version_number).where(
+                TestCaseVersion.id == defect.test_case_version_id
+            )
         ).scalar_one()
 
     test_run_name: str | None = None
@@ -293,6 +442,13 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
             )
         ).scalar_one()
 
+    reported_by_name = db.execute(
+        select(User.name).where(User.id == defect.reported_by)
+    ).scalar_one_or_none()
+
+    evidence = _execution_evidence(db, defect)
+    test_run_case_id = evidence.test_run_case_id if evidence is not None else None
+
     links = db.execute(select(DefectLink).where(DefectLink.defect_id == defect.id)).scalars()
 
     return DefectOut(
@@ -302,15 +458,21 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         test_case_id=defect.test_case_id,
         test_case_title=test_case_title,
         test_case_version_id=defect.test_case_version_id,
+        test_case_version_number=test_case_version_number,
         test_run_id=defect.test_run_id,
         test_run_name=test_run_name,
+        test_run_case_id=test_run_case_id,
         test_case_version_step_id=defect.test_case_version_step_id,
         step_number=step_number,
         title=defect.title,
         severity=cast(Severity, defect.severity),
         status=cast(DefectStatus, defect.status),
         description=defect.description,
+        actual_result=defect.actual_result,
+        expected_result=defect.expected_result,
+        environment=defect.environment,
         reported_by=defect.reported_by,
+        reported_by_name=reported_by_name,
         created_at=defect.created_at,
         closed_at=defect.closed_at,
         links=[
@@ -323,4 +485,5 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
             )
             for link_ in links
         ],
+        execution_evidence=evidence,
     )

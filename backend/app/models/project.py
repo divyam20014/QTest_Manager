@@ -42,6 +42,9 @@ class Project(Base, TenantScopedMixin):
     status: Mapped[str] = mapped_column(String, nullable=False)
     priority: Mapped[str] = mapped_column(String, nullable=False)
     manager_name: Mapped[str] = mapped_column(String, nullable=False)
+    manager_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     budget: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)

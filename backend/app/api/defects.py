@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -22,11 +23,26 @@ def list_defects(
     status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
     test_run_id: UUID | None = Query(default=None),
+    reported_by: UUID | None = Query(default=None),
+    created_from: datetime | None = Query(default=None),
+    created_to: datetime | None = Query(default=None),
+    test_case_id: UUID | None = Query(default=None),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     defects = defect_service.list_defects(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, status, severity, test_run_id
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        status,
+        severity,
+        test_run_id,
+        reported_by,
+        created_from,
+        created_to,
+        test_case_id,
     )
     return envelope([defect_service.to_out(db, d).model_dump(mode="json") for d in defects])
 
@@ -51,6 +67,18 @@ def get_defect(
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
 
 
+@router.get("/{defect_id}/history")
+def get_defect_history(
+    defect_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    history = defect_service.get_defect_history(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id
+    )
+    return envelope([h.model_dump(mode="json") for h in history])
+
+
 @router.patch("/{defect_id}/status")
 def update_status(
     defect_id: UUID,
@@ -59,7 +87,13 @@ def update_status(
     db: Session = Depends(get_db),
 ) -> dict:
     defect = defect_service.update_status(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id, req.status
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        defect_id,
+        req.status,
+        req.verification_confirmed,
     )
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
 

@@ -4,7 +4,10 @@ import { Link } from 'react-router-dom'
 
 import { listDefects, type DefectStatus, type Severity } from '@/api/defects'
 import { listProjects } from '@/api/projects'
+import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { SEVERITY_TONE, STATUS_ORDER, STATUS_TONE } from './statusDisplay'
 
@@ -14,15 +17,25 @@ export function DefectsList() {
   const [projectId, setProjectId] = useState('')
   const [status, setStatus] = useState<DefectStatus | ''>('')
   const [severity, setSeverity] = useState<Severity | ''>('')
+  const [reportedBy, setReportedBy] = useState('')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
 
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects })
+  const projectsQuery = useQuery({
+    queryKey: ['projects', 'all-for-filter'],
+    queryFn: () => listProjects({ page_size: 100, sort: 'name' }),
+  })
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
   const defectsQuery = useQuery({
-    queryKey: ['defects', projectId, status, severity],
+    queryKey: ['defects', projectId, status, severity, reportedBy, createdFrom, createdTo],
     queryFn: () =>
       listDefects({
         project_id: projectId || undefined,
         status: status || undefined,
         severity: severity || undefined,
+        reported_by: reportedBy || undefined,
+        created_from: createdFrom ? new Date(createdFrom).toISOString() : undefined,
+        created_to: createdTo ? new Date(createdTo + 'T23:59:59').toISOString() : undefined,
       }),
   })
 
@@ -30,7 +43,7 @@ export function DefectsList() {
     <div className="flex flex-col gap-4">
       <h1 className="text-lg font-semibold">Defects</h1>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <Select
           aria-label="Filter by project"
           value={projectId}
@@ -38,7 +51,7 @@ export function DefectsList() {
           className="w-56"
         >
           <option value="">All Projects</option>
-          {projectsQuery.data?.map((p) => (
+          {projectsQuery.data?.items.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
@@ -70,6 +83,43 @@ export function DefectsList() {
             </option>
           ))}
         </Select>
+        <Select
+          aria-label="Filter by reporter"
+          value={reportedBy}
+          onChange={(e) => setReportedBy(e.target.value)}
+          className="w-44"
+        >
+          <option value="">All Reporters</option>
+          {usersQuery.data?.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name}
+            </option>
+          ))}
+        </Select>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="defect-created-from" className="text-xs text-[var(--muted-foreground)]">
+            Reported From
+          </Label>
+          <Input
+            id="defect-created-from"
+            type="date"
+            value={createdFrom}
+            onChange={(e) => setCreatedFrom(e.target.value)}
+            className="w-36"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="defect-created-to" className="text-xs text-[var(--muted-foreground)]">
+            Reported To
+          </Label>
+          <Input
+            id="defect-created-to"
+            type="date"
+            value={createdTo}
+            onChange={(e) => setCreatedTo(e.target.value)}
+            className="w-36"
+          />
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-[var(--border)]">
@@ -80,13 +130,14 @@ export function DefectsList() {
               <th className="px-4 py-2 font-medium">Project</th>
               <th className="px-4 py-2 font-medium">Severity</th>
               <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">Reported By</th>
               <th className="px-4 py-2 font-medium">Reported</th>
             </tr>
           </thead>
           <tbody>
             {defectsQuery.data?.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
                   No defects found.
                 </td>
               </tr>
@@ -108,6 +159,7 @@ export function DefectsList() {
                 <td className="px-4 py-2">
                   <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>
                 </td>
+                <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">{d.reported_by_name ?? 'Unknown'}</td>
                 <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
                   {new Date(d.created_at).toLocaleDateString()}
                 </td>

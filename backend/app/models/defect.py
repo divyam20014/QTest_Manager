@@ -40,6 +40,9 @@ class Defect(Base, TenantScopedMixin):
     severity: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="New", server_default="New")
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+    actual_result: Mapped[str | None] = mapped_column(String, nullable=True)
+    expected_result: Mapped[str | None] = mapped_column(String, nullable=True)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True)
     reported_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )

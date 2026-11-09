@@ -20,7 +20,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader>
-            <CardTitle>Projects</CardTitle>
+            <CardTitle>Total Projects</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold">{summary?.projects.total ?? '–'}</p>
@@ -32,25 +32,57 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Test Case Approval</CardTitle>
+            <CardTitle>Active Projects</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold">
-              {summary ? formatPercent(summary.test_cases.approved_ratio) : '–'}
-            </p>
-            <p className="text-xs text-[var(--muted-foreground)]">{summary?.test_cases.total ?? 0} total</p>
+            <p className="text-2xl font-semibold">{summary?.projects.active ?? '–'}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">Not yet completed</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Active Runs</CardTitle>
+            <CardTitle>Total Test Cases</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">{summary?.test_cases.total ?? '–'}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {summary ? formatPercent(summary.test_cases.approved_ratio) : ''} approved
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Approved Test Cases</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">{summary?.test_cases.approved_count ?? '–'}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">of {summary?.test_cases.total ?? 0} total</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Active Test Runs</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold">{summary?.test_runs.active ?? '–'}</p>
             <p className="text-xs text-[var(--muted-foreground)]">
               {summary ? formatPercent(summary.test_runs.step_pass_percentage) : ''} steps passing
             </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Execution Pass %</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">
+              {summary ? formatPercent(summary.test_runs.step_pass_percentage) : '–'}
+            </p>
+            <p className="text-xs text-[var(--muted-foreground)]">across all executed steps</p>
           </CardContent>
         </Card>
 
@@ -69,6 +101,16 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Critical Defects</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">{summary?.defects.critical_count ?? '–'}</p>
+            <p className="text-xs text-[var(--muted-foreground)]">open, Critical severity</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -84,7 +126,8 @@ export function Dashboard() {
               <li key={i} className="flex justify-between gap-4 border-b border-[var(--border)] pb-2 last:border-0">
                 <span>
                   <span className="font-medium">{entry.user_name ?? 'System'}</span>{' '}
-                  <span className="text-[var(--muted-foreground)]">{entry.action.replace(/_/g, ' ')}</span>
+                  <span className="text-[var(--muted-foreground)]">{entry.action.replace(/_/g, ' ')}</span>{' '}
+                  <span className="text-[var(--muted-foreground)]">({entry.entity_type})</span>
                 </span>
                 <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
                   {new Date(entry.created_at).toLocaleString()}

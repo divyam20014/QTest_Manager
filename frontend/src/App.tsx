@@ -13,6 +13,7 @@ import { TestRunsList } from '@/routes/execution/TestRunsList'
 import { Administration } from '@/routes/admin/Administration'
 import { ProjectDetail } from '@/routes/projects/ProjectDetail'
 import { ProjectsList } from '@/routes/projects/ProjectsList'
+import { CompliancePrintView } from '@/routes/reporting/CompliancePrintView'
 import { Reporting } from '@/routes/reporting/Reporting'
 import { TestCaseDetail } from '@/routes/testcases/TestCaseDetail'
 import { TestCasesList } from '@/routes/testcases/TestCasesList'
@@ -23,6 +24,7 @@ export function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/platform-admin" element={<PlatformAdmin />} />
       <Route element={<ProtectedRoute />}>
+        <Route path="/reporting/print" element={<CompliancePrintView />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/projects" element={<ProjectsList />} />

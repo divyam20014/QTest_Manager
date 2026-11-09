@@ -1,18 +1,33 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
 
-import { fetchAggregateReport, fetchDomainDistribution, complianceExportUrl, type GroupBy, type Metric } from '@/api/reporting'
+import {
+  fetchAggregateReport,
+  fetchDomainDistribution,
+  fetchExecutionTrend,
+  complianceExportUrl,
+  type GroupBy,
+  type Metric,
+} from '@/api/reporting'
+import { listProjects } from '@/api/projects'
+import { listUsers } from '@/api/users'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { pivotAggregateRows } from './aggregate'
@@ -21,6 +36,7 @@ import { categoricalColor, prefersDark, SEQUENTIAL_BLUE_LIGHT } from './palette'
 const METRICS: { value: Metric; label: string }[] = [
   { value: 'run_status', label: 'Test Run Status' },
   { value: 'priority', label: 'Test Case Priority' },
+  { value: 'test_case_status', label: 'Test Case Status' },
   { value: 'defect_severity', label: 'Defect Severity' },
   { value: 'defect_status', label: 'Defect Status' },
 ]
@@ -31,35 +47,172 @@ const GROUP_BYS: { value: GroupBy; label: string }[] = [
   { value: 'assignee', label: 'Assignee' },
 ]
 
+const DOMAINS = ['Motor', 'Health', 'Travel', 'Life', 'Property']
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical']
+const TEST_CASE_STATUSES = ['draft', 'ready_for_review', 'approved', 'deprecated']
+
+// What "Assignee" means shifts with the metric: a test-run-status or test-case
+// row groups by the test case's owning project member, while a defect row
+// groups by whoever the defect itself is assigned to. Disclosed in the UI so
+// the grouping isn't read as one consistent "assignee" concept.
+const ASSIGNEE_HINTS: Record<Metric, string> = {
+  run_status: "Groups by the test case's assigned owner.",
+  priority: "Groups by the test case's assigned owner.",
+  test_case_status: "Groups by the test case's assigned owner.",
+  defect_severity: 'Groups by the defect’s assignee.',
+  defect_status: 'Groups by the defect’s assignee.',
+}
+
 export function Reporting() {
   const { user } = useAuth()
   const [metric, setMetric] = useState<Metric>('run_status')
   const [groupBy, setGroupBy] = useState<GroupBy>('project')
+  const [chartType, setChartType] = useState<'bar' | 'pie'>('bar')
+  const [projectId, setProjectId] = useState('')
+  const [domain, setDomain] = useState('')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [priority, setPriority] = useState('')
+  const [status, setStatus] = useState('')
   const isDark = prefersDark()
 
+  const projectsQuery = useQuery({ queryKey: ['projects', 'all'], queryFn: () => listProjects({ page_size: 100 }) })
+  const usersQuery = useQuery({ queryKey: ['users', 'all'], queryFn: listUsers })
   const domainQuery = useQuery({ queryKey: ['dashboard', 'domain-distribution'], queryFn: fetchDomainDistribution })
+  const trendQuery = useQuery({
+    queryKey: ['reports', 'execution-trend', projectId],
+    queryFn: () => fetchExecutionTrend(30, projectId || undefined),
+  })
+  const filters = useMemo(
+    () => ({
+      projectId: projectId || undefined,
+      domain: domain || undefined,
+      assigneeId: assigneeId || undefined,
+      dateFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+      dateTo: dateTo ? new Date(dateTo).toISOString() : undefined,
+      priority: priority || undefined,
+      status: status || undefined,
+    }),
+    [projectId, domain, assigneeId, dateFrom, dateTo, priority, status]
+  )
   const aggregateQuery = useQuery({
-    queryKey: ['reports', 'aggregate', metric, groupBy],
-    queryFn: () => fetchAggregateReport(metric, groupBy),
+    queryKey: ['reports', 'aggregate', metric, groupBy, filters],
+    queryFn: () => fetchAggregateReport(metric, groupBy, filters),
   })
 
   const { data: aggregateData, valueOrder } = pivotAggregateRows(aggregateQuery.data?.rows ?? [])
+  const pieData = valueOrder.map((value) => ({
+    value,
+    count: aggregateData.reduce((sum, row) => sum + (Number(row[value]) || 0), 0),
+  }))
   const canExport = user?.role === 'admin' || user?.role === 'manager'
+  const exportPeriod = {
+    periodFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+    periodTo: dateTo ? new Date(dateTo).toISOString() : undefined,
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Reporting</h1>
         {canExport && (
-          <a
-            href={complianceExportUrl}
-            download
-            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
-          >
-            Download Compliance CSV
-          </a>
+          <div className="flex gap-2">
+            <a
+              href="/reporting/print"
+              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+            >
+              Compliance Report (Print / PDF)
+            </a>
+            <a
+              href={complianceExportUrl(exportPeriod)}
+              download
+              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+            >
+              Download Compliance CSV
+            </a>
+          </div>
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-3">
+            <Select
+              aria-label="Project"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="w-44"
+            >
+              <option value="">All projects</option>
+              {projectsQuery.data?.items.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+            <Select aria-label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)} className="w-36">
+              <option value="">All domains</option>
+              {DOMAINS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Assignee"
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              className="w-44"
+            >
+              <option value="">All assignees</option>
+              {usersQuery.data?.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-36"
+            >
+              <option value="">All priorities</option>
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
+            <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
+              <option value="">All statuses</option>
+              {TEST_CASE_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </Select>
+            <Input
+              aria-label="Date from"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-40"
+            />
+            <Input
+              aria-label="Date to"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-40"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -103,7 +256,9 @@ export function Reporting() {
                 <p className="text-xs text-[var(--muted-foreground)]">
                   {d.test_case_count} test cases · {Math.round(d.approved_percentage)}% approved
                 </p>
-                <p className="text-xs text-[var(--muted-foreground)]">{d.open_defect_count} open defects</p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {d.open_defect_count} open defects · {Math.round(d.pass_percentage)}% pass rate
+                </p>
               </div>
             ))}
           </div>
@@ -112,10 +267,54 @@ export function Reporting() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Execution Trends (last 30 days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(trendQuery.data?.points.length ?? 0) === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No execution activity in this period yet.</p>
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendQuery.data?.points ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: isDark ? '#1a1a19' : '#fcfcfb',
+                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="pass_count" name="Pass" stroke={categoricalColor(2, isDark)} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="fail_count" name="Fail" stroke={categoricalColor(7, isDark)} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="ignore_count" name="Ignored" stroke={categoricalColor(3, isDark)} strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Aggregate Report</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex flex-wrap gap-3">
+          <div className="mb-2 flex flex-wrap gap-3">
             <Select
               aria-label="Metric"
               value={metric}
@@ -140,11 +339,23 @@ export function Reporting() {
                 </option>
               ))}
             </Select>
+            <Select
+              aria-label="Chart type"
+              value={chartType}
+              onChange={(e) => setChartType(e.target.value as 'bar' | 'pie')}
+              className="w-32"
+            >
+              <option value="bar">Bar chart</option>
+              <option value="pie">Pie / donut</option>
+            </Select>
           </div>
+          {groupBy === 'assignee' && (
+            <p className="mb-4 text-xs text-[var(--muted-foreground)]">{ASSIGNEE_HINTS[metric]}</p>
+          )}
 
           {aggregateData.length === 0 ? (
             <p className="text-sm text-[var(--muted-foreground)]">No data for this combination yet.</p>
-          ) : (
+          ) : chartType === 'bar' ? (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={aggregateData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -182,6 +393,27 @@ export function Reporting() {
                     />
                   ))}
                 </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Tooltip
+                    contentStyle={{
+                      background: isDark ? '#1a1a19' : '#fcfcfb',
+                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Pie data={pieData} dataKey="count" nameKey="value" innerRadius={60} outerRadius={110} paddingAngle={2}>
+                    {pieData.map((entry, i) => (
+                      <Cell key={entry.value} fill={categoricalColor(i, isDark)} stroke={isDark ? '#1a1a19' : '#fcfcfb'} />
+                    ))}
+                  </Pie>
+                </PieChart>
               </ResponsiveContainer>
             </div>
           )}

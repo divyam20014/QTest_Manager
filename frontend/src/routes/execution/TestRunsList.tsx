@@ -35,11 +35,11 @@ export function TestRunsList() {
     enabled: !!projectId,
   })
   const testCasesQuery = useQuery({
-    queryKey: ['test-cases', projectId],
-    queryFn: () => listTestCases(projectId!),
+    queryKey: ['test-cases', projectId, 'all-for-run-picker'],
+    queryFn: () => listTestCases(projectId!, { page_size: 100, sort: 'title' }),
     enabled: !!projectId && createOpen,
   })
-  const approvedCases = (testCasesQuery.data ?? []).filter((tc) => tc.status === 'approved')
+  const approvedCases = (testCasesQuery.data?.items ?? []).filter((tc) => tc.status === 'approved')
 
   const createMutation = useMutation({
     mutationFn: (req: TestRunCreateRequest) => createTestRun(projectId!, req),

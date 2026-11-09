@@ -19,6 +19,14 @@ settings = get_settings()
 
 OWNER_TYPE_TEST_CASE = "test_case"
 
+# Screenshots and documents only (FR-TC-001/ADR-012) -- an allowlist by
+# extension, since a client-supplied Content-Type header is not trustworthy
+# on its own. Rejects anything else (e.g. .exe, .sh) outright.
+ALLOWED_ATTACHMENT_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".log",
+}
+
 
 def _to_out(db: Session, tenant_id: UUID, attachment: Attachment) -> AttachmentOut:
     # ADR-007 addendum: re-assert tenant context before every serializer
@@ -70,6 +78,13 @@ def upload_attachment(
     file: UploadFile,
 ) -> AttachmentOut:
     test_case_service.get_test_case(db, tenant_id, role_code, user_id, test_case_id)
+
+    extension = Path(file.filename or "").suffix.lower()
+    if extension not in ALLOWED_ATTACHMENT_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))
+        raise ValidationAppError(
+            f"File type '{extension or '(none)'}' is not allowed. Allowed types: {allowed}"
+        )
 
     contents = file.file.read(settings.attachment_max_bytes + 1)
     if len(contents) > settings.attachment_max_bytes:

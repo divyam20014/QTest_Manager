@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Trash2 } from 'lucide-react'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -8,12 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const
 
 const schema = z.object({
   title: z.string().min(5, 'At least 5 characters'),
+  description: z.string().optional(),
   priority: z.enum(PRIORITIES),
+  assignee_id: z.string().optional(),
   steps: z
     .array(
       z.object({
@@ -32,18 +35,28 @@ export function TestCaseForm({
   submitLabel,
   isSubmitting,
   serverError,
+  users = [],
 }: {
   defaultValues: TestCaseFormValues
   onSubmit: (values: TestCaseCreateRequest) => void
   submitLabel: string
   isSubmitting: boolean
   serverError?: string | null
+  users?: { id: string; name: string }[]
 }) {
   const form = useForm<TestCaseFormValues>({ resolver: zodResolver(schema), defaultValues })
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: 'steps' })
+  const { fields, append, remove, insert, move } = useFieldArray({
+    control: form.control,
+    name: 'steps',
+  })
 
   return (
-    <form className="flex flex-col gap-3" onSubmit={form.handleSubmit((values) => onSubmit(values))}>
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={form.handleSubmit((values) =>
+        onSubmit({ ...values, assignee_id: values.assignee_id || null }),
+      )}
+    >
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="title">Title</Label>
         <Input id="title" {...form.register('title')} />
@@ -53,25 +66,89 @@ export function TestCaseForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="priority">Priority</Label>
-        <Select id="priority" {...form.register('priority')}>
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </Select>
+        <Label htmlFor="description">Description</Label>
+        <Textarea id="description" {...form.register('description')} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="priority">Priority</Label>
+          <Select id="priority" {...form.register('priority')}>
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="assignee_id">Assignee</Label>
+          <Select id="assignee_id" {...form.register('assignee_id')}>
+            <option value="">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
         <Label>Steps</Label>
         {fields.map((field, index) => (
-          <div key={field.id} className="flex items-start gap-2 rounded-md border border-[var(--border)] p-2">
+          <div
+            key={field.id}
+            className="flex items-start gap-2 rounded-md border border-[var(--border)] p-2"
+          >
             <span className="mt-2 w-5 shrink-0 text-xs text-[var(--muted-foreground)]">{index + 1}.</span>
             <div className="flex flex-1 flex-col gap-1.5">
-              <Input placeholder="Action" {...form.register(`steps.${index}.action` as const)} />
+              <Input
+                placeholder="Action"
+                {...form.register(`steps.${index}.action` as const)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    insert(index + 1, { action: '', expected: '' })
+                  }
+                }}
+              />
               <Input placeholder="Expected outcome" {...form.register(`steps.${index}.expected` as const)} />
             </div>
+            <div className="flex flex-col gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => move(index, index - 1)}
+                disabled={index === 0}
+                aria-label={`Move step ${index + 1} up`}
+              >
+                <ChevronUp className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => move(index, index + 1)}
+                disabled={index === fields.length - 1}
+                aria-label={`Move step ${index + 1} down`}
+              >
+                <ChevronDown className="size-4" />
+              </Button>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const step = form.getValues(`steps.${index}`)
+                insert(index + 1, { ...step })
+              }}
+              aria-label={`Duplicate step ${index + 1}`}
+            >
+              <Copy className="size-4" />
+            </Button>
             <Button
               type="button"
               variant="ghost"

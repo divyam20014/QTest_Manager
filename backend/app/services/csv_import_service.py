@@ -7,12 +7,15 @@ from sqlalchemy import insert, select, text
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
+from app.core.config import get_settings
 from app.core.errors import ForbiddenError, NotFoundError, ValidationAppError
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.schemas.csv_import import ImportReport, ImportRowResult
 from app.services.project_service import is_assigned
+
+settings = get_settings()
 
 EXPECTED_HEADERS = ["Title", "Project Name", "Priority", "Status", "Assignee Email", "Steps"]
 
@@ -69,6 +72,15 @@ def import_test_cases(
             f"Download /test-cases/import/template.csv for a valid example."
         )
 
+    # Materialized up front (not streamed row-by-row) so the row-count cap
+    # can be enforced before any validation or DB writes happen.
+    rows = list(reader)
+    if len(rows) > settings.csv_import_max_rows:
+        raise ValidationAppError(
+            f"CSV has {len(rows)} rows, exceeding the {settings.csv_import_max_rows}-row "
+            "import limit. Split the file into smaller batches."
+        )
+
     projects_by_name = {
         p.name.lower(): p
         for p in db.execute(select(Project).where(Project.tenant_id == tenant_id)).scalars()
@@ -87,6 +99,25 @@ def import_test_cases(
             ).scalars()
         )
 
+    # Duplicate detection (GAP: spec functionality item 9) -- a title is a
+    # duplicate if it already exists in the same project, or appears more
+    # than once in this same batch for the same project. Case-insensitive,
+    # scoped per-project (not tenant-wide) since two different projects
+    # legitimately having a case titled e.g. "Verify Login" is not a
+    # duplicate of anything.
+    project_ids = {p.id for p in projects_by_name.values()}
+    existing_titles: set[tuple[UUID, str]] = set()
+    if project_ids:
+        existing_titles = {
+            (pid, title.lower())
+            for pid, title in db.execute(
+                select(TestCase.project_id, TestCase.title).where(
+                    TestCase.tenant_id == tenant_id, TestCase.project_id.in_(project_ids)
+                )
+            ).all()
+        }
+    seen_in_batch: dict[tuple[UUID, str], int] = {}
+
     error_rows: list[ImportRowResult] = []
     created_count = 0
     total_rows = 0
@@ -94,7 +125,7 @@ def import_test_cases(
     version_rows: list[dict] = []
     step_rows: list[dict] = []
 
-    for row_number, row in enumerate(reader, start=1):
+    for row_number, row in enumerate(rows, start=1):
         total_rows += 1
         errors: list[str] = []
 
@@ -104,6 +135,7 @@ def import_test_cases(
 
         project_name = (row.get("Project Name") or "").strip()
         project = projects_by_name.get(project_name.lower())
+        dedup_key: tuple[UUID, str] | None = None
         if project is None:
             errors.append(f"Project '{project_name}' does not exist in this tenant.")
         elif (
@@ -112,6 +144,19 @@ def import_test_cases(
             and project.id not in assigned_project_ids
         ):
             errors.append(f"You are not assigned to project '{project_name}'.")
+        elif title:
+            dedup_key = (project.id, title.lower())
+            if dedup_key in existing_titles:
+                errors.append(
+                    f"A test case titled '{title}' already exists in project '{project_name}'."
+                )
+            elif dedup_key in seen_in_batch:
+                errors.append(
+                    f"Duplicate title '{title}' for project '{project_name}' "
+                    f"(already used by row {seen_in_batch[dedup_key]} in this file)."
+                )
+            else:
+                seen_in_batch[dedup_key] = row_number
 
         priority = (row.get("Priority") or "").strip()
         if priority not in VALID_PRIORITIES:

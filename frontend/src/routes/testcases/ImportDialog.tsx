@@ -7,6 +7,25 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 
+function csvEscape(value: string): string {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+function downloadErrorReport(report: ImportReport) {
+  const lines = ['Row,Errors']
+  for (const row of report.rows) {
+    lines.push(`${row.row_number},${csvEscape(row.errors.join('; '))}`)
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'import_errors.csv'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export function ImportDialog({
   open,
   onClose,
@@ -70,13 +89,18 @@ export function ImportDialog({
               {report.error_count > 0 && <Badge tone="critical">Errors: {report.error_count}</Badge>}
             </div>
             {report.rows.length > 0 && (
-              <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-xs">
-                {report.rows.map((row) => (
-                  <li key={row.row_number} className="border-t border-[var(--border)] pt-1">
-                    <span className="font-medium">Row {row.row_number}:</span> {row.errors.join('; ')}
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-xs">
+                  {report.rows.map((row) => (
+                    <li key={row.row_number} className="border-t border-[var(--border)] pt-1">
+                      <span className="font-medium">Row {row.row_number}:</span> {row.errors.join('; ')}
+                    </li>
+                  ))}
+                </ul>
+                <Button variant="outline" size="sm" onClick={() => downloadErrorReport(report)}>
+                  Download Error Report (CSV)
+                </Button>
+              </>
             )}
           </div>
         )}

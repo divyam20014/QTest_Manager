@@ -213,3 +213,144 @@ def test_compliance_export_csv_has_header_and_project_rows(
     assert "Horizon Mutual" in text
     assert "Admin A" in text
     assert "Apex Motor Claims" in text
+
+
+def test_dashboard_summary_includes_active_approved_and_critical_counts(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _full_scenario(client, platform_admin)
+    # A second, Completed project should not count toward "active".
+    completed = _create_project(client, "Finished Project", domain="Health")
+    client.patch(f"/api/v1/projects/{completed['id']}", json={"status": "Completed"})
+
+    summary = client.get("/api/v1/dashboard/summary").json()["data"]
+    assert summary["projects"]["total"] == 2
+    assert summary["projects"]["active"] == 1
+    assert summary["test_cases"]["approved_count"] == 1
+    assert summary["defects"]["critical_count"] == 1
+
+
+def test_domain_distribution_includes_pass_percentage(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _full_scenario(client, platform_admin)
+
+    distribution = client.get("/api/v1/dashboard/domain-distribution").json()["data"]
+    by_domain = {entry["domain"]: entry for entry in distribution}
+    # One pass + one fail step seeded by _full_scenario -> 50%.
+    assert by_domain["Motor"]["pass_percentage"] == 50.0
+    assert by_domain["Health"]["pass_percentage"] == 0.0
+
+
+def test_test_case_status_metric(client: TestClient, platform_admin: dict) -> None:
+    _full_scenario(client, platform_admin)
+
+    report = client.get(
+        "/api/v1/reports/aggregate", params={"metric": "test_case_status", "group_by": "project"}
+    ).json()["data"]
+    values = {row["value"]: row["count"] for row in report["rows"]}
+    assert values.get("approved", 0) == 1
+
+
+def test_aggregate_report_project_filter(client: TestClient, platform_admin: dict) -> None:
+    _full_scenario(client, platform_admin)
+    _create_project(client, "Unrelated Project", domain="Health")
+
+    all_rows = client.get(
+        "/api/v1/reports/aggregate", params={"metric": "priority", "group_by": "project"}
+    ).json()["data"]["rows"]
+    assert len(all_rows) == 1  # only the project with a test case has rows at all
+
+    none_rows = client.get(
+        "/api/v1/reports/aggregate",
+        params={
+            "metric": "priority",
+            "group_by": "project",
+            "project_id": "00000000-0000-0000-0000-000000000000",
+        },
+    ).json()["data"]["rows"]
+    assert len(none_rows) == 0
+
+
+def test_aggregate_report_priority_filter_excludes_other_priorities(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project = _full_scenario(client, platform_admin)
+    # _full_scenario's case is priority "High" (see _create_approved_case).
+
+    matching = client.get(
+        "/api/v1/reports/aggregate",
+        params={"metric": "defect_severity", "group_by": "project", "priority": "High"},
+    ).json()["data"]["rows"]
+    assert sum(r["count"] for r in matching) == 1
+
+    non_matching = client.get(
+        "/api/v1/reports/aggregate",
+        params={"metric": "defect_severity", "group_by": "project", "priority": "Low"},
+    ).json()["data"]["rows"]
+    assert sum(r["count"] for r in non_matching) == 0
+
+
+def test_aggregate_report_domain_and_assignee_filters(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _full_scenario(client, platform_admin)
+    _create_project(client, "Health Only Project", domain="Health")
+
+    health_only = client.get(
+        "/api/v1/reports/aggregate",
+        params={"metric": "priority", "group_by": "project", "domain": "Health"},
+    ).json()["data"]["rows"]
+    assert len(health_only) == 0  # Health project has no test cases
+
+    motor_only = client.get(
+        "/api/v1/reports/aggregate",
+        params={"metric": "priority", "group_by": "project", "domain": "Motor"},
+    ).json()["data"]["rows"]
+    assert len(motor_only) == 1
+
+
+def test_execution_trend_reflects_todays_verdicts(client: TestClient, platform_admin: dict) -> None:
+    _full_scenario(client, platform_admin)
+
+    trend = client.get("/api/v1/reports/execution-trend").json()["data"]
+    assert len(trend["points"]) == 1
+    today = trend["points"][0]
+    assert today["pass_count"] == 1
+    assert today["fail_count"] == 1
+    assert today["ignore_count"] == 0
+
+
+def test_compliance_detail_reflects_known_dataset(client: TestClient, platform_admin: dict) -> None:
+    _full_scenario(client, platform_admin)
+
+    report = client.get("/api/v1/reports/compliance-detail").json()["data"]
+    assert report["tenant_name"] == "Horizon Mutual"
+    assert report["reporting_officer_name"] == "Admin A"
+    assert len(report["projects"]) == 1
+    section = report["projects"][0]
+    assert section["name"] == "Apex Motor Claims"
+    assert section["total_test_cases"] == 1
+    assert section["approved_test_cases"] == 1
+    assert section["open_defects"] == 1
+    assert section["critical_defects"] == 1
+    assert len(section["test_cases"]) == 1
+    assert len(section["defects"]) == 1
+
+
+def test_compliance_csv_includes_period_and_detail_tables(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _full_scenario(client, platform_admin)
+
+    response = client.get(
+        "/api/v1/reports/compliance-export",
+        params={"period_from": "2026-01-01T00:00:00Z", "period_to": "2026-12-31T23:59:59Z"},
+    )
+    assert response.status_code == 200
+    text = response.text
+    assert "Reporting Period" in text
+    assert "2026-01-01" in text
+    assert "Apex Motor Claims -- Test Cases" in text
+    assert "Verify Total Loss Settlement" in text
+    assert "Apex Motor Claims -- Defects" in text

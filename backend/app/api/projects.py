@@ -1,12 +1,17 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
 from app.core.responses import envelope
-from app.schemas.project import ProjectCreateRequest, ProjectMemberAddRequest, ProjectUpdateRequest
+from app.schemas.project import (
+    ProjectCreateRequest,
+    ProjectListResponse,
+    ProjectMemberAddRequest,
+    ProjectUpdateRequest,
+)
 from app.services import project_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -14,10 +19,32 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 @router.get("")
 def list_projects(
-    ctx: SessionContext = Depends(get_current_context), db: Session = Depends(get_db)
+    search: str | None = Query(default=None),
+    domain: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    priority: str | None = Query(default=None),
+    sort: str = Query(default="name"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=project_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
 ) -> dict:
-    projects = project_service.list_projects(db, ctx.tenant_id, ctx.role_code, ctx.user_id)
-    return envelope([project_service.to_out(db, p).model_dump(mode="json") for p in projects])
+    projects, total = project_service.list_projects(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        search=search,
+        domain=domain,
+        status=status,
+        priority=priority,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
+    metrics = project_service.metrics_for_projects(db, [p.id for p in projects])
+    items = [project_service.to_out(db, p, metrics[p.id]) for p in projects]
+    return envelope(ProjectListResponse(items=items, total=total).model_dump(mode="json"))
 
 
 @router.post("")

@@ -281,3 +281,155 @@ def test_tester_restricted_to_assigned_project_for_test_cases(
         json={"title": "Should Be Blocked Here", "priority": "Low", "steps": _sample_steps()},
     )
     assert create_response.status_code == 403
+
+
+def test_description_field_persists_and_versions_with_edits(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project_id = _setup_admin_and_project(client, platform_admin)
+    case = client.post(
+        f"/api/v1/projects/{project_id}/test-cases",
+        json={
+            "title": "Verify Total Loss Settlement Calculation",
+            "description": "Covers the ACV minus deductible payout path.",
+            "priority": "Critical",
+            "steps": _sample_steps(),
+        },
+    ).json()["data"]
+    assert case["description"] == "Covers the ACV minus deductible payout path."
+
+    updated = client.patch(
+        f"/api/v1/test-cases/{case['id']}", json={"description": "Updated description."}
+    ).json()["data"]
+    assert updated["description"] == "Updated description."
+
+
+def test_list_search_filter_sort_and_pagination(client: TestClient, platform_admin: dict) -> None:
+    _, project_id = _setup_admin_and_project(client, platform_admin)
+    for title, priority in [
+        ("Verify Alpha Settlement Flow", "Low"),
+        ("Verify Beta Claims Intake", "High"),
+        ("Gamma Policy Renewal Check", "Critical"),
+    ]:
+        client.post(
+            f"/api/v1/projects/{project_id}/test-cases",
+            json={"title": title, "priority": priority, "steps": _sample_steps()},
+        )
+
+    search = client.get(
+        f"/api/v1/projects/{project_id}/test-cases", params={"search": "verify"}
+    ).json()["data"]
+    assert search["total"] == 2
+
+    by_priority = client.get(
+        f"/api/v1/projects/{project_id}/test-cases", params={"priority": "Critical"}
+    ).json()["data"]
+    assert by_priority["total"] == 1
+    assert by_priority["items"][0]["title"] == "Gamma Policy Renewal Check"
+
+    sorted_desc = client.get(
+        f"/api/v1/projects/{project_id}/test-cases", params={"sort": "-title"}
+    ).json()["data"]
+    titles = [c["title"] for c in sorted_desc["items"]]
+    assert titles == sorted(titles, reverse=True)
+
+    page1 = client.get(
+        f"/api/v1/projects/{project_id}/test-cases", params={"page": 1, "page_size": 2}
+    ).json()["data"]
+    assert page1["total"] == 3
+    assert len(page1["items"]) == 2
+    page2 = client.get(
+        f"/api/v1/projects/{project_id}/test-cases", params={"page": 2, "page_size": 2}
+    ).json()["data"]
+    assert len(page2["items"]) == 1
+
+
+def test_list_filter_by_assignee(client: TestClient, platform_admin: dict) -> None:
+    _, project_id = _setup_admin_and_project(client, platform_admin)
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project_id}/members", json={"user_id": tester_id})
+
+    assigned = client.post(
+        f"/api/v1/projects/{project_id}/test-cases",
+        json={
+            "title": "Assigned To Tester Case",
+            "priority": "Low",
+            "assignee_id": tester_id,
+            "steps": _sample_steps(),
+        },
+    ).json()["data"]
+    client.post(
+        f"/api/v1/projects/{project_id}/test-cases",
+        json={"title": "Unassigned Case Here", "priority": "Low", "steps": _sample_steps()},
+    )
+
+    filtered = client.get(
+        f"/api/v1/projects/{project_id}/test-cases", params={"assignee_id": tester_id}
+    ).json()["data"]
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["id"] == assigned["id"]
+
+
+def test_version_compare_shows_step_and_title_diff(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project_id = _setup_admin_and_project(client, platform_admin)
+    case = client.post(
+        f"/api/v1/projects/{project_id}/test-cases",
+        json={
+            "title": "Verify Total Loss Settlement Calculation",
+            "priority": "Critical",
+            "steps": _sample_steps(),
+        },
+    ).json()["data"]
+    client.post(f"/api/v1/test-cases/{case['id']}/submit-review")
+    client.post(f"/api/v1/test-cases/{case['id']}/approve")
+
+    # Editing an approved case forks version 2.
+    new_steps = _sample_steps()
+    new_steps[0]["action"] = "Input Policy Number with Updated Comprehensive Endorsement"
+    new_steps.append({"action": "New follow-up step", "expected": "Follow-up confirmed"})
+    client.patch(
+        f"/api/v1/test-cases/{case['id']}",
+        json={"title": "Verify Total Loss Settlement Calculation (Revised)", "steps": new_steps},
+    )
+
+    compare = client.get(
+        f"/api/v1/test-cases/{case['id']}/versions/compare", params={"from": 1, "to": 2}
+    ).json()["data"]
+    assert compare["title_changed"] is True
+    assert compare["old_title"] == "Verify Total Loss Settlement Calculation"
+    assert compare["new_title"] == "Verify Total Loss Settlement Calculation (Revised)"
+
+    step_changes = {s["step_number"]: s["change"] for s in compare["steps"]}
+    assert step_changes[1] == "modified"
+    assert step_changes[2] == "unchanged"
+    assert step_changes[4] == "added"
+
+
+def test_deprecate_requires_admin_or_manager_and_is_terminal(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project_id = _setup_admin_and_project(client, platform_admin)
+    case = client.post(
+        f"/api/v1/projects/{project_id}/test-cases",
+        json={"title": "Legacy Case To Retire", "priority": "Low", "steps": _sample_steps()},
+    ).json()["data"]
+
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project_id}/members", json={"user_id": tester_id})
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+    denied = tester_client.post(f"/api/v1/test-cases/{case['id']}/deprecate")
+    assert denied.status_code == 403
+
+    approved = client.post(f"/api/v1/test-cases/{case['id']}/deprecate")
+    assert approved.status_code == 200
+    assert approved.json()["data"]["status"] == "deprecated"
+
+    again = client.post(f"/api/v1/test-cases/{case['id']}/deprecate")
+    assert again.status_code == 409

@@ -48,6 +48,43 @@ Status values: `Not Started`, `In Progress`, `Implemented (unverified)`, `Done (
 | BR-46 | Idle/sliding session timeout enforced via `sessions.last_seen_at`, alongside the existing absolute timeout (GAP-25) | ADR-032 | Done (auth/tenant hardening pass) |
 | BR-47 | "Real" (SMTP email) MFA delivery mode, distinct from simulated dev mode, failing loudly if unconfigured (GAP-04 partial) | ADR-032 | Done (auth/tenant hardening pass) |
 | BR-48 | Platform Administration (tenant lifecycle) frontend screen at `/platform-admin` (GAP-26) | ADR-008, ADR-032 | Done (auth/tenant hardening pass; success path not live-click-verified, see GAP-26) |
+| BR-49 | Project portfolio list: search, domain/status/priority filters, click-to-sort, pagination (GAP-27) | ADR-033 | Done (project portfolio hardening pass) |
+| BR-50 | Project-level metrics (test case/run/open-defect counts) on list and detail screens (GAP-28) | ADR-033 | Done (project portfolio hardening pass) |
+| BR-51 | Project deletion guard broadened to cover any existing test cases/defects, not just unfinished runs, fixing a raw FK-error bug (GAP-29) | ADR-033 | Done (project portfolio hardening pass) |
+| BR-52 | Optional `manager_user_id` FK alongside `manager_name` so a project manager can be linked to a real tenant user account (GAP-30) | ADR-033 | Done (project portfolio hardening pass) |
+| BR-53 | Test case repository search/priority/status/assignee filters, sort, pagination (GAP-31) | ADR-034 | Done (test case management hardening pass) |
+| BR-54 | Step reorder (move up/down) and duplicate-step controls in the test case authoring form (GAP-32) | — | Done (test case management hardening pass) |
+| BR-55 | Version comparison/diff endpoint and clickable, author-shown version history UI (GAP-33) | ADR-034 | Done (test case management hardening pass) |
+| BR-56 | `description` field on test cases, versioned alongside title/steps (GAP-34) | ADR-034 | Done (test case management hardening pass) |
+| BR-57 | Assignee wired into the test case authoring form, list column, and filter (GAP-35) | ADR-034 | Done (test case management hardening pass) |
+| BR-58 | `deprecated` status reachable via a new `POST /test-cases/{id}/deprecate`, Admin/Manager only (GAP-36) | ADR-034 | Done (test case management hardening pass) |
+| BR-59 | Attachment file-type allowlist validation, closing a real upload-abuse gap (GAP-37) | ADR-034 | Done (test case management hardening pass) |
+| BR-60 | CSV import duplicate-title detection, within-batch and against existing test cases, scoped per-project (GAP-38) | ADR-035 | Done (CSV import hardening pass) |
+| BR-61 | Server-side enforcement of the 2,000-row CSV import cap (GAP-39) | ADR-035 | Done (CSV import hardening pass) |
+| BR-62 | Downloadable CSV error report from the import dialog (GAP-40) | ADR-035 | Done (CSV import hardening pass) |
+| BR-63 | CSV import file validation: extension, empty-file, and max-size checks (GAP-41) | ADR-035 | Done (CSV import hardening pass) |
+| BR-64 | CSV import test coverage: empty files, special characters, concurrent imports (GAP-42) | — | Done (CSV import hardening pass) |
+| BR-65 | Execution Console context header: run name, project, test case title, priority, version, assignee (GAP-43) | ADR-036 | Done (test execution engine hardening pass) |
+| BR-66 | Live elapsed-time display for an in-progress step, surfacing server-side timing state the backend already preserved (GAP-44) | ADR-036 | Done (test execution engine hardening pass) |
+| BR-67 | Edit run name/type before execution starts; add/remove test cases on an existing, unfinished run (GAP-45) | ADR-036 | Done (test execution engine hardening pass) |
+| BR-68 | Assign execution responsibility per run case, wiring up the previously-unused `assigned_to` column (GAP-46) | ADR-036 | Done (test execution engine hardening pass) |
+| BR-69 | Run-level pause/resume, blocking step actions while paused (GAP-47) | ADR-036 | Done (test execution engine hardening pass) |
+| BR-70 | Keyboard shortcuts (P/F/I) and a sticky execution control bar in the Execution Console (GAP-48) | — | Done (test execution engine hardening pass) |
+| BR-71 | Fixed a real concurrency bug in run-case status rollup via row-level locking, found by a new concurrency test (GAP-49) | ADR-036 | Done (test execution engine hardening pass) |
+| BR-72 | Fail-time defect dialog visually prepopulates project/run/case/step and shows an editable suggested title (GAP-50) | ADR-037 | Done (defect management hardening pass) |
+| BR-73 | "Link to existing defect" exposed in the Fail-time dialog, with run-scoped badge matching for linked (not just originally-created) defects (GAP-51) | ADR-037 | Done (defect management hardening pass) |
+| BR-74 | Actual Result, Expected Result, Environment fields on defects (GAP-52) | ADR-037 | Done (defect management hardening pass) |
+| BR-75 | Defect history/timeline on the detail page, reusing the existing audit log (GAP-53) | ADR-037 | Done (defect management hardening pass) |
+| BR-76 | Execution evidence, test case version, and a direct step link on the defect detail page (GAP-54) | ADR-037 | Done (defect management hardening pass) |
+| BR-77 | Reporter and date-range defect filters (GAP-55) | ADR-037 | Done (defect management hardening pass) |
+| BR-78 | Explicit verification-confirmation checkbox required to close a defect (GAP-56); reverse navigation ("Linked Defects") on Test Case and Test Run detail pages (GAP-57) | ADR-037 | Done (defect management hardening pass) |
+| BR-79 | Report filters (Project/Domain/Assignee/Date Range/Priority/Status) on the aggregate report endpoint and UI (GAP-58) | ADR-038 | Done (dashboard/reporting hardening pass) |
+| BR-80 | Browser print/PDF compliance report view, completing ADR-027's deferred fallback (GAP-59) | ADR-027, ADR-038 | Done (dashboard/reporting hardening pass) |
+| BR-81 | Pie/Donut chart toggle on the aggregate report, and a Line chart backed by a new Execution Trends endpoint (GAP-60) | ADR-038 | Done (dashboard/reporting hardening pass) |
+| BR-82 | Dashboard KPI cards for Active Projects, Approved Test Cases (count), Critical Defects, and per-domain Pass % (GAP-61) | ADR-038 | Done (dashboard/reporting hardening pass) |
+| BR-83 | Reporting Period header and per-project detailed test case/defect tables in the compliance CSV export (GAP-62) | ADR-038 | Done (dashboard/reporting hardening pass) |
+| BR-84 | UI disclosure of what "Assignee" grouping means per metric (GAP-63) | ADR-027, ADR-038 | Done (dashboard/reporting hardening pass) |
+| BR-85 | Compliance export numeric-accuracy tests against a known dataset (GAP-64) | — | Done (dashboard/reporting hardening pass) |
 | BR-24 | Defect status transitions strictly sequential, no reopen-from-Closed | ADR-026 | Done |
 | BR-25 | Real-time KPI dashboard cards (projects, test cases, runs, defects) | FR-DASH-001 | Done |
 | BR-26 | Recent operational activity stream (last 10 audit events) | FR-DASH-003 | Done |

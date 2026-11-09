@@ -16,6 +16,7 @@ class ProjectCreateRequest(BaseModel):
     priority: Priority
     status: ProjectStatus = "On Track"
     manager_name: str = Field(min_length=1)
+    manager_user_id: UUID | None = None
     start_date: date
     end_date: date
     budget: Decimal = Field(ge=0)
@@ -35,6 +36,7 @@ class ProjectUpdateRequest(BaseModel):
     priority: Priority | None = None
     status: ProjectStatus | None = None
     manager_name: str | None = Field(default=None, min_length=1)
+    manager_user_id: UUID | None = None
     start_date: date | None = None
     end_date: date | None = None
     budget: Decimal | None = Field(default=None, ge=0)
@@ -49,6 +51,7 @@ class ProjectOut(BaseModel):
     status: ProjectStatus
     priority: Priority
     manager_name: str
+    manager_user_id: UUID | None
     start_date: date
     end_date: date
     budget: Decimal
@@ -57,6 +60,15 @@ class ProjectOut(BaseModel):
     owner_id: UUID
     assigned_user_ids: list[UUID]
     created_at: datetime
+    test_case_count: int = 0
+    approved_test_case_count: int = 0
+    test_run_count: int = 0
+    open_defect_count: int = 0
+
+
+class ProjectListResponse(BaseModel):
+    items: list[ProjectOut]
+    total: int
 
 
 class ProjectMemberAddRequest(BaseModel):

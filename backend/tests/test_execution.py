@@ -1,3 +1,6 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 
 
@@ -315,3 +318,217 @@ def test_list_test_runs_for_project(client: TestClient, platform_admin: dict) ->
     assert runs[0]["name"] == "Second Run"  # most recent first
     first = next(r for r in runs if r["id"] == run1["id"])
     assert first["case_count"] == 1
+
+
+def test_edit_run_before_execution_starts(client: TestClient, platform_admin: dict) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Original Name", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+
+    update_response = client.patch(
+        f"/api/v1/test-runs/{run['id']}", json={"name": "Renamed Run", "run_type": "Sanity"}
+    )
+    assert update_response.status_code == 200, update_response.text
+    assert update_response.json()["data"]["name"] == "Renamed Run"
+    assert update_response.json()["data"]["run_type"] == "Sanity"
+
+
+def test_cannot_edit_run_after_execution_starts(client: TestClient, platform_admin: dict) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Original Name", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+
+    update_response = client.patch(f"/api/v1/test-runs/{run['id']}", json={"name": "Too Late"})
+    assert update_response.status_code == 409
+
+
+def test_add_and_remove_test_cases_on_run(client: TestClient, platform_admin: dict) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    second_case = _create_approved_case(client, project["id"], "Verify Policy Endorsement")
+
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Incremental Run", "run_type": "Regression", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    assert len(run["cases"]) == 1
+
+    add_response = client.post(
+        f"/api/v1/test-runs/{run['id']}/cases", json={"test_case_ids": [second_case["id"]]}
+    )
+    assert add_response.status_code == 200, add_response.text
+    assert len(add_response.json()["data"]["cases"]) == 2
+
+    new_run_case = next(
+        rc for rc in add_response.json()["data"]["cases"] if rc["test_case_id"] == second_case["id"]
+    )
+    remove_response = client.delete(f"/api/v1/test-runs/{run['id']}/cases/{new_run_case['id']}")
+    assert remove_response.status_code == 200, remove_response.text
+    assert len(remove_response.json()["data"]["cases"]) == 1
+
+
+def test_cannot_remove_case_with_execution_in_progress(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "In Progress Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+
+    remove_response = client.delete(f"/api/v1/test-runs/{run['id']}/cases/{run_case_id}")
+    assert remove_response.status_code == 409
+
+
+def test_assign_execution_responsibility(client: TestClient, platform_admin: dict) -> None:
+    tenant_id, project, case = _setup_admin_project_and_case(client, platform_admin)
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project['id']}/members", json={"user_id": tester_id})
+
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Assignable Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+
+    assign_response = client.patch(
+        f"/api/v1/test-run-cases/{run_case_id}/assign", json={"assigned_to": tester_id}
+    )
+    assert assign_response.status_code == 200, assign_response.text
+    assert assign_response.json()["data"]["assigned_to"] == tester_id
+
+    context = client.get(f"/api/v1/test-run-cases/{run_case_id}/context").json()["data"]
+    assert context["assignee_id"] == tester_id
+    assert context["assignee_name"] == "Tester One"
+
+
+def test_run_case_context_includes_display_fields(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Context Run", "run_type": "Regression", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+
+    context = client.get(f"/api/v1/test-run-cases/{run_case_id}/context").json()["data"]
+    assert context["run_name"] == "Context Run"
+    assert context["project_name"] == project["name"]
+    assert context["test_case_title"] == case["title"]
+    assert context["priority"] == case["priority"]
+    assert context["version_number"] == case["version_number"]
+    assert context["run_finished"] is False
+    assert context["run_paused"] is False
+
+
+def test_pause_blocks_step_actions_until_resumed(client: TestClient, platform_admin: dict) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Pausable Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+
+    pause_response = client.post(f"/api/v1/test-runs/{run['id']}/pause")
+    assert pause_response.status_code == 200, pause_response.text
+    assert pause_response.json()["data"]["paused_at"] is not None
+
+    blocked_open = client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+    assert blocked_open.status_code == 409
+    blocked_verdict = client.post(
+        f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "pass"}
+    )
+    assert blocked_verdict.status_code == 409
+
+    resume_response = client.post(f"/api/v1/test-runs/{run['id']}/resume")
+    assert resume_response.status_code == 200
+    assert resume_response.json()["data"]["paused_at"] is None
+
+    allowed = client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+    assert allowed.status_code == 200
+
+
+def test_opening_a_step_twice_does_not_reset_the_timer(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Idempotent Open Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+
+    first_open = client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open").json()["data"]
+    time.sleep(0.2)
+    second_open = client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open").json()["data"]
+
+    assert first_open["opened_at"] == second_open["opened_at"]
+
+
+def test_timing_accuracy_reflects_elapsed_time(client: TestClient, platform_admin: dict) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Timing Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+
+    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+    time.sleep(0.3)
+    verdict_response = client.post(
+        f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "pass"}
+    )
+    duration_ms = verdict_response.json()["data"]["duration_ms"]
+    # Generous bounds: server-measured elapsed time for a ~300ms sleep,
+    # allowing for test-runner/HTTP overhead but catching gross errors
+    # (e.g. a duration of 0, or one computed from the wrong timestamps).
+    assert 250 <= duration_ms <= 3000
+
+
+def test_concurrent_verdicts_on_different_steps_do_not_corrupt_rollup(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Concurrent Run", "run_type": "Regression", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+    assert len(steps) == 3
+
+    def _verdict(step_id: str, verdict: str) -> dict:
+        thread_client = TestClient(client.app)
+        thread_client.cookies.update(client.cookies)
+        return thread_client.post(
+            f"/api/v1/execution-steps/{step_id}/verdict", json={"verdict": verdict}
+        ).json()
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [
+            pool.submit(_verdict, steps[0]["id"], "pass"),
+            pool.submit(_verdict, steps[1]["id"], "pass"),
+            pool.submit(_verdict, steps[2]["id"], "pass"),
+        ]
+        for f in futures:
+            f.result()
+
+    run_detail = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
+    updated_case = run_detail["cases"][0]
+    assert updated_case["passed_count"] == 3
+    assert updated_case["status"] == "passed"

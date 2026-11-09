@@ -163,13 +163,24 @@ def test_status_transitions_are_strictly_sequential(
     to_verified = client.patch(f"/api/v1/defects/{defect_id}/status", json={"status": "Verified"})
     assert to_verified.status_code == 200
 
-    to_closed = client.patch(f"/api/v1/defects/{defect_id}/status", json={"status": "Closed"})
+    missing_confirmation = client.patch(
+        f"/api/v1/defects/{defect_id}/status", json={"status": "Closed"}
+    )
+    assert missing_confirmation.status_code == 422
+
+    to_closed = client.patch(
+        f"/api/v1/defects/{defect_id}/status",
+        json={"status": "Closed", "verification_confirmed": True},
+    )
     assert to_closed.status_code == 200
     closed = to_closed.json()["data"]
     assert closed["status"] == "Closed"
     assert closed["closed_at"] is not None
 
-    past_closed = client.patch(f"/api/v1/defects/{defect_id}/status", json={"status": "Closed"})
+    past_closed = client.patch(
+        f"/api/v1/defects/{defect_id}/status",
+        json={"status": "Closed", "verification_confirmed": True},
+    )
     assert past_closed.status_code == 409
 
 
@@ -305,3 +316,185 @@ def test_filter_defects_by_test_run_id(client: TestClient, platform_admin: dict)
 
     unscoped = client.get("/api/v1/defects").json()["data"]
     assert len(unscoped) == 2
+
+
+def test_defect_evidence_fields_persist(client: TestClient, platform_admin: dict) -> None:
+    _, _, ctx = _setup_failed_step(client, platform_admin)
+    response = client.post(
+        "/api/v1/defects",
+        json={
+            "execution_step_id": ctx["step"]["id"],
+            "severity": "High",
+            "actual_result": "Payout computed as $1000",
+            "expected_result": "Payout computed as $500",
+            "environment": "Staging, Chrome 130",
+        },
+    )
+    assert response.status_code == 200, response.text
+    defect = response.json()["data"]
+    assert defect["actual_result"] == "Payout computed as $1000"
+    assert defect["expected_result"] == "Payout computed as $500"
+    assert defect["environment"] == "Staging, Chrome 130"
+
+
+def test_expected_result_defaults_from_step_when_omitted(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, ctx = _setup_failed_step(client, platform_admin)
+    defect = client.post(
+        "/api/v1/defects", json={"execution_step_id": ctx["step"]["id"], "severity": "Low"}
+    ).json()["data"]
+    assert defect["expected_result"] == "Payout = ACV - 500"
+
+
+def test_in_run_defect_creation_without_specific_step(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project, ctx = _setup_failed_step(client, platform_admin)
+    response = client.post(
+        "/api/v1/defects",
+        json={
+            "test_run_id": ctx["run"]["id"],
+            "title": "Environment was misconfigured for this run",
+            "severity": "Medium",
+        },
+    )
+    assert response.status_code == 200, response.text
+    defect = response.json()["data"]
+    assert defect["project_id"] == project["id"]
+    assert defect["test_run_id"] == ctx["run"]["id"]
+    assert defect["test_case_id"] is None
+    assert defect["step_number"] is None
+
+
+def test_execution_evidence_reflects_originating_step(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, ctx = _setup_failed_step(client, platform_admin)
+    defect = client.post(
+        "/api/v1/defects", json={"execution_step_id": ctx["step"]["id"], "severity": "High"}
+    ).json()["data"]
+
+    assert defect["execution_evidence"] is not None
+    assert defect["execution_evidence"]["verdict"] == "fail"
+    assert defect["execution_evidence"]["duration_ms"] is not None
+    assert defect["test_case_version_number"] == 1
+    assert defect["test_run_case_id"] is not None
+
+
+def test_closing_requires_verification_confirmation(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, ctx = _setup_failed_step(client, platform_admin)
+    defect = client.post(
+        "/api/v1/defects", json={"execution_step_id": ctx["step"]["id"], "severity": "High"}
+    ).json()["data"]
+    defect_id = defect["id"]
+    for status in ("Open", "Fixed", "Verified"):
+        client.patch(f"/api/v1/defects/{defect_id}/status", json={"status": status})
+
+    without_confirmation = client.patch(
+        f"/api/v1/defects/{defect_id}/status", json={"status": "Closed"}
+    )
+    assert without_confirmation.status_code == 422
+
+    with_confirmation = client.patch(
+        f"/api/v1/defects/{defect_id}/status",
+        json={"status": "Closed", "verification_confirmed": True},
+    )
+    assert with_confirmation.status_code == 200
+    assert with_confirmation.json()["data"]["status"] == "Closed"
+
+
+def test_link_to_existing_defect_appears_in_run_scoped_list(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Spec C.7/A.4: a new failure can be linked to an existing defect
+    instead of creating a new one, and still shows up as 'reported' for
+    that run's steps (not just defects originally created from them)."""
+    _, project, ctx = _setup_failed_step(client, platform_admin)
+
+    existing = client.post(
+        "/api/v1/defects",
+        json={
+            "project_id": project["id"],
+            "title": "Known settlement calculation bug",
+            "severity": "Critical",
+        },
+    ).json()["data"]
+
+    client.post(
+        f"/api/v1/defects/{existing['id']}/links",
+        json={"linkable_type": "execution_step", "linkable_id": ctx["step"]["id"]},
+    )
+
+    scoped = client.get("/api/v1/defects", params={"test_run_id": ctx["run"]["id"]}).json()["data"]
+    assert any(d["id"] == existing["id"] for d in scoped)
+
+
+def test_defect_history_tracks_creation_and_status_changes(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, ctx = _setup_failed_step(client, platform_admin)
+    defect = client.post(
+        "/api/v1/defects", json={"execution_step_id": ctx["step"]["id"], "severity": "High"}
+    ).json()["data"]
+    client.patch(f"/api/v1/defects/{defect['id']}/status", json={"status": "Open"})
+
+    history = client.get(f"/api/v1/defects/{defect['id']}/history").json()["data"]
+    actions = [h["action"] for h in history]
+    assert actions == ["defect.created", "defect.status_changed"]
+    assert history[-1]["event_metadata"]["to"] == "Open"
+
+
+def test_filter_defects_by_reporter_and_date_range(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project, ctx = _setup_failed_step(client, platform_admin)
+    admin_id = client.get("/api/v1/auth/me").json()["data"]["user_id"]
+    client.post(
+        "/api/v1/defects", json={"execution_step_id": ctx["step"]["id"], "severity": "Critical"}
+    )
+
+    by_reporter = client.get("/api/v1/defects", params={"reported_by": admin_id}).json()["data"]
+    assert len(by_reporter) == 1
+
+    other_user_id = _create_user(
+        client, "someoneelse@horizon.com", "Someone Else", "manager", "ManagerPassw0rd!"
+    )
+    by_other = client.get("/api/v1/defects", params={"reported_by": other_user_id}).json()["data"]
+    assert len(by_other) == 0
+
+    from datetime import UTC, datetime, timedelta
+
+    future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+
+    future_only = client.get("/api/v1/defects", params={"created_from": future}).json()["data"]
+    assert len(future_only) == 0
+
+    in_range = client.get(
+        "/api/v1/defects", params={"created_from": past, "created_to": future}
+    ).json()["data"]
+    assert len(in_range) == 1
+
+
+def test_filter_defects_by_test_case_id(client: TestClient, platform_admin: dict) -> None:
+    _, project, ctx = _setup_failed_step(client, platform_admin)
+    defect = client.post(
+        "/api/v1/defects", json={"execution_step_id": ctx["step"]["id"], "severity": "Low"}
+    ).json()["data"]
+    client.post(
+        "/api/v1/defects",
+        json={
+            "project_id": project["id"],
+            "title": "Unrelated standalone issue",
+            "severity": "Low",
+        },
+    )
+
+    scoped = client.get(
+        "/api/v1/defects", params={"test_case_id": defect["test_case_id"]}
+    ).json()["data"]
+    assert len(scoped) == 1
+    assert scoped[0]["id"] == defect["id"]

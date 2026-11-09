@@ -12,11 +12,13 @@ import {
   type ProjectUpdateRequest,
 } from '@/api/projects'
 import { listUsers } from '@/api/users'
+import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
+import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
 export function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -73,6 +75,7 @@ export function ProjectDetail() {
     priority: project.priority,
     status: project.status,
     manager_name: project.manager_name,
+    manager_user_id: project.manager_user_id ?? '',
     start_date: project.start_date,
     end_date: project.end_date,
     budget: project.budget,
@@ -88,7 +91,11 @@ export function ProjectDetail() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{project.name}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold">{project.name}</h1>
+          <Badge tone={STATUS_TONE[project.status]}>{project.status}</Badge>
+          <Badge tone={PRIORITY_TONE[project.priority]}>{project.priority}</Badge>
+        </div>
         <div className="flex gap-2">
           <Link to={`/projects/${project.id}/test-cases`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Test Cases
@@ -110,6 +117,13 @@ export function ProjectDetail() {
       </div>
       {deleteError && <p className="text-xs text-[var(--destructive)]">{deleteError}</p>}
 
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <MetricTile label="Test Cases" value={project.test_case_count} />
+        <MetricTile label="Approved" value={project.approved_test_case_count} />
+        <MetricTile label="Test Runs" value={project.test_run_count} />
+        <MetricTile label="Open Defects" value={project.open_defect_count} />
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -122,6 +136,7 @@ export function ProjectDetail() {
                 submitLabel="Save Changes"
                 isSubmitting={updateMutation.isPending}
                 serverError={updateError}
+                users={usersQuery.data ?? []}
                 onSubmit={(values) => updateMutation.mutate(values)}
               />
             ) : (
@@ -202,6 +217,15 @@ export function ProjectDetail() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  )
+}
+
+function MetricTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] p-3">
+      <div className="text-xs text-[var(--muted-foreground)]">{label}</div>
+      <div className="text-xl font-semibold">{value}</div>
     </div>
   )
 }

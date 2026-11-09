@@ -12,6 +12,7 @@ export interface TestRunSummary {
   executed_by: string
   created_at: string
   finished_at: string | null
+  paused_at: string | null
   case_count: number
 }
 
@@ -38,6 +39,7 @@ export interface TestRun {
   executed_by: string
   created_at: string
   finished_at: string | null
+  paused_at: string | null
   cases: TestRunCase[]
 }
 
@@ -54,10 +56,31 @@ export interface ExecutionStep {
   executed_by: string | null
 }
 
+export interface RunCaseContext {
+  run_id: string
+  run_name: string
+  run_finished: boolean
+  run_paused: boolean
+  project_id: string
+  project_name: string
+  test_case_id: string
+  test_case_title: string
+  priority: string
+  version_number: number
+  assignee_id: string | null
+  assignee_name: string | null
+  status: RunCaseStatus
+}
+
 export interface TestRunCreateRequest {
   name: string
   run_type: RunType
   test_case_ids: string[]
+}
+
+export interface TestRunUpdateRequest {
+  name?: string
+  run_type?: RunType
 }
 
 export function listTestRuns(projectId: string): Promise<TestRunSummary[]> {
@@ -72,8 +95,45 @@ export function getTestRun(runId: string): Promise<TestRun> {
   return apiFetch<TestRun>(`/test-runs/${runId}`)
 }
 
+export function updateTestRun(runId: string, req: TestRunUpdateRequest): Promise<TestRun> {
+  return apiFetch<TestRun>(`/test-runs/${runId}`, { method: 'PATCH', body: JSON.stringify(req) })
+}
+
+export function addTestRunCases(runId: string, testCaseIds: string[]): Promise<TestRun> {
+  return apiFetch<TestRun>(`/test-runs/${runId}/cases`, {
+    method: 'POST',
+    body: JSON.stringify({ test_case_ids: testCaseIds }),
+  })
+}
+
+export function removeTestRunCase(runId: string, testRunCaseId: string): Promise<TestRun> {
+  return apiFetch<TestRun>(`/test-runs/${runId}/cases/${testRunCaseId}`, { method: 'DELETE' })
+}
+
+export function assignRunCase(
+  testRunCaseId: string,
+  assignedTo: string | null,
+): Promise<{ id: string; assigned_to: string | null }> {
+  return apiFetch(`/test-run-cases/${testRunCaseId}/assign`, {
+    method: 'PATCH',
+    body: JSON.stringify({ assigned_to: assignedTo }),
+  })
+}
+
+export function pauseTestRun(runId: string): Promise<TestRun> {
+  return apiFetch<TestRun>(`/test-runs/${runId}/pause`, { method: 'POST' })
+}
+
+export function resumeTestRun(runId: string): Promise<TestRun> {
+  return apiFetch<TestRun>(`/test-runs/${runId}/resume`, { method: 'POST' })
+}
+
 export function finishTestRun(runId: string): Promise<TestRun> {
   return apiFetch<TestRun>(`/test-runs/${runId}/finish`, { method: 'POST' })
+}
+
+export function getRunCaseContext(runCaseId: string): Promise<RunCaseContext> {
+  return apiFetch<RunCaseContext>(`/test-run-cases/${runCaseId}/context`)
 }
 
 export function listRunCaseSteps(runCaseId: string): Promise<ExecutionStep[]> {

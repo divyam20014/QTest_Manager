@@ -94,10 +94,21 @@ def test_attachment_exceeding_size_limit_rejected(client: TestClient, platform_a
     oversized = b"x" * (10 * 1024 * 1024 + 1)
     response = client.post(
         f"/api/v1/test-cases/{case_id}/attachments",
-        files={"file": ("big.bin", oversized, "application/octet-stream")},
+        files={"file": ("big.png", oversized, "image/png")},
     )
     assert response.status_code == 422
     assert "exceeds" in response.json()["error"]["message"]
+
+
+def test_disallowed_file_type_rejected(client: TestClient, platform_admin: dict) -> None:
+    _, _, case_id = _setup_case(client, platform_admin)
+
+    response = client.post(
+        f"/api/v1/test-cases/{case_id}/attachments",
+        files={"file": ("payload.exe", b"not really an executable", "application/octet-stream")},
+    )
+    assert response.status_code == 422
+    assert "not allowed" in response.json()["error"]["message"]
 
 
 def test_empty_attachment_rejected(client: TestClient, platform_admin: dict) -> None:

@@ -122,7 +122,9 @@ def test_cross_tenant_isolation_across_every_module_via_api(
         ), f"{method} {path} leaked: {response.status_code} {response.text}"
 
     # List endpoints must never include the other tenant's rows either.
-    project_ids = {p["id"] for p in tenant_b_client.get("/api/v1/projects").json()["data"]}
+    project_ids = {
+        p["id"] for p in tenant_b_client.get("/api/v1/projects").json()["data"]["items"]
+    }
     assert tenant_a["project"]["id"] not in project_ids
 
     defect_ids = {d["id"] for d in tenant_b_client.get("/api/v1/defects").json()["data"]}

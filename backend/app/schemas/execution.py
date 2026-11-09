@@ -15,6 +15,19 @@ class TestRunCreateRequest(BaseModel):
     test_case_ids: list[UUID] = Field(min_length=1)
 
 
+class TestRunUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=3)
+    run_type: RunType | None = None
+
+
+class TestRunCaseAddRequest(BaseModel):
+    test_case_ids: list[UUID] = Field(min_length=1)
+
+
+class TestRunCaseAssignRequest(BaseModel):
+    assigned_to: UUID | None = None
+
+
 class VerdictRequest(BaseModel):
     verdict: Verdict
 
@@ -55,6 +68,7 @@ class TestRunOut(BaseModel):
     executed_by: UUID
     created_at: datetime
     finished_at: datetime | None
+    paused_at: datetime | None
     cases: list[TestRunCaseOut]
 
 
@@ -69,4 +83,25 @@ class TestRunSummaryOut(BaseModel):
     executed_by: UUID
     created_at: datetime
     finished_at: datetime | None
+    paused_at: datetime | None
     case_count: int
+
+
+class RunCaseContextOut(BaseModel):
+    """Everything the Execution Console needs to render context around the
+    steps it fetches separately -- run/project/case identity, not just the
+    step list (FR-EXEC's execution console display requirements)."""
+
+    run_id: UUID
+    run_name: str
+    run_finished: bool
+    run_paused: bool
+    project_id: UUID
+    project_name: str
+    test_case_id: UUID
+    test_case_title: str
+    priority: str
+    version_number: int
+    assignee_id: UUID | None
+    assignee_name: str | None
+    status: RunCaseStatus

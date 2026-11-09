@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     attachments_dir: str = "/data/attachments"
     attachment_max_bytes: int = 10 * 1024 * 1024
 
+    # ADR-035: CSV bulk import limits. max_rows matches the spec's "maximum
+    # 2,000 test cases per batch" rule; max_bytes is a generous ceiling for
+    # a CSV of that size (long step cells included), not a tight budget.
+    csv_import_max_bytes: int = 5 * 1024 * 1024
+    csv_import_max_rows: int = 2000
+
 
 @lru_cache
 def get_settings() -> Settings:

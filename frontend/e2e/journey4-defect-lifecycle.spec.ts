@@ -87,6 +87,9 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
   await page.waitForSelector('button:has-text("Advance to Verified")', { timeout: 10000 })
   await page.click('button:has-text("Advance to Verified")')
   await page.waitForSelector('button:has-text("Advance to Closed")', { timeout: 10000 })
+  // Closing requires an explicit verification confirmation checkbox, not
+  // just clicking the same generic "Advance to" button as other transitions.
+  await page.click('input[type="checkbox"]')
   await page.click('button:has-text("Advance to Closed")')
 
   // Don't trust a screenshot/DOM text race for the final state -- confirm

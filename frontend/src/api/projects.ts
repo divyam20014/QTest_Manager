@@ -11,6 +11,7 @@ export interface Project {
   status: ProjectStatus
   priority: Priority
   manager_name: string
+  manager_user_id: string | null
   start_date: string
   end_date: string
   budget: string
@@ -19,6 +20,25 @@ export interface Project {
   owner_id: string
   assigned_user_ids: string[]
   created_at: string
+  test_case_count: number
+  approved_test_case_count: number
+  test_run_count: number
+  open_defect_count: number
+}
+
+export interface ProjectListResponse {
+  items: Project[]
+  total: number
+}
+
+export interface ProjectListParams {
+  search?: string
+  domain?: Domain | ''
+  status?: ProjectStatus | ''
+  priority?: Priority | ''
+  sort?: string
+  page?: number
+  page_size?: number
 }
 
 export interface ProjectCreateRequest {
@@ -27,6 +47,7 @@ export interface ProjectCreateRequest {
   priority: Priority
   status?: ProjectStatus
   manager_name: string
+  manager_user_id?: string | null
   start_date: string
   end_date: string
   budget: string
@@ -36,8 +57,17 @@ export interface ProjectCreateRequest {
 
 export type ProjectUpdateRequest = Partial<ProjectCreateRequest>
 
-export function listProjects(): Promise<Project[]> {
-  return apiFetch<Project[]>('/projects')
+export function listProjects(params: ProjectListParams = {}): Promise<ProjectListResponse> {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  if (params.domain) query.set('domain', params.domain)
+  if (params.status) query.set('status', params.status)
+  if (params.priority) query.set('priority', params.priority)
+  if (params.sort) query.set('sort', params.sort)
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  const qs = query.toString()
+  return apiFetch<ProjectListResponse>(`/projects${qs ? `?${qs}` : ''}`)
 }
 
 export function getProject(id: string): Promise<Project> {
