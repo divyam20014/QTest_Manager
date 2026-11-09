@@ -10,6 +10,7 @@ from app.core.auth import (
     set_session_cookie,
 )
 from app.core.db import get_db
+from app.core.rate_limit import limiter
 from app.core.responses import envelope
 from app.models.identity import User
 from app.schemas.auth import LoginRequest, MeResponse, MfaVerifyRequest
@@ -19,7 +20,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login")
-def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)) -> dict:
+@limiter.limit("10/minute")
+def login(
+    req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)
+) -> dict:
     session_row, debug_code = auth_service.start_login(db, req.tenant_id, req.email, req.password)
     set_session_cookie(response, session_row.id)
     payload: dict = {"mfa_required": True}
@@ -29,6 +33,7 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)) 
 
 
 @router.post("/mfa/verify")
+@limiter.limit("10/minute")
 def verify_mfa(
     req: MfaVerifyRequest, request: Request, response: Response, db: Session = Depends(get_db)
 ) -> dict:

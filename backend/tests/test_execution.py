@@ -292,3 +292,26 @@ def test_tester_restricted_to_assigned_project_for_runs(
 
     get_response = tester_client.get(f"/api/v1/test-runs/{run['id']}")
     assert get_response.status_code == 403
+
+
+def test_list_test_runs_for_project(client: TestClient, platform_admin: dict) -> None:
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+
+    empty_list = client.get(f"/api/v1/projects/{project['id']}/test-runs").json()["data"]
+    assert empty_list == []
+
+    run1 = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "First Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Second Run", "run_type": "Regression", "test_case_ids": [case["id"]]},
+    )
+
+    runs = client.get(f"/api/v1/projects/{project['id']}/test-runs").json()["data"]
+    assert len(runs) == 2
+    assert {r["name"] for r in runs} == {"First Run", "Second Run"}
+    assert runs[0]["name"] == "Second Run"  # most recent first
+    first = next(r for r in runs if r["id"] == run1["id"])
+    assert first["case_count"] == 1

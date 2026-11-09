@@ -18,6 +18,7 @@ from app.schemas.execution import (
     TestRunCaseOut,
     TestRunCreateRequest,
     TestRunOut,
+    TestRunSummaryOut,
     Verdict,
 )
 from app.services.project_service import is_assigned
@@ -180,6 +181,48 @@ def get_test_run(
     run = _get_run_or_404(db, tenant_id, run_id)
     _authorize_run_access(db, tenant_id, role_code, user_id, run)
     return run
+
+
+def list_test_runs(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> list[TestRunSummaryOut]:
+    project = _get_project_or_404(db, tenant_id, project_id)
+    _require_project_access(db, project, role_code, user_id)
+
+    runs = list(
+        db.execute(
+            select(TestRun)
+            .where(TestRun.tenant_id == tenant_id, TestRun.project_id == project_id)
+            .order_by(TestRun.created_at.desc())
+        ).scalars()
+    )
+    if not runs:
+        return []
+
+    run_ids = [r.id for r in runs]
+    case_counts: dict[UUID, int] = dict(
+        db.execute(
+            select(TestRunCase.test_run_id, func.count())
+            .where(TestRunCase.test_run_id.in_(run_ids))
+            .group_by(TestRunCase.test_run_id)
+        )
+        .tuples()
+        .all()
+    )
+
+    return [
+        TestRunSummaryOut(
+            id=run.id,
+            project_id=run.project_id,
+            name=run.name,
+            run_type=cast(RunType, run.run_type),
+            executed_by=run.executed_by,
+            created_at=run.created_at,
+            finished_at=run.finished_at,
+            case_count=case_counts.get(run.id, 0),
+        )
+        for run in runs
+    ]
 
 
 def to_out(db: Session, run: TestRun) -> TestRunOut:

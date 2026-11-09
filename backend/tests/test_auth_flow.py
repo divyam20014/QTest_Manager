@@ -175,3 +175,41 @@ def test_gdpr_erase_pseudonymizes_pii(client: TestClient, platform_admin: dict) 
     assert erased["name"].startswith("user_")
     assert erased["email"].endswith("@erased.invalid")
     assert erased["is_active"] is False
+
+
+def test_manager_can_list_users_but_tester_cannot(client: TestClient, platform_admin: dict) -> None:
+    """ADR-028: a Manager needs the tenant's user directory to allocate
+    project members (FR-PROJ-002); Tester still cannot."""
+    bootstrap = _bootstrap_tenant(client, platform_admin)
+    tenant_id = bootstrap["tenant"]["id"]
+    _login_and_verify(client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+
+    client.post(
+        "/api/v1/users",
+        json={
+            "email": "manager@horizon.com",
+            "name": "Manager One",
+            "role": "manager",
+            "password": "ManagerPassw0rd!",
+        },
+    )
+    client.post(
+        "/api/v1/users",
+        json={
+            "email": "tester@horizon.com",
+            "name": "Tester One",
+            "role": "tester",
+            "password": "TesterPassw0rd!",
+        },
+    )
+
+    manager_client = TestClient(client.app)
+    _login_and_verify(manager_client, tenant_id, "manager@horizon.com", "ManagerPassw0rd!")
+    manager_list = manager_client.get("/api/v1/users")
+    assert manager_list.status_code == 200
+    assert len(manager_list.json()["data"]) == 3
+
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+    tester_list = tester_client.get("/api/v1/users")
+    assert tester_list.status_code == 403

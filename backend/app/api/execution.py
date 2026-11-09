@@ -25,6 +25,18 @@ def create_test_run(
     return envelope(execution_service.to_out(db, run).model_dump(mode="json"))
 
 
+@router.get("/projects/{project_id}/test-runs")
+def list_test_runs(
+    project_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    runs = execution_service.list_test_runs(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope([r.model_dump(mode="json") for r in runs])
+
+
 @router.get("/test-runs/{run_id}")
 def get_test_run(
     run_id: UUID, ctx: SessionContext = Depends(get_current_context), db: Session = Depends(get_db)

@@ -97,6 +97,20 @@ def require_permission(code: str):
     return _checker
 
 
+def require_any_permission(*codes: str):
+    """ADR-028: gate a route behind any one of several permissions, for
+    cases where more than one role-capability legitimately needs the same
+    read (e.g. listing users: Admin via user.manage, Manager via
+    project.members.manage)."""
+
+    def _checker(ctx: SessionContext = Depends(get_current_context)) -> SessionContext:
+        if not any(code in ctx.permissions for code in codes):
+            raise ForbiddenError(f"Missing permission: one of {codes}")
+        return ctx
+
+    return _checker
+
+
 def set_session_cookie(response: Response, session_id: UUID) -> None:
     response.set_cookie(
         key=settings.session_cookie_name,

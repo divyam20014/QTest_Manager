@@ -281,3 +281,27 @@ def test_add_link_appears_on_defect_detail(client: TestClient, platform_admin: d
     detail = link_response.json()["data"]
     assert len(detail["links"]) == 1
     assert detail["links"][0]["linkable_id"] == ctx["step"]["id"]
+
+
+def test_filter_defects_by_test_run_id(client: TestClient, platform_admin: dict) -> None:
+    """GAP-20: lets a client (the Execution Console) ask which steps in a
+    specific run already have a defect reported."""
+    _, project, ctx = _setup_failed_step(client, platform_admin)
+    client.post(
+        "/api/v1/defects", json={"execution_step_id": ctx["step"]["id"], "severity": "Critical"}
+    )
+    client.post(
+        "/api/v1/defects",
+        json={
+            "project_id": project["id"],
+            "title": "Unrelated standalone issue",
+            "severity": "Low",
+        },
+    )
+
+    scoped = client.get("/api/v1/defects", params={"test_run_id": ctx["run"]["id"]}).json()["data"]
+    assert len(scoped) == 1
+    assert scoped[0]["test_case_version_step_id"] == ctx["step"]["test_case_version_step_id"]
+
+    unscoped = client.get("/api/v1/defects").json()["data"]
+    assert len(unscoped) == 2

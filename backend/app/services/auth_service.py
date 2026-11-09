@@ -88,11 +88,16 @@ def verify_mfa(db: Session, session_id: UUID, code: str) -> SessionModel:
 
     set_tenant_context(db, str(session_row.tenant_id))
 
+    # GAP-17: row-locked so two concurrent verify requests for the same
+    # challenge can't both read attempt_count before either commits its
+    # increment, which could let a couple of extra guesses through the
+    # stated 3-attempt cap.
     challenge = (
         db.execute(
             select(MfaChallenge)
             .where(MfaChallenge.user_id == session_row.user_id, MfaChallenge.verified_at.is_(None))
             .order_by(MfaChallenge.created_at.desc())
+            .with_for_update()
         )
         .scalars()
         .first()

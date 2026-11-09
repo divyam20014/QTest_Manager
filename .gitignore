@@ -6,6 +6,7 @@ backend/.pytest_cache/
 backend/.mypy_cache/
 backend/.ruff_cache/
 backend/.env
+backend/tests/_tmp_attachments/
 
 # Frontend
 frontend/node_modules/

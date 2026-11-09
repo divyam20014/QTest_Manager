@@ -56,3 +56,17 @@ class TestRunOut(BaseModel):
     created_at: datetime
     finished_at: datetime | None
     cases: list[TestRunCaseOut]
+
+
+class TestRunSummaryOut(BaseModel):
+    """Lighter-weight shape for list views (no per-case rollups, which
+    to_out()'s N+1-style queries make too costly to run per row in a list)."""
+
+    id: UUID
+    project_id: UUID
+    name: str
+    run_type: RunType
+    executed_by: UUID
+    created_at: datetime
+    finished_at: datetime | None
+    case_count: int

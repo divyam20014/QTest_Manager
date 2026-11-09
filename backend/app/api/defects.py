@@ -21,11 +21,12 @@ def list_defects(
     project_id: UUID | None = Query(default=None),
     status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
+    test_run_id: UUID | None = Query(default=None),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     defects = defect_service.list_defects(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, status, severity
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, status, severity, test_run_id
     )
     return envelope([defect_service.to_out(db, d).model_dump(mode="json") for d in defects])
 

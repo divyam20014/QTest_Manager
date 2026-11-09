@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, require_permission
+from app.core.auth import SessionContext, require_any_permission, require_permission
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.user import UserCreateRequest, UserUpdateRequest
@@ -14,7 +14,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("")
 def list_users(
-    ctx: SessionContext = Depends(require_permission("user.manage")), db: Session = Depends(get_db)
+    ctx: SessionContext = Depends(require_any_permission("user.manage", "project.members.manage")),
+    db: Session = Depends(get_db),
 ) -> dict:
     users = user_service.list_users(db, ctx.tenant_id)
     return envelope([user_service.to_out(db, u).model_dump() for u in users])

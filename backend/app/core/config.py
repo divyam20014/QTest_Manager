@@ -25,6 +25,12 @@ class Settings(BaseSettings):
 
     cors_allow_origins: list[str] = ["http://localhost:5173"]
 
+    # ADR-012: attachment bytes live on disk, never as DB blobs. Matches the
+    # `qtesthub_attachments` volume already mounted at this path in
+    # docker-compose.yml; falls back to a local dir for tests/bare-metal dev.
+    attachments_dir: str = "/data/attachments"
+    attachment_max_bytes: int = 10 * 1024 * 1024
+
 
 @lru_cache
 def get_settings() -> Settings:

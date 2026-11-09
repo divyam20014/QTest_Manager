@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
 export interface ApiEnvelope<T> {
   data: T | null
@@ -15,9 +15,12 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  // Let the browser set multipart/form-data (with boundary) itself; only
+  // default to JSON when the caller isn't already sending FormData.
+  const isFormData = init?.body instanceof FormData
   const response = await fetch(`${API_BASE_URL}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...init?.headers },
     ...init,
   })
 

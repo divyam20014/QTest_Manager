@@ -19,15 +19,15 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Authentication (FR-AUTH)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| POST | /auth/login | tenant_id+email+password → MFA challenge issued (ADR-017) | any |
-| POST | /auth/mfa/verify | 6-digit code → session cookie issued | any (interim handshake) |
+| POST | /auth/login | tenant_id+email+password → MFA challenge issued (ADR-017); rate-limited 10/min per client IP (ADR-030, GAP-16) | any |
+| POST | /auth/mfa/verify | 6-digit code → session cookie issued; rate-limited 10/min per client IP (ADR-030) | any (interim handshake) |
 | POST | /auth/logout | revoke session | authenticated |
 | GET | /auth/me | current user/role/tenant | authenticated |
 
 ## User Management (FR-ADM-001)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | /users | list tenant users | admin |
+| GET | /users | list tenant users | admin, manager (ADR-028) |
 | POST | /users | provision user | admin |
 | PATCH | /users/{id} | edit profile/role | admin |
 | DELETE | /users/{id} | deactivate (blocked if last admin) | admin |
@@ -55,6 +55,10 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | POST | /test-cases/{id}/submit-review | draft → ready_for_review | tester/manager/admin |
 | POST | /test-cases/{id}/approve | → approved | manager, admin |
 | DELETE | /test-cases/{id} | delete (tester: own drafts only) | role-gated per matrix |
+| GET | /test-cases/{id}/attachments | list attachments (ADR-012, GAP-15) | all (assigned) |
+| POST | /test-cases/{id}/attachments | upload (multipart, 10MB cap) | testcase.edit (admin/manager/tester) |
+| GET | /attachments/{id}/download | download file bytes | all (assigned to the owning test case's project) |
+| DELETE | /attachments/{id} | delete | testcase.edit (admin/manager/tester) |
 
 ## CSV Import/Export (FR-TC-002, ADR-021)
 | Method | Path | Purpose | Role |
@@ -66,6 +70,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Test Execution (FR-EXEC)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
+| GET | /projects/{id}/test-runs | list runs for a project (lightweight summary, no per-case rollups) | all (assigned) |
 | POST | /projects/{id}/test-runs | create run, bundle cases (pins versions) | all (assigned) |
 | GET | /test-runs/{id} | run detail + case rollups | all (assigned) |
 | POST | /test-runs/{id}/finish | set finished_at, lock | manager, admin |
@@ -94,6 +99,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Administration & Audit (FR-ADM-002)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | /audit-logs | filterable, paginated, read-only | admin |
+| GET | /audit-logs | filterable (action, entity_type, user_id), paginated (max 200/page), read-only (ADR-029) | admin (`audit.view`) |
+| GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side; returns valid/checked_count/broken_at_id (ADR-029) | admin (`audit.view`) |
 | GET | /settings | tenant config (currency, timezone, MFA mode) | admin |
 | PATCH | /settings | update tenant config | admin |

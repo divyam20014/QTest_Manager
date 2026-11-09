@@ -15,6 +15,9 @@ os.environ["MIGRATION_DATABASE_URL"] = (
 os.environ["MFA_DELIVERY_MODE"] = "simulated"
 # Non-secure cookies so TestClient can read them over plain http.
 os.environ["ENVIRONMENT"] = "development"
+# The default /data/attachments only exists inside the Docker container;
+# local/CI test runs write to a throwaway temp dir instead.
+os.environ["ATTACHMENTS_DIR"] = str(Path(__file__).resolve().parent / "_tmp_attachments")
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
@@ -65,6 +68,19 @@ def _clean_tenant_data():
 @pytest.fixture
 def owner_engine():
     return _owner_engine
+
+
+@pytest.fixture(autouse=True)
+def _disable_rate_limiting():
+    """GAP-16's login/MFA rate limiter uses in-memory, per-process storage
+    keyed by client IP -- every test's TestClient looks like the same IP,
+    so left enabled it would make most of this suite trip the limit well
+    before 74 tests' worth of logins finish. Off by default; the dedicated
+    rate-limit test re-enables and resets it for just that one test."""
+    from app.core.rate_limit import limiter
+
+    limiter.enabled = False
+    yield
 
 
 @pytest.fixture

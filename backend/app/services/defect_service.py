@@ -155,6 +155,7 @@ def list_defects(
     project_id: UUID | None,
     status: str | None,
     severity: str | None,
+    test_run_id: UUID | None = None,
 ) -> list[Defect]:
     query = select(Defect).where(Defect.tenant_id == tenant_id)
 
@@ -169,6 +170,13 @@ def list_defects(
         query = query.where(Defect.status == status)
     if severity is not None:
         query = query.where(Defect.severity == severity)
+    if test_run_id is not None:
+        # GAP-20: lets a client (e.g. the Execution Console) ask "which
+        # steps in this specific run already have a defect reported?" in
+        # one batched call, scoped to this run so defects from other runs
+        # against the same step definition (test_case_version_step_id,
+        # which persists across reruns) don't false-positive.
+        query = query.where(Defect.test_run_id == test_run_id)
 
     return list(db.execute(query.order_by(Defect.created_at.desc())).scalars())
 
