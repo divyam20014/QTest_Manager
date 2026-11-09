@@ -1,0 +1,21 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI's own idiom is Depends(...) as an argument default; this
+# rule's premise (mutable default args) doesn't apply to FastAPI's DI system.
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+# Domain model names (TestCase, TestRun, ...) collide with pytest's default
+# "Test*" class-discovery heuristic; only app/tests are actual test modules.
+python_files = "tests/test_*.py"
+filterwarnings = ["ignore::pytest.PytestCollectionWarning"]

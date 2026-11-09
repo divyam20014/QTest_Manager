@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qtesthub
+      POSTGRES_PASSWORD: qtesthub
+      POSTGRES_DB: qtesthub
+    ports:
+      - "5432:5432"
+    volumes:
+      - qtesthub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qtesthub -d qtesthub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      # ADR-006: runtime connects as the least-privilege app role (no schema
+      # DDL, no UPDATE/DELETE on audit_logs); migrations run as the owner.
+      DATABASE_URL: postgresql+psycopg://qtesthub_app:qtesthub_app@db:5432/qtesthub
+      MIGRATION_DATABASE_URL: postgresql+psycopg://qtesthub:qtesthub@db:5432/qtesthub
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - qtesthub_attachments:/data/attachments
+
+  web:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  qtesthub_pgdata:
+  qtesthub_attachments:
