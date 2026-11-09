@@ -2,7 +2,17 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import auth, platform, users
+from app.api import (
+    auth,
+    csv_import,
+    defects,
+    execution,
+    platform,
+    projects,
+    reporting,
+    test_cases,
+    users,
+)
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.responses import envelope
@@ -31,6 +41,12 @@ def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
 app.include_router(platform.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
+app.include_router(projects.router, prefix="/api/v1")
+app.include_router(test_cases.router, prefix="/api/v1")
+app.include_router(csv_import.router, prefix="/api/v1")
+app.include_router(execution.router, prefix="/api/v1")
+app.include_router(defects.router, prefix="/api/v1")
+app.include_router(reporting.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

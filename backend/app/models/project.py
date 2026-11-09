@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
@@ -43,7 +44,7 @@ class Project(Base, TenantScopedMixin):
     manager_name: Mapped[str] = mapped_column(String, nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    budget: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    budget: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     region: Mapped[str] = mapped_column(String, nullable=False)
     owner_id: Mapped[uuid.UUID] = mapped_column(

@@ -75,6 +75,21 @@ def client() -> TestClient:
 
 
 @pytest.fixture
+def db_session():
+    """A Session bound to the app role, for tests that call services
+    directly rather than through TestClient's HTTP layer -- useful for
+    isolating backend processing time from TestClient's own double-threaded
+    ASGI-bridging overhead (not representative of a real deployed server)."""
+    from app.core.db import SessionLocal
+
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
 def platform_admin(owner_engine):
     from app.core.security import hash_password
 

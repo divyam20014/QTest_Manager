@@ -1,0 +1,66 @@
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.auth import SessionContext, require_permission
+from app.core.db import get_db
+from app.core.responses import envelope
+from app.models.identity import User
+from app.schemas.reporting import GroupBy, Metric
+from app.services import reporting_service
+
+router = APIRouter(tags=["reporting"])
+
+
+@router.get("/dashboard/summary")
+def dashboard_summary(
+    ctx: SessionContext = Depends(require_permission("report.view")), db: Session = Depends(get_db)
+) -> dict:
+    summary = reporting_service.get_dashboard_summary(db, ctx.tenant_id, ctx.role_code, ctx.user_id)
+    return envelope(summary.model_dump(mode="json"))
+
+
+@router.get("/dashboard/domain-distribution")
+def domain_distribution(
+    ctx: SessionContext = Depends(require_permission("report.view")), db: Session = Depends(get_db)
+) -> dict:
+    entries = reporting_service.get_domain_distribution(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id
+    )
+    return envelope([e.model_dump(mode="json") for e in entries])
+
+
+@router.get("/dashboard/activity-stream")
+def activity_stream(
+    ctx: SessionContext = Depends(require_permission("report.view")), db: Session = Depends(get_db)
+) -> dict:
+    entries = reporting_service.get_activity_stream(db, ctx.tenant_id, ctx.role_code, ctx.user_id)
+    return envelope([e.model_dump(mode="json") for e in entries])
+
+
+@router.get("/reports/aggregate")
+def aggregate_report(
+    metric: Metric = Query(...),
+    group_by: GroupBy = Query(...),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_aggregate_report(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, metric, group_by
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/compliance-export")
+def compliance_export(
+    ctx: SessionContext = Depends(require_permission("report.compliance_export")),
+    db: Session = Depends(get_db),
+) -> PlainTextResponse:
+    reporting_officer = db.execute(select(User).where(User.id == ctx.user_id)).scalar_one()
+    csv_text = reporting_service.generate_compliance_csv(db, ctx.tenant_id, reporting_officer)
+    return PlainTextResponse(
+        csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="compliance_summary.csv"'},
+    )

@@ -56,13 +56,12 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | POST | /test-cases/{id}/approve | → approved | manager, admin |
 | DELETE | /test-cases/{id} | delete (tester: own drafts only) | role-gated per matrix |
 
-## CSV Import/Export (FR-TC-002)
+## CSV Import/Export (FR-TC-002, ADR-021)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | /projects/{id}/test-cases/export.csv | export | all (assigned) |
+| GET | /projects/{id}/test-cases/export.csv | export one project's test cases | all (assigned) |
 | GET | /test-cases/import/template.csv | sample template | all |
-| POST | /projects/{id}/test-cases/import | staged validate+commit batch | all (assigned) |
-| GET | /test-cases/import/{batchId}/report | per-row validation results | all |
+| POST | /test-cases/import | tenant-wide, synchronous validate+commit; each row names its own project (ADR-021) | all (per-row: Admin/Manager tenant-wide, Tester must be assigned to that row's project) |
 
 ## Test Execution (FR-EXEC)
 | Method | Path | Purpose | Role |
