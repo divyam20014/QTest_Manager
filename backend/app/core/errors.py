@@ -32,3 +32,12 @@ class ValidationAppError(AppError):
 class ConflictError(AppError):
     def __init__(self, message: str) -> None:
         super().__init__("conflict", message, status_code=409)
+
+
+class ConfigurationError(AppError):
+    """Raised when a feature is enabled by config but its required
+    infrastructure (e.g. an SMTP server) isn't configured. Fails loudly
+    rather than silently degrading to a no-op."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("configuration_error", message, status_code=500)

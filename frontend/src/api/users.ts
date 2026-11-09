@@ -38,3 +38,10 @@ export function updateUser(userId: string, req: UserUpdateRequest): Promise<User
 export function deactivateUser(userId: string): Promise<User> {
   return apiFetch<User>(`/users/${userId}`, { method: 'DELETE' })
 }
+
+export function resetPassword(userId: string, newPassword: string): Promise<User> {
+  return apiFetch<User>(`/users/${userId}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ new_password: newPassword }),
+  })
+}

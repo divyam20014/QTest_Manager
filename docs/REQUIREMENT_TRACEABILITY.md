@@ -39,6 +39,15 @@ Status values: `Not Started`, `In Progress`, `Implemented (unverified)`, `Done (
 | BR-37 | Per-IP rate limiting on `/auth/login` and `/auth/mfa/verify` (GAP-16) | — | Done (post-Phase-10) |
 | BR-38 | Row-locked MFA attempt-count read to close a concurrency race in the 3-attempt lockout (GAP-17) | — | Done (post-Phase-10) |
 | BR-39 | `pip-audit`/`npm audit` dependency vulnerability scanning wired up; `python-multipart` fully patched (GAP-19) | — | Done (post-Phase-10; `starlette` CVEs remain, need a dedicated `fastapi>=0.140.0` upgrade effort) |
+| BR-40 | Structured backend request logging (method/path/status/duration) and app-startup log, replacing silence beyond uvicorn's own access log | ADR-031 | Done (foundation hardening pass) |
+| BR-41 | Docker health checks on all three services (`db`/`api`/`web`) and `restart: unless-stopped` on all three, closing a foundation-spec gap | ADR-031 | Done (foundation hardening pass) |
+| BR-42 | DB credentials sourced from a gitignored root `.env` via compose variable substitution instead of hardcoded in `docker-compose.yml`; `qtesthub_app` role password now set from `APP_DB_PASSWORD` by a dedicated migration (GAP-11) | ADR-031 | Done (foundation hardening pass) |
+| BR-43 | UI shell completion: breadcrumb trail, notification bell (honest empty state, no backend feed yet), and a profile dropdown menu, closing the foundation spec's UI shell checklist | — | Done (foundation hardening pass) |
+| BR-44 | Suspended/Pending tenant status enforced at login and on every authenticated request (GAP-23) | ADR-032 | Done (auth/tenant hardening pass) |
+| BR-45 | Admin-initiated password reset, revoking the target user's existing sessions (GAP-24) | ADR-032 | Done (auth/tenant hardening pass) |
+| BR-46 | Idle/sliding session timeout enforced via `sessions.last_seen_at`, alongside the existing absolute timeout (GAP-25) | ADR-032 | Done (auth/tenant hardening pass) |
+| BR-47 | "Real" (SMTP email) MFA delivery mode, distinct from simulated dev mode, failing loudly if unconfigured (GAP-04 partial) | ADR-032 | Done (auth/tenant hardening pass) |
+| BR-48 | Platform Administration (tenant lifecycle) frontend screen at `/platform-admin` (GAP-26) | ADR-008, ADR-032 | Done (auth/tenant hardening pass; success path not live-click-verified, see GAP-26) |
 | BR-24 | Defect status transitions strictly sequential, no reopen-from-Closed | ADR-026 | Done |
 | BR-25 | Real-time KPI dashboard cards (projects, test cases, runs, defects) | FR-DASH-001 | Done |
 | BR-26 | Recent operational activity stream (last 10 audit events) | FR-DASH-003 | Done |

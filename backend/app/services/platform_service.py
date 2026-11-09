@@ -15,7 +15,12 @@ from app.schemas.platform import TenantCreateRequest
 def create_tenant_with_admin(db: Session, req: TenantCreateRequest) -> tuple[Tenant, User]:
     """Bootstraps a tenant and its first Admin user (ADR-008). Not reachable
     from the ordinary tenant Admin role -- platform-owner-only."""
-    tenant = Tenant(name=req.tenant_name)
+    # Creating a tenant here is itself the platform admin's approval
+    # decision -- there is no separate self-service signup flow that would
+    # need a distinct, later review step. "pending" exists for a future
+    # self-service path (ADR-032); the only path that exists today is
+    # provisioned directly by a platform admin, so it starts approved.
+    tenant = Tenant(name=req.tenant_name, status="approved")
     db.add(tenant)
     db.flush()
 

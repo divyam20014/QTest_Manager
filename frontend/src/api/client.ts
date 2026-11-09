@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger'
+
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
 export interface ApiEnvelope<T> {
@@ -27,7 +29,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const body = (await response.json()) as ApiEnvelope<T>
 
   if (!response.ok || body.error) {
-    throw new ApiError(body.error?.message ?? 'Request failed', body.error?.code ?? 'unknown')
+    const code = body.error?.code ?? 'unknown'
+    const message = body.error?.message ?? 'Request failed'
+    logger.error(`API ${init?.method ?? 'GET'} ${path} failed (${response.status})`, {
+      code,
+      message,
+    })
+    throw new ApiError(message, code)
   }
 
   return body.data as T

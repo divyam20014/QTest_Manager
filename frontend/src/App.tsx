@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/routes/AppShell'
 import { Dashboard } from '@/routes/Dashboard'
 import { Login } from '@/routes/Login'
+import { PlatformAdmin } from '@/routes/PlatformAdmin'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { DefectDetail } from '@/routes/defects/DefectDetail'
 import { DefectsList } from '@/routes/defects/DefectsList'
@@ -20,6 +21,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/platform-admin" element={<PlatformAdmin />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />

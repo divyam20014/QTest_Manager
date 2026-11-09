@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit_event
 from app.core.config import get_settings
 from app.core.db import set_tenant_context
-from app.core.errors import UnauthorizedError
-from app.core.mfa import generate_otp_code
+from app.core.errors import ForbiddenError, UnauthorizedError
+from app.core.mfa import generate_otp_code, send_mfa_code
 from app.core.security import hash_password, verify_password
 from app.models.identity import MfaChallenge, User
 from app.models.identity import Session as SessionModel
+from app.models.tenant import Tenant
 
 settings = get_settings()
 
@@ -19,6 +20,21 @@ MFA_CODE_TTL_MINUTES = 5
 MAX_MFA_ATTEMPTS = 3
 
 _GENERIC_LOGIN_ERROR = "Invalid tenant, email, or password"
+
+_TENANT_STATUS_MESSAGES = {
+    "pending": "This organization's account is still pending approval.",
+    "suspended": "This organization's account has been suspended. Contact your administrator.",
+}
+
+
+def _require_approved_tenant(db: Session, tenant_id: UUID) -> None:
+    """Checked only after credentials already matched (ADR-017's generic
+    invalid-credentials error must come first, so a non-approved tenant's
+    status is never learnable without a valid password)."""
+    status = db.execute(select(Tenant.status).where(Tenant.id == tenant_id)).scalar_one_or_none()
+    if status is not None and status != "approved":
+        message = _TENANT_STATUS_MESSAGES.get(status, "This organization's account is not active.")
+        raise ForbiddenError(message)
 
 
 def start_login(
@@ -40,6 +56,8 @@ def start_login(
 
     if user is None or not verify_password(password, user.password_hash):
         raise UnauthorizedError(_GENERIC_LOGIN_ERROR)
+
+    _require_approved_tenant(db, tenant_id)
 
     now = datetime.now(UTC)
     session_row = SessionModel(
@@ -70,6 +88,8 @@ def start_login(
         entity_id=user.id,
     )
     db.commit()
+
+    send_mfa_code(user.email, code)
 
     returned_code = code if settings.mfa_delivery_mode == "simulated" else None
     return session_row, returned_code
@@ -120,6 +140,7 @@ def verify_mfa(db: Session, session_id: UUID, code: str) -> SessionModel:
 
     challenge.verified_at = datetime.now(UTC)
     session_row.mfa_verified = True
+    session_row.last_seen_at = datetime.now(UTC)
     session_row.expires_at = datetime.now(UTC) + timedelta(
         hours=settings.session_absolute_ttl_hours
     )

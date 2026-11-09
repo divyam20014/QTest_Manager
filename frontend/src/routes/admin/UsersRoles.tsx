@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import type { RoleCode } from '@/api/auth'
-import { createUser, deactivateUser, listUsers, updateUser, type User } from '@/api/users'
+import { createUser, deactivateUser, listUsers, resetPassword, updateUser, type User } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -18,6 +18,7 @@ export function UsersRoles() {
   const { user: currentUser } = useAuth()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
+  const [resetTarget, setResetTarget] = useState<User | null>(null)
 
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
 
@@ -59,6 +60,7 @@ export function UsersRoles() {
                 isSelf={u.id === currentUser?.user_id}
                 onRoleChange={(role) => roleMutation.mutate({ id: u.id, role })}
                 onDeactivate={() => deactivateMutation.mutate(u.id)}
+                onResetPassword={() => setResetTarget(u)}
               />
             ))}
           </tbody>
@@ -66,6 +68,10 @@ export function UsersRoles() {
       </div>
 
       <NewUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <ResetPasswordDialog
+        user={resetTarget}
+        onClose={() => setResetTarget(null)}
+      />
     </div>
   )
 }
@@ -75,11 +81,13 @@ function UserRow({
   isSelf,
   onRoleChange,
   onDeactivate,
+  onResetPassword,
 }: {
   user: User
   isSelf: boolean
   onRoleChange: (role: RoleCode) => void
   onDeactivate: () => void
+  onResetPassword: () => void
 }) {
   return (
     <tr className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
@@ -106,13 +114,63 @@ function UserRow({
         <Badge tone={user.is_active ? 'positive' : 'neutral'}>{user.is_active ? 'Active' : 'Deactivated'}</Badge>
       </td>
       <td className="px-4 py-2 text-right">
-        {user.is_active && !isSelf && (
-          <Button variant="outline" size="sm" onClick={onDeactivate}>
-            Deactivate
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onResetPassword}>
+            Reset Password
           </Button>
-        )}
+          {user.is_active && !isSelf && (
+            <Button variant="outline" size="sm" onClick={onDeactivate}>
+              Deactivate
+            </Button>
+          )}
+        </div>
       </td>
     </tr>
+  )
+}
+
+function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: () => void }) {
+  const [password, setPassword] = useState('')
+
+  const resetMutation = useMutation({
+    mutationFn: () => resetPassword(user!.id, password),
+    onSuccess: () => {
+      setPassword('')
+      onClose()
+    },
+  })
+
+  const serverError = resetMutation.error instanceof ApiError ? resetMutation.error.message : null
+
+  if (!user) return null
+
+  return (
+    <Dialog open={!!user} onClose={onClose} title={`Reset Password — ${user.name}`}>
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="reset-password">New Temporary Password</Label>
+          <Input
+            id="reset-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <p className="text-xs text-[var(--muted-foreground)]">
+            At least 12 characters, with an uppercase letter, a lowercase letter, and a digit. This
+            signs the user out of all existing sessions.
+          </p>
+        </div>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" disabled={resetMutation.isPending} onClick={() => resetMutation.mutate()}>
+            {resetMutation.isPending ? 'Resetting…' : 'Reset Password'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
 

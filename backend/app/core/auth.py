@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import Depends, Request, Response
@@ -11,6 +11,7 @@ from app.core.db import get_db, set_tenant_context
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.models.identity import Permission, Role, RolePermission, User
 from app.models.identity import Session as SessionModel
+from app.models.tenant import Tenant
 
 settings = get_settings()
 
@@ -73,6 +74,22 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
         raise UnauthorizedError("Session expired")
     if not session_row.mfa_verified:
         raise UnauthorizedError("MFA verification required")
+
+    now = datetime.now(UTC)
+    idle_cutoff = now - timedelta(minutes=settings.session_ttl_minutes)
+    if session_row.last_seen_at < idle_cutoff:
+        session_row.revoked_at = now
+        db.commit()
+        raise UnauthorizedError("Session expired due to inactivity")
+
+    tenant_status = db.execute(
+        select(Tenant.status).where(Tenant.id == session_row.tenant_id)
+    ).scalar_one_or_none()
+    if tenant_status is not None and tenant_status != "approved":
+        raise ForbiddenError("This organization's account is no longer active.")
+
+    session_row.last_seen_at = now
+    db.commit()
 
     set_tenant_context(db, str(session_row.tenant_id))
     role_code, permissions = _load_role_and_permissions(

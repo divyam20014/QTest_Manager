@@ -1,9 +1,11 @@
 import { useMutation } from '@tanstack/react-query'
-import { BarChart3, Bug, FolderKanban, LayoutDashboard, LogOut, ShieldCheck } from 'lucide-react'
+import { BarChart3, Bug, FolderKanban, LayoutDashboard, ShieldCheck } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
-import { Button } from '@/components/ui/button'
+import { Breadcrumbs } from '@/components/Breadcrumbs'
+import { NotificationBell } from '@/components/NotificationBell'
+import { UserMenu } from '@/components/UserMenu'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 
@@ -56,15 +58,14 @@ export function AppShell() {
       </aside>
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-[var(--border)] px-6 py-3">
-          <div />
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-[var(--muted-foreground)]">
-              {user?.name} · {user?.role}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => logoutMutation.mutate()}>
-              <LogOut className="size-4" />
-              Logout
-            </Button>
+          <Breadcrumbs />
+          <div className="flex items-center gap-1 text-sm">
+            <NotificationBell />
+            <UserMenu
+              name={user?.name}
+              role={user?.role}
+              onLogout={() => logoutMutation.mutate()}
+            />
           </div>
         </header>
         <main className="flex-1 p-6">

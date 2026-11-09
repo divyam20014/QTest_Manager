@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import SessionContext, require_any_permission, require_permission
 from app.core.db import get_db
 from app.core.responses import envelope
-from app.schemas.user import UserCreateRequest, UserUpdateRequest
+from app.schemas.user import PasswordResetRequest, UserCreateRequest, UserUpdateRequest
 from app.services import user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -49,6 +49,17 @@ def deactivate_user(
     db: Session = Depends(get_db),
 ) -> dict:
     user = user_service.deactivate_user(db, ctx.tenant_id, ctx.user_id, user_id)
+    return envelope(user_service.to_out(db, user).model_dump())
+
+
+@router.post("/{user_id}/reset-password")
+def reset_password(
+    user_id: UUID,
+    req: PasswordResetRequest,
+    ctx: SessionContext = Depends(require_permission("user.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    user = user_service.reset_password(db, ctx.tenant_id, ctx.user_id, user_id, req.new_password)
     return envelope(user_service.to_out(db, user).model_dump())
 
 

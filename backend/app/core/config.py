@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     app_name: str = "QTestHub"
     environment: str = "development"
+    log_level: str = "INFO"
 
     database_url: str = "postgresql+psycopg://qtesthub:qtesthub@localhost:5432/qtesthub"
     # Owner-privileged connection used only to run Alembic migrations
@@ -22,6 +23,16 @@ class Settings(BaseSettings):
     # ADR-011: MFA delivery mode. "simulated" logs/returns the code instead of
     # sending it through a real provider; only ever used outside production.
     mfa_delivery_mode: str = "simulated"
+
+    # SMTP settings for "real" MFA delivery mode (ADR-032). Unused in
+    # "simulated" mode. smtp_host empty means "not configured" -- real mode
+    # fails loudly rather than silently not sending the code.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = "no-reply@qtesthub.local"
+    smtp_use_tls: bool = True
 
     cors_allow_origins: list[str] = ["http://localhost:5173"]
 

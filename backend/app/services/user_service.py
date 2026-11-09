@@ -10,6 +10,7 @@ from app.core.audit import record_audit_event
 from app.core.errors import ConflictError, NotFoundError, ValidationAppError
 from app.core.security import hash_password
 from app.models.identity import Role, User
+from app.models.identity import Session as SessionModel
 from app.schemas.user import RoleCode, UserCreateRequest, UserOut, UserUpdateRequest
 
 
@@ -122,6 +123,34 @@ def update_user(
 
 def deactivate_user(db: Session, tenant_id: UUID, actor_user_id: UUID, user_id: UUID) -> User:
     return update_user(db, tenant_id, actor_user_id, user_id, UserUpdateRequest(is_active=False))
+
+
+def reset_password(
+    db: Session, tenant_id: UUID, actor_user_id: UUID, user_id: UUID, new_password: str
+) -> User:
+    """Admin-initiated password reset. Revokes every existing session for
+    the target user so a credential reset (e.g. after suspected compromise)
+    can't be bypassed by an already-open session."""
+    user = _get_user_or_404(db, tenant_id, user_id)
+    user.password_hash = hash_password(new_password)
+
+    now = datetime.now(UTC)
+    active_sessions = select(SessionModel).where(
+        SessionModel.user_id == user_id, SessionModel.revoked_at.is_(None)
+    )
+    for session_row in db.execute(active_sessions).scalars():
+        session_row.revoked_at = now
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="user.password_reset",
+        entity_type="user",
+        entity_id=user.id,
+    )
+    db.commit()
+    return user
 
 
 def gdpr_erase(db: Session, tenant_id: UUID, actor_user_id: UUID, user_id: UUID) -> User:

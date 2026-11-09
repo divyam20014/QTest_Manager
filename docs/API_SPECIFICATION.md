@@ -19,7 +19,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Authentication (FR-AUTH)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| POST | /auth/login | tenant_id+email+password → MFA challenge issued (ADR-017); rate-limited 10/min per client IP (ADR-030, GAP-16) | any |
+| POST | /auth/login | tenant_id+email+password → MFA challenge issued (ADR-017); rate-limited 10/min per client IP (ADR-030, GAP-16); rejects non-`approved` tenants with 403 (ADR-032) | any |
 | POST | /auth/mfa/verify | 6-digit code → session cookie issued; rate-limited 10/min per client IP (ADR-030) | any (interim handshake) |
 | POST | /auth/logout | revoke session | authenticated |
 | GET | /auth/me | current user/role/tenant | authenticated |
@@ -31,6 +31,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | POST | /users | provision user | admin |
 | PATCH | /users/{id} | edit profile/role | admin |
 | DELETE | /users/{id} | deactivate (blocked if last admin) | admin |
+| POST | /users/{id}/reset-password | admin-initiated password reset; revokes all of that user's existing sessions (ADR-032) | admin |
 | POST | /users/{id}/gdpr-erase | pseudonymize PII (ADR-009) | admin |
 
 ## Project Management (FR-PROJ)

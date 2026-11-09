@@ -16,6 +16,10 @@ class UserCreateRequest(BaseModel):
     password: StrongPassword
 
 
+class PasswordResetRequest(BaseModel):
+    new_password: StrongPassword
+
+
 class UserUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     role: RoleCode | None = None
