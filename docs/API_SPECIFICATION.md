@@ -18,9 +18,12 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Platform Administration (no tenant context)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| POST | /platform/tenants | Create tenant + first Admin user (ADR-008) | platform_owner |
+| POST | /platform/tenants | Create tenant + first Admin user (ADR-008); every new tenant is seeded with a default Trial subscription (ADR-053) | platform_owner |
 | GET | /platform/tenants | List tenants | platform_owner |
 | PATCH | /platform/tenants/{id}/status | approve/suspend tenant | platform_owner |
+| GET | /platform/plans | list the subscription-plan catalog (Tier 1, ADR-053) | platform_owner |
+| GET | /platform/tenants/{id}/subscription | view a tenant's current subscription | platform_owner |
+| PUT | /platform/tenants/{id}/subscription | assign/update a tenant's plan/status/seat count — schema/record-keeping only, no payment gateway (Tier 1, ADR-053) | platform_owner |
 
 ## Authentication (FR-AUTH)
 | Method | Path | Purpose | Role |
@@ -40,6 +43,8 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | POST | /users/{id}/reset-password | admin-initiated password reset; revokes all of that user's existing sessions (ADR-032) | admin |
 | POST | /users/{id}/gdpr-erase | pseudonymize PII (ADR-009) | admin |
 | GET | /users/me/history | self-service account history (creation, profile/role edits, password resets, own login/MFA events) (ADR-039) | all (scoped to caller's own account) |
+| POST | /users/invite | create a single-use, time-limited invite (no `users` row exists until accepted); "simulated" email mode returns the token directly (Tier 1, ADR-053) | admin |
+| POST | /users/invite/{token}/accept | public, no auth — sets the invitee's own password and activates the account | any (unauthenticated) |
 
 ## Project Management (FR-PROJ)
 | Method | Path | Purpose | Role |
@@ -111,6 +116,8 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /projects/{id}/test-cases/export.csv | export one project's test cases | all (assigned) |
 | GET | /test-cases/import/template.csv | sample template | all |
 | POST | /test-cases/import | tenant-wide, synchronous validate+commit; each row names its own project (ADR-021); enforces a 2,000-row cap, 5MB/`.csv`-only file validation, and per-project duplicate-title detection (ADR-035) | all (per-row: Admin/Manager tenant-wide, Tester must be assigned to that row's project) |
+| POST | /test-cases/import/async | same validation, enqueues the import to the background job queue and returns a job id immediately instead of blocking the request (Tier 1, ADR-053) | all (same per-row rule as above) |
+| GET | /test-cases/import/jobs/{job_id} | poll an async import job's status/result | all (own tenant's job only) |
 
 ## Test Execution (FR-EXEC)
 | Method | Path | Purpose | Role |
@@ -162,3 +169,4 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side; returns valid/checked_count/broken_at_id (ADR-029) | admin (`audit.view`) |
 | GET | /settings | tenant self-service settings (`default_currency_code`, `default_timezone`, `ai_enabled`, `ai_provider`, `ai_api_key_configured`) (AI/SaaS roadmap Phase 1/3, ADR-043/ADR-045, GAP-80/GAP-72) | admin (`tenant.settings.manage`) |
 | PATCH | /settings | update tenant settings; partial updates supported, audit-logged (`tenant.settings_updated`); `ai_api_key` is write-only (never returned), `""` clears it; enabling AI requires a key already configured | admin (`tenant.settings.manage`) |
+| GET | /settings/subscription | read-only view of the tenant's current plan/status/seat count — assignment is platform-admin-only (Tier 1, ADR-053) | admin (`tenant.settings.manage`) |

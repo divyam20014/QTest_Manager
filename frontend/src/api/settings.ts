@@ -22,3 +22,28 @@ export function getSettings(): Promise<TenantSettings> {
 export function updateSettings(req: TenantSettingsUpdateRequest): Promise<TenantSettings> {
   return apiFetch<TenantSettings>('/settings', { method: 'PATCH', body: JSON.stringify(req) })
 }
+
+// Tier 1 / ADR-053: schema/admin-assignment only -- read-only here, the
+// tenant side has no write endpoint (assignment is platform-admin-only).
+export interface Plan {
+  id: string
+  code: string
+  name: string
+  seat_limit: number | null
+  storage_limit_mb: number | null
+  ai_monthly_request_limit: number | null
+  is_active: boolean
+}
+
+export interface Subscription {
+  id: string
+  plan: Plan
+  status: 'trialing' | 'active' | 'past_due' | 'canceled'
+  seat_count: number
+  current_period_start: string
+  current_period_end: string | null
+}
+
+export function getSubscription(): Promise<Subscription> {
+  return apiFetch<Subscription>('/settings/subscription')
+}

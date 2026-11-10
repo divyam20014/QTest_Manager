@@ -10,7 +10,7 @@ any real deployment).
 
 ## 1. What you're deploying
 
-Four containers, defined in `docker-compose.prod.yml` (distinct from the
+Five containers, defined in `docker-compose.prod.yml` (distinct from the
 dev-focused `docker-compose.yml` at the repo root — do not use the dev file
 for a real deployment):
 
@@ -18,8 +18,14 @@ for a real deployment):
 |---|---|---|
 | `db` | PostgreSQL 16 | only other containers (no host port) |
 | `api` | FastAPI backend | only other containers |
+| `worker` | background job queue worker (Tier 1 / ADR-053 — same image as `api`, different entrypoint) | nothing (outbound DB connections only) |
 | `web` | nginx serving the built frontend, proxies `/api/` to `api` | only other containers |
 | `proxy` | nginx reverse proxy, TLS termination | the public internet (ports 80/443) |
+
+Attachment storage defaults to the local `qtesthub_attachments` volume; set
+`STORAGE_BACKEND=s3` (plus `S3_BUCKET`/`S3_REGION`/`S3_ENDPOINT_URL`/
+`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`) to use AWS S3 or an S3-compatible
+service instead — see `.env.example` and ADR-053.
 
 ## 2. Environment configuration
 

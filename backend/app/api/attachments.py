@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context, require_permission
@@ -114,14 +114,18 @@ def download_attachment(
     attachment_id: UUID,
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
-) -> FileResponse:
+) -> Response:
+    # Tier 1 / ADR-053: reads through the storage abstraction rather than
+    # FileResponse-streaming straight off local disk, so this route works
+    # identically regardless of which storage backend is configured.
     attachment = attachment_service.get_attachment_for_download(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, attachment_id
     )
-    return FileResponse(
-        attachment.storage_path,
+    contents = attachment_service.read_attachment_bytes(attachment)
+    return Response(
+        content=contents,
         media_type=attachment.mime_type,
-        filename=attachment.file_name,
+        headers={"Content-Disposition": f'attachment; filename="{attachment.file_name}"'},
     )
 
 

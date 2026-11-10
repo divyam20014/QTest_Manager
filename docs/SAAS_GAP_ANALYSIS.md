@@ -15,20 +15,22 @@ Status of this analysis as originally written: **audit only — nothing below ha
 
 ## F — Required for initial SaaS foundation
 
-### SAAS-GAP-1: No subscription/billing data model at all
+### SAAS-GAP-1: ✅ RESOLVED (ADR-053, Tier 1) — No subscription/billing data model at all
 **Evidence:** exhaustive grep across `backend/app/` and `frontend/src/` for `subscription|plan_id|tier|entitlement|trial|upgrade|downgrade|billing|stripe|invoice|payment|user_limit|project_limit|storage_limit` — zero matches outside this audit's own output.
 **Why foundational:** every other SaaS capability (platform-admin plan configuration, tenant limit display, future billing) depends on this schema existing first. Retrofitting it after tenants and usage data already exist is still possible but strictly harder than building it alongside the rest of the foundation.
 **Recommended first step:** the `plans`/`tenant_subscriptions` schema described in `SAAS_ARCHITECTURE.md` §3 — schema + a read-only "current plan" endpoint only, no enforcement, no billing fields. Explicitly **not** authorized to build payment integration (directive §3).
+**Resolution (2026-11-10):** `plans` (platform-wide catalog) + `subscriptions` (one row per tenant, RLS-protected) added. Platform-admin assigns/updates a tenant's plan (`PUT /platform/tenants/{id}/subscription`); the tenant side is read-only (`GET /settings/subscription`). Every tenant defaults to a seeded Trial plan. Schema/record-keeping only, exactly as scoped — no payment gateway, no billing engine. See ADR-053.
 
 ### SAAS-GAP-2: Frontend Docker image runs the dev server, not a production build
 **Evidence:** `frontend/Dockerfile` line 12, `CMD ["npm","run","dev","--","--host","0.0.0.0"]`. No multi-stage build, no `npm run build` + static-serve stage exists anywhere in the repo.
 **Why foundational:** this isn't a hardening item to add later — it means there is currently no artifact that could be deployed to a real environment at all. "Dockerized application" (directive §6) is not actually satisfied for the frontend as things stand.
 **Recommended first step:** a second Dockerfile stage — `npm run build` then serve `dist/` via a minimal static server (`serve`, `nginx:alpine`, or similar), keeping the current dev-server Dockerfile available for local development (docker-compose already separates dev usage cleanly, so this is additive, not a replacement).
 
-### SAAS-GAP-3: Local-disk-only attachment storage blocks horizontal scaling
+### SAAS-GAP-3: ✅ RESOLVED (ADR-053, Tier 1) — Local-disk-only attachment storage blocks horizontal scaling
 **Evidence:** `backend/app/services/attachment_service.py` writes to `Path(settings.attachments_dir) / tenant_id / test_case_id`, backed by one Docker named volume. Already documented as `GAP-07` in `docs/KNOWN_GAPS.md`.
 **Why foundational:** every other SaaS-readiness item (multi-replica API, real cloud deployment) is blocked behind this one. The schema is already storage-backend-agnostic (per GAP-07's own note), so this is purely a service-layer swap, not a data-model change — but it needs to happen before any multi-replica deployment is attempted, not after.
 **Recommended first step:** no code change until horizontal scaling is actually planned (per GAP-07's own closing condition: "when multi-node/horizontal scaling is needed"). Listed under F here only because *if and when* that scaling work starts, this must be the first piece, not a follow-on afterthought.
+**Resolution (2026-11-10):** a pluggable `StorageBackend` abstraction (`app/core/storage.py`) now sits in front of `attachment_service.py`; `LocalFilesystemStorage` (default, unchanged behavior) and `S3CompatibleStorage` (AWS S3 or any S3-compatible endpoint, via `STORAGE_BACKEND=s3`) implement the same interface, confirming GAP-07's own note that this was purely a service-layer swap. See ADR-053.
 
 ---
 
@@ -57,10 +59,11 @@ Status of this analysis as originally written: **audit only — nothing below ha
 **Why launch-blocking:** a tenant admin cannot change their own organization's currency/timezone/MFA-delivery-mode after bootstrap — a basic expectation for a self-serve-feeling SaaS product, even in a sales-assisted onboarding model.
 **Recommended first step:** `GET/PATCH /settings` (already named as a planned-but-unbuilt endpoint in `docs/API_SPECIFICATION.md` historically) backed by the existing `Tenant` columns.
 
-### SAAS-GAP-8: No user-invite flow
+### SAAS-GAP-8: ✅ RESOLVED (ADR-053, Tier 1) — No user-invite flow
 **Evidence:** `backend/app/api/users.py` — `create_user` is direct admin-sets-password creation; no invite-token/pending-acceptance endpoints exist anywhere.
 **Why launch-blocking:** admins currently must communicate a password out-of-band (email/chat) to every new user, which is both poor practice and poor UX for a product meant to onboard real customer teams.
 **Recommended first step:** an invite-token table + `POST /users/invite` (creates a pending, password-less user + emailed token) + `POST /auth/accept-invite` (sets password, activates). Reuses the existing SMTP path already built for "real" MFA delivery mode.
+**Resolution (2026-11-10):** `user_invites` table + `POST /users/invite` (tenant-admin-only, creates a hashed single-use token) + `POST /users/invite/{token}/accept` (public, sets password, activates). No `users` row exists until accepted. Reuses `notification_email_delivery_mode`'s existing simulated/real split (not a new SMTP path). Direct admin-sets-password creation (`POST /users`) is kept for scripts/back-compat but is no longer the recommended path. See ADR-053.
 
 ### SAAS-GAP-9: ✅ RESOLVED (ADR-041) — Responsive design was not addressed by the recent redesign
 **Evidence:** `frontend/src/routes/AppShell.tsx` — fixed `w-60` sidebar with zero responsive classes, no collapse mechanism at any breakpoint. `TestRepository.tsx`, `DefectsList.tsx`, `TestRunsOverview.tsx` all wrap tables in `overflow-hidden` (clips content) rather than `overflow-x-auto` (scrolls).

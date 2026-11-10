@@ -1,5 +1,6 @@
 from app.models.ai_usage import AIUsageLog
 from app.models.audit import AuditLog
+from app.models.background_job import BackgroundJob
 from app.models.comment import Comment, CommentMention
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
@@ -16,6 +17,7 @@ from app.models.identity import (
 from app.models.notification import Notification
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
 from app.models.test_case import (
     Attachment,
@@ -23,6 +25,7 @@ from app.models.test_case import (
     TestCaseVersion,
     TestCaseVersionStep,
 )
+from app.models.user_invite import UserInvite
 
 __all__ = [
     "Tenant",
@@ -53,4 +56,8 @@ __all__ = [
     "Comment",
     "CommentMention",
     "Notification",
+    "Plan",
+    "Subscription",
+    "UserInvite",
+    "BackgroundJob",
 ]

@@ -83,6 +83,23 @@ services:
       retries: 10
       start_period: 10s
 
+  # Tier 1 / ADR-053: DB-backed background job queue worker (SR-6.10),
+  # same image as `api`, different entrypoint. No Celery/Redis -- this
+  # stack has no cache/broker layer.
+  worker:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://qtesthub_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      ENVIRONMENT: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
   proxy:
     image: nginx:1.27-alpine
     restart: unless-stopped

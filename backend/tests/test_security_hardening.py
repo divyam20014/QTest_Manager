@@ -205,6 +205,10 @@ _PUBLIC_OR_SEPARATE_AUTH_PREFIXES = ("/api/v1/platform", "/api/v1/health", "/api
 _PRE_SESSION_ROUTES = {
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/mfa/verify"),
+    # Tier 1 / ADR-053: deliberately public, like login/mfa-verify above --
+    # the invite token itself (unguessable, hashed at rest) is the
+    # credential, the same trust model a password-reset link uses.
+    ("POST", "/api/v1/users/invite/{token}/accept"),
 }
 
 

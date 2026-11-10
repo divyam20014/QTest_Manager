@@ -88,6 +88,25 @@ class Settings(BaseSettings):
     platform_admin_max_failed_logins: int = 5
     platform_admin_lockout_minutes: int = 15
 
+    # Tier 1 / ADR-053: pluggable attachment storage backend. "local" (the
+    # default, unchanged dev/test behavior) writes under attachments_dir;
+    # "s3" targets AWS S3 or any S3-compatible endpoint (MinIO, DO Spaces)
+    # via s3_endpoint_url.
+    storage_backend: str = "local"
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+
+    # Tier 1 / ADR-053: tenant user-invite token lifetime.
+    user_invite_ttl_hours: int = 72
+
+    # Tier 1 / ADR-053: DB-backed background job queue (no Redis/Celery in
+    # the approved stack -- see ADR-053). The worker polls for queued jobs
+    # at this interval when none are available.
+    worker_poll_interval_seconds: float = 2.0
+
     @property
     def sentry_enabled(self) -> bool:
         return bool(self.sentry_dsn)

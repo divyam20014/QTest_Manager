@@ -8,8 +8,13 @@ from app.core.db import set_tenant_context
 from app.core.errors import NotFoundError
 from app.core.security import hash_password
 from app.models.identity import Role, User
+from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
 from app.schemas.platform import TenantCreateRequest
+
+# Tier 1 / ADR-053: every tenant starts on this plan -- seeded by migration
+# c2d3e4f5a6b7, never absent.
+_DEFAULT_PLAN_CODE = "trial"
 
 
 def create_tenant_with_admin(
@@ -37,6 +42,16 @@ def create_tenant_with_admin(
         password_hash=hash_password(req.admin_password),
     )
     db.add(admin)
+    db.flush()
+
+    # Tier 1 / ADR-053: every tenant gets a default Trial subscription at
+    # creation, not only the migration's one-time backfill of
+    # pre-existing tenants -- otherwise every tenant created after that
+    # migration would be left without one.
+    default_plan_id = db.execute(
+        select(Plan.id).where(Plan.code == _DEFAULT_PLAN_CODE)
+    ).scalar_one()
+    db.add(Subscription(tenant_id=tenant.id, plan_id=default_plan_id, status="trialing"))
     db.flush()
 
     record_audit_event(

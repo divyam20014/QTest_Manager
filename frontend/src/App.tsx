@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
+import { AcceptInvite } from '@/routes/AcceptInvite'
 import { AppShell } from '@/routes/AppShell'
 import { Dashboard } from '@/routes/Dashboard'
 import { Login } from '@/routes/Login'
@@ -30,6 +31,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/accept-invite/:token" element={<AcceptInvite />} />
       <Route path="/platform-admin" element={<PlatformAdmin />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/reporting/print" element={<CompliancePrintView />} />

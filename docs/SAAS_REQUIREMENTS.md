@@ -21,7 +21,7 @@ Status values: **Done**, **Partial**, **Missing**. A requirement already fully c
 | SR-1.3 | Tenant-level data isolation | Done (via BRD) | — | PostgreSQL RLS on all 14 tenant-scoped tables + session-derived (never client-supplied) tenant context (ADR-007, ADR-015). |
 | SR-1.4 | Tenant-specific users, roles, permissions | Partial | E | Users/role-assignment are tenant-scoped; *roles themselves* are a fixed 3-role global seed (admin/manager/tester) — no tenant-defined custom roles (GAP-05, intentional BRD-scope decision, not a bug). |
 | SR-1.5 | Centralized platform administration | Done (via BRD) | — | `backend/app/api/platform.py`, `frontend/src/routes/PlatformAdmin.tsx`, fully separate from tenant auth (ADR-008). |
-| SR-1.6 | Configurable subscription plans | Missing | F | Zero code exists — no plan/tier model, no entitlements, no limits. See SR-3. |
+| SR-1.6 | Configurable subscription plans | Partial | F | `plans` catalog + platform-admin assignment exist (ADR-053, Tier 1); no API to create/edit plans beyond the two seeded ones (Trial/Standard) — configurable at the DB row level, not yet via an admin UI/endpoint. See SR-3. |
 | SR-1.7 | Future billing/payment integration points | Missing | L | No stub fields, no placeholder schema. Explicitly **not** required to build the integration itself now (directive §3: "Do not integrate a payment gateway unless explicitly approved") — but the *schema room* to add it later without a breaking migration is itself a design decision that hasn't been made. |
 | SR-1.8 | Horizontal scaling / cloud deployment readiness | Partial | L | Backend is stateless and env-configured (good); attachment storage is local-disk-only (GAP-07) which blocks multi-replica API scaling without a shared/network volume; frontend's Docker image runs the dev server, not a production static build. |
 | SR-1.9 | Clear module boundaries | Done (via BRD) | — | `backend/app/{models,schemas,services,api,core}` consistently layered; no lower-layer-imports-route-layer violations found. |
@@ -33,7 +33,7 @@ Status values: **Done**, **Partial**, **Missing**. A requirement already fully c
 | SR-2.1 | Tenant registration and provisioning | Done (via BRD) | — | Platform-admin-driven (`POST /platform/tenants`), not self-service signup — acceptable for current scope; self-service signup is a distinct future product decision, not assumed here. |
 | SR-2.2 | Tenant activation, suspension, deactivation | Done (via BRD) | — | `PATCH /platform/tenants/{id}/status`, enforced at login time too. |
 | SR-2.3 | Tenant-specific configuration | Done | L | `GET/PATCH /api/v1/settings` (`backend/app/api/settings.py`, ADR-043) reads/writes tenant settings including `default_currency_code`/`default_timezone`, gated by `tenant.settings.manage`, with a real `Settings.tsx` UI. Corrected 2026-11-10 per the implementation audit after direct code verification. |
-| SR-2.4 | Tenant-specific user invitations | Missing | L | All users are directly created by an admin with an admin-set password. No email-verified invite/accept flow. |
+| SR-2.4 | Tenant-specific user invitations | Done | L | `POST /users/invite` + `POST /users/invite/{token}/accept` (ADR-053, Tier 1) — hashed single-use token, no `users` row until accepted. Direct admin-set-password creation is kept for scripts/back-compat, no longer the recommended path. |
 | SR-2.5 | Tenant-specific project and test data | Done (via BRD) | — | Full FK chain, confirmed. |
 | SR-2.6 | Tenant-aware file storage | Done (via BRD) | — | Path-partitioned per tenant (`{attachments_dir}/{tenant_id}/{test_case_id}/`); shares one physical volume across tenants (isolation is path-based, not storage-account-based — acceptable at current scale, revisit with SR-1.8). |
 | SR-2.7 | Strict server-side tenant authorization | Done (via BRD) | — | `tenant_id` only ever derived from the verified session row, never client input (ADR-015). |
@@ -41,16 +41,16 @@ Status values: **Done**, **Partial**, **Missing**. A requirement already fully c
 
 ## SR-3. Subscription Architecture
 
-**Status: Missing in its entirety. Classification: F for the data model/extension points; E for everything commercial.**
+**Status: data model + lifecycle + platform-admin assignment done (ADR-053, Tier 1); entitlement enforcement and everything commercial remain Missing/deferred.**
 
 The directive is explicit that pricing/payment integration is *not* authorized without separate approval, and that limits must stay configurable rather than hardcoded. Accordingly:
 
 | ID | Requirement | Status | Class |
 |---|---|---|---|
-| SR-3.1 | Plan/tier data model (Free Trial/Starter/Professional/Enterprise as *configurable* rows, not hardcoded) | Missing | F |
-| SR-3.2 | Subscription lifecycle (active/trial/expired/cancelled) per tenant | Missing | F |
-| SR-3.3 | Configurable entitlements (feature flags per plan) | Missing | L |
-| SR-3.4 | Configurable limits (users/projects/storage) with soft/hard enforcement | Missing | L |
+| SR-3.1 | Plan/tier data model (Free Trial/Starter/Professional/Enterprise as *configurable* rows, not hardcoded) | Partial | F | `plans` table (configurable rows, not hardcoded enums) seeded with Trial/Standard (ADR-053, Tier 1); no third/fourth tier seeded yet and no API to add one beyond a migration. |
+| SR-3.2 | Subscription lifecycle (active/trial/expired/cancelled) per tenant | Done | F | `subscriptions.status` (trialing/active/past_due/canceled) per tenant, platform-admin-assigned (ADR-053, Tier 1). |
+| SR-3.3 | Configurable entitlements (feature flags per plan) | Missing | L | `plans` carries limit *values* (seat/storage/AI-request caps) but nothing in the app reads or enforces them yet — stored, not wired to any feature gate. |
+| SR-3.4 | Configurable limits (users/projects/storage) with soft/hard enforcement | Partial | L | Limit columns exist on `plans` (ADR-053, Tier 1) but nothing enforces them yet (no soft/hard check anywhere) — schema only, same gap as SR-3.3. |
 | SR-3.5 | Upgrade/downgrade workflow | Missing | E |
 | SR-3.6 | Billing history / invoice records | Missing | E |
 | SR-3.7 | Payment gateway integration | Missing, **not authorized** | E (explicitly deferred — do not build without separate approval per directive §3) |
@@ -83,14 +83,14 @@ See `docs/SAAS_GAP_ANALYSIS.md` SAAS-GAP-1 for the recommended foundation-only f
 | SR-5.1 | Manage tenants (create/list) | Done | — | |
 | SR-5.2 | View tenant status | Done | — | |
 | SR-5.3 | Activate/suspend tenants | Done | — | |
-| SR-5.4 | Configure subscription plans | Missing | F | Depends on SR-3. |
+| SR-5.4 | Configure subscription plans | Done | F | `PUT /platform/tenants/{id}/subscription` + a "Plan" dialog on each tenant row in `/platform-admin` (ADR-053, Tier 1). |
 | SR-5.5 | Monitor platform usage (cross-tenant metrics) | Missing | L | No aggregation endpoint exists across tenants. |
 | SR-5.6 | View system health | Done | L | `GET /api/v1/ready` (`backend/app/main.py:142`) is a true readiness probe distinct from the liveness-only `/health`, doing a real `SELECT 1` round trip and returning 503 on failure. Corrected 2026-11-10 per the implementation audit after direct code verification. |
-| SR-5.7 | Monitor background jobs | Missing (structurally N/A) | L | No background job system exists at all yet (see SR-6.7); this requirement is blocked on that one. |
+| SR-5.7 | Monitor background jobs | Partial | L | `GET /test-cases/import/jobs/{id}` polls a single job's status now that SR-6.10's job queue exists (ADR-053, Tier 1); no cross-tenant/platform-wide job-monitoring dashboard. |
 | SR-5.8 | Review platform-level audit events | Partial | L | Platform actions *are* audited, but with `user_id=None` — no individual platform-admin attribution (GAP-13). |
 | SR-5.9 | Platform admin authentication strength | Missing | L | HTTP Basic re-checked per request, no session, no MFA, no credential rotation (GAP-14) — materially weaker than the tenant auth it gates access to tenant *provisioning* for. |
 | SR-5.10 | Tenant Admin: org settings | Done | L | Same fix as SR-2.3: `GET/PATCH /api/v1/settings` (ADR-043). Corrected 2026-11-10 per the implementation audit after direct code verification. |
-| SR-5.11 | Tenant Admin: invite/manage users | Partial | L | Direct-create exists; no invite flow (SR-2.4). |
+| SR-5.11 | Tenant Admin: invite/manage users | Done | L | Invite flow now exists (SR-2.4, ADR-053) alongside direct-create. |
 | SR-5.12 | Tenant Admin: assign roles/permissions | Done | — | |
 | SR-5.13 | Tenant Admin: manage projects | Done | — | |
 | SR-5.14 | Tenant Admin: tenant-specific settings | Done | L | Same fix as SR-2.3/SR-5.10: `GET/PATCH /api/v1/settings` (ADR-043). Corrected 2026-11-10 per the implementation audit after direct code verification. |
@@ -105,12 +105,12 @@ See `docs/SAAS_GAP_ANALYSIS.md` SAAS-GAP-1 for the recommended foundation-only f
 | SR-6.2 | Environment-based configuration | Done | — | Pydantic `BaseSettings`, no hardcoded secrets. |
 | SR-6.3 | Externalized secrets | Done | — | `.env`-driven, `POSTGRES_PASSWORD` fails fast if unset. |
 | SR-6.4 | Database migrations | Done | — | 16-migration Alembic chain, run automatically on container start. |
-| SR-6.5 | Persistent object storage | Missing | L | Local filesystem only (GAP-07) — blocks multi-replica scaling. |
+| SR-6.5 | Persistent object storage | Done | L | Pluggable `StorageBackend` abstraction (local default + S3-compatible via `STORAGE_BACKEND=s3`, ADR-053, Tier 1) — no longer local-filesystem-only. |
 | SR-6.6 | Centralized application logging | Partial | L | Structured per-request logging exists but is plain-text (not JSON), stdout-only, no correlation/request ID, no shipping destination. |
 | SR-6.7 | Health and readiness endpoints | Done | L | Same fix as SR-5.6: `GET /api/v1/ready` (`backend/app/main.py:142`). Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-6.8 | Error monitoring | Missing | L | No Sentry/Rollbar/equivalent anywhere. |
 | SR-6.9 | Database backup and restore | Missing | L | No script, no documented procedure anywhere in the repo. |
-| SR-6.10 | Background job management | Missing | L | No Celery/RQ/Redis/task queue exists at all; CSV import (up to 2,000 rows) runs fully synchronously in-request. |
+| SR-6.10 | Background job management | Done | L | DB-backed job queue (`background_jobs` + a polling worker, `FOR UPDATE SKIP LOCKED`, ADR-053, Tier 1) — not Celery/Redis, the approved stack has no broker layer. CSV import now has an async path (`POST /test-cases/import/async` + job-status polling) alongside the original synchronous one, which is kept for its proven NFR 8.1 timing budget. |
 | SR-6.11 | Secure file uploads | Done | — | Extension allowlist + magic-byte content-sniffing (GAP-66, fixed this session) + size cap. |
 | SR-6.12 | HTTPS deployment | Partial | L | No TLS/reverse-proxy config in the dev compose stack (expected at this layer); session cookie's `Secure` flag is already environment-conditional, so it will work correctly once a production `ENVIRONMENT` + TLS-terminating proxy are introduced. |
 | SR-6.13 | Rate limiting | Partial | L | Only `POST /auth/login` and `POST /auth/mfa/verify` are rate-limited (10/min, IP-keyed, in-memory/non-distributed); every other endpoint is unthrottled. |

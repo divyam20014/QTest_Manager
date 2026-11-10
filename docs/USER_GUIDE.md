@@ -6,11 +6,15 @@ see `docs/ADMINISTRATOR_GUIDE.md` instead.
 
 ## Signing in
 
-Sign in with the email/password your organization's Admin gave you. If your
-organization requires MFA, you'll be asked for a one-time code after your
-password (delivered by email, or shown directly on screen in non-production
-test environments). Your role (Tester, Manager, or Admin) determines what you
-can see and do — set by your Admin, not something you change yourself.
+If you were invited, you'll receive an invite link (by email, or directly
+from your Admin in non-production test environments) — open it and set your
+own password to activate your account; there's nothing to sign in with until
+you do. Otherwise, sign in with the email/password your organization's Admin
+gave you directly. If your organization requires MFA, you'll be asked for a
+one-time code after your password (delivered by email, or shown directly on
+screen in non-production test environments). Your role (Tester, Manager, or
+Admin) determines what you can see and do — set by your Admin, not something
+you change yourself.
 
 ## Dashboard
 

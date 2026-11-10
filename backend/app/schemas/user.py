@@ -35,3 +35,26 @@ class UserOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserInviteRequest(BaseModel):
+    """Tier 1 / ADR-053 (SR-2.4/5.11, SAAS-GAP-8): replaces admin-sets-the-
+    password-directly provisioning (UserCreateRequest) with an invite the
+    user accepts by setting their own password."""
+
+    email: EmailStr
+    name: str = Field(min_length=1)
+    role: RoleCode
+
+
+class UserInviteOut(BaseModel):
+    id: UUID
+    email: str
+    expires_at: datetime
+    # Only non-None in "simulated" email-delivery mode (ADR-032/051's same
+    # pattern) -- lets dev/test accept the invite without a mail server.
+    invite_token: str | None = None
+
+
+class InviteAcceptRequest(BaseModel):
+    password: StrongPassword

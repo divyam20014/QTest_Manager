@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -10,9 +10,16 @@ from app.core.auth import (
     require_permission,
 )
 from app.core.db import get_db
+from app.core.rate_limit import limiter
 from app.core.responses import envelope
-from app.schemas.user import PasswordResetRequest, UserCreateRequest, UserUpdateRequest
-from app.services import audit_service, user_service
+from app.schemas.user import (
+    InviteAcceptRequest,
+    PasswordResetRequest,
+    UserCreateRequest,
+    UserInviteRequest,
+    UserUpdateRequest,
+)
+from app.services import audit_service, user_invite_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -86,4 +93,28 @@ def gdpr_erase(
     db: Session = Depends(get_db),
 ) -> dict:
     user = user_service.gdpr_erase(db, ctx.tenant_id, ctx.user_id, user_id)
+    return envelope(user_service.to_out(db, user).model_dump())
+
+
+# Tier 1 / ADR-053 (SR-2.4/5.11, SAAS-GAP-8): replaces admin-sets-the-
+# password-directly provisioning with an invite the user accepts themself.
+@router.post("/invite")
+def invite_user(
+    req: UserInviteRequest,
+    ctx: SessionContext = Depends(require_permission("user.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    invite = user_invite_service.create_invite(db, ctx.tenant_id, ctx.user_id, req)
+    return envelope(invite.model_dump(mode="json"))
+
+
+@router.post("/invite/{token}/accept")
+@limiter.limit("10/minute")
+def accept_invite(
+    request: Request,
+    token: str,
+    req: InviteAcceptRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    user = user_invite_service.accept_invite(db, token, req.password)
     return envelope(user_service.to_out(db, user).model_dump())

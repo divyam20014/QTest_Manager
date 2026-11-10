@@ -52,8 +52,9 @@ Authorization: Basic <platform-admin-credentials>
 }
 ```
 Hand the temporary password to the customer through a secure, out-of-band
-channel — there is no email-invite flow yet (tracked separately, not in this
-tier's scope); the Tenant Admin should change it after first login.
+channel; the Tenant Admin should change it after first login. This bootstrap
+step is the one place a password is still set directly — every subsequent
+user in that tenant is provisioned via the invite flow (§2.1).
 
 ### 1.2 Suspending / reactivating a tenant
 
@@ -76,6 +77,15 @@ a tenant does not delete any data — it is reversible.
   `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` §4 for the upgrade/rollback
   procedure.
 
+### 1.4 Assigning a tenant's subscription plan
+
+`PUT /api/v1/platform/tenants/{tenant_id}/subscription` with
+`{"plan_code": "standard", "status": "active", "seat_count": 25}`
+(`GET /api/v1/platform/plans` lists the available plan codes). This is
+schema/record-keeping only — there is no payment gateway integration in
+this release; billing/invoicing is a separate, not-yet-approved item. Every
+tenant starts on the Trial plan automatically when created.
+
 ## Part 2 — Tenant Administration (per-organization)
 
 A **Tenant Admin** is a user with the `admin` role inside one specific
@@ -85,12 +95,21 @@ at the database layer).
 
 ### 2.1 Managing users
 
-From the Admin area in the main app: create users (name, email, role,
-temporary password), deactivate/reactivate them, and change their role
-(`admin` / `manager` / `tester` — the three fixed roles, see
-`docs/USER_GUIDE.md` for what each can do). There is currently no
-self-service email-invite flow — the Tenant Admin sets an initial password
-directly and communicates it to the new user out-of-band.
+From the Admin area in the main app, click **Invite User** (name, email,
+role) — this sends (or, if no SMTP server is configured, surfaces as a
+copyable link) a single-use, time-limited invite the person accepts by
+setting their own password; no account exists until they do. "New User (set
+password directly)" is still available for scripts/back-compat but is no
+longer the recommended path. Deactivate/reactivate existing users and
+change their role (`admin` / `manager` / `tester` — the three fixed roles,
+see `docs/USER_GUIDE.md` for what each can do) from the same screen.
+
+### 2.1a Subscription
+
+Under Settings, a read-only **Subscription** card shows the organization's
+current plan, status, and seat count. This is informational only — plan
+assignment is a Platform Admin action (§1.4 below) and there is no
+self-service upgrade/downgrade or payment collection in this release.
 
 ### 2.2 Tenant settings
 

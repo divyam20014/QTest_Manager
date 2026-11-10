@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import {
+  assignTenantSubscription,
   createTenant,
+  listPlans,
   listTenants,
   updateTenantStatus,
   type PlatformCredentials,
@@ -15,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 
 // Platform Administration manages tenant lifecycle (create/approve/suspend)
 // and is intentionally separate from the tenant app's own auth/RBAC
@@ -103,6 +106,7 @@ function TenantConsole({
 }) {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
+  const [planTarget, setPlanTarget] = useState<Tenant | null>(null)
   const tenantsQuery = useQuery({
     queryKey: ['platform-tenants'],
     queryFn: () => listTenants(credentials),
@@ -158,6 +162,9 @@ function TenantConsole({
                 </td>
                 <td className="px-4 py-2 text-right">
                   <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setPlanTarget(t)}>
+                      Plan
+                    </Button>
                     {t.status !== 'approved' && (
                       <Button
                         variant="outline"
@@ -189,7 +196,102 @@ function TenantConsole({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
       />
+      <PlanDialog credentials={credentials} tenant={planTarget} onClose={() => setPlanTarget(null)} />
     </div>
+  )
+}
+
+// Tier 1 / ADR-053: schema/record-keeping only -- no payment gateway, no
+// billing engine.
+function PlanDialog({
+  credentials,
+  tenant,
+  onClose,
+}: {
+  credentials: PlatformCredentials
+  tenant: Tenant | null
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [planCode, setPlanCode] = useState('')
+  const [status, setStatus] = useState<'trialing' | 'active' | 'past_due' | 'canceled'>('active')
+  const [seatCount, setSeatCount] = useState(1)
+
+  const plansQuery = useQuery({
+    queryKey: ['platform-plans'],
+    queryFn: () => listPlans(credentials),
+    enabled: !!tenant,
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: () =>
+      assignTenantSubscription(credentials, tenant!.id, {
+        plan_code: planCode,
+        status,
+        seat_count: seatCount,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
+      onClose()
+    },
+  })
+
+  const serverError = assignMutation.error instanceof ApiError ? assignMutation.error.message : null
+
+  if (!tenant) return null
+
+  return (
+    <Dialog open={!!tenant} onClose={onClose} title={`Subscription — ${tenant.name}`}>
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="plan-code">Plan</Label>
+          <Select id="plan-code" value={planCode} onChange={(e) => setPlanCode(e.target.value)}>
+            <option value="">Select a plan…</option>
+            {plansQuery.data?.map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="plan-status">Status</Label>
+          <Select
+            id="plan-status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as typeof status)}
+          >
+            <option value="trialing">Trialing</option>
+            <option value="active">Active</option>
+            <option value="past_due">Past Due</option>
+            <option value="canceled">Canceled</option>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="plan-seats">Seat Count</Label>
+          <Input
+            id="plan-seats"
+            type="number"
+            min={1}
+            value={seatCount}
+            onChange={(e) => setSeatCount(Number(e.target.value))}
+          />
+        </div>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={!planCode || assignMutation.isPending}
+            onClick={() => assignMutation.mutate()}
+          >
+            {assignMutation.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
 

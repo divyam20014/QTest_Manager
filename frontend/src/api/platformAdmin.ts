@@ -69,3 +69,46 @@ export function updateTenantStatus(
     body: JSON.stringify({ status }),
   })
 }
+
+// Tier 1 / ADR-053: subscription schema + platform-admin assignment only --
+// no payment gateway, no billing engine.
+export interface Plan {
+  id: string
+  code: string
+  name: string
+  seat_limit: number | null
+  storage_limit_mb: number | null
+  ai_monthly_request_limit: number | null
+  is_active: boolean
+}
+
+export interface Subscription {
+  id: string
+  plan: Plan
+  status: 'trialing' | 'active' | 'past_due' | 'canceled'
+  seat_count: number
+  current_period_start: string
+  current_period_end: string | null
+}
+
+export function listPlans(credentials: PlatformCredentials): Promise<Plan[]> {
+  return platformFetch<Plan[]>('/platform/plans', credentials)
+}
+
+export function getTenantSubscription(
+  credentials: PlatformCredentials,
+  tenantId: string,
+): Promise<Subscription> {
+  return platformFetch<Subscription>(`/platform/tenants/${tenantId}/subscription`, credentials)
+}
+
+export function assignTenantSubscription(
+  credentials: PlatformCredentials,
+  tenantId: string,
+  req: { plan_code: string; status: Subscription['status']; seat_count: number },
+): Promise<Subscription> {
+  return platformFetch<Subscription>(`/platform/tenants/${tenantId}/subscription`, credentials, {
+    method: 'PUT',
+    body: JSON.stringify(req),
+  })
+}

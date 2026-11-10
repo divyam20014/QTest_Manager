@@ -3,7 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import type { RoleCode } from '@/api/auth'
-import { createUser, deactivateUser, listUsers, resetPassword, updateUser, type User } from '@/api/users'
+import {
+  createUser,
+  deactivateUser,
+  inviteUser,
+  listUsers,
+  resetPassword,
+  updateUser,
+  type User,
+} from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -18,6 +26,7 @@ export function UsersRoles() {
   const { user: currentUser } = useAuth()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [resetTarget, setResetTarget] = useState<User | null>(null)
 
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
@@ -41,9 +50,14 @@ export function UsersRoles() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Users &amp; Roles</h1>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          New User
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setInviteOpen(true)}>
+            Invite User
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+            New User (set password directly)
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
@@ -74,6 +88,7 @@ export function UsersRoles() {
       </div>
 
       <NewUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <InviteUserDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
       <ResetPasswordDialog
         user={resetTarget}
         onClose={() => setResetTarget(null)}
@@ -250,6 +265,100 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
             {createMutation.isPending ? 'Creating…' : 'Create User'}
           </Button>
         </div>
+      </div>
+    </Dialog>
+  )
+}
+
+// Tier 1 / ADR-053: replaces admin-sets-the-password-directly provisioning
+// (NewUserDialog above, kept for scripts/back-compat) -- the invitee sets
+// their own password when they accept.
+function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+  const [role, setRole] = useState<RoleCode>('tester')
+  const [sentLink, setSentLink] = useState<string | null>(null)
+
+  const inviteMutation = useMutation({
+    mutationFn: () => inviteUser({ email, name, role }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      if (data.invite_token) {
+        setSentLink(`${window.location.origin}/accept-invite/${data.invite_token}`)
+      } else {
+        handleClose()
+      }
+    },
+  })
+
+  const serverError = inviteMutation.error instanceof ApiError ? inviteMutation.error.message : null
+
+  function handleClose() {
+    setEmail('')
+    setName('')
+    setRole('tester')
+    setSentLink(null)
+    inviteMutation.reset()
+    onClose()
+  }
+
+  return (
+    <Dialog open={open} onClose={handleClose} title="Invite User">
+      <div className="flex flex-col gap-3 text-sm">
+        {sentLink ? (
+          <>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Invite created. No email provider is configured in this environment, so share this
+              link with the invitee directly — it expires after a few days:
+            </p>
+            <p className="break-all rounded bg-[var(--muted)] p-2 font-mono text-xs">{sentLink}</p>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={handleClose}>
+                Done
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="invite-name">Name</Label>
+              <Input id="invite-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="invite-email">Email</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="invite-role">Role</Label>
+              <Select id="invite-role" value={role} onChange={(e) => setRole(e.target.value as RoleCode)}>
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={inviteMutation.isPending}
+                onClick={() => inviteMutation.mutate()}
+              >
+                {inviteMutation.isPending ? 'Sending…' : 'Send Invite'}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </Dialog>
   )

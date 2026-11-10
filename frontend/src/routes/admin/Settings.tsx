@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Settings as SettingsIcon } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
-import { getSettings, updateSettings, type TenantSettings } from '@/api/settings'
+import { getSettings, getSubscription, updateSettings, type TenantSettings } from '@/api/settings'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -41,7 +42,61 @@ export function Settings() {
         </CardContent>
       </Card>
       <AISettingsCard />
+      <SubscriptionCard />
     </div>
+  )
+}
+
+// Tier 1 / ADR-053: read-only -- assignment is platform-admin-only
+// (schema/admin-assignment only, no payment gateway).
+const SUBSCRIPTION_STATUS_TONE = {
+  trialing: 'neutral',
+  active: 'positive',
+  past_due: 'critical',
+  canceled: 'critical',
+} as const
+
+function SubscriptionCard() {
+  const subscriptionQuery = useQuery({ queryKey: ['subscription'], queryFn: getSubscription })
+  const forbidden =
+    subscriptionQuery.error instanceof ApiError && subscriptionQuery.error.code === 'forbidden'
+
+  if (forbidden) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Subscription</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {subscriptionQuery.isLoading || !subscriptionQuery.data ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+        ) : (
+          <div className="flex max-w-sm flex-col gap-2 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{subscriptionQuery.data.plan.name}</span>
+              <Badge tone={SUBSCRIPTION_STATUS_TONE[subscriptionQuery.data.status]}>
+                {subscriptionQuery.data.status}
+              </Badge>
+            </div>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Seats: {subscriptionQuery.data.seat_count}
+              {subscriptionQuery.data.plan.seat_limit !== null &&
+                ` / ${subscriptionQuery.data.plan.seat_limit}`}
+            </p>
+            {subscriptionQuery.data.current_period_end && (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Current period ends{' '}
+                {new Date(subscriptionQuery.data.current_period_end).toLocaleDateString()}
+              </p>
+            )}
+            <p className="text-xs text-[var(--muted-foreground)]">
+              To change your plan, contact your QTestHub account representative.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

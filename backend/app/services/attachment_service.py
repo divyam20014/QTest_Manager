@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import set_tenant_context
 from app.core.errors import NotFoundError, ValidationAppError
+from app.core.storage import get_storage_backend
 from app.models.identity import User
 from app.models.test_case import Attachment
 from app.schemas.attachment import AttachmentOut
@@ -99,8 +100,8 @@ def _to_out(db: Session, tenant_id: UUID, attachment: Attachment) -> AttachmentO
     )
 
 
-def _attachment_dir(tenant_id: UUID, owner_type: str, owner_id: UUID) -> Path:
-    return Path(settings.attachments_dir) / str(tenant_id) / owner_type / str(owner_id)
+def _storage_key(tenant_id: UUID, owner_type: str, owner_id: UUID, stored_name: str) -> str:
+    return f"{tenant_id}/{owner_type}/{owner_id}/{stored_name}"
 
 
 def list_attachments(
@@ -154,10 +155,8 @@ def upload_attachment(
 
     checksum = hashlib.sha256(contents).hexdigest()
     stored_name = f"{uuid.uuid4()}_{file.filename or 'upload'}"
-    target_dir = _attachment_dir(tenant_id, owner_type, owner_id)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    storage_path = target_dir / stored_name
-    storage_path.write_bytes(contents)
+    storage_key = _storage_key(tenant_id, owner_type, owner_id, stored_name)
+    storage_reference = get_storage_backend().save(storage_key, contents)
 
     set_tenant_context(db, str(tenant_id))
     attachment = Attachment(
@@ -166,7 +165,7 @@ def upload_attachment(
         owner_id=owner_id,
         file_name=file.filename or "upload",
         mime_type=file.content_type or "application/octet-stream",
-        storage_path=str(storage_path),
+        storage_path=storage_reference,
         size_bytes=len(contents),
         checksum_sha256=checksum,
         uploaded_by=user_id,
@@ -198,6 +197,12 @@ def get_attachment_for_download(
     return attachment
 
 
+def read_attachment_bytes(attachment: Attachment) -> bytes:
+    """Backend-agnostic read, for routes that can't rely on FileResponse
+    streaming directly off local disk (e.g. the S3 backend)."""
+    return get_storage_backend().read(attachment.storage_path)
+
+
 def delete_attachment(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, attachment_id: UUID
 ) -> None:
@@ -205,7 +210,7 @@ def delete_attachment(
     authorize_owner_access(
         db, tenant_id, role_code, user_id, attachment.owner_type, attachment.owner_id
     )
-    storage_path = Path(attachment.storage_path)
+    storage_reference = attachment.storage_path
     db.delete(attachment)
     db.commit()
-    storage_path.unlink(missing_ok=True)
+    get_storage_backend().delete(storage_reference)
