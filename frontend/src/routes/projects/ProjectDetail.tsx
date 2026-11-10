@@ -11,10 +11,19 @@ import {
   updateProject,
   type ProjectUpdateRequest,
 } from '@/api/projects'
+import {
+  createBuild,
+  createRelease,
+  deleteBuild,
+  deleteRelease,
+  listBuilds,
+  listReleases,
+} from '@/api/testAssets'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
@@ -219,8 +228,139 @@ export function ProjectDetail() {
             )}
           </CardContent>
         </Card>
+
+        <BuildsReleasesCard projectId={projectId!} canManage={canManage()} />
       </div>
     </div>
+  )
+}
+
+function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+  const queryClient = useQueryClient()
+  const [buildName, setBuildName] = useState('')
+  const [releaseName, setReleaseName] = useState('')
+
+  const buildsQuery = useQuery({
+    queryKey: ['builds', projectId],
+    queryFn: () => listBuilds(projectId),
+  })
+  const releasesQuery = useQuery({
+    queryKey: ['releases', projectId],
+    queryFn: () => listReleases(projectId),
+  })
+
+  const createBuildMutation = useMutation({
+    mutationFn: () => createBuild(projectId, { name: buildName }),
+    onSuccess: () => {
+      setBuildName('')
+      queryClient.invalidateQueries({ queryKey: ['builds', projectId] })
+    },
+  })
+  const deleteBuildMutation = useMutation({
+    mutationFn: (id: string) => deleteBuild(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['builds', projectId] }),
+  })
+  const createReleaseMutation = useMutation({
+    mutationFn: () => createRelease(projectId, { name: releaseName }),
+    onSuccess: () => {
+      setReleaseName('')
+      queryClient.invalidateQueries({ queryKey: ['releases', projectId] })
+    },
+  })
+  const deleteReleaseMutation = useMutation({
+    mutationFn: (id: string) => deleteRelease(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['releases', projectId] }),
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Builds &amp; Releases</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-[var(--muted-foreground)]">Builds</p>
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {(buildsQuery.data ?? []).length === 0 && (
+              <li className="text-[var(--muted-foreground)]">No builds recorded.</li>
+            )}
+            {buildsQuery.data?.map((b) => (
+              <li key={b.id} className="flex items-center justify-between">
+                <span>{b.name}</span>
+                {canManage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteBuildMutation.mutate(b.id)}
+                    disabled={deleteBuildMutation.isPending}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {canManage && (
+            <div className="mt-2 flex gap-2">
+              <Input
+                className="flex-1"
+                placeholder="New build name"
+                value={buildName}
+                onChange={(e) => setBuildName(e.target.value)}
+              />
+              <Button
+                size="sm"
+                disabled={!buildName || createBuildMutation.isPending}
+                onClick={() => createBuildMutation.mutate()}
+              >
+                Add
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-[var(--border)] pt-3">
+          <p className="mb-1.5 text-xs font-medium text-[var(--muted-foreground)]">Releases</p>
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {(releasesQuery.data ?? []).length === 0 && (
+              <li className="text-[var(--muted-foreground)]">No releases recorded.</li>
+            )}
+            {releasesQuery.data?.map((r) => (
+              <li key={r.id} className="flex items-center justify-between">
+                <span>{r.name}</span>
+                {canManage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteReleaseMutation.mutate(r.id)}
+                    disabled={deleteReleaseMutation.isPending}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {canManage && (
+            <div className="mt-2 flex gap-2">
+              <Input
+                className="flex-1"
+                placeholder="New release name"
+                value={releaseName}
+                onChange={(e) => setReleaseName(e.target.value)}
+              />
+              <Button
+                size="sm"
+                disabled={!releaseName || createReleaseMutation.isPending}
+                onClick={() => createReleaseMutation.mutate()}
+              >
+                Add
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

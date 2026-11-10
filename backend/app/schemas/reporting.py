@@ -107,6 +107,25 @@ class DefectAgingSummary(BaseModel):
     total_breached: int
 
 
+class MostReopenedDefect(BaseModel):
+    defect_id: UUID
+    title: str
+    status: str
+    reopened_count: int
+    last_reopened_at: datetime
+
+
+class ReopenSummary(BaseModel):
+    """PV-6.3 reopen-rate analytics -- additive on top of ADR-026's
+    unchanged forward-only status sequence (see defect_service.reopen_defect)."""
+
+    total_defects: int
+    reopened_defects: int
+    reopen_rate: float
+    total_reopen_events: int
+    most_reopened: list[MostReopenedDefect]
+
+
 class ComplianceTestCaseRow(BaseModel):
     id: UUID
     title: str
@@ -143,3 +162,45 @@ class ComplianceReport(BaseModel):
     period_from: datetime | None
     period_to: datetime | None
     projects: list[ComplianceProjectSection]
+
+
+class ReleaseReadinessReport(BaseModel):
+    """Tier 3 (PV-7.1): the underlying metrics, not one opaque score --
+    presenting completion/pass/defect/coverage separately is more useful
+    to a QA manager deciding go/no-go than a single blended number."""
+
+    project_id: UUID
+    release_id: UUID | None
+    release_name: str | None
+    total_test_cases: int
+    execution_completion_percentage: float
+    pass_percentage: float
+    open_defects_by_severity: dict[str, int]
+    requirement_coverage_percentage: float
+
+
+class WorkloadEntry(BaseModel):
+    user_id: UUID
+    user_name: str | None
+    assigned_test_cases: int
+    assigned_test_run_cases_pending: int
+    assigned_test_run_cases_in_progress: int
+    defects_reported_open: int
+
+
+class WorkloadSummary(BaseModel):
+    project_id: UUID
+    entries: list[WorkloadEntry]
+
+
+class FlakyTestEntry(BaseModel):
+    test_case_id: UUID
+    test_case_title: str
+    run_count: int
+    flip_count: int
+    flip_rate: float
+
+
+class FlakyTestReport(BaseModel):
+    project_id: UUID
+    tests: list[FlakyTestEntry]

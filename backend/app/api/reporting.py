@@ -112,6 +112,56 @@ def defect_aging(
     return envelope(summary.model_dump(mode="json"))
 
 
+@router.get("/reports/defect-reopen-summary")
+def defect_reopen_summary(
+    project_id: UUID | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    summary = reporting_service.get_reopen_summary(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(summary.model_dump(mode="json"))
+
+
+@router.get("/reports/release-readiness")
+def release_readiness(
+    project_id: UUID = Query(),
+    release_id: UUID | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_release_readiness(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, release_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/workload")
+def workload_summary(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    summary = reporting_service.get_workload_summary(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(summary.model_dump(mode="json"))
+
+
+@router.get("/reports/flaky-tests")
+def flaky_tests(
+    project_id: UUID = Query(),
+    limit: int = Query(default=10, ge=1, le=50),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_flaky_tests(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, limit
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
 @router.get("/reports/compliance-detail")
 def compliance_detail(
     period_from: datetime | None = Query(default=None),

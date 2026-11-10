@@ -55,8 +55,14 @@
   --status-neutral-bg: #f1f1f3;
 }
 
+/* Theme toggle (Tier 3 UX polish): an explicit data-theme attribute on
+   :root overrides the OS preference below. :root:not([data-theme="light"])
+   keeps the OS-driven dark mode working for viewers who never touch the
+   toggle; :root[data-theme="dark"] lets someone force dark even on a
+   light-OS system, and the plain :root[data-theme="light"] (none needed,
+   it's just the default :root values) covers the reverse. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0a0a0a;
     --foreground: #f4f4f5;
     --muted: #18181b;
@@ -83,6 +89,34 @@
     --status-neutral: #a1a1aa;
     --status-neutral-bg: #232326;
   }
+}
+
+:root[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #f4f4f5;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --border: #27272a;
+  --primary: #f4f4f5;
+  --primary-foreground: #0a0a0a;
+  --destructive: #f87171;
+  --ring: #52525b;
+
+  --brand: #5b9dee;
+  --brand-foreground: #0a0a0a;
+  --brand-muted: #16263f;
+  --link: #8ab8f5;
+
+  --status-good: #3dd68c;
+  --status-good-bg: #0f2a20;
+  --status-warning: #f5a623;
+  --status-warning-bg: #332308;
+  --status-serious: #f87171;
+  --status-serious-bg: #3a1414;
+  --status-critical: #e391d6;
+  --status-critical-bg: #321830;
+  --status-neutral: #a1a1aa;
+  --status-neutral-bg: #232326;
 }
 
 * {

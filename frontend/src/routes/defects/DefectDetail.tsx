@@ -7,11 +7,16 @@ import { ApiError } from '@/api/client'
 import {
   getDefect,
   getDefectHistory,
+  getPossibleDuplicates,
+  reopenDefect,
+  setDefectEnvironment,
+  updateDefectBuildRelease,
   updateDefectRootCause,
   updateDefectStatus,
   type DefectStatus,
   type RootCause,
 } from '@/api/defects'
+import { listBuilds, listEnvironments, listReleases } from '@/api/testAssets'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
@@ -27,7 +32,12 @@ const HISTORY_ACTION_LABEL: Record<string, string> = {
   'defect.status_changed': 'Status changed',
   'defect.link_added': 'Link added',
   'defect.root_cause_set': 'Root cause set',
+  'defect.reopened': 'Reopened',
+  'defect.environment_set': 'Environment set',
+  'defect.build_release_set': 'Build/Release set',
 }
+
+const REOPENABLE_STATUSES: DefectStatus[] = ['Fixed', 'Verified', 'Closed']
 
 export function DefectDetail() {
   const { defectId } = useParams<{ defectId: string }>()
@@ -45,6 +55,23 @@ export function DefectDetail() {
     queryFn: () => getDefectHistory(defectId!),
     enabled: !!defectId,
   })
+  const duplicatesQuery = useQuery({
+    queryKey: ['defects', 'possible-duplicates', defectId],
+    queryFn: () => getPossibleDuplicates(defectId!),
+    enabled: !!defectId,
+  })
+  const environmentsQuery = useQuery({ queryKey: ['environments'], queryFn: listEnvironments })
+  const projectId = defectQuery.data?.project_id
+  const buildsQuery = useQuery({
+    queryKey: ['builds', projectId],
+    queryFn: () => listBuilds(projectId!),
+    enabled: !!projectId,
+  })
+  const releasesQuery = useQuery({
+    queryKey: ['releases', projectId],
+    queryFn: () => listReleases(projectId!),
+    enabled: !!projectId,
+  })
 
   const statusMutation = useMutation({
     mutationFn: (status: DefectStatus) => updateDefectStatus(defectId!, status, verificationConfirmed),
@@ -57,6 +84,31 @@ export function DefectDetail() {
 
   const rootCauseMutation = useMutation({
     mutationFn: (rootCause: RootCause | null) => updateDefectRootCause(defectId!, rootCause),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
+      queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+    },
+  })
+
+  const reopenMutation = useMutation({
+    mutationFn: () => reopenDefect(defectId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
+      queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+    },
+  })
+
+  const environmentMutation = useMutation({
+    mutationFn: (environmentId: string | null) => setDefectEnvironment(defectId!, environmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
+      queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+    },
+  })
+
+  const buildReleaseMutation = useMutation({
+    mutationFn: ({ buildId, releaseId }: { buildId: string | null; releaseId: string | null }) =>
+      updateDefectBuildRelease(defectId!, buildId, releaseId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
@@ -91,8 +143,24 @@ export function DefectDetail() {
           <Badge tone={SEVERITY_TONE[defect.severity]}>{defect.severity}</Badge>
           <Badge tone={STATUS_TONE[defect.status]}>{defect.status}</Badge>
           {defect.sla_breached && <Badge tone="critical">SLA Breached · {defect.age_days}d</Badge>}
+          {defect.reopened_count > 0 && (
+            <Badge tone="neutral">Reopened {defect.reopened_count}x</Badge>
+          )}
         </div>
       </div>
+
+      {canCloseRole && REOPENABLE_STATUSES.includes(defect.status) && (
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={reopenMutation.isPending}
+            onClick={() => reopenMutation.mutate()}
+          >
+            Reopen Defect
+          </Button>
+        </div>
+      )}
 
       {nextStatus && (
         <div className="flex flex-col gap-2">
@@ -118,6 +186,27 @@ export function DefectDetail() {
       )}
       {statusError && <p className="text-xs text-[var(--destructive)]">{statusError}</p>}
 
+      {(duplicatesQuery.data ?? []).length > 0 && (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--muted)] p-3 text-sm">
+          <p className="font-medium">Possible duplicates found</p>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            This is a suggestion only — nothing is linked or merged automatically.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1">
+            {duplicatesQuery.data?.map((d) => (
+              <li key={d.defect_id} className="flex items-center justify-between">
+                <Link to={`/defects/${d.defect_id}`} className="underline-offset-2 hover:underline">
+                  {d.title}
+                </Link>
+                <span className="text-xs text-[var(--muted-foreground)]">
+                  {d.status} · {Math.round(d.similarity)}% similar
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -139,7 +228,72 @@ export function DefectDetail() {
               </div>
               <div>
                 <dt className="text-xs text-[var(--muted-foreground)]">Environment</dt>
-                <dd>{defect.environment || '—'}</dd>
+                <dd>
+                  <Select
+                    aria-label="Environment"
+                    value={defect.environment_id ?? ''}
+                    disabled={environmentMutation.isPending}
+                    onChange={(e) => environmentMutation.mutate(e.target.value || null)}
+                    className="w-56"
+                  >
+                    <option value="">
+                      {defect.environment ? `Unmapped: ${defect.environment}` : 'Not set'}
+                    </option>
+                    {environmentsQuery.data?.map((env) => (
+                      <option key={env.id} value={env.id}>
+                        {env.name}
+                      </option>
+                    ))}
+                  </Select>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">Found in Build</dt>
+                <dd>
+                  <Select
+                    aria-label="Found in build"
+                    value={defect.found_in_build_id ?? ''}
+                    disabled={buildReleaseMutation.isPending}
+                    onChange={(e) =>
+                      buildReleaseMutation.mutate({
+                        buildId: e.target.value || null,
+                        releaseId: defect.fixed_in_release_id,
+                      })
+                    }
+                    className="w-56"
+                  >
+                    <option value="">Not set</option>
+                    {buildsQuery.data?.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">Fixed in Release</dt>
+                <dd>
+                  <Select
+                    aria-label="Fixed in release"
+                    value={defect.fixed_in_release_id ?? ''}
+                    disabled={buildReleaseMutation.isPending}
+                    onChange={(e) =>
+                      buildReleaseMutation.mutate({
+                        buildId: defect.found_in_build_id,
+                        releaseId: e.target.value || null,
+                      })
+                    }
+                    className="w-56"
+                  >
+                    <option value="">Not set</option>
+                    {releasesQuery.data?.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </Select>
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-[var(--muted-foreground)]">Reported By</dt>

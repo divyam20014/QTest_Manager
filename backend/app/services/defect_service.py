@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
+from rapidfuzz import fuzz
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project
+from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.schemas.defect import (
     DefectCreateRequest,
@@ -24,6 +26,7 @@ from app.schemas.defect import (
     ExecutionEvidenceOut,
     LinkableType,
     LinkType,
+    PossibleDuplicateOut,
     RootCause,
     Severity,
     Verdict,
@@ -155,6 +158,7 @@ def create_defect(
         actual_result=req.actual_result,
         expected_result=expected_result,
         environment=req.environment,
+        environment_id=req.environment_id,
         reported_by=actor_user_id,
     )
     db.add(defect)
@@ -253,6 +257,55 @@ def list_defects(
     return list(db.execute(query.order_by(Defect.created_at.desc())).scalars())
 
 
+DUPLICATE_SIMILARITY_THRESHOLD = 70.0
+DUPLICATE_MAX_RESULTS = 5
+
+
+def _similarity_text(defect: Defect) -> str:
+    return f"{defect.title} {defect.description or ''}".strip()
+
+
+def find_possible_duplicates(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    defect_id: UUID,
+) -> list[PossibleDuplicateOut]:
+    """Tier 2 duplicate-defect detection: a text-similarity heuristic
+    (rapidfuzz token_sort_ratio on title+description), scored against other
+    open defects in the same project -- suggestion only, the caller decides
+    whether to link/merge. Never crosses project or tenant boundaries."""
+    defect = get_defect(db, tenant_id, role_code, user_id, defect_id)
+    return _score_duplicates(db, defect.project_id, _similarity_text(defect), exclude_id=defect.id)
+
+
+def _score_duplicates(
+    db: Session, project_id: UUID, text: str, *, exclude_id: UUID | None
+) -> list[PossibleDuplicateOut]:
+    candidates = db.execute(
+        select(Defect).where(Defect.project_id == project_id, Defect.status != "Closed")
+    ).scalars()
+
+    scored: list[PossibleDuplicateOut] = []
+    for candidate in candidates:
+        if exclude_id is not None and candidate.id == exclude_id:
+            continue
+        score = fuzz.token_sort_ratio(text, _similarity_text(candidate))
+        if score >= DUPLICATE_SIMILARITY_THRESHOLD:
+            scored.append(
+                PossibleDuplicateOut(
+                    defect_id=candidate.id,
+                    title=candidate.title,
+                    status=cast(DefectStatus, candidate.status),
+                    similarity=round(score, 1),
+                )
+            )
+
+    scored.sort(key=lambda d: d.similarity, reverse=True)
+    return scored[:DUPLICATE_MAX_RESULTS]
+
+
 def update_status(
     db: Session,
     tenant_id: UUID,
@@ -320,6 +373,113 @@ def update_status(
         entity_type="defect",
         entity_id=defect.id,
         metadata={"from": STATUS_ORDER[current_index], "to": new_status},
+    )
+    db.commit()
+    return defect
+
+
+REOPENABLE_STATUSES = ("Fixed", "Verified", "Closed")
+
+
+def reopen_defect(
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, defect_id: UUID
+) -> Defect:
+    """Tier 2 (PV-6.3), option A: ADR-026's forward-only sequence stays
+    intact -- update_status still refuses any backward move. This is a
+    dedicated, narrowly-scoped exception: a defect that's past 'Open' can be
+    pushed back to 'Open' through this path alone, and every time it is, the
+    event is counted (reopened_count/last_reopened_at) rather than modeled
+    as a new status. Same elevated-permission bar as closing a defect."""
+    if role_code not in ("admin", "manager"):
+        raise ForbiddenError("Only Admin/Manager can reopen a defect")
+
+    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    project = _get_project_or_404(db, tenant_id, defect.project_id)
+    _require_project_access(db, project, role_code, actor_user_id)
+
+    if defect.status not in REOPENABLE_STATUSES:
+        raise ConflictError(
+            f"Cannot reopen a defect from status '{defect.status}'; "
+            f"only {', '.join(REOPENABLE_STATUSES)} can be reopened"
+        )
+
+    previous_status = defect.status
+    defect.status = "Open"
+    defect.closed_at = None
+    defect.reopened_count += 1
+    defect.last_reopened_at = datetime.now(UTC)
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="defect.reopened",
+        entity_type="defect",
+        entity_id=defect.id,
+        metadata={"from": previous_status, "to": "Open", "reopened_count": defect.reopened_count},
+    )
+    db.commit()
+    return defect
+
+
+def set_defect_environment(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    defect_id: UUID,
+    environment_id: UUID | None,
+) -> Defect:
+    """Tier 2 (PV-8.1): points a defect at a real Environment entity,
+    same project-access check as update_root_cause."""
+    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    project = _get_project_or_404(db, tenant_id, defect.project_id)
+    _require_project_access(db, project, role_code, actor_user_id)
+
+    defect.environment_id = environment_id
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="defect.environment_set",
+        entity_type="defect",
+        entity_id=defect.id,
+        metadata={"environment_id": str(environment_id) if environment_id else None},
+    )
+    db.commit()
+    return defect
+
+
+def update_build_release(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    defect_id: UUID,
+    found_in_build_id: UUID | None,
+    fixed_in_release_id: UUID | None,
+) -> Defect:
+    """Tier 2 (PV-8.2): classification metadata, same project-access check
+    as update_root_cause -- not a workflow transition."""
+    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    project = _get_project_or_404(db, tenant_id, defect.project_id)
+    _require_project_access(db, project, role_code, actor_user_id)
+
+    defect.found_in_build_id = found_in_build_id
+    defect.fixed_in_release_id = fixed_in_release_id
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="defect.build_release_set",
+        entity_type="defect",
+        entity_id=defect.id,
+        metadata={
+            "found_in_build_id": str(found_in_build_id) if found_in_build_id else None,
+            "fixed_in_release_id": str(fixed_in_release_id) if fixed_in_release_id else None,
+        },
     )
     db.commit()
     return defect
@@ -516,6 +676,24 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         select(User.name).where(User.id == defect.reported_by)
     ).scalar_one_or_none()
 
+    environment_name: str | None = None
+    if defect.environment_id is not None:
+        environment_name = db.execute(
+            select(Environment.name).where(Environment.id == defect.environment_id)
+        ).scalar_one_or_none()
+
+    found_in_build_name: str | None = None
+    if defect.found_in_build_id is not None:
+        found_in_build_name = db.execute(
+            select(Build.name).where(Build.id == defect.found_in_build_id)
+        ).scalar_one_or_none()
+
+    fixed_in_release_name: str | None = None
+    if defect.fixed_in_release_id is not None:
+        fixed_in_release_name = db.execute(
+            select(Release.name).where(Release.id == defect.fixed_in_release_id)
+        ).scalar_one_or_none()
+
     evidence = _execution_evidence(db, defect)
     test_run_case_id = evidence.test_run_case_id if evidence is not None else None
 
@@ -542,6 +720,12 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         actual_result=defect.actual_result,
         expected_result=defect.expected_result,
         environment=defect.environment,
+        environment_id=defect.environment_id,
+        environment_name=environment_name,
+        found_in_build_id=defect.found_in_build_id,
+        found_in_build_name=found_in_build_name,
+        fixed_in_release_id=defect.fixed_in_release_id,
+        fixed_in_release_name=fixed_in_release_name,
         root_cause=cast(RootCause, defect.root_cause) if defect.root_cause else None,
         reported_by=defect.reported_by,
         reported_by_name=reported_by_name,
@@ -549,6 +733,8 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         closed_at=defect.closed_at,
         age_days=age_days,
         sla_breached=sla_breached,
+        reopened_count=defect.reopened_count,
+        last_reopened_at=defect.last_reopened_at,
         links=[
             DefectLinkOut(
                 id=link_.id,

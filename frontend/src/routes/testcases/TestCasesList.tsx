@@ -5,8 +5,10 @@ import { Link, useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { exportUrl } from '@/api/csvImport'
+import { createModule, deleteModule, listModules } from '@/api/modules'
 import { getProject } from '@/api/projects'
 import {
+  assignModule,
   createTestCase,
   listTestCases,
   type Priority,
@@ -18,7 +20,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useToast } from '@/lib/toast'
 import { ImportDialog } from './ImportDialog'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { PRIORITY_TONE, STATUS_DISPLAY } from './statusDisplay'
@@ -40,6 +44,7 @@ const COLUMNS: { key: string; label: string; sortable: boolean }[] = [
   { key: 'status', label: 'Status', sortable: true },
   { key: 'priority', label: 'Priority', sortable: true },
   { key: 'assignee', label: 'Assignee', sortable: false },
+  { key: 'module', label: 'Module', sortable: false },
   { key: 'version', label: 'Version', sortable: false },
   { key: 'steps', label: 'Steps', sortable: false },
 ]
@@ -48,12 +53,16 @@ export function TestCasesList() {
   const { projectId } = useParams<{ projectId: string }>()
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [modulesOpen, setModulesOpen] = useState(false)
+  const [newModuleName, setNewModuleName] = useState('')
   const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
 
   const [search, setSearch] = useState('')
   const [priority, setPriority] = useState<Priority | ''>('')
   const [status, setStatus] = useState<TestCaseStatus | ''>('')
   const [assigneeId, setAssigneeId] = useState('')
+  const [moduleId, setModuleId] = useState('')
   const [sort, setSort] = useState('created_at')
   const [page, setPage] = useState(1)
 
@@ -63,14 +72,20 @@ export function TestCasesList() {
     enabled: !!projectId,
   })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const modulesQuery = useQuery({
+    queryKey: ['test-modules', projectId],
+    queryFn: () => listModules(projectId!),
+    enabled: !!projectId,
+  })
   const testCasesQuery = useQuery({
-    queryKey: ['test-cases', projectId, { search, priority, status, assigneeId, sort, page }],
+    queryKey: ['test-cases', projectId, { search, priority, status, assigneeId, moduleId, sort, page }],
     queryFn: () =>
       listTestCases(projectId!, {
         search,
         priority,
         status,
         assignee_id: assigneeId,
+        module_id: moduleId || undefined,
         sort,
         page,
         page_size: PAGE_SIZE,
@@ -86,8 +101,34 @@ export function TestCasesList() {
     },
   })
 
+  const assignModuleMutation = useMutation({
+    mutationFn: ({ id, module }: { id: string; module: string | null }) => assignModule(id, module),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] }),
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not assign module'),
+  })
+
+  const createModuleMutation = useMutation({
+    mutationFn: () => createModule(projectId!, { name: newModuleName }),
+    onSuccess: () => {
+      setNewModuleName('')
+      queryClient.invalidateQueries({ queryKey: ['test-modules', projectId] })
+    },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not create module'),
+  })
+
+  const deleteModuleMutation = useMutation({
+    mutationFn: (id: string) => deleteModule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['test-modules', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
+    },
+  })
+
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
   const usersById = new Map((usersQuery.data ?? []).map((u) => [u.id, u.name]))
+  const modules = modulesQuery.data ?? []
 
   const total = testCasesQuery.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -128,6 +169,9 @@ export function TestCasesList() {
           </a>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             Import CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setModulesOpen(true)}>
+            Manage Modules
           </Button>
           <Button onClick={() => setCreateOpen(true)}>New Test Case</Button>
         </div>
@@ -199,6 +243,24 @@ export function TestCasesList() {
             ))}
           </Select>
         </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="tc-filter-module" className="text-xs text-[var(--muted-foreground)]">
+            Module
+          </label>
+          <Select
+            id="tc-filter-module"
+            className="w-40"
+            value={moduleId}
+            onChange={(e) => resetToFirstPage(setModuleId)(e.target.value)}
+          >
+            <option value="">All modules</option>
+            {modules.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
@@ -255,6 +317,22 @@ export function TestCasesList() {
                 <td className="px-4 py-2 text-[var(--muted-foreground)]">
                   {tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'}
                 </td>
+                <td className="px-4 py-2">
+                  <Select
+                    className="h-7 w-36 text-xs"
+                    value={tc.module_id ?? ''}
+                    onChange={(e) =>
+                      assignModuleMutation.mutate({ id: tc.id, module: e.target.value || null })
+                    }
+                  >
+                    <option value="">Ungrouped</option>
+                    {modules.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </Select>
+                </td>
                 <td className="px-4 py-2">v{tc.version_number}</td>
                 <td className="px-4 py-2">{tc.steps.length}</td>
               </tr>
@@ -301,6 +379,54 @@ export function TestCasesList() {
       </Dialog>
 
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} projectId={projectId!} />
+
+      <Dialog open={modulesOpen} onClose={() => setModulesOpen(false)} title="Manage Modules">
+        <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-module-name">New module name</Label>
+            <div className="flex gap-2">
+              <Input
+                id="new-module-name"
+                value={newModuleName}
+                onChange={(e) => setNewModuleName(e.target.value)}
+              />
+              <Button
+                size="sm"
+                disabled={createModuleMutation.isPending || newModuleName.trim().length === 0}
+                onClick={() => createModuleMutation.mutate()}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+          <ul className="flex flex-col gap-1">
+            {modules.length === 0 && (
+              <li className="text-xs text-[var(--muted-foreground)]">No modules yet.</li>
+            )}
+            {modules.map((m) => (
+              <li
+                key={m.id}
+                className="flex items-center justify-between rounded-md border border-[var(--border)] px-3 py-2"
+              >
+                <span>
+                  {m.name}{' '}
+                  <span className="text-xs text-[var(--muted-foreground)]">
+                    ({m.test_case_count} test case{m.test_case_count === 1 ? '' : 's'})
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={deleteModuleMutation.isPending}
+                  onClick={() => deleteModuleMutation.mutate(m.id)}
+                >
+                  Delete
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Dialog>
     </div>
   )
 }

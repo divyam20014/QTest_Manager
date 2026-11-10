@@ -4,7 +4,9 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-NotificationType = Literal["mention", "test_case_assigned", "defect_closed"]
+NotificationType = Literal[
+    "mention", "test_case_assigned", "defect_closed", "review_requested", "review_decided"
+]
 NotificationEntityType = Literal["test_case", "defect", "execution_step"]
 
 

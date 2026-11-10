@@ -8,6 +8,8 @@ from app.core.db import get_db
 from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
 from app.schemas.test_case import (
+    RequestChangesRequest,
+    SubmitForReviewRequest,
     TestCaseCreateRequest,
     TestCaseListResponse,
     TestCaseUpdateRequest,
@@ -24,6 +26,7 @@ def list_test_cases(
     priority: str | None = Query(default=None),
     status: str | None = Query(default=None),
     assignee_id: UUID | None = Query(default=None),
+    module_id: UUID | None = Query(default=None),
     sort: str = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=test_case_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
@@ -40,6 +43,7 @@ def list_test_cases(
         priority=priority,
         status=status,
         assignee_id=assignee_id,
+        module_id=module_id,
         sort=sort,
         page=page,
         page_size=page_size,
@@ -85,6 +89,18 @@ def get_test_case(
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
 
+@router.get("/test-cases/{test_case_id}/history")
+def get_test_case_history(
+    test_case_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    history = test_case_service.get_test_case_history(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+    )
+    return envelope([h.model_dump(mode="json") for h in history])
+
+
 @router.get("/test-cases/{test_case_id}/versions")
 def list_versions(
     test_case_id: UUID,
@@ -127,11 +143,12 @@ def update_test_case(
 @router.post("/test-cases/{test_case_id}/submit-review")
 def submit_for_review(
     test_case_id: UUID,
+    req: SubmitForReviewRequest = SubmitForReviewRequest(),
     ctx: SessionContext = Depends(require_permission("testcase.edit")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.submit_for_review(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, reviewer_id=req.reviewer_id
     )
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
@@ -142,7 +159,22 @@ def approve_test_case(
     ctx: SessionContext = Depends(require_permission("testcase.approve")),
     db: Session = Depends(get_db),
 ) -> dict:
-    case = test_case_service.approve_test_case(db, ctx.tenant_id, ctx.user_id, test_case_id)
+    case = test_case_service.approve_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+    )
+    return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
+
+
+@router.post("/test-cases/{test_case_id}/request-changes")
+def request_changes(
+    test_case_id: UUID,
+    req: RequestChangesRequest,
+    ctx: SessionContext = Depends(require_permission("testcase.approve")),
+    db: Session = Depends(get_db),
+) -> dict:
+    case = test_case_service.request_changes_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, req.comment
+    )
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
 

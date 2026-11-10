@@ -4,6 +4,15 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+class RequirementHistoryEntryOut(BaseModel):
+    id: UUID
+    action: str
+    user_id: UUID | None
+    user_name: str | None
+    event_metadata: dict
+    created_at: datetime
+
+
 class RequirementCreateRequest(BaseModel):
     title: str = Field(min_length=5)
     description: str = ""

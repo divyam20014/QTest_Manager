@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.models.audit import AuditLog
 from app.models.defect import Defect
 from app.models.execution import TestRunCase
 from app.models.identity import User
@@ -18,6 +19,7 @@ from app.schemas.test_case import (
     StepIn,
     StepOut,
     TestCaseCreateRequest,
+    TestCaseHistoryEntryOut,
     TestCaseOut,
     TestCaseStatus,
     TestCaseUpdateRequest,
@@ -94,6 +96,11 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
     # queries (test_case_versions/test_case_version_steps both have RLS).
     set_tenant_context(db, str(case.tenant_id))
     version = _get_current_version(db, case)
+    reviewer_name = None
+    if case.reviewer_id is not None:
+        reviewer_name = db.execute(
+            select(User.name).where(User.id == case.reviewer_id)
+        ).scalar_one_or_none()
     return TestCaseOut(
         id=case.id,
         project_id=case.project_id,
@@ -102,6 +109,9 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
         priority=cast(Priority, case.priority),
         status=cast(TestCaseStatus, case.status),
         assignee_id=case.assignee_id,
+        module_id=case.module_id,
+        reviewer_id=case.reviewer_id,
+        reviewer_name=reviewer_name,
         version_number=version.version_number,
         created_by=case.created_by,
         created_at=case.created_at,
@@ -120,6 +130,7 @@ def list_test_cases(
     priority: str | None = None,
     status: str | None = None,
     assignee_id: UUID | None = None,
+    module_id: UUID | None = None,
     sort: str = "created_at",
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
@@ -138,6 +149,8 @@ def list_test_cases(
         query = query.where(TestCase.status == status)
     if assignee_id:
         query = query.where(TestCase.assignee_id == assignee_id)
+    if module_id:
+        query = query.where(TestCase.module_id == module_id)
 
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
 
@@ -159,6 +172,41 @@ def get_test_case(
     case = _get_test_case_or_404(db, tenant_id, test_case_id)
     _authorize_case_access(db, tenant_id, role_code, user_id, case)
     return case
+
+
+def get_test_case_history(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, test_case_id: UUID
+) -> list[TestCaseHistoryEntryOut]:
+    """Per-entity activity timeline (PV-9.3), reusing the existing
+    hash-chained audit_logs table filtered by entity -- mirrors
+    defect_service.get_defect_history. Distinct from Version History
+    (TestCaseVersion): this covers all audited activity (status changes,
+    comments, attachments, AI generation) not just content edits."""
+    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    _authorize_case_access(db, tenant_id, role_code, user_id, case)
+    set_tenant_context(db, str(tenant_id))
+
+    rows = db.execute(
+        select(AuditLog, User.name)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.entity_type == "test_case",
+            AuditLog.entity_id == test_case_id,
+        )
+        .order_by(AuditLog.created_at.asc())
+    ).all()
+    return [
+        TestCaseHistoryEntryOut(
+            id=log.id,
+            action=log.action,
+            user_id=log.user_id,
+            user_name=user_name,
+            event_metadata=log.event_metadata or {},
+            created_at=log.created_at,
+        )
+        for log, user_name in rows
+    ]
 
 
 def list_versions(
@@ -451,8 +499,50 @@ def update_test_case(
     return case
 
 
+def _notify_reviewer(
+    db: Session, tenant_id: UUID, actor_user_id: UUID, reviewer_id: UUID, case: TestCase
+) -> None:
+    reviewer = db.execute(select(User).where(User.id == reviewer_id)).scalar_one_or_none()
+    if reviewer is None:
+        return
+    notification_service.notify(
+        db,
+        tenant_id,
+        actor_user_id,
+        reviewer_id,
+        reviewer.email,
+        "review_requested",
+        "A test case needs your review",
+        f'"{case.title}" was submitted for your review.',
+        "test_case",
+        case.id,
+    )
+
+
+def _notify_author_of_decision(
+    db: Session, tenant_id: UUID, actor_user_id: UUID, case: TestCase, decision: str
+) -> None:
+    notification_service.notify(
+        db,
+        tenant_id,
+        actor_user_id,
+        case.created_by,
+        None,
+        "review_decided",
+        "Your test case review is complete",
+        f'"{case.title}" was {decision}.',
+        "test_case",
+        case.id,
+    )
+
+
 def submit_for_review(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, test_case_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    test_case_id: UUID,
+    reviewer_id: UUID | None = None,
 ) -> TestCase:
     case = _get_test_case_or_404(db, tenant_id, test_case_id)
     _authorize_case_access(db, tenant_id, role_code, actor_user_id, case)
@@ -460,7 +550,15 @@ def submit_for_review(
     if case.status != "draft":
         raise ConflictError(f"Cannot submit for review from status '{case.status}'")
 
+    if reviewer_id is not None:
+        reviewer = db.execute(
+            select(User).where(User.tenant_id == tenant_id, User.id == reviewer_id)
+        ).scalar_one_or_none()
+        if reviewer is None:
+            raise NotFoundError("Reviewer not found")
+
     case.status = "ready_for_review"
+    case.reviewer_id = reviewer_id
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -468,19 +566,31 @@ def submit_for_review(
         action="testcase.submitted_for_review",
         entity_type="test_case",
         entity_id=case.id,
+        metadata={"reviewer_id": str(reviewer_id) if reviewer_id else None},
     )
+    if reviewer_id is not None:
+        _notify_reviewer(db, tenant_id, actor_user_id, reviewer_id, case)
     db.commit()
     return case
 
 
+def _authorize_reviewer(case: TestCase, role_code: str, actor_user_id: UUID) -> None:
+    """When a specific reviewer was named, only they (or an Admin) may
+    decide; otherwise anyone holding testcase.approve (enforced by the
+    route dependency) may act, preserving today's behavior."""
+    if case.reviewer_id is not None and case.reviewer_id != actor_user_id and role_code != "admin":
+        raise ForbiddenError("Only the assigned reviewer may act on this review")
+
+
 def approve_test_case(
-    db: Session, tenant_id: UUID, actor_user_id: UUID, test_case_id: UUID
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, test_case_id: UUID
 ) -> TestCase:
     """Caller must already hold testcase.approve (manager/admin only)."""
     case = _get_test_case_or_404(db, tenant_id, test_case_id)
 
     if case.status != "ready_for_review":
         raise ConflictError(f"Cannot approve from status '{case.status}'")
+    _authorize_reviewer(case, role_code, actor_user_id)
 
     version = _get_current_version(db, case)
     from datetime import UTC, datetime
@@ -488,6 +598,7 @@ def approve_test_case(
     version.approved_by = actor_user_id
     version.approved_at = datetime.now(UTC)
     case.status = "approved"
+    case.reviewer_id = None
 
     record_audit_event(
         db,
@@ -497,6 +608,56 @@ def approve_test_case(
         entity_type="test_case",
         entity_id=case.id,
         metadata={"version_number": version.version_number},
+    )
+    _notify_author_of_decision(db, tenant_id, actor_user_id, case, "approved")
+    db.commit()
+    return case
+
+
+def request_changes_test_case(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    test_case_id: UUID,
+    comment_body: str,
+) -> TestCase:
+    """Reviewer-only (or Admin). Reuses the Comment infrastructure (Phase 8)
+    to carry the feedback, and sends the case back to 'draft' -- the same
+    forward-only status machine submit_for_review/approve already use, not
+    a new 'changes_requested' status."""
+    from app.schemas.comment import CommentCreateRequest
+    from app.services import comment_service
+
+    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+
+    if case.status != "ready_for_review":
+        raise ConflictError(f"Cannot request changes from status '{case.status}'")
+    _authorize_reviewer(case, role_code, actor_user_id)
+
+    comment_service.create_comment(
+        db,
+        tenant_id,
+        role_code,
+        actor_user_id,
+        "test_case",
+        case.id,
+        CommentCreateRequest(body=comment_body, mentioned_user_ids=[]),
+    )
+
+    case.status = "draft"
+    case.reviewer_id = None
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="testcase.changes_requested",
+        entity_type="test_case",
+        entity_id=case.id,
+    )
+    _notify_author_of_decision(
+        db, tenant_id, actor_user_id, case, "sent back with requested changes"
     )
     db.commit()
     return case

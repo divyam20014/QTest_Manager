@@ -51,6 +51,12 @@ export interface Defect {
   actual_result: string | null
   expected_result: string | null
   environment: string | null
+  environment_id: string | null
+  environment_name: string | null
+  found_in_build_id: string | null
+  found_in_build_name: string | null
+  fixed_in_release_id: string | null
+  fixed_in_release_name: string | null
   root_cause: RootCause | null
   reported_by: string
   reported_by_name: string | null
@@ -58,8 +64,17 @@ export interface Defect {
   closed_at: string | null
   age_days: number
   sla_breached: boolean
+  reopened_count: number
+  last_reopened_at: string | null
   links: DefectLink[]
   execution_evidence: ExecutionEvidence | null
+}
+
+export interface PossibleDuplicate {
+  defect_id: string
+  title: string
+  status: DefectStatus
+  similarity: number
 }
 
 export interface DefectHistoryEntry {
@@ -117,6 +132,31 @@ export function getDefectHistory(id: string): Promise<DefectHistoryEntry[]> {
   return apiFetch<DefectHistoryEntry[]>(`/defects/${id}/history`)
 }
 
+export function getPossibleDuplicates(id: string): Promise<PossibleDuplicate[]> {
+  return apiFetch<PossibleDuplicate[]>(`/defects/${id}/possible-duplicates`)
+}
+
+export function setDefectEnvironment(id: string, environmentId: string | null): Promise<Defect> {
+  return apiFetch<Defect>(`/defects/${id}/environment`, {
+    method: 'PATCH',
+    body: JSON.stringify({ environment_id: environmentId }),
+  })
+}
+
+export function updateDefectBuildRelease(
+  id: string,
+  foundInBuildId: string | null,
+  fixedInReleaseId: string | null,
+): Promise<Defect> {
+  return apiFetch<Defect>(`/defects/${id}/build-release`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      found_in_build_id: foundInBuildId,
+      fixed_in_release_id: fixedInReleaseId,
+    }),
+  })
+}
+
 export function createDefect(req: DefectCreateRequest): Promise<Defect> {
   return apiFetch<Defect>('/defects', { method: 'POST', body: JSON.stringify(req) })
 }
@@ -130,6 +170,10 @@ export function updateDefectStatus(
     method: 'PATCH',
     body: JSON.stringify({ status, verification_confirmed: verificationConfirmed }),
   })
+}
+
+export function reopenDefect(id: string): Promise<Defect> {
+  return apiFetch<Defect>(`/defects/${id}/reopen`, { method: 'POST' })
 }
 
 export function addDefectLink(id: string, req: DefectLinkCreateRequest): Promise<Defect> {

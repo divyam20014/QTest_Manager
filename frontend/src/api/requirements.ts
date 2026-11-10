@@ -1,4 +1,5 @@
 import { apiFetch } from '@/api/client'
+import type { HistoryEntry } from '@/api/history'
 
 export interface Requirement {
   id: string
@@ -77,6 +78,10 @@ export function getRequirement(id: string): Promise<RequirementDetail> {
 
 export function listRequirementVersions(id: string): Promise<RequirementVersion[]> {
   return apiFetch<RequirementVersion[]>(`/requirements/${id}/versions`)
+}
+
+export function getRequirementHistory(id: string): Promise<HistoryEntry[]> {
+  return apiFetch<HistoryEntry[]>(`/requirements/${id}/history`)
 }
 
 export function createRequirement(

@@ -19,7 +19,8 @@ class Notification(Base, TenantScopedMixin):
     __tablename__ = "notifications"
     __table_args__ = (
         CheckConstraint(
-            "type in ('mention','test_case_assigned','defect_closed')",
+            "type in ('mention','test_case_assigned','defect_closed',"
+            "'review_requested','review_decided')",
             name="ck_notifications_type",
         ),
         CheckConstraint(

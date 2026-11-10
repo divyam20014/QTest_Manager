@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.models.audit import AuditLog
+from app.models.identity import User
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
 from app.models.test_case import TestCase
@@ -15,6 +17,7 @@ from app.schemas.requirement import (
     RequirementCoverageReport,
     RequirementCreateRequest,
     RequirementDetailOut,
+    RequirementHistoryEntryOut,
     RequirementOut,
     RequirementUpdateRequest,
     RequirementVersionOut,
@@ -145,6 +148,38 @@ def get_requirement(
     req = _get_requirement_or_404(db, tenant_id, requirement_id)
     _authorize_requirement_access(db, tenant_id, role_code, user_id, req)
     return req
+
+
+def get_requirement_history(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, requirement_id: UUID
+) -> list[RequirementHistoryEntryOut]:
+    """Per-entity activity timeline (PV-9.3) -- see
+    test_case_service.get_test_case_history / defect_service.get_defect_history
+    for the shared pattern this mirrors."""
+    req = get_requirement(db, tenant_id, role_code, user_id, requirement_id)
+    set_tenant_context(db, str(tenant_id))
+
+    rows = db.execute(
+        select(AuditLog, User.name)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.entity_type == "requirement",
+            AuditLog.entity_id == req.id,
+        )
+        .order_by(AuditLog.created_at.asc())
+    ).all()
+    return [
+        RequirementHistoryEntryOut(
+            id=log.id,
+            action=log.action,
+            user_id=log.user_id,
+            user_name=user_name,
+            event_metadata=log.event_metadata or {},
+            created_at=log.created_at,
+        )
+        for log, user_name in rows
+    ]
 
 
 def list_versions(

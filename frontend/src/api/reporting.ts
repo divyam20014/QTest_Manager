@@ -194,6 +194,61 @@ export function fetchDefectAgingSummary(projectId?: string): Promise<DefectAging
   return apiFetch<DefectAgingSummary>(`/reports/defect-aging${query ? `?${query}` : ''}`)
 }
 
+export interface ReleaseReadinessReport {
+  project_id: string
+  release_id: string | null
+  release_name: string | null
+  total_test_cases: number
+  execution_completion_percentage: number
+  pass_percentage: number
+  open_defects_by_severity: Record<string, number>
+  requirement_coverage_percentage: number
+}
+
+export function fetchReleaseReadiness(
+  projectId: string,
+  releaseId?: string,
+): Promise<ReleaseReadinessReport> {
+  const params = new URLSearchParams({ project_id: projectId })
+  if (releaseId) params.set('release_id', releaseId)
+  return apiFetch<ReleaseReadinessReport>(`/reports/release-readiness?${params.toString()}`)
+}
+
+export interface WorkloadEntry {
+  user_id: string
+  user_name: string | null
+  assigned_test_cases: number
+  assigned_test_run_cases_pending: number
+  assigned_test_run_cases_in_progress: number
+  defects_reported_open: number
+}
+
+export interface WorkloadSummary {
+  project_id: string
+  entries: WorkloadEntry[]
+}
+
+export function fetchWorkloadSummary(projectId: string): Promise<WorkloadSummary> {
+  return apiFetch<WorkloadSummary>(`/reports/workload?project_id=${projectId}`)
+}
+
+export interface FlakyTestEntry {
+  test_case_id: string
+  test_case_title: string
+  run_count: number
+  flip_count: number
+  flip_rate: number
+}
+
+export interface FlakyTestReport {
+  project_id: string
+  tests: FlakyTestEntry[]
+}
+
+export function fetchFlakyTests(projectId: string): Promise<FlakyTestReport> {
+  return apiFetch<FlakyTestReport>(`/reports/flaky-tests?project_id=${projectId}`)
+}
+
 export function fetchComplianceDetail(period: CompliancePeriod = {}): Promise<ComplianceReport> {
   const params = new URLSearchParams()
   if (period.periodFrom) params.set('period_from', period.periodFrom)

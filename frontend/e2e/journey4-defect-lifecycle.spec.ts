@@ -44,6 +44,7 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
   await page.click('a:has-text("Verify Total Loss Settlement Calculation")')
   await page.waitForSelector('text=Steps')
   await page.click('button:has-text("Submit for Review")')
+  await page.click('div[role="dialog"] button:has-text("Submit")')
   await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 10000 })
   await page.click('button:has-text("Approve")')
   await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible({ timeout: 10000 })

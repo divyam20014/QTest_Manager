@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,7 +48,21 @@ class Defect(Base, TenantScopedMixin):
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     actual_result: Mapped[str | None] = mapped_column(String, nullable=True)
     expected_result: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Tier 2 (PV-8.1): environment is being promoted from free text to a
+    # real Environment entity. The free-text column stays, nullable, as a
+    # transition aid (old rows / clients that haven't moved to
+    # environment_id yet) rather than being hard-dropped.
     environment: Mapped[str | None] = mapped_column(String, nullable=True)
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True
+    )
+    # Tier 2 (PV-8.2): optional build/release traceability.
+    found_in_build_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("builds.id"), nullable=True
+    )
+    fixed_in_release_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("releases.id"), nullable=True
+    )
     # Phase 6 (AI/SaaS vision roadmap, PV-6.4): a simple fixed taxonomy,
     # settable any time during triage, not required at creation.
     root_cause: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -57,6 +71,17 @@ class Defect(Base, TenantScopedMixin):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Tier 2 (PV-6.3): additive analytics only -- ADR-026's forward-only
+    # status sequence is deliberately NOT reversed. A "reopen" moves status
+    # back to 'Open' via a dedicated path (defect_service.reopen_defect),
+    # distinct from the strictly-sequential update_status; these two columns
+    # are the only record of that ever having happened.
+    reopened_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    last_reopened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class DefectLink(Base, TenantScopedMixin):

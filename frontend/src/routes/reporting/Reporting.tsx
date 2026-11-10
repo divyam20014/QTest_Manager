@@ -34,6 +34,7 @@ import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { pivotAggregateRows } from './aggregate'
 import { categoricalColor, prefersDark, SEQUENTIAL_BLUE_LIGHT } from './palette'
+import { QAManagerIntelligenceCard } from './QAManagerIntelligenceCard'
 
 const METRICS: { value: Metric; label: string }[] = [
   { value: 'run_status', label: 'Test Run Status' },
@@ -400,6 +401,21 @@ export function Reporting() {
           )}
         </CardContent>
       </Card>
+
+      {projectId ? (
+        <QAManagerIntelligenceCard projectId={projectId} />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>QA Manager Intelligence</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Select a project above to see release readiness, workload, and flaky-test trends.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

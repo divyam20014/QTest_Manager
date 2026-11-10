@@ -19,12 +19,14 @@ from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
 from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
+from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import (
     Attachment,
     TestCase,
     TestCaseVersion,
     TestCaseVersionStep,
 )
+from app.models.test_module import TestModule
 from app.models.user_invite import UserInvite
 
 __all__ = [
@@ -60,4 +62,8 @@ __all__ = [
     "Subscription",
     "UserInvite",
     "BackgroundJob",
+    "Environment",
+    "Build",
+    "Release",
+    "TestModule",
 ]

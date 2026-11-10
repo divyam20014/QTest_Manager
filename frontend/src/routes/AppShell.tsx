@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FileStack,
   LayoutDashboard,
+  Layers,
   Menu,
   MonitorPlay,
   PanelLeftClose,
@@ -21,7 +22,9 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
 import { Breadcrumbs } from '@/components/Breadcrumbs'
+import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserMenu } from '@/components/UserMenu'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
@@ -73,6 +76,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/admin/users', label: 'Users & Roles', icon: Users, adminOnly: true },
       { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText, adminOnly: true },
+      { to: '/admin/environments', label: 'Environments', icon: Layers, adminOnly: true },
       { to: '/settings', label: 'Settings', icon: SettingsIcon, adminOnly: true },
     ],
   },
@@ -239,7 +243,9 @@ export function AppShell() {
             </button>
             <Breadcrumbs />
           </div>
-          <div className="flex shrink-0 items-center gap-1 text-sm">
+          <div className="flex shrink-0 items-center gap-2 text-sm">
+            <GlobalSearch />
+            <ThemeToggle />
             <NotificationBell />
             <UserMenu name={user?.name} role={user?.role} onLogout={() => logoutMutation.mutate()} />
           </div>

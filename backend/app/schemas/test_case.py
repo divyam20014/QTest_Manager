@@ -9,6 +9,15 @@ TestCaseStatus = Literal["draft", "ready_for_review", "approved", "deprecated"]
 StepChangeType = Literal["unchanged", "added", "removed", "modified"]
 
 
+class TestCaseHistoryEntryOut(BaseModel):
+    id: UUID
+    action: str
+    user_id: UUID | None
+    user_name: str | None
+    event_metadata: dict
+    created_at: datetime
+
+
 class StepIn(BaseModel):
     action: str = Field(min_length=1)
     expected: str = Field(min_length=1)
@@ -44,10 +53,21 @@ class TestCaseOut(BaseModel):
     priority: Priority
     status: TestCaseStatus
     assignee_id: UUID | None
+    module_id: UUID | None
+    reviewer_id: UUID | None
+    reviewer_name: str | None
     version_number: int
     created_by: UUID
     created_at: datetime
     steps: list[StepOut]
+
+
+class SubmitForReviewRequest(BaseModel):
+    reviewer_id: UUID | None = None
+
+
+class RequestChangesRequest(BaseModel):
+    comment: str = Field(min_length=1)
 
 
 class TestCaseListResponse(BaseModel):

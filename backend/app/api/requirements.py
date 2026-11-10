@@ -69,6 +69,18 @@ def get_requirement(
     return envelope(requirement_service.to_detail_out(db, requirement).model_dump(mode="json"))
 
 
+@router.get("/requirements/{requirement_id}/history")
+def get_requirement_history(
+    requirement_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    history = requirement_service.get_requirement_history(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id
+    )
+    return envelope([h.model_dump(mode="json") for h in history])
+
+
 @router.get("/requirements/{requirement_id}/versions")
 def list_versions(
     requirement_id: UUID,

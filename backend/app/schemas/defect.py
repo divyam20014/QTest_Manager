@@ -36,6 +36,7 @@ class DefectCreateRequest(BaseModel):
     actual_result: str | None = None
     expected_result: str | None = None
     environment: str | None = None
+    environment_id: UUID | None = None
 
     @model_validator(mode="after")
     def _require_project_or_step_or_run(self) -> "DefectCreateRequest":
@@ -57,6 +58,17 @@ class DefectStatusUpdateRequest(BaseModel):
 class DefectRootCauseUpdateRequest(BaseModel):
     # None clears a previously-set root cause.
     root_cause: RootCause | None = None
+
+
+class DefectEnvironmentUpdateRequest(BaseModel):
+    environment_id: UUID | None = None
+
+
+class DefectBuildReleaseUpdateRequest(BaseModel):
+    """Tier 2 (PV-8.2): either field, both optional, None clears it."""
+
+    found_in_build_id: UUID | None = None
+    fixed_in_release_id: UUID | None = None
 
 
 class DefectLinkCreateRequest(BaseModel):
@@ -88,6 +100,16 @@ class ExecutionEvidenceOut(BaseModel):
     executed_by_name: str | None
 
 
+class PossibleDuplicateOut(BaseModel):
+    """Tier 2 duplicate-defect detection: a text-similarity heuristic
+    (rapidfuzz), suggestion-only -- never auto-merges or auto-rejects."""
+
+    defect_id: UUID
+    title: str
+    status: DefectStatus
+    similarity: float
+
+
 class DefectHistoryEntryOut(BaseModel):
     id: UUID
     action: str
@@ -117,6 +139,12 @@ class DefectOut(BaseModel):
     actual_result: str | None
     expected_result: str | None
     environment: str | None
+    environment_id: UUID | None
+    environment_name: str | None
+    found_in_build_id: UUID | None
+    found_in_build_name: str | None
+    fixed_in_release_id: UUID | None
+    fixed_in_release_name: str | None
     root_cause: RootCause | None
     reported_by: UUID
     reported_by_name: str | None
@@ -124,5 +152,7 @@ class DefectOut(BaseModel):
     closed_at: datetime | None
     age_days: int
     sla_breached: bool
+    reopened_count: int
+    last_reopened_at: datetime | None
     links: list[DefectLinkOut] = []
     execution_evidence: ExecutionEvidenceOut | None = None

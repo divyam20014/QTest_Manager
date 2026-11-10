@@ -9,7 +9,9 @@ from app.core.db import get_db
 from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
 from app.schemas.defect import (
+    DefectBuildReleaseUpdateRequest,
     DefectCreateRequest,
+    DefectEnvironmentUpdateRequest,
     DefectLinkCreateRequest,
     DefectRootCauseUpdateRequest,
     DefectStatusUpdateRequest,
@@ -70,7 +72,26 @@ def create_defect(
         ),
         entity_id_of=lambda d: d.id,
     )
-    return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+    out = defect_service.to_out(db, defect).model_dump(mode="json")
+    # Duplicate-detection check at creation time, surfaced alongside the
+    # created defect -- additive field, never blocks creation.
+    duplicates = defect_service.find_possible_duplicates(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect.id
+    )
+    out["possible_duplicates"] = [d.model_dump(mode="json") for d in duplicates]
+    return envelope(out)
+
+
+@router.get("/{defect_id}/possible-duplicates")
+def get_possible_duplicates(
+    defect_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    duplicates = defect_service.find_possible_duplicates(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id
+    )
+    return envelope([d.model_dump(mode="json") for d in duplicates])
 
 
 @router.get("/{defect_id}")
@@ -110,6 +131,48 @@ def update_status(
         defect_id,
         req.status,
         req.verification_confirmed,
+    )
+    return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+
+
+@router.post("/{defect_id}/reopen")
+def reopen_defect(
+    defect_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    defect = defect_service.reopen_defect(db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id)
+    return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+
+
+@router.patch("/{defect_id}/environment")
+def set_defect_environment(
+    defect_id: UUID,
+    req: DefectEnvironmentUpdateRequest,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    defect = defect_service.set_defect_environment(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id, req.environment_id
+    )
+    return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+
+
+@router.patch("/{defect_id}/build-release")
+def update_build_release(
+    defect_id: UUID,
+    req: DefectBuildReleaseUpdateRequest,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    defect = defect_service.update_build_release(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        defect_id,
+        req.found_in_build_id,
+        req.fixed_in_release_id,
     )
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
 

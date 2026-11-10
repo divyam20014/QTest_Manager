@@ -1,4 +1,5 @@
 import { apiFetch } from '@/api/client'
+import type { HistoryEntry } from '@/api/history'
 
 export type Priority = 'Low' | 'Medium' | 'High' | 'Critical'
 export type TestCaseStatus = 'draft' | 'ready_for_review' | 'approved' | 'deprecated'
@@ -23,6 +24,9 @@ export interface TestCase {
   priority: Priority
   status: TestCaseStatus
   assignee_id: string | null
+  module_id: string | null
+  reviewer_id: string | null
+  reviewer_name: string | null
   version_number: number
   created_by: string
   created_at: string
@@ -39,6 +43,7 @@ export interface TestCaseListParams {
   priority?: Priority | ''
   status?: TestCaseStatus | ''
   assignee_id?: string | ''
+  module_id?: string
   sort?: string
   page?: number
   page_size?: number
@@ -95,6 +100,7 @@ export function listTestCases(
   if (params.priority) query.set('priority', params.priority)
   if (params.status) query.set('status', params.status)
   if (params.assignee_id) query.set('assignee_id', params.assignee_id)
+  if (params.module_id) query.set('module_id', params.module_id)
   if (params.sort) query.set('sort', params.sort)
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
@@ -108,6 +114,10 @@ export function getTestCase(id: string): Promise<TestCase> {
 
 export function listTestCaseVersions(id: string): Promise<TestCaseVersion[]> {
   return apiFetch<TestCaseVersion[]>(`/test-cases/${id}/versions`)
+}
+
+export function getTestCaseHistory(id: string): Promise<HistoryEntry[]> {
+  return apiFetch<HistoryEntry[]>(`/test-cases/${id}/history`)
 }
 
 export function compareTestCaseVersions(
@@ -131,12 +141,29 @@ export function updateTestCase(id: string, req: TestCaseUpdateRequest): Promise<
   return apiFetch<TestCase>(`/test-cases/${id}`, { method: 'PATCH', body: JSON.stringify(req) })
 }
 
-export function submitForReview(id: string): Promise<TestCase> {
-  return apiFetch<TestCase>(`/test-cases/${id}/submit-review`, { method: 'POST' })
+export function submitForReview(id: string, reviewerId?: string | null): Promise<TestCase> {
+  return apiFetch<TestCase>(`/test-cases/${id}/submit-review`, {
+    method: 'POST',
+    body: JSON.stringify({ reviewer_id: reviewerId ?? null }),
+  })
 }
 
 export function approveTestCase(id: string): Promise<TestCase> {
   return apiFetch<TestCase>(`/test-cases/${id}/approve`, { method: 'POST' })
+}
+
+export function requestChanges(id: string, comment: string): Promise<TestCase> {
+  return apiFetch<TestCase>(`/test-cases/${id}/request-changes`, {
+    method: 'POST',
+    body: JSON.stringify({ comment }),
+  })
+}
+
+export function assignModule(id: string, moduleId: string | null): Promise<{ assigned: boolean }> {
+  return apiFetch<{ assigned: boolean }>(`/test-cases/${id}/module`, {
+    method: 'POST',
+    body: JSON.stringify({ module_id: moduleId }),
+  })
 }
 
 export function deprecateTestCase(id: string): Promise<TestCase> {

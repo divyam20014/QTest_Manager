@@ -13,13 +13,16 @@ import {
   deleteTestCase,
   deprecateTestCase,
   getTestCase,
+  getTestCaseHistory,
   listTestCaseVersions,
+  requestChanges,
   submitForReview,
   updateTestCase,
   type TestCaseUpdateRequest,
   type TestCaseVersion,
 } from '@/api/testCases'
 import { listUsers } from '@/api/users'
+import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
@@ -28,7 +31,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
+import { useToast } from '@/lib/toast'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { STATUS_DISPLAY } from './statusDisplay'
 
@@ -37,9 +42,14 @@ export function TestCaseDetail() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
   const [editOpen, setEditOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [submitReviewOpen, setSubmitReviewOpen] = useState(false)
+  const [reviewerId, setReviewerId] = useState('')
+  const [requestChangesOpen, setRequestChangesOpen] = useState(false)
+  const [changesComment, setChangesComment] = useState('')
 
   const caseQuery = useQuery({
     queryKey: ['test-cases', 'detail', testCaseId],
@@ -52,6 +62,11 @@ export function TestCaseDetail() {
     enabled: !!testCaseId,
   })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const historyQuery = useQuery({
+    queryKey: ['test-cases', 'history', testCaseId],
+    queryFn: () => getTestCaseHistory(testCaseId!),
+    enabled: !!testCaseId,
+  })
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['test-cases', 'detail', testCaseId] })
@@ -66,22 +81,51 @@ export function TestCaseDetail() {
     },
   })
 
+  const ACTION_SUCCESS_MESSAGE: Record<'submit' | 'approve' | 'deprecate' | 'delete', string> = {
+    submit: 'Submitted for review.',
+    approve: 'Test case approved.',
+    deprecate: 'Test case deprecated.',
+    delete: 'Test case deleted.',
+  }
+
   const runAction = useMutation({
     mutationFn: async (action: 'submit' | 'approve' | 'deprecate' | 'delete'): Promise<unknown> => {
-      if (action === 'submit') return submitForReview(testCaseId!)
+      if (action === 'submit') return submitForReview(testCaseId!, reviewerId || null)
       if (action === 'approve') return approveTestCase(testCaseId!)
       if (action === 'deprecate') return deprecateTestCase(testCaseId!)
       return deleteTestCase(testCaseId!)
     },
     onSuccess: (_, action) => {
       setActionError(null)
+      showToast('success', ACTION_SUCCESS_MESSAGE[action])
+      if (action === 'submit') {
+        setSubmitReviewOpen(false)
+        setReviewerId('')
+      }
       if (action === 'delete') {
         navigate(`/projects/${testCase!.project_id}/test-cases`)
         return
       }
       invalidate()
     },
-    onError: (err) => setActionError(err instanceof ApiError ? err.message : 'Something went wrong'),
+    onError: (err) => {
+      const message = err instanceof ApiError ? err.message : 'Something went wrong'
+      setActionError(message)
+      showToast('error', message)
+    },
+  })
+
+  const requestChangesMutation = useMutation({
+    mutationFn: () => requestChanges(testCaseId!, changesComment),
+    onSuccess: () => {
+      showToast('success', 'Changes requested — sent back to draft.')
+      setRequestChangesOpen(false)
+      setChangesComment('')
+      invalidate()
+      queryClient.invalidateQueries({ queryKey: ['comments', 'test_case', testCaseId] })
+    },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Something went wrong'),
   })
 
   const testCase = caseQuery.data
@@ -89,6 +133,9 @@ export function TestCaseDetail() {
   if (caseQuery.isError || !testCase) return <p className="text-sm text-[var(--destructive)]">Test case not found.</p>
 
   const canApprove = user?.role === 'admin' || user?.role === 'manager'
+  const isAssignedReviewer =
+    testCase.reviewer_id === null || testCase.reviewer_id === user?.user_id || user?.role === 'admin'
+  const canActOnReview = canApprove && isAssignedReviewer
   const updateError = updateMutation.error instanceof ApiError ? updateMutation.error.message : null
   const usersById = new Map((usersQuery.data ?? []).map((u) => [u.id, u.name]))
 
@@ -120,6 +167,12 @@ export function TestCaseDetail() {
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
           Assignee: {testCase.assignee_id ? (usersById.get(testCase.assignee_id) ?? 'Unknown') : 'Unassigned'}
         </p>
+        {testCase.status === 'ready_for_review' && (
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            Reviewer:{' '}
+            {testCase.reviewer_id ? (testCase.reviewer_name ?? 'Unknown') : 'Anyone who can approve'}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -130,14 +183,24 @@ export function TestCaseDetail() {
           Review with AI
         </Button>
         {testCase.status === 'draft' && (
-          <Button size="sm" onClick={() => runAction.mutate('submit')} disabled={runAction.isPending}>
+          <Button size="sm" onClick={() => setSubmitReviewOpen(true)} disabled={runAction.isPending}>
             Submit for Review
           </Button>
         )}
-        {testCase.status === 'ready_for_review' && canApprove && (
-          <Button size="sm" onClick={() => runAction.mutate('approve')} disabled={runAction.isPending}>
-            Approve
-          </Button>
+        {testCase.status === 'ready_for_review' && canActOnReview && (
+          <>
+            <Button size="sm" onClick={() => runAction.mutate('approve')} disabled={runAction.isPending}>
+              Approve
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRequestChangesOpen(true)}
+              disabled={runAction.isPending}
+            >
+              Request Changes
+            </Button>
+          </>
         )}
         {testCase.status !== 'deprecated' && canApprove && (
           <Button
@@ -189,6 +252,7 @@ export function TestCaseDetail() {
       <LinkedDefectsCard testCaseId={testCase.id} />
       <AttachmentsCard ownerType="test_case" ownerId={testCase.id} />
       <CommentsCard ownerType="test_case" ownerId={testCase.id} />
+      <ActivityTimelineCard entries={historyQuery.data} actionLabels={TEST_CASE_HISTORY_ACTION_LABEL} />
 
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} title="Edit Test Case" className="max-w-2xl">
         <TestCaseForm
@@ -205,8 +269,79 @@ export function TestCaseDetail() {
         onClose={() => setReviewOpen(false)}
         testCaseId={testCase.id}
       />
+      <Dialog
+        open={submitReviewOpen}
+        onClose={() => setSubmitReviewOpen(false)}
+        title="Submit for Review"
+      >
+        <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reviewer">Reviewer (optional)</Label>
+            <Select id="reviewer" value={reviewerId} onChange={(e) => setReviewerId(e.target.value)}>
+              <option value="">Anyone who can approve</option>
+              {(usersQuery.data ?? [])
+                .filter((u) => u.role === 'admin' || u.role === 'manager')
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSubmitReviewOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={runAction.isPending} onClick={() => runAction.mutate('submit')}>
+              {runAction.isPending ? 'Submitting…' : 'Submit'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+      <Dialog
+        open={requestChangesOpen}
+        onClose={() => setRequestChangesOpen(false)}
+        title="Request Changes"
+      >
+        <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="changes-comment">Feedback for the author</Label>
+            <Textarea
+              id="changes-comment"
+              value={changesComment}
+              onChange={(e) => setChangesComment(e.target.value)}
+              rows={4}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRequestChangesOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={requestChangesMutation.isPending || changesComment.trim().length === 0}
+              onClick={() => requestChangesMutation.mutate()}
+            >
+              {requestChangesMutation.isPending ? 'Sending…' : 'Send Back for Changes'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
+}
+
+const TEST_CASE_HISTORY_ACTION_LABEL: Record<string, string> = {
+  'testcase.created': 'Test case created',
+  'testcase.updated': 'Updated (new version)',
+  'testcase.submitted_for_review': 'Submitted for review',
+  'testcase.approved': 'Approved',
+  'testcase.deprecated': 'Deprecated',
+  'testcase.deleted': 'Deleted',
+  'comment.created': 'Comment added',
+  'comment.deleted': 'Comment deleted',
+  'ai.test_cases_generated': 'Generated by AI',
+  'ai.test_case_reviewed': 'Reviewed by AI',
 }
 
 const CATEGORY_LABEL: Record<string, string> = {

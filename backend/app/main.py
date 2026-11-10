@@ -24,7 +24,10 @@ from app.api import (
     projects,
     reporting,
     requirements,
+    search,
+    test_assets,
     test_cases,
+    test_modules,
     users,
 )
 from app.api import (
@@ -159,6 +162,9 @@ app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(settings_api.router, prefix="/api/v1")
 app.include_router(requirements.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
+app.include_router(test_assets.router, prefix="/api/v1")
+app.include_router(test_modules.router, prefix="/api/v1")
+app.include_router(search.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

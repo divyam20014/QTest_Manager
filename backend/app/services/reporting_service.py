@@ -7,12 +7,14 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.errors import ForbiddenError, NotFoundError
 from app.models.audit import AuditLog
 from app.models.defect import Defect
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.tenant import Tenant
+from app.models.test_asset import Release
 from app.models.test_case import TestCase
 from app.schemas.reporting import (
     ActivityEntry,
@@ -31,13 +33,24 @@ from app.schemas.reporting import (
     DomainDistributionEntry,
     ExecutionTrendPoint,
     ExecutionTrendReport,
+    FlakyTestEntry,
+    FlakyTestReport,
     GroupBy,
     Metric,
+    MostReopenedDefect,
     ProjectStatusBreakdown,
+    ReleaseReadinessReport,
+    ReopenSummary,
     TestCaseSummary,
     TestRunSummary,
+    WorkloadEntry,
+    WorkloadSummary,
 )
+from app.services import requirement_service
 from app.services.defect_service import SLA_DAYS_BY_SEVERITY, compute_aging
+
+OPEN_DEFECT_STATUSES = ("New", "Open")
+COMPLETED_RUN_CASE_STATUSES = ("passed", "failed", "blocked", "ignored")
 
 DOMAINS = ["Motor", "Health", "Travel", "Life", "Property"]
 
@@ -563,6 +576,257 @@ def get_defect_aging_summary(
         total_open=sum(c["open"] for c in counts.values()),
         total_breached=sum(c["breached"] for c in counts.values()),
     )
+
+
+def get_reopen_summary(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None = None,
+    top_n: int = 10,
+) -> ReopenSummary:
+    """PV-6.3 reopen-rate analytics -- counts defect_service.reopen_defect
+    events, which are the only writer of reopened_count/last_reopened_at."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+
+    query = select(Defect).join(Project, Project.id == Defect.project_id).where(
+        Project.tenant_id == tenant_id
+    )
+    if accessible is not None:
+        query = query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        query = query.where(Project.id == project_id)
+
+    defects = db.execute(query).scalars().all()
+    total_defects = len(defects)
+    reopened = [d for d in defects if d.reopened_count > 0]
+
+    most_reopened = sorted(reopened, key=lambda d: d.reopened_count, reverse=True)[:top_n]
+
+    return ReopenSummary(
+        total_defects=total_defects,
+        reopened_defects=len(reopened),
+        reopen_rate=(len(reopened) / total_defects) if total_defects else 0.0,
+        total_reopen_events=sum(d.reopened_count for d in defects),
+        most_reopened=[
+            MostReopenedDefect(
+                defect_id=d.id,
+                title=d.title,
+                status=d.status,
+                reopened_count=d.reopened_count,
+                last_reopened_at=d.last_reopened_at,
+            )
+            for d in most_reopened
+            if d.last_reopened_at is not None
+        ],
+    )
+
+
+def _get_project_or_404(db: Session, tenant_id: UUID, project_id: UUID) -> Project:
+    project = db.execute(
+        select(Project).where(Project.tenant_id == tenant_id, Project.id == project_id)
+    ).scalar_one_or_none()
+    if project is None:
+        raise NotFoundError("Project not found")
+    return project
+
+
+def get_release_readiness(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID,
+    release_id: UUID | None = None,
+) -> ReleaseReadinessReport:
+    """PV-7.1: the underlying metrics rather than one blended score."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    if accessible is not None and project_id not in accessible:
+        raise ForbiddenError("Project not accessible")
+    project = _get_project_or_404(db, tenant_id, project_id)
+
+    release_name = None
+    if release_id is not None:
+        release = db.execute(
+            select(Release).where(
+                Release.tenant_id == tenant_id,
+                Release.id == release_id,
+                Release.project_id == project.id,
+            )
+        ).scalar_one_or_none()
+        if release is None:
+            raise NotFoundError("Release not found")
+        release_name = release.name
+
+    total_test_cases = db.execute(
+        select(func.count()).select_from(TestCase).where(TestCase.project_id == project_id)
+    ).scalar_one()
+
+    run_case_statuses = list(
+        db.execute(
+            select(TestRunCase.status)
+            .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+            .where(TestRun.tenant_id == tenant_id, TestRun.project_id == project_id)
+        ).scalars()
+    )
+    total_run_cases = len(run_case_statuses)
+    completed = sum(1 for s in run_case_statuses if s in COMPLETED_RUN_CASE_STATUSES)
+    passed = sum(1 for s in run_case_statuses if s == "passed")
+    completion_pct = round((completed / total_run_cases) * 100, 1) if total_run_cases else 0.0
+    pass_pct = round((passed / completed) * 100, 1) if completed else 0.0
+
+    open_defects = db.execute(
+        select(Defect.severity, func.count())
+        .where(
+            Defect.tenant_id == tenant_id,
+            Defect.project_id == project_id,
+            Defect.status.in_(OPEN_DEFECT_STATUSES),
+        )
+        .group_by(Defect.severity)
+    ).all()
+    open_by_severity = {sev: count for sev, count in open_defects}
+
+    coverage = requirement_service.get_coverage_report(
+        db, tenant_id, role_code, user_id, project_id
+    )
+
+    return ReleaseReadinessReport(
+        project_id=project_id,
+        release_id=release_id,
+        release_name=release_name,
+        total_test_cases=total_test_cases,
+        execution_completion_percentage=completion_pct,
+        pass_percentage=pass_pct,
+        open_defects_by_severity=open_by_severity,
+        requirement_coverage_percentage=coverage.coverage_percentage,
+    )
+
+
+def get_workload_summary(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> WorkloadSummary:
+    """PV-7.2: per-user breakdown to spot over/under-loaded testers.
+    "Defects reported" rather than "assigned" -- Defect has no assignee
+    field today, only reported_by."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    if accessible is not None and project_id not in accessible:
+        raise ForbiddenError("Project not accessible")
+
+    assigned_tc: dict[UUID, int] = {}
+    for assignee_id, count in db.execute(
+        select(TestCase.assignee_id, func.count())
+        .where(TestCase.project_id == project_id, TestCase.assignee_id.is_not(None))
+        .group_by(TestCase.assignee_id)
+    ).all():
+        assigned_tc[assignee_id] = count
+
+    pending: dict[UUID, int] = {}
+    in_progress: dict[UUID, int] = {}
+    for assigned_to, status, count in db.execute(
+        select(TestRunCase.assigned_to, TestRunCase.status, func.count())
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .where(
+            TestRun.project_id == project_id,
+            TestRunCase.assigned_to.is_not(None),
+            TestRunCase.status.in_(("pending", "in_progress")),
+        )
+        .group_by(TestRunCase.assigned_to, TestRunCase.status)
+    ).all():
+        if status == "pending":
+            pending[assigned_to] = count
+        else:
+            in_progress[assigned_to] = count
+
+    reported_open: dict[UUID, int] = {}
+    for reported_by, count in db.execute(
+        select(Defect.reported_by, func.count())
+        .where(Defect.project_id == project_id, Defect.status.in_(OPEN_DEFECT_STATUSES))
+        .group_by(Defect.reported_by)
+    ).all():
+        reported_open[reported_by] = count
+
+    all_user_ids = set(assigned_tc) | set(pending) | set(in_progress) | set(reported_open)
+    names = _resolve_user_names(db, all_user_ids)
+
+    entries = [
+        WorkloadEntry(
+            user_id=uid,
+            user_name=names.get(uid),
+            assigned_test_cases=assigned_tc.get(uid, 0),
+            assigned_test_run_cases_pending=pending.get(uid, 0),
+            assigned_test_run_cases_in_progress=in_progress.get(uid, 0),
+            defects_reported_open=reported_open.get(uid, 0),
+        )
+        for uid in all_user_ids
+    ]
+    entries.sort(key=lambda e: e.user_name or "")
+    return WorkloadSummary(project_id=project_id, entries=entries)
+
+
+def get_flaky_tests(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID,
+    limit: int = 10,
+) -> FlakyTestReport:
+    """PV-7.4: a test case is 'flaky' when its pass/fail verdict flips
+    between consecutive runs while pinned to the SAME test_case_version_id
+    -- a flip tied to a version change is a legitimate behavior change,
+    not flakiness."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    if accessible is not None and project_id not in accessible:
+        raise ForbiddenError("Project not accessible")
+
+    rows = db.execute(
+        select(
+            TestRunCase.test_case_id,
+            TestCase.title,
+            TestRunCase.test_case_version_id,
+            TestRunCase.status,
+            TestRunCase.completed_at,
+        )
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .join(TestCase, TestCase.id == TestRunCase.test_case_id)
+        .where(
+            TestRun.project_id == project_id,
+            TestRunCase.status.in_(("passed", "failed")),
+            TestRunCase.completed_at.is_not(None),
+        )
+        .order_by(TestRunCase.test_case_id, TestRunCase.completed_at)
+    ).all()
+
+    by_case: dict[UUID, list[tuple]] = {}
+    titles: dict[UUID, str] = {}
+    for test_case_id, title, version_id, status, _completed_at in rows:
+        by_case.setdefault(test_case_id, []).append((version_id, status))
+        titles[test_case_id] = title
+
+    entries = []
+    for test_case_id, runs in by_case.items():
+        if len(runs) < 2:
+            continue
+        flips = sum(
+            1
+            for (prev_version, prev_status), (version, status) in zip(runs, runs[1:], strict=False)
+            if version == prev_version and status != prev_status
+        )
+        if flips == 0:
+            continue
+        entries.append(
+            FlakyTestEntry(
+                test_case_id=test_case_id,
+                test_case_title=titles[test_case_id],
+                run_count=len(runs),
+                flip_count=flips,
+                flip_rate=round(flips / (len(runs) - 1), 2),
+            )
+        )
+
+    entries.sort(key=lambda e: e.flip_rate, reverse=True)
+    return FlakyTestReport(project_id=project_id, tests=entries[:limit])
 
 
 def get_compliance_report(

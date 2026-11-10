@@ -45,6 +45,18 @@ class TestCase(Base, TenantScopedMixin):
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    # Tier 3 (PV-7.3): optional module/folder grouping.
+    module_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("test_modules.id"), nullable=True
+    )
+    # Tier 3: review-request/approval workflow. Narrows who may act on a
+    # 'ready_for_review' case via approve/request_changes to this specific
+    # user when set (falls back to anyone holding testcase.approve when
+    # null, preserving today's behavior for callers that don't name a
+    # reviewer).
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey(
