@@ -109,6 +109,28 @@ services:
     # mount if STORAGE_BACKEND=s3.
     volumes:
       - qtesthub_attachments:/data/attachments
+    # Deployment-hardening pass: see the identical note/fix in
+    # docker-compose.yml -- `worker` otherwise inherits the api image's
+    # HTTP-based Dockerfile HEALTHCHECK and never passes it.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          python -c "
+          import glob, sys
+          from contextlib import suppress
+          found = False
+          for f in glob.glob('/proc/[0-9]*/cmdline'):
+              with suppress(OSError):
+                  if b'app.worker' in open(f, 'rb').read():
+                      found = True
+                      break
+          sys.exit(0 if found else 1)
+          "
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   proxy:
     image: nginx:1.27-alpine

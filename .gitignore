@@ -1,5 +1,16 @@
 # Root (docker-compose variable substitution)
 /.env
+.env.*
+!.env.example
+
+# TLS certificates/keys -- never commit real ones (deploy/nginx/certs/ is
+# meant to be populated at deploy time, e.g. from certbot's output).
+*.pem
+*.key
+*.crt
+*.p12
+deploy/nginx/certs/*
+!deploy/nginx/certs/.gitkeep
 
 # Backend
 backend/.venv/

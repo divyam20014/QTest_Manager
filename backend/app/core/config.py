@@ -126,6 +126,65 @@ class Settings(BaseSettings):
         return bool(self.sentry_dsn)
 
 
+_DEV_DATABASE_URL = "postgresql+psycopg://qtesthub:qtesthub@localhost:5432/qtesthub"
+_DEV_CORS_ORIGINS = ["http://localhost:5173"]
+
+
+class InsecureProductionConfigError(RuntimeError):
+    """Raised at startup, not request time -- a misconfigured production
+    deployment must fail to boot rather than silently run insecurely."""
+
+
+def validate_for_production(settings: Settings) -> None:
+    """Deployment-hardening pass: the many ``${VAR:?...}`` guards in
+    docker-compose.prod.yml already refuse to start a container with an
+    unset required variable, but that only helps when this exact compose
+    file is used. This is the same check at the application layer, so an
+    operator running the image any other way (a different orchestrator,
+    bare `uvicorn`, a forgotten override) still can't boot an insecure
+    production instance. Only runs when ENVIRONMENT=production -- dev/test
+    must never trip this.
+    """
+    if settings.environment != "production":
+        return
+
+    problems: list[str] = []
+
+    # Simulated MFA delivery returns the one-time code directly in the
+    # /auth/login response body (ADR-011) -- exactly what "simulated" is
+    # for in dev/test. Left on in production, every login response would
+    # hand the attacker the MFA code needed to complete it.
+    if settings.mfa_delivery_mode == "simulated":
+        problems.append(
+            "MFA_DELIVERY_MODE=simulated returns one-time codes directly in API "
+            "responses -- set MFA_DELIVERY_MODE=real and configure SMTP_* for production."
+        )
+
+    if settings.database_url == _DEV_DATABASE_URL:
+        problems.append(
+            "DATABASE_URL is still the insecure local-dev default "
+            "(qtesthub:qtesthub@localhost) -- set a real DATABASE_URL."
+        )
+
+    if not settings.cors_allow_origins or settings.cors_allow_origins == _DEV_CORS_ORIGINS:
+        problems.append(
+            "CORS_ALLOW_ORIGINS is unset or still the local-dev default "
+            "(http://localhost:5173) -- set it to your real frontend origin(s)."
+        )
+    if "*" in settings.cors_allow_origins:
+        problems.append(
+            "CORS_ALLOW_ORIGINS includes '*', which is rejected by browsers anyway when "
+            "credentials are allowed and would be unsafe even if it weren't -- "
+            "list explicit origins."
+        )
+
+    if problems:
+        raise InsecureProductionConfigError(
+            "Refusing to start with ENVIRONMENT=production and insecure configuration:\n"
+            + "\n".join(f"  - {p}" for p in problems)
+        )
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()

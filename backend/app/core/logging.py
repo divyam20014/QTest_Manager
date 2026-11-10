@@ -16,6 +16,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 
 _CONFIGURED = False
+_SERVICE_NAME = "qtesthub-api"
 
 # Bound by the correlation-ID middleware in app.main for the lifetime of a
 # single request; read here so every log line emitted while handling that
@@ -28,6 +29,7 @@ class JsonFormatter(logging.Formatter):
         payload: dict = {
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
+            "service": _SERVICE_NAME,
             "logger": record.name,
             "message": record.getMessage(),
         }
@@ -39,8 +41,10 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(level: str = "INFO") -> None:
-    global _CONFIGURED
+def configure_logging(level: str = "INFO", service_name: str | None = None) -> None:
+    global _CONFIGURED, _SERVICE_NAME
+    if service_name is not None:
+        _SERVICE_NAME = service_name
     if _CONFIGURED:
         return
 

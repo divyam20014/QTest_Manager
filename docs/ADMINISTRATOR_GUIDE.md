@@ -15,7 +15,7 @@ at `/platform-admin` in the frontend (not linked from the main app's
 navigation) or directly via the API under `/api/v1/platform/*`.
 
 **Authentication:** HTTP Basic, using the email/password provisioned when the
-platform admin account was created (see `backend/app/scripts/seed_platform_admin.py`
+platform admin account was created (see `backend/scripts/seed_platform_admin.py`
 for bootstrapping the first one). As of Tier 0 (ADR-052), this plane has:
 - **Rate limiting**: 60/minute across all platform routes (looser than
   tenant login's 10/minute, since this also gates the read-only tenant list
@@ -72,7 +72,12 @@ a tenant does not delete any data — it is reversible.
 - **Monitoring**: `GET /api/v1/ready` for readiness, container stdout (JSON
   lines, one per log event, each carrying a `request_id`) for logs, and the
   optional Sentry integration (`SENTRY_DSN`) for error alerting. See
-  `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` §7.
+  `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` §7, or run
+  `deployment/scripts/health_check.sh` for a single pass/fail summary.
+- **Security events**: failed logins, MFA/platform-admin lockouts,
+  IP-allowlist rejections, and rate-limit trips each emit a distinct
+  `security_event=...` log line — grep for it in your aggregator to alert on
+  repeated auth failures. See `docs/deployment/SECURITY_CONFIGURATION.md`.
 - **Migrations**: run automatically on deploy; see
   `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` §4 for the upgrade/rollback
   procedure.

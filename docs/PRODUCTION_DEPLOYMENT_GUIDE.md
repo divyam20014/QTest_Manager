@@ -157,6 +157,33 @@ leave a production deployment running this way.
   `SENTRY_DSN` in `.env` to enable; leave blank to skip entirely (no
   behavior change, no extra outbound network calls).
 
+## 7a. Startup configuration validation (deployment-hardening pass)
+
+With `ENVIRONMENT=production`, the `api` container refuses to start (with a
+clear error listing every problem at once, not just the first) if:
+
+- `MFA_DELIVERY_MODE` is still `simulated` — that mode returns the one-time
+  code directly in the `/auth/login` response body, which is correct for
+  dev/test and a critical leak in production.
+- `DATABASE_URL` is still the hardcoded local-dev default.
+- `CORS_ALLOW_ORIGINS` is unset, still the local-dev default, or `*`.
+
+This is a second, application-level check alongside the `${VAR:?...}` guards
+already in `docker-compose.prod.yml` — it also catches a deployment that runs
+the image some other way (a different orchestrator, a manual `docker run`).
+See `app/core/config.py::validate_for_production`.
+
+**Security-event logging**: failed tenant logins, MFA lockouts, platform-admin
+lockouts, IP-allowlist rejections, and rate-limit trips each emit a
+`security_event=...` JSON log line (in addition to the generic per-request
+access log) — grep your log aggregator for `security_event` to build an
+alert on repeated auth failures.
+
+**Session rotation**: the session cookie's value changes when MFA
+verification succeeds (not just an in-place flag flip on the same row) — a
+pre-MFA session id can never be replayed to reach an authenticated state.
+See `docs/deployment/SECURITY_CONFIGURATION.md` for the full security posture.
+
 ## 8. Connection pooling & scaling notes
 
 `DB_POOL_SIZE`/`DB_MAX_OVERFLOW` (defaults 10/20) control the backend's
@@ -166,9 +193,11 @@ accommodate `(pool_size + max_overflow) × replica_count` plus headroom for
 `psql`/migration/backup connections — size `max_connections` accordingly or
 lower the per-replica pool settings.
 
-This deployment has no background job queue (deliberately out of scope for
-this tier) and no horizontal autoscaling config — both are tracked as
-separate, later roadmap items, not part of this guide.
+This deployment has no horizontal autoscaling config (Tier 1 added the
+background job queue itself — see the `worker` row in §1's table; scaling
+that beyond one replica would need the job-claim query's `FOR UPDATE SKIP
+LOCKED` pattern re-verified under concurrency, not just more replicas) — both
+are tracked as separate, later roadmap items, not part of this guide.
 
 ## 9. Clean-environment verification checklist
 
@@ -188,4 +217,15 @@ a real one with data you want to keep):
 - [ ] A test tenant can be provisioned via the Platform Administration API
       (`docs/ADMINISTRATOR_GUIDE.md` §1) and its admin user can log in.
 - [ ] `scripts/db_backup.sh` produces a dump file, and
-      `scripts/db_restore.sh` successfully restores it into a fresh database.
+      `scripts/db_restore.sh` successfully restores it into a fresh database
+      (or run `deployment/scripts/verify_backup.sh <dump>`, which does this
+      automatically against a disposable database and never touches the
+      real one).
+- [ ] `deployment/scripts/health_check.sh` reports all checks passing.
+- [ ] Restarting every container (`docker compose -f docker-compose.prod.yml
+      restart`) does not lose data — confirm a record created before the
+      restart is still present after.
+
+See `docs/deployment/` for the full deployment documentation set (assessment,
+database migration, backup/restore, security configuration, administrator
+and user guides) produced alongside this guide.

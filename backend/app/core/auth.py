@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import get_db, set_tenant_context
 from app.core.errors import ForbiddenError, UnauthorizedError
+from app.core.logging import logger
 from app.models.identity import Permission, Role, RolePermission, User
 from app.models.identity import Session as SessionModel
 from app.models.tenant import Tenant
@@ -59,6 +60,9 @@ def _enforce_ip_allowlist(db: Session, tenant_id: UUID, request: Request) -> Non
                 return
         except ValueError:
             continue  # a malformed stored entry never silently blocks every request
+    logger.warning(
+        "security_event=ip_allowlist_blocked tenant_id=%s client_ip=%s", tenant_id, caller_ip
+    )
     raise ForbiddenError("Access denied: your network is not on this organization's allowlist")
 
 

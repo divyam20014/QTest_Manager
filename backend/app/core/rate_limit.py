@@ -11,4 +11,15 @@ from slowapi.util import get_remote_address
 # and is what the gap's own closing condition names as an acceptable
 # option. Revisit with a per-(tenant_id, email) key if this needs
 # hardening further than a single-process deployment.
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(
+    key_func=get_remote_address,
+    # Deployment-hardening pass: a general backstop across every route,
+    # independent of the tighter per-route limits above (login, MFA, CSV
+    # import, attachment upload, platform, SCIM, invite-accept). Those cover
+    # the specifically sensitive/expensive paths; this exists so a route
+    # nobody thought to add a specific limit to is never completely
+    # unbounded. Generous enough that normal interactive use (and this
+    # project's own Playwright suite) never comes close to it -- it's a
+    # backstop against abuse, not a tight per-route budget.
+    default_limits=["300/minute"],
+)

@@ -102,6 +102,33 @@ def test_mfa_lockout_after_three_attempts(client: TestClient, platform_admin: di
     assert final_attempt.status_code == 401
 
 
+def test_mfa_verification_rotates_session_id(client: TestClient, platform_admin: dict) -> None:
+    """Deployment-hardening pass: the pre-MFA session cookie must never still
+    work for authenticated requests after MFA succeeds -- its id is rotated,
+    not just a flag flipped on the same row (session-fixation mitigation)."""
+    bootstrap = _bootstrap_tenant(client, platform_admin)
+    tenant_id = bootstrap["tenant"]["id"]
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"tenant_id": tenant_id, "email": "admin@horizon.com", "password": "AdminPassw0rd!"},
+    )
+    pre_mfa_cookie = login_response.cookies.get("qth_session")
+    code = login_response.json()["data"]["debug_code"]
+
+    verify_response = client.post("/api/v1/auth/mfa/verify", json={"code": code})
+    assert verify_response.status_code == 200
+    post_mfa_cookie = verify_response.cookies.get("qth_session")
+
+    assert post_mfa_cookie is not None
+    assert post_mfa_cookie != pre_mfa_cookie
+
+    # The post-MFA cookie is now active in the client's jar; a request
+    # presenting the old pre-MFA id explicitly must be rejected as revoked.
+    stale_response = client.get("/api/v1/auth/me", cookies={"qth_session": pre_mfa_cookie})
+    assert stale_response.status_code == 401
+
+
 def test_cross_tenant_isolation_on_user_list(client: TestClient, platform_admin: dict) -> None:
     tenant_a = _bootstrap_tenant(client, platform_admin, tenant_name="Tenant A")
     tenant_b_client = TestClient(client.app)

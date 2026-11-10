@@ -72,6 +72,32 @@ def test_platform_tenants_is_rate_limited_after_sixty_attempts_per_minute(
     assert responses[60].json()["error"]["code"] == "rate_limited"
 
 
+def test_general_backstop_limit_applies_to_an_undecorated_route(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Deployment-hardening pass: a route with no route-specific
+    @limiter.limit decorator (here, GET /auth/me) is still bounded by the
+    Limiter's global `default_limits` backstop, applied via SlowAPIMiddleware
+    -- not left completely unbounded just because nobody added a specific
+    limit to it."""
+    from tests.test_auth_flow import _bootstrap_tenant, _login_and_verify
+
+    bootstrap = _bootstrap_tenant(client, platform_admin)
+    _login_and_verify(client, bootstrap["tenant"]["id"], "admin@horizon.com", "AdminPassw0rd!")
+
+    limiter.enabled = True
+    limiter.reset()
+    try:
+        responses = [client.get("/api/v1/auth/me") for _ in range(301)]
+    finally:
+        limiter.enabled = False
+        limiter.reset()
+
+    statuses = [r.status_code for r in responses]
+    assert statuses[:300] == [200] * 300
+    assert statuses[300] == 429
+
+
 def test_csv_import_is_rate_limited_after_ten_attempts_per_minute(
     client: TestClient, platform_admin: dict
 ) -> None:

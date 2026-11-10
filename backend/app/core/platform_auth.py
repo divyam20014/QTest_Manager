@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import UnauthorizedError
+from app.core.logging import logger
 from app.core.rate_limit import limiter
 from app.core.security import verify_password
 from app.models.identity import PlatformAdmin
@@ -59,6 +60,10 @@ def require_platform_admin(
         if locked_until.tzinfo is None:
             locked_until = locked_until.replace(tzinfo=UTC)
         if locked_until > now:
+            logger.warning(
+                "security_event=platform_admin_login_blocked reason=locked email=%s",
+                credentials.username,
+            )
             raise UnauthorizedError("Account temporarily locked due to repeated failed logins")
 
     if admin is None or not verify_password(credentials.password, admin.password_hash):
@@ -68,7 +73,13 @@ def require_platform_admin(
                 admin.locked_until = datetime.now(UTC) + timedelta(
                     minutes=settings.platform_admin_lockout_minutes
                 )
+                logger.warning(
+                    "security_event=platform_admin_locked_out email=%s", credentials.username
+                )
             db.commit()
+        logger.warning(
+            "security_event=platform_admin_login_failed email=%s", credentials.username
+        )
         raise UnauthorizedError("Invalid platform admin credentials")
 
     if admin.failed_login_count or admin.locked_until:

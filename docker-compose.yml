@@ -99,6 +99,33 @@ services:
     # invisible to the api container that later serves its download.
     volumes:
       - qtesthub_attachments:/data/attachments
+    # Deployment-hardening pass: `worker` otherwise inherits the api image's
+    # Dockerfile HEALTHCHECK (an HTTP GET against /api/v1/ready), but this
+    # container never serves HTTP -- that probe always failed, which is why
+    # this service has shown Docker-level "unhealthy" since Tier 1 despite
+    # processing jobs correctly. Checked for the polling loop's own process
+    # instead.
+    healthcheck:
+      # No `pgrep`/procps in the python:3.12-slim base image -- this checks
+      # /proc directly instead of adding an OS package just for this.
+      test:
+        - CMD-SHELL
+        - |
+          python -c "
+          import glob, sys
+          from contextlib import suppress
+          found = False
+          for f in glob.glob('/proc/[0-9]*/cmdline'):
+              with suppress(OSError):
+                  if b'app.worker' in open(f, 'rb').read():
+                      found = True
+                      break
+          sys.exit(0 if found else 1)
+          "
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   qtesthub_pgdata:

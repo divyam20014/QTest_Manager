@@ -10,6 +10,7 @@ from app.core.auth import _enforce_ip_allowlist
 from app.core.config import get_settings
 from app.core.db import set_tenant_context
 from app.core.errors import ForbiddenError, UnauthorizedError
+from app.core.logging import logger
 from app.core.mfa import generate_otp_code, send_mfa_code
 from app.core.security import hash_password, verify_password
 from app.models.identity import MfaChallenge, User
@@ -57,6 +58,9 @@ def start_login(
     ).scalar_one_or_none()
 
     if user is None or not verify_password(password, user.password_hash):
+        logger.warning(
+            "security_event=login_failed tenant_id=%s email=%s", tenant_id, email
+        )
         raise UnauthorizedError(_GENERIC_LOGIN_ERROR)
 
     _require_approved_tenant(db, tenant_id)
@@ -135,32 +139,52 @@ def verify_mfa(db: Session, session_id: UUID, code: str) -> SessionModel:
     if challenge.attempt_count >= MAX_MFA_ATTEMPTS:
         session_row.revoked_at = datetime.now(UTC)
         db.commit()
+        logger.warning(
+            "security_event=mfa_locked_out user_id=%s", session_row.user_id
+        )
         raise UnauthorizedError("Too many attempts; please log in again")
 
     if not verify_password(code, challenge.code_hash):
         challenge.attempt_count += 1
         if challenge.attempt_count >= MAX_MFA_ATTEMPTS:
             session_row.revoked_at = datetime.now(UTC)
+            logger.warning(
+                "security_event=mfa_locked_out user_id=%s", session_row.user_id
+            )
         db.commit()
         raise UnauthorizedError("Incorrect verification code")
 
     challenge.verified_at = datetime.now(UTC)
-    session_row.mfa_verified = True
-    session_row.last_seen_at = datetime.now(UTC)
-    session_row.expires_at = datetime.now(UTC) + timedelta(
-        hours=settings.session_absolute_ttl_hours
+
+    # Deployment-hardening pass: rotate the session identifier on MFA
+    # completion rather than flipping `mfa_verified` on the same row. The
+    # pre-MFA cookie value is sent over the wire (and briefly held in the
+    # browser) before full authentication is established; minting a fresh
+    # session row here means that earlier, lower-trust identifier can never
+    # be replayed to reach an authenticated state -- standard
+    # session-fixation mitigation (rotate the ID after a privilege change),
+    # not just an in-place flag flip.
+    now = datetime.now(UTC)
+    new_session = SessionModel(
+        tenant_id=session_row.tenant_id,
+        user_id=session_row.user_id,
+        expires_at=now + timedelta(hours=settings.session_absolute_ttl_hours),
+        last_seen_at=now,
+        mfa_verified=True,
     )
+    db.add(new_session)
+    session_row.revoked_at = now
 
     record_audit_event(
         db,
-        tenant_id=session_row.tenant_id,
-        user_id=session_row.user_id,
+        tenant_id=new_session.tenant_id,
+        user_id=new_session.user_id,
         action="auth.mfa_verified",
         entity_type="user",
-        entity_id=session_row.user_id,
+        entity_id=new_session.user_id,
     )
     db.commit()
-    return session_row
+    return new_session
 
 
 def logout(db: Session, session_id: UUID) -> None:

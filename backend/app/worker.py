@@ -17,7 +17,7 @@ settings = get_settings()
 
 
 def run_forever() -> None:
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, service_name="qtesthub-worker")
     logger.info("QTestHub background worker starting up")
     while True:
         db = SessionLocal()

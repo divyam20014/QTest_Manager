@@ -38,7 +38,7 @@ from app.api import (
 from app.api import (
     settings as settings_api,
 )
-from app.core.config import get_settings
+from app.core.config import get_settings, validate_for_production
 from app.core.db import engine
 from app.core.errors import AppError
 from app.core.logging import configure_logging, logger, request_id_var
@@ -46,7 +46,11 @@ from app.core.rate_limit import limiter
 from app.core.responses import envelope
 
 settings = get_settings()
-configure_logging(settings.log_level)
+# Deployment-hardening pass: fail loudly at import time (before the app
+# object or anything else is built) rather than let an insecure production
+# deployment serve even a single request.
+validate_for_production(settings)
+configure_logging(settings.log_level, service_name="qtesthub-api")
 
 # Tier 0 / ADR-052: optional error monitoring. A no-op when SENTRY_DSN is
 # unset (dev/test), matching the fail-quiet-when-unconfigured convention
@@ -122,6 +126,9 @@ def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
 
 @app.exception_handler(RateLimitExceeded)
 def handle_rate_limit(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    logger.warning(
+        "security_event=rate_limited path=%s client=%s", request.url.path, request.client
+    )
     return JSONResponse(
         status_code=429,
         content={
