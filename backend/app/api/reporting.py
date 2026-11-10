@@ -87,6 +87,31 @@ def execution_trend(
     return envelope(report.model_dump(mode="json"))
 
 
+@router.get("/reports/defect-trend")
+def defect_trend(
+    days: int = Query(default=30, ge=1, le=180),
+    project_id: UUID | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_defect_trend(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, days, project_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/defect-aging")
+def defect_aging(
+    project_id: UUID | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    summary = reporting_service.get_defect_aging_summary(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(summary.model_dump(mode="json"))
+
+
 @router.get("/reports/compliance-detail")
 def compliance_detail(
     period_from: datetime | None = Query(default=None),

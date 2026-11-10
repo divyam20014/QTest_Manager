@@ -24,6 +24,7 @@ from app.schemas.defect import (
     ExecutionEvidenceOut,
     LinkableType,
     LinkType,
+    RootCause,
     Severity,
     Verdict,
 )
@@ -31,6 +32,28 @@ from app.services.project_service import is_assigned
 
 # ADR-026: strictly sequential, no skipping, no reopening.
 STATUS_ORDER: list[DefectStatus] = ["New", "Open", "Fixed", "Verified", "Closed"]
+
+# Phase 6 (PV-6.2): fixed SLA budget in days per severity, not tenant-
+# configurable (Phase 22 is where tenant-configurable taxonomies/thresholds
+# belong -- this is a simple, additive default, not a full SLA engine).
+SLA_DAYS_BY_SEVERITY: dict[str, int] = {
+    "Critical": 2,
+    "High": 5,
+    "Medium": 10,
+    "Low": 20,
+}
+
+
+def compute_aging(defect: Defect) -> tuple[int, bool]:
+    """Returns (age_days, sla_breached). age_days measures the full
+    lifecycle to date: time-to-close for a closed defect, time-still-open
+    for an open one. sla_breached flags either case where that duration
+    exceeds the severity's budget -- a currently-overdue open defect, or a
+    closed one that took longer than budget to resolve."""
+    end = defect.closed_at if defect.closed_at is not None else datetime.now(UTC)
+    age_days = (end - defect.created_at).days
+    threshold = SLA_DAYS_BY_SEVERITY.get(defect.severity, 10)
+    return age_days, age_days > threshold
 
 
 def _get_project_or_404(db: Session, tenant_id: UUID, project_id: UUID) -> Project:
@@ -285,6 +308,36 @@ def update_status(
     return defect
 
 
+def update_root_cause(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    defect_id: UUID,
+    root_cause: str | None,
+) -> Defect:
+    """Classification metadata, not a workflow transition -- same
+    project-access check as add_link/update_status, no extra role gate."""
+    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    project = _get_project_or_404(db, tenant_id, defect.project_id)
+    _require_project_access(db, project, role_code, actor_user_id)
+
+    previous = defect.root_cause
+    defect.root_cause = root_cause
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="defect.root_cause_set",
+        entity_type="defect",
+        entity_id=defect.id,
+        metadata={"from": previous, "to": root_cause},
+    )
+    db.commit()
+    return defect
+
+
 def add_link(
     db: Session,
     tenant_id: UUID,
@@ -450,6 +503,7 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
     test_run_case_id = evidence.test_run_case_id if evidence is not None else None
 
     links = db.execute(select(DefectLink).where(DefectLink.defect_id == defect.id)).scalars()
+    age_days, sla_breached = compute_aging(defect)
 
     return DefectOut(
         id=defect.id,
@@ -471,10 +525,13 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         actual_result=defect.actual_result,
         expected_result=defect.expected_result,
         environment=defect.environment,
+        root_cause=cast(RootCause, defect.root_cause) if defect.root_cause else None,
         reported_by=defect.reported_by,
         reported_by_name=reported_by_name,
         created_at=defect.created_at,
         closed_at=defect.closed_at,
+        age_days=age_days,
+        sla_breached=sla_breached,
         links=[
             DefectLinkOut(
                 id=link_.id,

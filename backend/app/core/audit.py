@@ -35,11 +35,18 @@ def record_audit_event(
         text("SELECT pg_advisory_xact_lock(hashtext(:tenant_id))"), {"tenant_id": str(tenant_id)}
     )
 
+    # Tiebreak on `id` as well as `created_at`: two events can land on the
+    # same timestamp (Python-computed before insert, not DB-generated), and
+    # without a secondary sort key Postgres's order for ties is undefined.
+    # `verify_chain` below walks rows in (created_at, id) order, so this
+    # query must agree with that ordering (reversed) or a tied pair can be
+    # chained in one order here and re-walked in the other order there,
+    # which looks like tamper/corruption even though nothing was tampered.
     prev_hash = (
         db.execute(
             select(AuditLog.record_hash)
             .where(AuditLog.tenant_id == tenant_id)
-            .order_by(AuditLog.created_at.desc())
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
         )
         .scalars()
         .first()

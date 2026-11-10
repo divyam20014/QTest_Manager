@@ -3,6 +3,14 @@ import { apiFetch } from '@/api/client'
 export type Severity = 'Low' | 'Medium' | 'High' | 'Critical'
 export type DefectStatus = 'New' | 'Open' | 'Fixed' | 'Verified' | 'Closed'
 export type Verdict = 'pass' | 'fail' | 'ignore'
+export type RootCause =
+  | 'requirements_gap'
+  | 'code_defect'
+  | 'design_flaw'
+  | 'test_data_issue'
+  | 'environment_issue'
+  | 'third_party_integration'
+  | 'other'
 
 export interface DefectLink {
   id: string
@@ -43,10 +51,13 @@ export interface Defect {
   actual_result: string | null
   expected_result: string | null
   environment: string | null
+  root_cause: RootCause | null
   reported_by: string
   reported_by_name: string | null
   created_at: string
   closed_at: string | null
+  age_days: number
+  sla_breached: boolean
   links: DefectLink[]
   execution_evidence: ExecutionEvidence | null
 }
@@ -123,4 +134,11 @@ export function updateDefectStatus(
 
 export function addDefectLink(id: string, req: DefectLinkCreateRequest): Promise<Defect> {
   return apiFetch<Defect>(`/defects/${id}/links`, { method: 'POST', body: JSON.stringify(req) })
+}
+
+export function updateDefectRootCause(id: string, rootCause: RootCause | null): Promise<Defect> {
+  return apiFetch<Defect>(`/defects/${id}/root-cause`, {
+    method: 'PATCH',
+    body: JSON.stringify({ root_cause: rootCause }),
+  })
 }

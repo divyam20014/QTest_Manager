@@ -13,6 +13,9 @@ os.environ["MIGRATION_DATABASE_URL"] = (
     f"postgresql+psycopg://qtesthub:qtesthub@localhost:5432/{TEST_DB_NAME}"
 )
 os.environ["MFA_DELIVERY_MODE"] = "simulated"
+# Fixed test-only Fernet key for AI Test Case Generator credential
+# encryption (ADR-045) -- never used outside this test run.
+os.environ["AI_CREDENTIAL_ENCRYPTION_KEY"] = "kEdknj1w6XzjMsv2T86nToujCkYjMqSYnr3CoPxuKAI="
 # Non-secure cookies so TestClient can read them over plain http.
 os.environ["ENVIRONMENT"] = "development"
 # The default /data/attachments only exists inside the Docker container;

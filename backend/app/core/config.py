@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     csv_import_max_bytes: int = 5 * 1024 * 1024
     csv_import_max_rows: int = 2000
 
+    # AI/SaaS vision roadmap Phase 3 (ADR-045): Fernet key used to encrypt
+    # tenant-supplied AI provider API keys at rest. Empty means "not
+    # configured" -- saving a key fails loudly rather than storing it
+    # unencrypted (same fail-loud convention as smtp_host).
+    ai_credential_encryption_key: str = ""
+    gemini_api_base_url: str = "https://generativelanguage.googleapis.com"
+    gemini_model: str = "gemini-2.0-flash"
+    ai_request_timeout_seconds: float = 30.0
+    ai_max_cases_per_request: int = 5
+
 
 @lru_cache
 def get_settings() -> Settings:

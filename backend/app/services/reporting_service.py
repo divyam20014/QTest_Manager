@@ -23,7 +23,11 @@ from app.schemas.reporting import (
     ComplianceReport,
     ComplianceTestCaseRow,
     DashboardSummary,
+    DefectAgingSeverityBucket,
+    DefectAgingSummary,
     DefectBacklogSummary,
+    DefectTrendPoint,
+    DefectTrendReport,
     DomainDistributionEntry,
     ExecutionTrendPoint,
     ExecutionTrendReport,
@@ -33,6 +37,7 @@ from app.schemas.reporting import (
     TestCaseSummary,
     TestRunSummary,
 )
+from app.services.defect_service import SLA_DAYS_BY_SEVERITY, compute_aging
 
 DOMAINS = ["Motor", "Health", "Travel", "Life", "Property"]
 
@@ -285,7 +290,7 @@ def get_aggregate_report(
             .where(Project.tenant_id == tenant_id)
         )
     elif metric in ("priority", "test_case_status"):
-        value_col = TestCase.priority if metric == "priority" else TestCase.status
+        value_col: Any = TestCase.priority if metric == "priority" else TestCase.status
         base = (
             select(
                 value_col.label("value"),
@@ -300,8 +305,16 @@ def get_aggregate_report(
             .join(Project, Project.id == TestCase.project_id)
             .where(Project.tenant_id == tenant_id)
         )
-    elif metric in ("defect_severity", "defect_status"):
-        value_col = Defect.severity if metric == "defect_severity" else Defect.status
+    elif metric in ("defect_severity", "defect_status", "defect_root_cause"):
+        if metric == "defect_severity":
+            value_col = Defect.severity
+        elif metric == "defect_status":
+            value_col = Defect.status
+        else:
+            # Uncategorized defects group together rather than vanishing
+            # from the report (root_cause is nullable -- set at any point
+            # during triage, not required at creation).
+            value_col = func.coalesce(Defect.root_cause, "uncategorized")
         base = (
             select(
                 value_col.label("value"),
@@ -451,6 +464,105 @@ def get_execution_trend(
         for day, counts in sorted(by_day.items())
     ]
     return ExecutionTrendReport(points=points)
+
+
+def get_defect_trend(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    days: int = 30,
+    project_id: UUID | None = None,
+) -> DefectTrendReport:
+    """Daily opened-vs-closed defect counts over the trailing `days` days
+    (PV-6.5) -- distinct from get_domain_distribution's current-snapshot
+    open-count, this is a time series of the defect *flow*, mirroring
+    get_execution_trend's shape for the analogous metric."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+
+    opened_query = (
+        select(func.date(Defect.created_at).label("day"), func.count())
+        .select_from(Defect)
+        .join(Project, Project.id == Defect.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            Defect.created_at >= func.now() - func.make_interval(0, 0, 0, days),
+        )
+    )
+    closed_query = (
+        select(func.date(Defect.closed_at).label("day"), func.count())
+        .select_from(Defect)
+        .join(Project, Project.id == Defect.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            Defect.closed_at.is_not(None),
+            Defect.closed_at >= func.now() - func.make_interval(0, 0, 0, days),
+        )
+    )
+    if accessible is not None:
+        opened_query = opened_query.where(Project.id.in_(accessible))
+        closed_query = closed_query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        opened_query = opened_query.where(Project.id == project_id)
+        closed_query = closed_query.where(Project.id == project_id)
+
+    by_day: dict[str, dict[str, int]] = {}
+    for day, count in db.execute(opened_query.group_by("day")).all():
+        by_day.setdefault(day.isoformat(), {"opened": 0, "closed": 0})["opened"] = count
+    for day, count in db.execute(closed_query.group_by("day")).all():
+        by_day.setdefault(day.isoformat(), {"opened": 0, "closed": 0})["closed"] = count
+
+    points = [
+        DefectTrendPoint(date=day, opened_count=counts["opened"], closed_count=counts["closed"])
+        for day, counts in sorted(by_day.items())
+    ]
+    return DefectTrendReport(points=points)
+
+
+def get_defect_aging_summary(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None = None,
+) -> DefectAgingSummary:
+    """Currently-open defects bucketed by severity, each flagged against
+    its severity's SLA budget (PV-6.2) via the same compute_aging used on
+    every DefectOut -- this just aggregates it instead of showing it
+    per-defect."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+
+    query = (
+        select(Defect)
+        .join(Project, Project.id == Defect.project_id)
+        .where(Project.tenant_id == tenant_id, Defect.status != "Closed")
+    )
+    if accessible is not None:
+        query = query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        query = query.where(Project.id == project_id)
+
+    open_defects = db.execute(query).scalars().all()
+
+    counts: dict[str, dict[str, int]] = {
+        sev: {"open": 0, "breached": 0} for sev in SLA_DAYS_BY_SEVERITY
+    }
+    for defect in open_defects:
+        bucket = counts.setdefault(defect.severity, {"open": 0, "breached": 0})
+        bucket["open"] += 1
+        _, breached = compute_aging(defect)
+        if breached:
+            bucket["breached"] += 1
+
+    buckets = [
+        DefectAgingSeverityBucket(severity=sev, open_count=c["open"], breached_count=c["breached"])
+        for sev, c in counts.items()
+    ]
+    return DefectAgingSummary(
+        buckets=buckets,
+        total_open=sum(c["open"] for c in counts.values()),
+        total_breached=sum(c["breached"] for c in counts.values()),
+    )
 
 
 def get_compliance_report(

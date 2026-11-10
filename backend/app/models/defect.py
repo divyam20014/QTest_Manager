@@ -19,6 +19,12 @@ class Defect(Base, TenantScopedMixin):
         CheckConstraint(
             "status in ('New','Open','Fixed','Verified','Closed')", name="ck_defects_status"
         ),
+        CheckConstraint(
+            "root_cause is null or root_cause in ("
+            "'requirements_gap','code_defect','design_flaw','test_data_issue',"
+            "'environment_issue','third_party_integration','other')",
+            name="ck_defects_root_cause",
+        ),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -43,6 +49,9 @@ class Defect(Base, TenantScopedMixin):
     actual_result: Mapped[str | None] = mapped_column(String, nullable=True)
     expected_result: Mapped[str | None] = mapped_column(String, nullable=True)
     environment: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Phase 6 (AI/SaaS vision roadmap, PV-6.4): a simple fixed taxonomy,
+    # settable any time during triage, not required at creation.
+    root_cause: Mapped[str | None] = mapped_column(String, nullable=True)
     reported_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )

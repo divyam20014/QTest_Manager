@@ -4,18 +4,27 @@ import { Bug, Building2, ChevronRight, FileStack, ListChecks, PlayCircle } from 
 import { Link, useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
-import { getDefect, getDefectHistory, updateDefectStatus, type DefectStatus } from '@/api/defects'
+import {
+  getDefect,
+  getDefectHistory,
+  updateDefectRootCause,
+  updateDefectStatus,
+  type DefectStatus,
+  type RootCause,
+} from '@/api/defects'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
-import { SEVERITY_TONE, STATUS_ORDER, STATUS_TONE } from './statusDisplay'
+import { ROOT_CAUSE_LABEL, ROOT_CAUSES, SEVERITY_TONE, STATUS_ORDER, STATUS_TONE } from './statusDisplay'
 
 const HISTORY_ACTION_LABEL: Record<string, string> = {
   'defect.created': 'Defect created',
   'defect.status_changed': 'Status changed',
   'defect.link_added': 'Link added',
+  'defect.root_cause_set': 'Root cause set',
 }
 
 export function DefectDetail() {
@@ -39,6 +48,14 @@ export function DefectDetail() {
     mutationFn: (status: DefectStatus) => updateDefectStatus(defectId!, status, verificationConfirmed),
     onSuccess: () => {
       setVerificationConfirmed(false)
+      queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
+      queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+    },
+  })
+
+  const rootCauseMutation = useMutation({
+    mutationFn: (rootCause: RootCause | null) => updateDefectRootCause(defectId!, rootCause),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
     },
@@ -71,6 +88,7 @@ export function DefectDetail() {
           <h1 className="text-lg font-semibold">{defect.title}</h1>
           <Badge tone={SEVERITY_TONE[defect.severity]}>{defect.severity}</Badge>
           <Badge tone={STATUS_TONE[defect.status]}>{defect.status}</Badge>
+          {defect.sla_breached && <Badge tone="critical">SLA Breached · {defect.age_days}d</Badge>}
         </div>
       </div>
 
@@ -124,6 +142,27 @@ export function DefectDetail() {
               <div>
                 <dt className="text-xs text-[var(--muted-foreground)]">Reported By</dt>
                 <dd>{defect.reported_by_name ?? 'Unknown'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">Root Cause</dt>
+                <dd>
+                  <Select
+                    aria-label="Root cause"
+                    value={defect.root_cause ?? ''}
+                    disabled={rootCauseMutation.isPending}
+                    onChange={(e) =>
+                      rootCauseMutation.mutate((e.target.value || null) as RootCause | null)
+                    }
+                    className="w-56"
+                  >
+                    <option value="">Uncategorized</option>
+                    {ROOT_CAUSES.map((rc) => (
+                      <option key={rc} value={rc}>
+                        {ROOT_CAUSE_LABEL[rc]}
+                      </option>
+                    ))}
+                  </Select>
+                </dd>
               </div>
             </dl>
           </CardContent>
@@ -224,6 +263,8 @@ export function DefectDetail() {
                       typeof entry.event_metadata.from === 'string' &&
                       typeof entry.event_metadata.to === 'string' &&
                       ` (${entry.event_metadata.from} → ${entry.event_metadata.to})`}
+                    {entry.action === 'defect.root_cause_set' &&
+                      ` (${entry.event_metadata.from ?? 'none'} → ${entry.event_metadata.to ?? 'none'})`}
                   </p>
                 </li>
               ))}

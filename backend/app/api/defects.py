@@ -11,6 +11,7 @@ from app.core.responses import envelope
 from app.schemas.defect import (
     DefectCreateRequest,
     DefectLinkCreateRequest,
+    DefectRootCauseUpdateRequest,
     DefectStatusUpdateRequest,
 )
 from app.services import defect_service
@@ -109,6 +110,19 @@ def update_status(
         defect_id,
         req.status,
         req.verification_confirmed,
+    )
+    return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+
+
+@router.patch("/{defect_id}/root-cause")
+def update_root_cause(
+    defect_id: UUID,
+    req: DefectRootCauseUpdateRequest,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    defect = defect_service.update_root_cause(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id, req.root_cause
     )
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
 

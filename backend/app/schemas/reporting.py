@@ -5,7 +5,12 @@ from uuid import UUID
 from pydantic import BaseModel
 
 Metric = Literal[
-    "run_status", "priority", "test_case_status", "defect_severity", "defect_status"
+    "run_status",
+    "priority",
+    "test_case_status",
+    "defect_severity",
+    "defect_status",
+    "defect_root_cause",
 ]
 GroupBy = Literal["project", "domain", "assignee"]
 
@@ -78,6 +83,28 @@ class ExecutionTrendPoint(BaseModel):
 
 class ExecutionTrendReport(BaseModel):
     points: list[ExecutionTrendPoint]
+
+
+class DefectTrendPoint(BaseModel):
+    date: str
+    opened_count: int
+    closed_count: int
+
+
+class DefectTrendReport(BaseModel):
+    points: list[DefectTrendPoint]
+
+
+class DefectAgingSeverityBucket(BaseModel):
+    severity: str
+    open_count: int
+    breached_count: int
+
+
+class DefectAgingSummary(BaseModel):
+    buckets: list[DefectAgingSeverityBucket]
+    total_open: int
+    total_breached: int
 
 
 class ComplianceTestCaseRow(BaseModel):

@@ -7,6 +7,7 @@ import { Link, useLocation } from 'react-router-dom'
 // breadcrumb trail.
 const SEGMENT_LABELS: Record<string, string> = {
   projects: 'Projects',
+  requirements: 'Requirements',
   'test-cases': 'Test Case',
   'test-repository': 'Test Repository',
   'test-runs': 'Test Runs',

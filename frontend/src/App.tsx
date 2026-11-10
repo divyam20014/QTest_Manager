@@ -17,6 +17,8 @@ import { Settings } from '@/routes/admin/Settings'
 import { UsersRoles } from '@/routes/admin/UsersRoles'
 import { ProjectDetail } from '@/routes/projects/ProjectDetail'
 import { ProjectsList } from '@/routes/projects/ProjectsList'
+import { RequirementDetail } from '@/routes/requirements/RequirementDetail'
+import { RequirementsList } from '@/routes/requirements/RequirementsList'
 import { MyAccount } from '@/routes/MyAccount'
 import { CompliancePrintView } from '@/routes/reporting/CompliancePrintView'
 import { Reporting } from '@/routes/reporting/Reporting'
@@ -35,6 +37,8 @@ export function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/projects" element={<ProjectsList />} />
           <Route path="/projects/:projectId" element={<ProjectDetail />} />
+          <Route path="/projects/:projectId/requirements" element={<RequirementsList />} />
+          <Route path="/requirements/:requirementId" element={<RequirementDetail />} />
           <Route path="/projects/:projectId/test-cases" element={<TestCasesList />} />
           <Route path="/test-cases/:testCaseId" element={<TestCaseDetail />} />
           <Route path="/projects/:projectId/test-runs" element={<TestRunsList />} />

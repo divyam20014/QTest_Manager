@@ -97,6 +97,9 @@ export function ProjectDetail() {
           <Badge tone={PRIORITY_TONE[project.priority]}>{project.priority}</Badge>
         </div>
         <div className="flex gap-2">
+          <Link to={`/projects/${project.id}/requirements`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            Requirements
+          </Link>
           <Link to={`/projects/${project.id}/test-cases`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Test Cases
           </Link>

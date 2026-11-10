@@ -1,3 +1,4 @@
+from app.models.ai_usage import AIUsageLog
 from app.models.audit import AuditLog
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
@@ -12,6 +13,7 @@ from app.models.identity import (
     User,
 )
 from app.models.project import Project, ProjectMember
+from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
 from app.models.tenant import Tenant
 from app.models.test_case import (
     Attachment,
@@ -42,4 +44,8 @@ __all__ = [
     "DefectLink",
     "AuditLog",
     "IdempotencyKey",
+    "Requirement",
+    "RequirementVersion",
+    "RequirementTestCaseLink",
+    "AIUsageLog",
 ]

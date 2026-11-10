@@ -52,6 +52,26 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | POST | /projects/{id}/members | assign user | admin, manager |
 | DELETE | /projects/{id}/members/{userId} | unassign | admin, manager |
 
+## Requirements Management (AI/SaaS vision roadmap Phase 2, ADR-044, GAP-71)
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| GET | /projects/{id}/requirements | list, paginated | assigned/all per role |
+| POST | /projects/{id}/requirements | create (version 1) | admin, manager (`requirement.manage`) |
+| GET | /projects/{id}/requirements/coverage | RTM/coverage report: total/covered requirement counts + percentage | assigned/all per role |
+| GET | /requirements/{id} | detail incl. linked test cases | assigned/all per role |
+| GET | /requirements/{id}/versions | immutable version history, newest first | assigned/all per role |
+| PATCH | /requirements/{id} | edit; always forks a new version (no draft/approved workflow) | admin, manager (`requirement.manage`) |
+| DELETE | /requirements/{id} | delete (cascades its test-case links) | admin, manager (`requirement.manage`) |
+| POST | /requirements/{id}/test-cases | link a test case (must belong to the same project, 409 otherwise) | admin, manager (`requirement.manage`) |
+| DELETE | /requirements/{id}/test-cases/{testCaseId} | unlink | admin, manager (`requirement.manage`) |
+
+## AI Test Case Generator & Reviewer (AI/SaaS vision roadmap Phase 3/4, ADR-045/ADR-046, GAP-72)
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| POST | /requirements/{id}/generate-test-cases | generate up to `max_cases` (1-5, default 3) draft test cases from a requirement via the tenant's configured AI provider; auto-linked to the requirement; 409 if AI isn't enabled/configured for the tenant | same as manual test-case creation (all, assigned) |
+| POST | /test-cases/{id}/ai-review | review an existing test case's clarity/missing-steps/ambiguous-expected-results; returns suggestions only, never mutates the test case; 409 if AI isn't enabled/configured | same as viewing the test case (all, assigned) |
+| GET | /ai/usage | per-tenant token-usage summary (requests, successful requests, prompt/completion/total tokens) across both generation and review | admin (`tenant.settings.manage`) |
+
 ## Test Case Management & Versioning (FR-TC)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
@@ -103,6 +123,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /defects/{id} | detail incl. links, execution evidence, test case version + traceability chain (ADR-037) | all (scoped) |
 | GET | /defects/{id}/history | status-change/creation history from audit_logs (ADR-037) | all (scoped) |
 | PATCH | /defects/{id}/status | state machine transition; Closed requires `verification_confirmed: true` (ADR-037) | role-gated (tester cannot close) |
+| PATCH | /defects/{id}/root-cause | set/clear a fixed-taxonomy root cause classification, audit-logged (`defect.root_cause_set`) (Phase 6, ADR-048, GAP-77) | all (same access as other defect mutations) |
 | POST | /defects/{id}/links | add defect_link (incl. link-to-existing from a failed step, ADR-037) | all |
 
 ## Reporting & Dashboard (FR-REP, FR-DASH)
@@ -111,8 +132,10 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /dashboard/summary | KPI cards incl. active projects, approved test case count, critical defect count (ADR-038) | all (scoped) |
 | GET | /dashboard/domain-distribution | FR-DASH-002 chart data, now incl. per-domain pass percentage (ADR-038) | all (scoped) |
 | GET | /dashboard/activity-stream | last 10 actions | all (scoped) |
-| GET | /reports/aggregate | multi-axis pivot (metric, groupBy); metric now incl. `test_case_status`; accepts `project_id`/`domain`/`assignee_id`/`date_from`/`date_to`/`priority`/`status` filters (ADR-038) | all (scoped; restricted for tester) |
+| GET | /reports/aggregate | multi-axis pivot (metric, groupBy); metric now incl. `test_case_status`, `defect_root_cause` (Phase 6, ADR-048); accepts `project_id`/`domain`/`assignee_id`/`date_from`/`date_to`/`priority`/`status` filters (ADR-038) | all (scoped; restricted for tester) |
 | GET | /reports/execution-trend | daily pass/fail/ignore step-verdict counts over a trailing window (`days`, default 30), optional `project_id` (ADR-038) | all (scoped) |
+| GET | /reports/defect-trend | daily opened-vs-closed defect counts over a trailing window (`days`, default 30), optional `project_id` (Phase 6, ADR-048, GAP-77) | all (scoped) |
+| GET | /reports/defect-aging | per-severity open-defect count + SLA-breach count, optional `project_id` (Phase 6, ADR-048, GAP-77) | all (scoped) |
 | GET | /reports/compliance-detail | structured JSON compliance report (summary + per-project detailed test case/defect tables), optional `period_from`/`period_to` — backs the browser print/PDF view (ADR-038) | manager, admin |
 | GET | /reports/compliance-export | CSV compliance summary, now incl. a Reporting Period header row and per-project detailed test case/defect tables, optional `period_from`/`period_to` (ADR-038) | manager, admin |
 
@@ -122,5 +145,5 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /audit-logs | filterable (action, entity_type, entity_id, user_id, date_from, date_to), paginated (max 200/page), full record incl. metadata/prev_hash (ADR-029, ADR-039), read-only | admin (`audit.view`) |
 | GET | /audit-logs/export | CSV export of the full (unpaginated, capped at 50k rows) filtered audit trail — same filters as the list endpoint (ADR-039) | admin (`audit.view`) |
 | GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side; returns valid/checked_count/broken_at_id (ADR-029) | admin (`audit.view`) |
-| GET | /settings | tenant config (currency, timezone, MFA mode) | admin |
-| PATCH | /settings | update tenant config | admin |
+| GET | /settings | tenant self-service settings (`default_currency_code`, `default_timezone`, `ai_enabled`, `ai_provider`, `ai_api_key_configured`) (AI/SaaS roadmap Phase 1/3, ADR-043/ADR-045, GAP-80/GAP-72) | admin (`tenant.settings.manage`) |
+| PATCH | /settings | update tenant settings; partial updates supported, audit-logged (`tenant.settings_updated`); `ai_api_key` is write-only (never returned), `""` clears it; enabling AI requires a key already configured | admin (`tenant.settings.manage`) |

@@ -18,6 +18,8 @@ import {
 
 import {
   fetchAggregateReport,
+  fetchDefectAgingSummary,
+  fetchDefectTrend,
   fetchDomainDistribution,
   fetchExecutionTrend,
   complianceExportUrl,
@@ -39,6 +41,7 @@ const METRICS: { value: Metric; label: string }[] = [
   { value: 'test_case_status', label: 'Test Case Status' },
   { value: 'defect_severity', label: 'Defect Severity' },
   { value: 'defect_status', label: 'Defect Status' },
+  { value: 'defect_root_cause', label: 'Defect Root Cause' },
 ]
 
 const GROUP_BYS: { value: GroupBy; label: string }[] = [
@@ -61,6 +64,7 @@ const ASSIGNEE_HINTS: Record<Metric, string> = {
   test_case_status: "Groups by the test case's assigned owner.",
   defect_severity: 'Groups by the defect’s assignee.',
   defect_status: 'Groups by the defect’s assignee.',
+  defect_root_cause: 'Groups by the defect’s assignee.',
 }
 
 export function Reporting() {
@@ -83,6 +87,14 @@ export function Reporting() {
   const trendQuery = useQuery({
     queryKey: ['reports', 'execution-trend', projectId],
     queryFn: () => fetchExecutionTrend(30, projectId || undefined),
+  })
+  const defectTrendQuery = useQuery({
+    queryKey: ['reports', 'defect-trend', projectId],
+    queryFn: () => fetchDefectTrend(30, projectId || undefined),
+  })
+  const defectAgingQuery = useQuery({
+    queryKey: ['reports', 'defect-aging', projectId],
+    queryFn: () => fetchDefectAgingSummary(projectId || undefined),
   })
   const filters = useMemo(
     () => ({
@@ -305,6 +317,86 @@ export function Reporting() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Defect Trend (last 30 days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(defectTrendQuery.data?.points.length ?? 0) === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No defect activity in this period yet.</p>
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={defectTrendQuery.data?.points ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: isDark ? '#1a1a19' : '#fcfcfb',
+                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="opened_count" name="Opened" stroke={categoricalColor(7, isDark)} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="closed_count" name="Closed" stroke={categoricalColor(2, isDark)} strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Defect Aging &amp; SLA</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!defectAgingQuery.data || defectAgingQuery.data.total_open === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No open defects right now.</p>
+          ) : (
+            <>
+              <p className="mb-3 text-sm">
+                {defectAgingQuery.data.total_open} open ·{' '}
+                <span className={defectAgingQuery.data.total_breached > 0 ? 'text-[var(--destructive)]' : ''}>
+                  {defectAgingQuery.data.total_breached} breaching SLA
+                </span>
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {defectAgingQuery.data.buckets
+                  .filter((b) => b.open_count > 0)
+                  .map((b) => (
+                    <div key={b.severity} className="rounded-md border border-[var(--border)] p-3 text-sm">
+                      <p className="font-medium">{b.severity}</p>
+                      <p className="text-xs text-[var(--muted-foreground)]">
+                        {b.open_count} open ·{' '}
+                        {b.breached_count > 0 ? (
+                          <span className="text-[var(--destructive)]">{b.breached_count} breached</span>
+                        ) : (
+                          '0 breached'
+                        )}
+                      </p>
+                    </div>
+                  ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

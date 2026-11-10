@@ -146,6 +146,7 @@ export function DefectsList() {
               <th className="px-4 py-2 font-medium">Project</th>
               <th className="px-4 py-2 font-medium">Severity</th>
               <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">SLA</th>
               <th className="px-4 py-2 font-medium">Reported By</th>
               <th className="px-4 py-2 font-medium">Reported</th>
             </tr>
@@ -153,7 +154,7 @@ export function DefectsList() {
           <tbody>
             {defectsQuery.data?.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                <td colSpan={7} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
                   No defects found.
                 </td>
               </tr>
@@ -174,6 +175,13 @@ export function DefectsList() {
                 </td>
                 <td className="px-4 py-2">
                   <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>
+                </td>
+                <td className="px-4 py-2">
+                  {d.sla_breached ? (
+                    <Badge tone="critical">Breached</Badge>
+                  ) : (
+                    <span className="text-xs text-[var(--muted-foreground)]">{d.age_days}d</span>
+                  )}
                 </td>
                 <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">{d.reported_by_name ?? 'Unknown'}</td>
                 <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">

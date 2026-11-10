@@ -9,6 +9,7 @@ import {
   listAttachments,
   uploadAttachment,
 } from '@/api/attachments'
+import { reviewTestCase } from '@/api/ai'
 import { ApiError } from '@/api/client'
 import { listDefects } from '@/api/defects'
 import { STATUS_TONE } from '@/routes/defects/statusDisplay'
@@ -41,6 +42,7 @@ export function TestCaseDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const caseQuery = useQuery({
@@ -128,6 +130,9 @@ export function TestCaseDetail() {
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           Edit
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)}>
+          Review with AI
+        </Button>
         {testCase.status === 'draft' && (
           <Button size="sm" onClick={() => runAction.mutate('submit')} disabled={runAction.isPending}>
             Submit for Review
@@ -198,7 +203,80 @@ export function TestCaseDetail() {
           onSubmit={(values) => updateMutation.mutate(values)}
         />
       </Dialog>
+      <ReviewWithAIDialog
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        testCaseId={testCase.id}
+      />
     </div>
+  )
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  clarity: 'Clarity',
+  missing_steps: 'Missing Steps',
+  ambiguous_expected: 'Ambiguous Expected Result',
+  other: 'Other',
+}
+
+function ReviewWithAIDialog({
+  open,
+  onClose,
+  testCaseId,
+}: {
+  open: boolean
+  onClose: () => void
+  testCaseId: string
+}) {
+  const reviewMutation = useMutation({ mutationFn: () => reviewTestCase(testCaseId) })
+
+  const serverError =
+    reviewMutation.error instanceof ApiError ? reviewMutation.error.message : null
+  const result = reviewMutation.data
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {
+        reviewMutation.reset()
+        onClose()
+      }}
+      title="Review Test Case with AI"
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Checks this test case's title, description, and steps for clarity, missing steps, and
+          ambiguous expected results. This only surfaces suggestions — nothing here is applied to
+          the test case automatically; you decide what to change.
+        </p>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        {result && (
+          <div className="flex flex-col gap-2">
+            {result.suggestions.length === 0 ? (
+              <p className="text-xs text-[var(--status-good)]">No issues found.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {result.suggestions.map((s, i) => (
+                  <li key={i} className="rounded-md border border-[var(--border)] p-2 text-xs">
+                    <Badge tone="neutral">{CATEGORY_LABEL[s.category] ?? s.category}</Badge>
+                    <p className="mt-1">{s.message}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-[var(--muted-foreground)]">{result.total_tokens} tokens used.</p>
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button size="sm" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate()}>
+            {reviewMutation.isPending ? 'Reviewing…' : 'Review'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
 

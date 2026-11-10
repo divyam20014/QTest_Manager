@@ -6,6 +6,7 @@ export type Metric =
   | 'test_case_status'
   | 'defect_severity'
   | 'defect_status'
+  | 'defect_root_cause'
 export type GroupBy = 'project' | 'domain' | 'assignee'
 
 export interface AggregateRow {
@@ -64,6 +65,28 @@ export interface ExecutionTrendPoint {
 
 export interface ExecutionTrendReport {
   points: ExecutionTrendPoint[]
+}
+
+export interface DefectTrendPoint {
+  date: string
+  opened_count: number
+  closed_count: number
+}
+
+export interface DefectTrendReport {
+  points: DefectTrendPoint[]
+}
+
+export interface DefectAgingSeverityBucket {
+  severity: string
+  open_count: number
+  breached_count: number
+}
+
+export interface DefectAgingSummary {
+  buckets: DefectAgingSeverityBucket[]
+  total_open: number
+  total_breached: number
 }
 
 export interface ComplianceTestCaseRow {
@@ -153,6 +176,22 @@ export function fetchExecutionTrend(
   const params = new URLSearchParams({ days: String(days) })
   if (projectId) params.set('project_id', projectId)
   return apiFetch<ExecutionTrendReport>(`/reports/execution-trend?${params.toString()}`)
+}
+
+export function fetchDefectTrend(
+  days = 30,
+  projectId?: string
+): Promise<DefectTrendReport> {
+  const params = new URLSearchParams({ days: String(days) })
+  if (projectId) params.set('project_id', projectId)
+  return apiFetch<DefectTrendReport>(`/reports/defect-trend?${params.toString()}`)
+}
+
+export function fetchDefectAgingSummary(projectId?: string): Promise<DefectAgingSummary> {
+  const params = new URLSearchParams()
+  if (projectId) params.set('project_id', projectId)
+  const query = params.toString()
+  return apiFetch<DefectAgingSummary>(`/reports/defect-aging${query ? `?${query}` : ''}`)
 }
 
 export function fetchComplianceDetail(period: CompliancePeriod = {}): Promise<ComplianceReport> {

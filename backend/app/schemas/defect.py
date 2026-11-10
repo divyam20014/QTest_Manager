@@ -9,6 +9,15 @@ DefectStatus = Literal["New", "Open", "Fixed", "Verified", "Closed"]
 LinkableType = Literal["execution_step", "test_case", "defect"]
 LinkType = Literal["relates_to", "duplicate_of", "caused_by"]
 Verdict = Literal["pass", "fail", "ignore"]
+RootCause = Literal[
+    "requirements_gap",
+    "code_defect",
+    "design_flaw",
+    "test_data_issue",
+    "environment_issue",
+    "third_party_integration",
+    "other",
+]
 
 
 class DefectCreateRequest(BaseModel):
@@ -43,6 +52,11 @@ class DefectStatusUpdateRequest(BaseModel):
     # explicit gesture at Closed time, not merely the existence of the
     # Verified status earlier in the sequence.
     verification_confirmed: bool = False
+
+
+class DefectRootCauseUpdateRequest(BaseModel):
+    # None clears a previously-set root cause.
+    root_cause: RootCause | None = None
 
 
 class DefectLinkCreateRequest(BaseModel):
@@ -103,9 +117,12 @@ class DefectOut(BaseModel):
     actual_result: str | None
     expected_result: str | None
     environment: str | None
+    root_cause: RootCause | None
     reported_by: UUID
     reported_by_name: str | None
     created_at: datetime
     closed_at: datetime | None
+    age_days: int
+    sla_breached: bool
     links: list[DefectLinkOut] = []
     execution_evidence: ExecutionEvidenceOut | None = None

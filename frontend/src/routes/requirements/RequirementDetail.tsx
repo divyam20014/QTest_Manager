@@ -1,0 +1,516 @@
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+
+import { ApiError } from '@/api/client'
+import { analyzeRequirementChange, generateTestCases } from '@/api/ai'
+import {
+  deleteRequirement,
+  getRequirement,
+  linkTestCase,
+  listRequirementVersions,
+  unlinkTestCase,
+  updateRequirement,
+} from '@/api/requirements'
+import { listTestCases } from '@/api/testCases'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { useAuth } from '@/lib/auth'
+
+export function RequirementDetail() {
+  const { requirementId } = useParams<{ requirementId: string }>()
+  const { user } = useAuth()
+  const canManage = user?.role === 'admin' || user?.role === 'manager'
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [editOpen, setEditOpen] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [analyzeOpen, setAnalyzeOpen] = useState(false)
+
+  const requirementQuery = useQuery({
+    queryKey: ['requirements', 'detail', requirementId],
+    queryFn: () => getRequirement(requirementId!),
+    enabled: !!requirementId,
+  })
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ['requirements', 'detail', requirementId] })
+    queryClient.invalidateQueries({ queryKey: ['requirements'] })
+    queryClient.invalidateQueries({ queryKey: ['requirements-coverage'] })
+  }
+
+  const unlinkMutation = useMutation({
+    mutationFn: (testCaseId: string) => unlinkTestCase(requirementId!, testCaseId),
+    onSuccess: invalidate,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteRequirement(requirementId!),
+    onSuccess: () => navigate(`/projects/${requirementQuery.data?.project_id}/requirements`),
+  })
+
+  if (requirementQuery.isLoading) {
+    return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+  }
+  if (requirementQuery.isError || !requirementQuery.data) {
+    return <p className="text-sm text-[var(--destructive)]">Requirement not found.</p>
+  }
+
+  const req = requirementQuery.data
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold">{req.title}</h1>
+          <Badge tone="neutral">v{req.version_number}</Badge>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setAnalyzeOpen(true)}>
+            Analyze Impact with AI
+          </Button>
+          {canManage && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+                Version History
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                Edit
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate()}
+              >
+                Delete
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Description</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="whitespace-pre-wrap text-sm">{req.description || '—'}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Linked Test Cases ({req.linked_test_cases.length})</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setGenerateOpen(true)}>
+              Generate with AI
+            </Button>
+            {canManage && (
+              <Button size="sm" onClick={() => setLinkOpen(true)}>
+                Link Test Case
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {req.linked_test_cases.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              No test cases linked yet — this requirement is not covered.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {req.linked_test_cases.map((lt) => (
+                  <tr key={lt.test_case_id} className="border-t border-[var(--border)]">
+                    <td className="py-2">
+                      <Link
+                        to={`/test-cases/${lt.test_case_id}`}
+                        className="underline-offset-2 hover:underline"
+                      >
+                        {lt.test_case_title}
+                      </Link>
+                    </td>
+                    <td className="py-2">
+                      <Badge tone="neutral">{lt.test_case_status}</Badge>
+                    </td>
+                    {canManage && (
+                      <td className="py-2 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={unlinkMutation.isPending}
+                          onClick={() => unlinkMutation.mutate(lt.test_case_id)}
+                        >
+                          Unlink
+                        </Button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <EditRequirementDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        requirementId={req.id}
+        initialTitle={req.title}
+        initialDescription={req.description}
+        onSaved={invalidate}
+      />
+      <LinkTestCaseDialog
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+        requirementId={req.id}
+        projectId={req.project_id}
+        alreadyLinkedIds={req.linked_test_cases.map((lt) => lt.test_case_id)}
+        onLinked={invalidate}
+      />
+      <VersionHistoryDialog
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        requirementId={req.id}
+      />
+      <GenerateWithAIDialog
+        open={generateOpen}
+        onClose={() => setGenerateOpen(false)}
+        requirementId={req.id}
+        onGenerated={invalidate}
+      />
+      <AnalyzeChangeDialog
+        open={analyzeOpen}
+        onClose={() => setAnalyzeOpen(false)}
+        requirementId={req.id}
+      />
+    </div>
+  )
+}
+
+function AnalyzeChangeDialog({
+  open,
+  onClose,
+  requirementId,
+}: {
+  open: boolean
+  onClose: () => void
+  requirementId: string
+}) {
+  const analyzeMutation = useMutation({
+    mutationFn: () => analyzeRequirementChange(requirementId),
+  })
+
+  const serverError =
+    analyzeMutation.error instanceof ApiError ? analyzeMutation.error.message : null
+  const result = analyzeMutation.data
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {
+        analyzeMutation.reset()
+        onClose()
+      }}
+      title="Analyze Change Impact with AI"
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Compares this requirement's current wording against its previous version and flags
+          which linked test cases may need a human to re-review them. This only surfaces
+          suggestions — it never edits the requirement or any test case.
+        </p>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        {result && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Comparing v{result.old_version_number} → v{result.new_version_number}
+            </p>
+            {result.findings.length === 0 ? (
+              <p className="text-xs text-[var(--status-good)]">
+                No linked test cases to assess, or none need review.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {result.findings.map((f) => (
+                  <li
+                    key={f.test_case_id}
+                    className="rounded-md border border-[var(--border)] p-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{f.test_case_title}</span>
+                      <Badge tone={f.needs_review ? 'warning' : 'neutral'}>
+                        {f.needs_review ? 'Needs Review' : 'No Change Needed'}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-[var(--muted-foreground)]">{f.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-[var(--muted-foreground)]">{result.total_tokens} tokens used.</p>
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            size="sm"
+            disabled={analyzeMutation.isPending}
+            onClick={() => analyzeMutation.mutate()}
+          >
+            {analyzeMutation.isPending ? 'Analyzing…' : 'Analyze'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+function GenerateWithAIDialog({
+  open,
+  onClose,
+  requirementId,
+  onGenerated,
+}: {
+  open: boolean
+  onClose: () => void
+  requirementId: string
+  onGenerated: () => void
+}) {
+  const [maxCases, setMaxCases] = useState(3)
+
+  const generateMutation = useMutation({
+    mutationFn: () => generateTestCases(requirementId, maxCases),
+    onSuccess: () => {
+      onGenerated()
+    },
+  })
+
+  const serverError =
+    generateMutation.error instanceof ApiError ? generateMutation.error.message : null
+  const result = generateMutation.data
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {
+        generateMutation.reset()
+        onClose()
+      }}
+      title="Generate Test Cases with AI"
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Uses the requirement's title and description to draft test cases. Every generated case
+          is created as a normal draft — nothing is published or approved automatically; a human
+          still has to review it.
+        </p>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="generate-max-cases">Number of test cases</Label>
+          <Select
+            id="generate-max-cases"
+            value={String(maxCases)}
+            onChange={(e) => setMaxCases(Number(e.target.value))}
+          >
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        {result && (
+          <p className="text-xs text-[var(--status-good)]">
+            Created {result.items.length} draft test case{result.items.length === 1 ? '' : 's'}{' '}
+            ({result.total_tokens} tokens used).
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          <Button size="sm" disabled={generateMutation.isPending} onClick={() => generateMutation.mutate()}>
+            {generateMutation.isPending ? 'Generating…' : 'Generate'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+function EditRequirementDialog({
+  open,
+  onClose,
+  requirementId,
+  initialTitle,
+  initialDescription,
+  onSaved,
+}: {
+  open: boolean
+  onClose: () => void
+  requirementId: string
+  initialTitle: string
+  initialDescription: string
+  onSaved: () => void
+}) {
+  const [title, setTitle] = useState(initialTitle)
+  const [description, setDescription] = useState(initialDescription)
+
+  const saveMutation = useMutation({
+    mutationFn: () => updateRequirement(requirementId, { title, description }),
+    onSuccess: () => {
+      onSaved()
+      onClose()
+    },
+  })
+
+  const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Edit Requirement">
+      <div className="flex flex-col gap-3 text-sm">
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Saving creates a new version — the previous wording is preserved in version history.
+        </p>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="edit-requirement-title">Title</Label>
+          <Input id="edit-requirement-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="edit-requirement-description">Description</Label>
+          <Textarea
+            id="edit-requirement-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={saveMutation.isPending || title.length < 5}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending ? 'Saving…' : 'Save as New Version'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+function LinkTestCaseDialog({
+  open,
+  onClose,
+  requirementId,
+  projectId,
+  alreadyLinkedIds,
+  onLinked,
+}: {
+  open: boolean
+  onClose: () => void
+  requirementId: string
+  projectId: string
+  alreadyLinkedIds: string[]
+  onLinked: () => void
+}) {
+  const [selected, setSelected] = useState('')
+
+  const testCasesQuery = useQuery({
+    queryKey: ['test-cases', projectId, 'for-linking'],
+    queryFn: () => listTestCases(projectId, { page_size: 100 }),
+    enabled: open,
+  })
+
+  const linkMutation = useMutation({
+    mutationFn: () => linkTestCase(requirementId, selected),
+    onSuccess: () => {
+      onLinked()
+      setSelected('')
+      onClose()
+    },
+  })
+
+  const serverError = linkMutation.error instanceof ApiError ? linkMutation.error.message : null
+  const candidates = (testCasesQuery.data?.items ?? []).filter(
+    (tc) => !alreadyLinkedIds.includes(tc.id),
+  )
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Link Test Case">
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="link-test-case">Test Case</Label>
+          <Select id="link-test-case" value={selected} onChange={(e) => setSelected(e.target.value)}>
+            <option value="">Select a test case…</option>
+            {candidates.map((tc) => (
+              <option key={tc.id} value={tc.id}>
+                {tc.title}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" disabled={!selected || linkMutation.isPending} onClick={() => linkMutation.mutate()}>
+            {linkMutation.isPending ? 'Linking…' : 'Link'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+function VersionHistoryDialog({
+  open,
+  onClose,
+  requirementId,
+}: {
+  open: boolean
+  onClose: () => void
+  requirementId: string
+}) {
+  const versionsQuery = useQuery({
+    queryKey: ['requirements', 'versions', requirementId],
+    queryFn: () => listRequirementVersions(requirementId),
+    enabled: open,
+  })
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Version History">
+      <div className="flex max-h-96 flex-col gap-3 overflow-y-auto text-sm">
+        {versionsQuery.data?.map((v) => (
+          <div key={v.version_number} className="rounded-md border border-[var(--border)] p-3">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">v{v.version_number}</span>
+              <span className="text-xs text-[var(--muted-foreground)]">
+                {new Date(v.created_at).toLocaleString()}
+              </span>
+            </div>
+            <p className="mt-1 font-medium">{v.title}</p>
+            <p className="mt-1 whitespace-pre-wrap text-[var(--muted-foreground)]">{v.description || '—'}</p>
+          </div>
+        ))}
+      </div>
+    </Dialog>
+  )
+}

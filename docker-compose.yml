@@ -31,6 +31,11 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MFA_DELIVERY_MODE: ${MFA_DELIVERY_MODE:-simulated}
+      # AI Test Case Generator (ADR-045): Fernet key encrypting tenant AI
+      # provider API keys at rest. Required to save/enable AI settings;
+      # must stay stable across restarts or previously-saved keys become
+      # undecryptable.
+      AI_CREDENTIAL_ENCRYPTION_KEY: ${AI_CREDENTIAL_ENCRYPTION_KEY:?Set AI_CREDENTIAL_ENCRYPTION_KEY in .env}
     ports:
       - "8000:8000"
     depends_on:

@@ -10,6 +10,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
 from app.api import (
+    ai,
     attachments,
     audit,
     auth,
@@ -19,8 +20,12 @@ from app.api import (
     platform,
     projects,
     reporting,
+    requirements,
     test_cases,
     users,
+)
+from app.api import (
+    settings as settings_api,
 )
 from app.core.config import get_settings
 from app.core.db import engine
@@ -117,6 +122,9 @@ app.include_router(defects.router, prefix="/api/v1")
 app.include_router(reporting.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(attachments.router, prefix="/api/v1")
+app.include_router(settings_api.router, prefix="/api/v1")
+app.include_router(requirements.router, prefix="/api/v1")
+app.include_router(ai.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")
