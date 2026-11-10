@@ -10,9 +10,16 @@ export const STATUS_DISPLAY: Record<
   deprecated: { label: 'Deprecated', tone: 'critical' },
 }
 
-export const PRIORITY_TONE: Record<Priority, 'neutral' | 'warning' | 'positive' | 'critical'> = {
+// Tier 5 / ADR-055: priority is tenant-configurable now, so this map only
+// covers the four seeded defaults -- `priorityTone` below falls back to
+// 'neutral' for any tenant-added custom priority it doesn't recognize.
+const PRIORITY_TONE: Partial<Record<Priority, 'neutral' | 'warning' | 'positive' | 'critical'>> = {
   Low: 'neutral',
   Medium: 'warning',
   High: 'warning',
   Critical: 'critical',
+}
+
+export function priorityTone(priority: Priority): 'neutral' | 'warning' | 'positive' | 'critical' {
+  return PRIORITY_TONE[priority] ?? 'neutral'
 }

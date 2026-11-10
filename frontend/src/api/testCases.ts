@@ -1,7 +1,9 @@
 import { apiFetch } from '@/api/client'
 import type { HistoryEntry } from '@/api/history'
 
-export type Priority = 'Low' | 'Medium' | 'High' | 'Critical'
+// Tier 5 / ADR-055: tenant-configurable value set, no longer a fixed
+// literal union -- see the matching note on `Severity` in api/defects.ts.
+export type Priority = string
 export type TestCaseStatus = 'draft' | 'ready_for_review' | 'approved' | 'deprecated'
 export type StepChangeType = 'unchanged' | 'added' | 'removed' | 'modified'
 
@@ -23,6 +25,7 @@ export interface TestCase {
   description: string
   priority: Priority
   status: TestCaseStatus
+  status_label: string
   assignee_id: string | null
   module_id: string | null
   reviewer_id: string | null
@@ -31,6 +34,7 @@ export interface TestCase {
   created_by: string
   created_at: string
   steps: StepOut[]
+  custom_fields: Record<string, unknown>
 }
 
 export interface TestCaseListResponse {

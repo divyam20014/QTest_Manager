@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { TestCaseForm, type TestCaseFormValues } from '@/routes/testcases/TestCaseForm'
-import { PRIORITY_TONE, STATUS_DISPLAY } from '@/routes/testcases/statusDisplay'
+import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
 
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
@@ -317,10 +317,10 @@ export function TestRepository() {
                     </Link>
                   </td>
                   <td className="px-4 py-2">
-                    <Badge tone={STATUS_DISPLAY[tc.status].tone}>{STATUS_DISPLAY[tc.status].label}</Badge>
+                    <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>
                   </td>
                   <td className="px-4 py-2">
-                    <Badge tone={PRIORITY_TONE[tc.priority]}>{tc.priority}</Badge>
+                    <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>
                   </td>
                   <td className="px-4 py-2 text-[var(--muted-foreground)]">
                     {tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'}

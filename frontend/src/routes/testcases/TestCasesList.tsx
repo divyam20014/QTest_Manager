@@ -24,8 +24,9 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
 import { ImportDialog } from './ImportDialog'
+import { TemplatesDialog } from './TemplatesDialog'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
-import { PRIORITY_TONE, STATUS_DISPLAY } from './statusDisplay'
+import { STATUS_DISPLAY, priorityTone } from './statusDisplay'
 
 const DEFAULT_VALUES: TestCaseFormValues = {
   title: '',
@@ -53,6 +54,7 @@ export function TestCasesList() {
   const { projectId } = useParams<{ projectId: string }>()
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const [modulesOpen, setModulesOpen] = useState(false)
   const [newModuleName, setNewModuleName] = useState('')
   const queryClient = useQueryClient()
@@ -172,6 +174,9 @@ export function TestCasesList() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setModulesOpen(true)}>
             Manage Modules
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setTemplatesOpen(true)}>
+            Templates
           </Button>
           <Button onClick={() => setCreateOpen(true)}>New Test Case</Button>
         </div>
@@ -309,10 +314,10 @@ export function TestCasesList() {
                   </Link>
                 </td>
                 <td className="px-4 py-2">
-                  <Badge tone={STATUS_DISPLAY[tc.status].tone}>{STATUS_DISPLAY[tc.status].label}</Badge>
+                  <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>
                 </td>
                 <td className="px-4 py-2">
-                  <Badge tone={PRIORITY_TONE[tc.priority]}>{tc.priority}</Badge>
+                  <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>
                 </td>
                 <td className="px-4 py-2 text-[var(--muted-foreground)]">
                   {tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'}
@@ -379,6 +384,7 @@ export function TestCasesList() {
       </Dialog>
 
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} projectId={projectId!} />
+      <TemplatesDialog open={templatesOpen} onClose={() => setTemplatesOpen(false)} projectId={projectId!} />
 
       <Dialog open={modulesOpen} onClose={() => setModulesOpen(false)} title="Manage Modules">
         <div className="flex flex-col gap-3 text-sm">

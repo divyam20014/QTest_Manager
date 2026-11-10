@@ -15,6 +15,7 @@ import {
 } from '@/api/requirements'
 import { listTestCases } from '@/api/testCases'
 import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
+import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -179,6 +180,7 @@ export function RequirementDetail() {
         </CardContent>
       </Card>
 
+      <CustomFieldsCard ownerType="requirement" ownerId={req.id} />
       <ActivityTimelineCard entries={historyQuery.data} actionLabels={REQUIREMENT_HISTORY_ACTION_LABEL} />
 
       <EditRequirementDialog

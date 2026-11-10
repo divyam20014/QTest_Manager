@@ -3,14 +3,13 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { addDefectLink, createDefect, listDefects, type Severity } from '@/api/defects'
 import { ApiError } from '@/api/client'
+import { listFieldOptions } from '@/api/fieldCustomization'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-
-const SEVERITIES: Severity[] = ['Low', 'Medium', 'High', 'Critical']
 
 export interface FailedStepContext {
   executionStepId: string
@@ -67,6 +66,10 @@ function DefectQuickCreateForm({
     queryKey: ['defects', 'linkable', context.projectId],
     queryFn: () => listDefects({ project_id: context.projectId }),
     enabled: mode === 'existing',
+  })
+  const severitiesQuery = useQuery({
+    queryKey: ['field-options', 'defect_severity'],
+    queryFn: () => listFieldOptions('defect_severity'),
   })
 
   const createMutation = useMutation({
@@ -144,9 +147,9 @@ function DefectQuickCreateForm({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="defect-severity">Severity</Label>
               <Select id="defect-severity" value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
-                {SEVERITIES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {(severitiesQuery.data ?? []).map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.label}
                   </option>
                 ))}
               </Select>

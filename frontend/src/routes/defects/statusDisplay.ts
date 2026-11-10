@@ -10,11 +10,18 @@ export const STATUS_TONE: Record<DefectStatus, 'neutral' | 'warning' | 'positive
   Closed: 'neutral',
 }
 
-export const SEVERITY_TONE: Record<Severity, 'neutral' | 'warning' | 'positive' | 'critical'> = {
+// Tier 5 / ADR-055: severity is tenant-configurable now, so this map only
+// covers the four seeded defaults -- `severityTone` below falls back to
+// 'neutral' for any tenant-added custom severity it doesn't recognize.
+const SEVERITY_TONE: Partial<Record<Severity, 'neutral' | 'warning' | 'positive' | 'critical'>> = {
   Low: 'neutral',
   Medium: 'warning',
   High: 'warning',
   Critical: 'critical',
+}
+
+export function severityTone(severity: Severity): 'neutral' | 'warning' | 'positive' | 'critical' {
+  return SEVERITY_TONE[severity] ?? 'neutral'
 }
 
 export const ROOT_CAUSES: RootCause[] = [

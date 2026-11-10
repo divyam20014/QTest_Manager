@@ -19,13 +19,14 @@ import {
 import { listBuilds, listEnvironments, listReleases } from '@/api/testAssets'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
+import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
-import { ROOT_CAUSE_LABEL, ROOT_CAUSES, SEVERITY_TONE, STATUS_ORDER, STATUS_TONE } from './statusDisplay'
+import { ROOT_CAUSE_LABEL, ROOT_CAUSES, STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
 const HISTORY_ACTION_LABEL: Record<string, string> = {
   'defect.created': 'Defect created',
@@ -140,8 +141,8 @@ export function DefectDetail() {
         </Link>
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold">{defect.title}</h1>
-          <Badge tone={SEVERITY_TONE[defect.severity]}>{defect.severity}</Badge>
-          <Badge tone={STATUS_TONE[defect.status]}>{defect.status}</Badge>
+          <Badge tone={severityTone(defect.severity)}>{defect.severity}</Badge>
+          <Badge tone={STATUS_TONE[defect.status]}>{defect.status_label}</Badge>
           {defect.sla_breached && <Badge tone="critical">SLA Breached · {defect.age_days}d</Badge>}
           {defect.reopened_count > 0 && (
             <Badge tone="neutral">Reopened {defect.reopened_count}x</Badge>
@@ -428,6 +429,7 @@ export function DefectDetail() {
           </CardContent>
         </Card>
 
+        <CustomFieldsCard ownerType="defect" ownerId={defect.id} />
         <AttachmentsCard ownerType="defect" ownerId={defect.id} />
         <CommentsCard ownerType="defect" ownerId={defect.id} />
       </div>

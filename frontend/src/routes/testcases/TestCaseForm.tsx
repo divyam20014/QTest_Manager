@@ -1,8 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, Copy, Trash2 } from 'lucide-react'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 
+import { listFieldOptions } from '@/api/fieldCustomization'
 import type { TestCaseCreateRequest } from '@/api/testCases'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,12 +12,13 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
-const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const
-
+// Tier 5 / ADR-055: priority is a tenant-configurable value set, not a
+// fixed enum any more -- the dropdown's options come from the tenant's own
+// `field_options` instead of a hardcoded list.
 const schema = z.object({
   title: z.string().min(5, 'At least 5 characters'),
   description: z.string().optional(),
-  priority: z.enum(PRIORITIES),
+  priority: z.string().min(1, 'Required'),
   assignee_id: z.string().optional(),
   steps: z
     .array(
@@ -49,6 +52,10 @@ export function TestCaseForm({
     control: form.control,
     name: 'steps',
   })
+  const prioritiesQuery = useQuery({
+    queryKey: ['field-options', 'test_case_priority'],
+    queryFn: () => listFieldOptions('test_case_priority'),
+  })
 
   return (
     <form
@@ -74,9 +81,9 @@ export function TestCaseForm({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="priority">Priority</Label>
           <Select id="priority" {...form.register('priority')}>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
+            {(prioritiesQuery.data ?? []).map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.label}
               </option>
             ))}
           </Select>

@@ -24,7 +24,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def login(
     req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)
 ) -> dict:
-    session_row, debug_code = auth_service.start_login(db, req.tenant_id, req.email, req.password)
+    session_row, debug_code = auth_service.start_login(
+        db, req.tenant_id, req.email, req.password, request
+    )
     set_session_cookie(response, session_row.id)
     payload: dict = {"mfa_required": True}
     if debug_code is not None:

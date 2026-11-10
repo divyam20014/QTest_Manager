@@ -11,6 +11,7 @@ from app.models.identity import Role, User
 from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
 from app.schemas.platform import TenantCreateRequest
+from app.services import field_option_service
 
 # Tier 1 / ADR-053: every tenant starts on this plan -- seeded by migration
 # c2d3e4f5a6b7, never absent.
@@ -27,7 +28,7 @@ def create_tenant_with_admin(
     # need a distinct, later review step. "pending" exists for a future
     # self-service path (ADR-032); the only path that exists today is
     # provisioned directly by a platform admin, so it starts approved.
-    tenant = Tenant(name=req.tenant_name, status="approved")
+    tenant = Tenant(name=req.tenant_name, status="approved", data_region=req.data_region)
     db.add(tenant)
     db.flush()
 
@@ -53,6 +54,11 @@ def create_tenant_with_admin(
     ).scalar_one()
     db.add(Subscription(tenant_id=tenant.id, plan_id=default_plan_id, status="trialing"))
     db.flush()
+
+    # Tier 5 / ADR-055: same "every tenant gets this at birth" pattern as
+    # the subscription above -- seeds the four severity/priority defaults
+    # that used to be hardcoded, so nothing changes unless an admin acts.
+    field_option_service.seed_defaults_for_tenant(db, tenant.id)
 
     record_audit_event(
         db,
@@ -99,6 +105,33 @@ def update_tenant_status(
         entity_type="tenant",
         entity_id=tenant.id,
         metadata={"status": status},
+    )
+    db.commit()
+    return tenant
+
+
+def update_tenant_data_region(
+    db: Session, tenant_id: UUID, data_region: str, platform_admin_id: UUID | None = None
+) -> Tenant:
+    """Tier 4 / ADR-054 (PV-11.6): platform-admin-only, never tenant-admin
+    settable -- this is readiness metadata, not a feature a tenant can
+    self-service without an actual region-aware deployment behind it."""
+    tenant = db.execute(select(Tenant).where(Tenant.id == tenant_id)).scalar_one_or_none()
+    if tenant is None:
+        raise NotFoundError("Tenant not found")
+
+    old_region = tenant.data_region
+    tenant.data_region = data_region
+    set_tenant_context(db, str(tenant.id))
+    record_audit_event(
+        db,
+        tenant_id=tenant.id,
+        user_id=None,
+        platform_admin_id=platform_admin_id,
+        action="tenant.data_region_changed",
+        entity_type="tenant",
+        entity_id=tenant.id,
+        metadata={"data_region": {"from": old_region, "to": data_region}},
     )
     db.commit()
     return tenant

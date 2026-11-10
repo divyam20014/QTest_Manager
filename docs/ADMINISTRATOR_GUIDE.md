@@ -86,6 +86,18 @@ schema/record-keeping only — there is no payment gateway integration in
 this release; billing/invoicing is a separate, not-yet-approved item. Every
 tenant starts on the Trial plan automatically when created.
 
+### 1.5 Data residency (readiness metadata only)
+
+Set a tenant's `data_region` (e.g. `us`/`eu`/`apac`) at creation, or change
+it later with `PATCH /api/v1/platform/tenants/{tenant_id}/data-region`
+(also available as a dropdown next to each tenant in the Platform
+Administration screen). **This is readiness metadata only** — there is one
+database and one deployment for every tenant regardless of this value; no
+tenant's data is actually hosted in a different region. See
+`docs/DATA_RESIDENCY.md` for what a real implementation would require. Only
+a Platform Admin can set this — a tenant cannot change its own declared
+region.
+
 ## Part 2 — Tenant Administration (per-organization)
 
 A **Tenant Admin** is a user with the `admin` role inside one specific
@@ -119,6 +131,55 @@ feature toggle and provider credentials (if your organization uses the AI
 Test Case Generator), and MFA delivery mode. Changes here apply org-wide and
 take effect immediately.
 
+An **IP Allowlist** field (one CIDR block or IP per line) restricts which
+networks can sign in or use an active session at all — leave it empty for
+no restriction (the default). **Caution**: there is no in-app recovery if
+you set an allowlist that excludes your own current network — you will be
+locked out immediately, with no backdoor except a Platform Administrator's
+direct intervention. Always confirm your own network is included before
+saving.
+
+A **Branding** card lets you set a display name, a primary color (applied to
+the sidebar accent), and upload a logo (PNG/JPEG/SVG/WebP, 2MB max) — shown
+to every user in your organization in the app's left sidebar.
+
+An **SSO** card configures OIDC single sign-on (issuer URL, client ID/secret
+from your identity provider, and the default role newly-provisioned SSO
+users get). SAML is not supported. Once enabled, users see a "Sign in with
+SSO" option on the login screen for your tenant — **an SSO login does not
+require this app's own MFA code**, since the identity provider is trusted to
+enforce its own. Password-based login keeps working unaffected alongside
+SSO. An **SCIM Provisioning** card lets you generate/revoke bearer tokens for
+your identity provider's SCIM client to create/update/deactivate users
+automatically — point your IdP at `/api/v1/scim/v2/{your_tenant_id}/Users`
+with one of these tokens.
+
+### 2.2a Severities, priorities, status labels, and custom fields
+
+Under Settings, admins and managers (gated by the new `field_customization.manage`
+permission) can manage:
+
+- **Defect Severities** / **Test Case Priorities**: add, rename, or remove the
+  values your organization uses — every tenant starts with the same four
+  defaults (Low/Medium/High/Critical) so nothing changes until you act. A value
+  still in use by an existing defect or test case can't be removed, and at
+  least one option must always remain.
+- **Status Labels**: rename how an existing, fixed status is *displayed*
+  (e.g. show "Closed" as "Resolved") without changing the underlying workflow
+  — the actual status codes and their transition rules (including the reopen
+  counter) are unaffected by this.
+- **Custom Fields**: define extra fields (text/number/boolean/date/
+  single-select/multi-select) on test cases, defects, or requirements. Fields
+  appear automatically on each entity's detail page once defined. A field
+  marked "required" is enforced only when a value is actively being saved —
+  it does not retroactively block existing records.
+
+A **Templates** button on the Test Cases page lets any project member import
+ready-made Insurance QA Pack test cases (Claims/Underwriting/Policy Admin)
+into the current project — each import creates real, editable test cases
+organized into a matching module. Re-importing the same templates creates a
+fresh copy rather than being skipped.
+
 ### 2.3 Audit log
 
 Every significant action (user/role changes, test case/defect/requirement
@@ -134,6 +195,13 @@ intervention (which should otherwise never happen in normal operation).
 A per-user "erase" action pseudonymizes one departing user's personal
 identifiers while preserving the historical record they contributed to
 (audit trail, test case authorship references) — see the Admin area's user
-management screen. A tenant-wide bulk data export is a separately tracked,
-not-yet-built capability (see `docs/KNOWN_GAPS.md`) — not covered by this
-guide because it doesn't exist yet.
+management screen.
+
+A separate, genuine tenant-wide bulk **data export** ("Export Organization
+Data" under Settings) generates a downloadable zip archive of everything
+your organization owns — test cases, defects, requirements, executions,
+comments, and more, as flat JSON files plus a manifest — distinct from the
+per-user erase action above. It runs as a background job (click "Request
+Export", wait for the status badge to show "succeeded", then "Download").
+Attachment files are listed by reference, not included as bytes, to keep
+the archive a reasonable size.

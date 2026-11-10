@@ -89,7 +89,10 @@ services:
   worker:
     build:
       context: ./backend
-    command: ["python", "-m", "app.worker"]
+    # Tier 4 / ADR-054: mirrors the api service's own CMD -- see the
+    # identical note in docker-compose.yml for why this is needed when
+    # STORAGE_BACKEND=local.
+    command: ["sh", "-c", "chown -R app:app /data/attachments && su app -s /bin/sh -c 'python -m app.worker'"]
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://qtesthub_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
@@ -99,6 +102,13 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # Tier 4 / ADR-054: only needed when STORAGE_BACKEND=local (the
+    # default) -- a worker job (e.g. tenant export) writing through
+    # app/core/storage.py's LocalFilesystemStorage must land on the same
+    # volume the api container serves downloads from. Harmless, unused
+    # mount if STORAGE_BACKEND=s3.
+    volumes:
+      - qtesthub_attachments:/data/attachments
 
   proxy:
     image: nginx:1.27-alpine

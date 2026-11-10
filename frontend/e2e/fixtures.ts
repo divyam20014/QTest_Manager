@@ -64,7 +64,10 @@ export async function loginViaUi(
   await page.fill('#tenant_id', tenantId)
   await page.fill('#email', email)
   await page.fill('#password', password)
-  await page.click('button:has-text("Sign in")')
+  // Tier 4 / ADR-054: a valid-looking tenant id also renders a separate
+  // "Sign in with SSO" button -- scoped to the submit button specifically
+  // so this doesn't hit a strict-mode ambiguity between the two.
+  await page.click('button[type="submit"]:has-text("Sign in")')
   await page.waitForSelector('text=Enter your verification code')
   const bodyText = await page.textContent('body')
   const match = bodyText?.match(/Dev mode code:\s*(\d{6})/)

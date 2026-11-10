@@ -32,6 +32,7 @@ class RequirementOut(BaseModel):
     created_by: UUID
     created_at: datetime
     linked_test_case_count: int
+    custom_fields: dict[str, object] = {}
 
 
 class RequirementListResponse(BaseModel):

@@ -170,27 +170,37 @@ quality rollups can exist.
 Builds on Phase 14 and the existing `reporting_service.py` aggregate engine.
 
 ### Phase 16 — Tenant branding (PV-11.4)
-Reuses Phase 1's tenant-settings mechanism.
+Reuses Phase 1's tenant-settings mechanism. **Status: done for display
+name/primary color/logo (Tier 4, ADR-054); custom domain/white-label not built.**
 
 ### Phase 17 — Tenant-wide data export (PV-11.5)
 Distinct from the existing per-user GDPR-erase action; a genuine bulk/tenant-wide
-export capability.
+export capability. **Status: complete (Tier 4, ADR-054).**
 
 ### Phase 18 — IP restriction/allowlisting (PV-11.3)
+**Status: complete (Tier 4, ADR-054) — a real, documented self-lockout risk
+if a tenant admin excludes their own network; no in-app recovery path.**
 
 ### Phase 19 — SSO (SAML/OIDC) (PV-11.1)
 Largest single item in this release — a new external-identity-provider
 integration touching the auth layer. Recommend its own dedicated security review
-before approval, same as Phase 12's new auth plane.
+before approval, same as Phase 12's new auth plane. **Status: complete for OIDC
+only (Tier 4, ADR-054) — SAML deliberately descoped (no real IdP reachable from
+this sandbox to validate against either protocol). Validated against a stub IdP;
+a real pre-launch validation pass against an actual IdP remains a required
+follow-up before production reliance.**
 
 ### Phase 20 — SCIM provisioning (PV-11.2)
 Depends on Phase 19 (SSO) existing — SCIM is normally paired with an identity
-provider integration.
+provider integration. **Status: complete for Users only, no Groups/Roles sync
+(Tier 4, ADR-054) — same stub-vs-real-IdP verification caveat as Phase 19.**
 
 ### Phase 21 — Data residency readiness (PV-11.6)
 Infrastructure/deployment-config work, likely the least code-heavy but most
 operationally significant item in this release (may require per-region deployment
-topology, not just application code).
+topology, not just application code). **Status: readiness metadata only (Tier 4,
+ADR-054) — a platform-admin-only `data_region` field; no per-region deployment
+topology exists. See `docs/DATA_RESIDENCY.md`.**
 
 ### Phase 22 — Tenant-configurable statuses/severities/priorities + custom fields (PV-9.5, 9.6)
 Deliberately last and separated from the rest of Release 2/3: this is the most
@@ -198,12 +208,19 @@ structurally invasive change in the whole roadmap (converts hardcoded
 `CheckConstraint` enums into tenant-configurable data), and should not be
 attempted until everything that depends on today's fixed enums (reporting,
 dashboards, the audit log's status-transition assumptions) has stabilized.
+**Status: complete (Tier 5, ADR-055) — severity/priority fully converted to
+per-tenant value sets; status kept as a display-label overlay only, not a
+value-set conversion, to protect the reopen-counter and review-workflow logic
+that depend on the fixed status codes. Custom fields (PV-9.6) implemented for
+test cases, defects, and requirements.**
 
 ### Phase 23 — Insurance QA Pack (PV-10.1, optional)
 Template library for claims/underwriting/policy-admin test cases. Most valuable
 once Phase 2 (Requirements) and Phase 14 (module grouping) exist to template
 against — sequenced last deliberately, and explicitly optional per the original
-directive's own framing.
+directive's own framing. **Status: complete (Tier 5, ADR-055) — a static,
+in-code template library (Claims/Underwriting/Policy Admin), importable into a
+tenant's own test-case repository via the existing Module system.**
 
 ---
 

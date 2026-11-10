@@ -133,10 +133,10 @@ the most substantial greenfield effort in this module.
 |---|---|---|---|
 | PV-9.1 | Comments / mentions on entities | Done | Polymorphic `comments`/`comment_mentions` tables + endpoints for Test Case/Defect/ExecutionStep, reusing the Attachment `owner_type` pattern (Phase 8, ADR-050, GAP-74). |
 | PV-9.2 | Real notifications (in-app/email) | Done | Real `notifications` table, three bounded triggers (mention/test case assignment/defect closure), in-app + email via simulated/real SMTP delivery mode (Phase 9, ADR-051, GAP-74). |
-| PV-9.3 | Per-entity activity timeline beyond the generic audit log | Missing | Only the Defect History card exists, and it's a direct reuse of the generic audit log — no bespoke per-entity timeline exists. |
-| PV-9.4 | Review-request / approval workflow | Missing | No generic review-request mechanism anywhere. |
-| PV-9.5 | Tenant-configurable statuses/severities/priorities | Missing | All are hardcoded `CheckConstraint`-backed enums, not tenant-configurable. |
-| PV-9.6 | Custom fields (EAV/extensibility mechanism) | Missing | `audit_logs.event_metadata` JSONB is the only JSONB column in the schema, and it's audit-specific — no general custom-field mechanism exists. |
+| PV-9.3 | Per-entity activity timeline beyond the generic audit log | Done | Dedicated timeline endpoints for Test Case/Defect/Requirement built on top of the existing audit log, not a parallel mechanism (Tier 3, ADR-055's predecessor tier — this row previously said `Missing`, corrected 2026-11-11 after direct code verification). |
+| PV-9.4 | Review-request / approval workflow | Done | Reuses the existing `draft → ready_for_review → approved` test-case status machine; a named reviewer, server-enforced approve/request-changes, two bounded notification trigger types (Tier 3 — this row previously said `Missing`, corrected 2026-11-11). |
+| PV-9.5 | Tenant-configurable statuses/severities/priorities | Done | Severity/priority fully converted to per-tenant value sets (`field_options` table, service-layer validation replacing the old fixed `CheckConstraint`); status kept as a display-label overlay only, not a value-set conversion — see ADR-055 for why (Tier 5). |
+| PV-9.6 | Custom fields (EAV/extensibility mechanism) | Done | `custom_field_definitions`/`custom_field_values` (polymorphic, mirroring the Attachment/Comment `owner_type` pattern) for test cases, defects, and requirements; six field types; values read inline on each entity's GET, written via a dedicated endpoint (Tier 5, ADR-055). |
 | PV-9.7 | Tenant settings infrastructure (prerequisite for several items above and for PV-3.7) | Done | `GET/PATCH /api/v1/settings` (`backend/app/api/settings.py`, `backend/app/services/settings_service.py`), gated by `tenant.settings.manage`, built in Phase 1 (ADR-043). This row previously said `Missing` and cited `SAAS-GAP-7`, contradicting PV-3.7's own text above saying AI settings "reused the Phase 1 mechanism... exactly as PV-9.7 anticipated" — corrected 2026-11-10 per the implementation audit (`docs/audit/IMPLEMENTATION_STATUS.md`) after direct code verification. |
 
 **Dependency**: Comments (PV-9.1) can reuse the `Attachment` polymorphic
@@ -151,7 +151,7 @@ invasive — they touch core domain-constraint design (currently hardcoded
 
 | ID | Item | Status | Evidence |
 |---|---|---|---|
-| PV-10.1 | Insurance-domain template library (claims/underwriting/policy-admin test case templates) | Missing | Only the existing fixed `Project.domain` enum exists (5 insurance domains) — no template library of any kind, confirmed across `docs/KNOWN_GAPS.md`, `docs/DATABASE_SCHEMA.md`, and `docs/ARCHITECTURE_DECISIONS.md`, none of which mention this even as a deferred item. |
+| PV-10.1 | Insurance-domain template library (claims/underwriting/policy-admin test case templates) | Done | Static, in-code template library (`app/data/insurance_templates.py`, ~15 templates across Claims/Underwriting/Policy Admin); import creates real `TestCase` rows via the existing create path, organized into same-named Modules (Tier 5, ADR-055). |
 
 **Dependency**: optional by the directive's own framing; depends on nothing else
 listed here being built first, but is most valuable once Test Assets (module
@@ -166,12 +166,12 @@ limiting (SAAS-GAP-6), tenant self-service settings (SAAS-GAP-7), invite flow
 
 | ID | Item | Status | Evidence |
 |---|---|---|---|
-| PV-11.1 | SSO (SAML/OIDC) | Missing | Zero `saml`/`oidc`/`sso` code anywhere in backend or frontend. |
-| PV-11.2 | SCIM provisioning | Missing | Zero `scim` code anywhere. |
-| PV-11.3 | IP restriction/allowlisting | Missing | The existing IP-keyed `slowapi` rate limiter (SAAS-GAP-6) is confirmed to be purely a rate-limit key, not a repurposable allow/deny mechanism; no allowlist logic exists. |
-| PV-11.4 | Tenant branding (logo/custom domain/white-label) | Missing | `Tenant` model has only `name`/`status`/`default_currency_code`/`default_timezone`/`created_at` — no branding fields at all. |
-| PV-11.5 | Tenant-wide data export (GDPR portability/offboarding) | Missing | Only a per-user `POST /{user_id}/gdpr-erase` **erasure** action exists (not export, not tenant-wide). No bulk/tenant-wide export capability exists. |
-| PV-11.6 | Data residency readiness | Missing | No `region`/`geography`/`residency` concept on `Tenant` or in deployment config. (`Project.region` is unrelated business metadata, not an infrastructure concept.) |
+| PV-11.1 | SSO (SAML/OIDC) | Done (Tier 4, ADR-054) | OIDC only — SAML deliberately out of scope (no real IdP reachable from this sandbox to validate against either protocol; OIDC is simpler and more broadly supported). Tenant-level config, authorization-code login flow, auto-provisioning on first login, MFA bypassed for SSO logins by design. Validated against a stub IdP, not a real production one — a real pre-launch validation pass is a required follow-up. |
+| PV-11.2 | SCIM provisioning | Done (Tier 4, ADR-054) | Minimal SCIM 2.0 server, Users only (no Groups/Roles sync), per-tenant bearer token auth, DELETE deactivates rather than hard-deletes. Validated against the spec's documented shapes, not a real IdP's SCIM client — same follow-up caveat as SSO. |
+| PV-11.3 | IP restriction/allowlisting | Done (Tier 4, ADR-054) | Tenant-configurable CIDR allowlist, enforced at both login and session resolution; empty/unset means no restriction. Real, documented self-lockout risk if an admin excludes their own network — no in-app recovery path, only a platform administrator can clear it. |
+| PV-11.4 | Tenant branding (logo/custom domain/white-label) | Partially Done (Tier 4, ADR-054) | Display name, primary color, and logo upload/download (via the Tier 1 storage abstraction) are done. Custom domain/white-label is not — out of scope for this tier. |
+| PV-11.5 | Tenant-wide data export (GDPR portability/offboarding) | Done (Tier 4, ADR-054) | A genuine bulk/tenant-wide export (zip of every entity's raw columns + manifest), run through the Tier 1 background job queue, downloaded via the storage abstraction. Distinct from the existing per-user GDPR-erase action, which is unchanged. Attachment bytes are listed by reference only, not inlined. |
+| PV-11.6 | Data residency readiness | Partially Done (Tier 4, ADR-054) | A platform-admin-only `data_region` metadata field now exists on `Tenant`. No per-region deployment topology exists — see `docs/DATA_RESIDENCY.md` for what a real implementation would require; this is readiness metadata, not an implemented capability. |
 
 **Dependency**: all six items are independent of each other and of the AI work,
 except that tenant branding (PV-11.4) would naturally live in the same future

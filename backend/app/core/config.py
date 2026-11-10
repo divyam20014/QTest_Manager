@@ -107,6 +107,20 @@ class Settings(BaseSettings):
     # at this interval when none are available.
     worker_poll_interval_seconds: float = 2.0
 
+    # Tier 4 / ADR-054: only trust X-Forwarded-For for IP-allowlist
+    # enforcement (PV-11.3) when a reverse proxy is actually in front of
+    # the app (Tier 0's deploy/nginx/reverse-proxy.conf) -- a client can
+    # set this header itself, so blindly trusting it with no proxy in
+    # front would let anyone spoof their way past an allowlist. False by
+    # default (dev/test, no proxy): the raw connection IP is used instead.
+    trust_proxy_headers: bool = False
+
+    # Tier 4 / ADR-054: tenant SSO (OIDC) config. No new env var is needed
+    # for the common case -- per-tenant issuer/client_id/secret live in the
+    # sso_configs table, not here. This only bounds the HTTP calls this
+    # app itself makes to an IdP's discovery/token endpoints.
+    sso_http_timeout_seconds: float = 10.0
+
     @property
     def sentry_enabled(self) -> bool:
         return bool(self.sentry_dsn)

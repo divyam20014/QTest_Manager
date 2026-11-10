@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
+from app.core.auth import _enforce_ip_allowlist
 from app.core.config import get_settings
 from app.core.db import set_tenant_context
 from app.core.errors import ForbiddenError, UnauthorizedError
@@ -38,7 +40,7 @@ def _require_approved_tenant(db: Session, tenant_id: UUID) -> None:
 
 
 def start_login(
-    db: Session, tenant_id: UUID, email: str, password: str
+    db: Session, tenant_id: UUID, email: str, password: str, request: Request | None = None
 ) -> tuple[SessionModel, str | None]:
     """Verifies credentials and opens an MFA-pending session (FR-AUTH-002/003).
 
@@ -58,6 +60,10 @@ def start_login(
         raise UnauthorizedError(_GENERIC_LOGIN_ERROR)
 
     _require_approved_tenant(db, tenant_id)
+    # Tier 4 / ADR-054: PV-11.3 -- blocked before any session/MFA challenge
+    # is even created, not only on subsequent authenticated requests.
+    if request is not None:
+        _enforce_ip_allowlist(db, tenant_id, request)
 
     now = datetime.now(UTC)
     session_row = SessionModel(

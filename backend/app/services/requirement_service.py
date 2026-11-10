@@ -22,6 +22,7 @@ from app.schemas.requirement import (
     RequirementUpdateRequest,
     RequirementVersionOut,
 )
+from app.services import custom_field_service
 from app.services.project_service import is_assigned
 
 DEFAULT_PAGE_SIZE = 20
@@ -94,6 +95,9 @@ def to_out(db: Session, req: Requirement) -> RequirementOut:
         created_by=req.created_by,
         created_at=req.created_at,
         linked_test_case_count=_linked_test_case_count(db, req.id),
+        custom_fields=custom_field_service.get_values_for_owner(
+            db, req.tenant_id, "requirement", req.id
+        ),
     )
 
 
@@ -413,11 +417,15 @@ def get_coverage_report(
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, user_id)
 
-    requirements = db.execute(
-        select(Requirement)
-        .where(Requirement.tenant_id == tenant_id, Requirement.project_id == project_id)
-        .order_by(Requirement.created_at)
-    ).scalars().all()
+    requirements = (
+        db.execute(
+            select(Requirement)
+            .where(Requirement.tenant_id == tenant_id, Requirement.project_id == project_id)
+            .order_by(Requirement.created_at)
+        )
+        .scalars()
+        .all()
+    )
 
     entries = []
     covered_count = 0

@@ -4,6 +4,12 @@ from app.models.background_job import BackgroundJob
 from app.models.comment import Comment, CommentMention
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
+from app.models.field_customization import (
+    CustomFieldDefinition,
+    CustomFieldValue,
+    FieldOption,
+    StatusLabel,
+)
 from app.models.idempotency import IdempotencyKey
 from app.models.identity import (
     MfaChallenge,
@@ -17,6 +23,8 @@ from app.models.identity import (
 from app.models.notification import Notification
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.scim_token import ScimToken
+from app.models.sso_config import SsoConfig
 from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
@@ -66,4 +74,10 @@ __all__ = [
     "Build",
     "Release",
     "TestModule",
+    "SsoConfig",
+    "ScimToken",
+    "FieldOption",
+    "StatusLabel",
+    "CustomFieldDefinition",
+    "CustomFieldValue",
 ]

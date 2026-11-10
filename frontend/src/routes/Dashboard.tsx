@@ -25,8 +25,11 @@ function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`
 }
 
-const SEVERITY_RANK: Record<Severity, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 }
-const SEVERITY_TONE: Record<Severity, 'neutral' | 'positive' | 'warning' | 'critical'> = {
+// Tier 5 / ADR-055: severity is tenant-configurable now -- these only
+// cover the four seeded defaults, with a sensible fallback for anything
+// a tenant has added (ranked last, shown neutral).
+const SEVERITY_RANK: Partial<Record<Severity, number>> = { Critical: 0, High: 1, Medium: 2, Low: 3 }
+const SEVERITY_TONE: Partial<Record<Severity, 'neutral' | 'positive' | 'warning' | 'critical'>> = {
   Critical: 'critical',
   High: 'critical',
   Medium: 'warning',
@@ -61,7 +64,8 @@ export function Dashboard() {
     .filter((d) => d.status !== 'Closed' && (d.severity === 'Critical' || d.severity === 'High'))
     .sort(
       (a, b) =>
-        SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.created_at.localeCompare(a.created_at),
+        (SEVERITY_RANK[a.severity] ?? 99) - (SEVERITY_RANK[b.severity] ?? 99) ||
+          b.created_at.localeCompare(a.created_at),
     )
     .slice(0, 6)
 
@@ -200,7 +204,7 @@ export function Dashboard() {
                     className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
                   >
                     <span className="min-w-0 truncate">{d.title}</span>
-                    <Badge tone={SEVERITY_TONE[d.severity]} className="shrink-0">
+                    <Badge tone={SEVERITY_TONE[d.severity] ?? 'neutral'} className="shrink-0">
                       {d.severity}
                     </Badge>
                   </Link>

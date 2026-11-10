@@ -13,13 +13,13 @@ from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.schemas.csv_import import ImportReport, ImportRowResult
+from app.services import field_option_service
 from app.services.project_service import is_assigned
 
 settings = get_settings()
 
 EXPECTED_HEADERS = ["Title", "Project Name", "Priority", "Status", "Assignee Email", "Steps"]
 
-VALID_PRIORITIES = {"Low", "Medium", "High", "Critical"}
 STATUS_MAP = {
     "draft": "draft",
     "ready for review": "ready_for_review",
@@ -117,6 +117,12 @@ def import_test_cases(
             ).all()
         }
     seen_in_batch: dict[tuple[UUID, str], int] = {}
+    # Fetched once, not per-row: Tier 5 made priority tenant-configurable
+    # (field_option_service), and this import path has a 2.5s/2000-row NFR
+    # budget it must not regress.
+    valid_priorities = {
+        o.code for o in field_option_service.list_options(db, tenant_id, "test_case_priority")
+    }
 
     error_rows: list[ImportRowResult] = []
     created_count = 0
@@ -159,9 +165,9 @@ def import_test_cases(
                 seen_in_batch[dedup_key] = row_number
 
         priority = (row.get("Priority") or "").strip()
-        if priority not in VALID_PRIORITIES:
+        if priority not in valid_priorities:
             errors.append(
-                f"Priority '{priority}' is invalid; must be one of {sorted(VALID_PRIORITIES)}."
+                f"Priority '{priority}' is invalid; must be one of {sorted(valid_priorities)}."
             )
 
         status_raw = (row.get("Status") or "Draft").strip()

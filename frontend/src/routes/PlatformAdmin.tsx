@@ -7,6 +7,7 @@ import {
   createTenant,
   listPlans,
   listTenants,
+  updateTenantDataRegion,
   updateTenantStatus,
   type PlatformCredentials,
   type Tenant,
@@ -118,6 +119,14 @@ function TenantConsole({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-tenants'] }),
   })
 
+  // Tier 4 / ADR-054: data residency readiness (PV-11.6) -- metadata
+  // only, platform-admin-only to change.
+  const dataRegionMutation = useMutation({
+    mutationFn: ({ id, dataRegion }: { id: string; dataRegion: string }) =>
+      updateTenantDataRegion(credentials, id, dataRegion),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-tenants'] }),
+  })
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
@@ -143,6 +152,7 @@ function TenantConsole({
             <tr>
               <th className="px-4 py-2 font-medium">Tenant</th>
               <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">Region</th>
               <th className="px-4 py-2 font-medium">Created</th>
               <th className="px-4 py-2 font-medium"></th>
             </tr>
@@ -156,6 +166,23 @@ function TenantConsole({
                 </td>
                 <td className="px-4 py-2">
                   <Badge tone={STATUS_TONE[t.status]}>{t.status}</Badge>
+                </td>
+                <td className="px-4 py-2">
+                  <select
+                    className="rounded border border-[var(--border)] bg-transparent px-1.5 py-0.5 text-xs"
+                    value={t.data_region}
+                    disabled={dataRegionMutation.isPending}
+                    onChange={(e) =>
+                      dataRegionMutation.mutate({ id: t.id, dataRegion: e.target.value })
+                    }
+                  >
+                    {['us', 'eu', 'apac'].includes(t.data_region) ? null : (
+                      <option value={t.data_region}>{t.data_region}</option>
+                    )}
+                    <option value="us">us</option>
+                    <option value="eu">eu</option>
+                    <option value="apac">apac</option>
+                  </select>
                 </td>
                 <td className="px-4 py-2 text-[var(--muted-foreground)]">
                   {new Date(t.created_at).toLocaleDateString()}
@@ -309,6 +336,7 @@ function NewTenantDialog({
   const [adminName, setAdminName] = useState('')
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
+  const [dataRegion, setDataRegion] = useState('us')
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -317,6 +345,7 @@ function NewTenantDialog({
         admin_name: adminName,
         admin_email: adminEmail,
         admin_password: adminPassword,
+        data_region: dataRegion,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
@@ -324,6 +353,7 @@ function NewTenantDialog({
       setAdminName('')
       setAdminEmail('')
       setAdminPassword('')
+      setDataRegion('us')
       onClose()
     },
   })
@@ -360,6 +390,22 @@ function NewTenantDialog({
           />
           <p className="text-xs text-[var(--muted-foreground)]">
             At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="data-region">Data Region</Label>
+          <select
+            id="data-region"
+            className="rounded border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
+            value={dataRegion}
+            onChange={(e) => setDataRegion(e.target.value)}
+          >
+            <option value="us">us</option>
+            <option value="eu">eu</option>
+            <option value="apac">apac</option>
+          </select>
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Readiness metadata only — no per-region deployment exists yet.
           </p>
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}

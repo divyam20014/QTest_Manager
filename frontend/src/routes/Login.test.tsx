@@ -56,7 +56,10 @@ describe('Login', () => {
     await user.type(screen.getByLabelText('Tenant ID'), TENANT_ID)
     await user.type(screen.getByLabelText('Email'), 'admin@horizon.com')
     await user.type(screen.getByLabelText('Password'), 'AdminPassw0rd!')
-    await user.click(screen.getByRole('button', { name: /sign in/i }))
+    // Exact match: a valid-looking tenant id also makes the separate
+    // "Sign in with SSO" button render (Tier 4 / ADR-054), which a loose
+    // /sign in/i regex would ambiguously match too.
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByText(/enter your verification code/i)).toBeInTheDocument()
     expect(await screen.findByText('123456')).toBeInTheDocument()

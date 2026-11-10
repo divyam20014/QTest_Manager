@@ -6,7 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 
 import { login, verifyMfa } from '@/api/auth'
-import { ApiError } from '@/api/client'
+import { API_BASE_URL, ApiError } from '@/api/client'
+import { getSsoStatus } from '@/api/sso'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -23,6 +24,8 @@ type CredentialsForm = z.infer<typeof credentialsSchema>
 const codeSchema = z.object({ code: z.string().length(6, 'Enter the 6-digit code') })
 type CodeForm = z.infer<typeof codeSchema>
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export function Login() {
   const [step, setStep] = useState<'credentials' | 'mfa'>('credentials')
   const [debugCode, setDebugCode] = useState<string | null>(null)
@@ -31,6 +34,19 @@ export function Login() {
 
   const credentialsForm = useForm<CredentialsForm>({ resolver: zodResolver(credentialsSchema) })
   const codeForm = useForm<CodeForm>({ resolver: zodResolver(codeSchema) })
+  const tenantIdValue = credentialsForm.watch('tenant_id')
+
+  const ssoStatusMutation = useMutation({
+    mutationFn: (tenantId: string) => getSsoStatus(tenantId),
+    onSuccess: (status, tenantId) => {
+      if (status.enabled) {
+        // Tier 4 / ADR-054: a real browser redirect, not an API fetch --
+        // the OIDC authorization-code flow needs the user's own browser
+        // to visit the identity provider.
+        window.location.href = `${API_BASE_URL}/auth/sso/${tenantId}/login`
+      }
+    },
+  })
 
   const loginMutation = useMutation({
     mutationFn: login,
@@ -93,6 +109,21 @@ export function Login() {
               <Button type="submit" disabled={loginMutation.isPending}>
                 {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
               </Button>
+              {UUID_PATTERN.test(tenantIdValue ?? '') && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={ssoStatusMutation.isPending}
+                  onClick={() => ssoStatusMutation.mutate(tenantIdValue)}
+                >
+                  Sign in with SSO
+                </Button>
+              )}
+              {ssoStatusMutation.isSuccess && !ssoStatusMutation.data.enabled && (
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  SSO is not configured for this organization.
+                </p>
+              )}
             </form>
           ) : (
             <form

@@ -1,10 +1,14 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-Priority = Literal["Low", "Medium", "High", "Critical"]
+# Tier 5 (PV-9.5): priority is tenant-configurable (app/services/field_option_service.py)
+# -- the DB CheckConstraint and this fixed Literal were both removed in favor of
+# per-tenant option codes, validated at the service layer against each tenant's
+# current `field_options` rows (seeded with these same four values by default).
+Priority = Annotated[str, Field(min_length=1, max_length=64)]
 TestCaseStatus = Literal["draft", "ready_for_review", "approved", "deprecated"]
 StepChangeType = Literal["unchanged", "added", "removed", "modified"]
 
@@ -52,6 +56,7 @@ class TestCaseOut(BaseModel):
     description: str
     priority: Priority
     status: TestCaseStatus
+    status_label: str
     assignee_id: UUID | None
     module_id: UUID | None
     reviewer_id: UUID | None
@@ -60,6 +65,7 @@ class TestCaseOut(BaseModel):
     created_by: UUID
     created_at: datetime
     steps: list[StepOut]
+    custom_fields: dict[str, object] = {}
 
 
 class SubmitForReviewRequest(BaseModel):

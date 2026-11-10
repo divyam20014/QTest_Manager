@@ -31,7 +31,12 @@ from app.schemas.defect import (
     Severity,
     Verdict,
 )
-from app.services import notification_service
+from app.services import (
+    custom_field_service,
+    field_option_service,
+    notification_service,
+    status_label_service,
+)
 from app.services.project_service import is_assigned
 
 # ADR-026: strictly sequential, no skipping, no reopening.
@@ -142,6 +147,7 @@ def create_defect(
 
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
+    field_option_service.validate_code(db, tenant_id, "defect_severity", req.severity)
 
     assert title is not None  # enforced by the schema validator for the standalone/in-run path
 
@@ -327,9 +333,7 @@ def update_status(
         # explicit gesture, not merely that Verified exists earlier in the
         # sequence.
         if not verification_confirmed:
-            raise ValidationAppError(
-                "Closing a defect requires explicit verification confirmation"
-            )
+            raise ValidationAppError("Closing a defect requires explicit verification confirmation")
 
     current_index = STATUS_ORDER.index(cast(DefectStatus, defect.status))
     try:
@@ -699,6 +703,10 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
 
     links = db.execute(select(DefectLink).where(DefectLink.defect_id == defect.id)).scalars()
     age_days, sla_breached = compute_aging(defect)
+    status_labels = status_label_service.get_labels_map(db, defect.tenant_id, "defect")
+    custom_fields = custom_field_service.get_values_for_owner(
+        db, defect.tenant_id, "defect", defect.id
+    )
 
     return DefectOut(
         id=defect.id,
@@ -716,6 +724,7 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         title=defect.title,
         severity=cast(Severity, defect.severity),
         status=cast(DefectStatus, defect.status),
+        status_label=status_labels.get(defect.status, defect.status),
         description=defect.description,
         actual_result=defect.actual_result,
         expected_result=defect.expected_result,
@@ -746,4 +755,5 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
             for link_ in links
         ],
         execution_evidence=evidence,
+        custom_fields=custom_fields,
     )

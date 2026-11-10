@@ -14,6 +14,9 @@ export interface Tenant {
   status: 'pending' | 'approved' | 'suspended'
   default_currency_code: string
   default_timezone: string
+  // Tier 4 / ADR-054: data residency readiness metadata only (PV-11.6) --
+  // no per-region deployment topology exists yet.
+  data_region: string
   created_at: string
 }
 
@@ -22,6 +25,7 @@ export interface TenantCreateRequest {
   admin_name: string
   admin_email: string
   admin_password: string
+  data_region?: string
 }
 
 async function platformFetch<T>(
@@ -67,6 +71,17 @@ export function updateTenantStatus(
   return platformFetch<Tenant>(`/platform/tenants/${tenantId}/status`, credentials, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  })
+}
+
+export function updateTenantDataRegion(
+  credentials: PlatformCredentials,
+  tenantId: string,
+  dataRegion: string,
+): Promise<Tenant> {
+  return platformFetch<Tenant>(`/platform/tenants/${tenantId}/data-region`, credentials, {
+    method: 'PATCH',
+    body: JSON.stringify({ data_region: dataRegion }),
   })
 }
 

@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   BarChart3,
   Bug,
@@ -17,10 +17,11 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { type ComponentType, useState } from 'react'
+import { type ComponentType, type CSSProperties, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
+import { getBranding, getLogoUrl } from '@/api/settings'
 import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
@@ -115,6 +116,10 @@ export function AppShell() {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useCollapsedPreference()
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Tier 4 / ADR-054: tenant branding (PV-11.4). Any authenticated user
+  // can read it (the shell needs it for everyone, not just admins).
+  const brandingQuery = useQuery({ queryKey: ['branding'], queryFn: getBranding })
+  const branding = brandingQuery.data
 
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -147,14 +152,21 @@ export function AppShell() {
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
           collapsed ? 'md:w-16' : 'md:w-60',
         )}
+        style={branding?.primary_color ? ({ '--sidebar-accent': branding.primary_color } as CSSProperties) : undefined}
       >
         <div className="flex items-center justify-between gap-2 px-4 py-4">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-accent)] text-sm font-bold text-[var(--sidebar-bg)]">
-              Q
-            </span>
+            {branding?.has_logo ? (
+              <img src={getLogoUrl()} alt="" className="size-7 shrink-0 rounded-md object-contain" />
+            ) : (
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-accent)] text-sm font-bold text-[var(--sidebar-bg)]">
+                Q
+              </span>
+            )}
             {!collapsed && (
-              <span className="truncate text-sm font-semibold tracking-wide text-white">QTestHub</span>
+              <span className="truncate text-sm font-semibold tracking-wide text-white">
+                {branding?.display_name || 'QTestHub'}
+              </span>
             )}
           </div>
           <button

@@ -16,6 +16,12 @@ screen in non-production test environments). Your role (Tester, Manager, or
 Admin) determines what you can see and do — set by your Admin, not something
 you change yourself.
 
+If your organization has single sign-on configured, a "Sign in with SSO"
+button appears once you enter your organization's tenant ID — this redirects
+you to your organization's identity provider, and you won't need a
+QTestHub-specific password or MFA code (your identity provider handles that).
+The first time you sign in this way, your account is created automatically.
+
 ## Dashboard
 
 Your landing page: portfolio-wide rollups (project status, domain
@@ -50,9 +56,19 @@ You can:
 - **Comment** on a test case, optionally @-mentioning a specific teammate
   (they'll get a notification).
 - Group test cases by module/folder (if your organization has this enabled).
+- Fill in any custom fields your organization has defined (shown automatically
+  on the test case's detail page) and submit the case for review if your
+  workflow requires it.
+- Import ready-made Insurance QA Pack templates (Claims/Underwriting/Policy
+  Admin) via the **Templates** button — a quick way to get a starting set of
+  realistic test cases you can then edit freely.
 - If AI features are enabled, ask the AI reviewer for quality suggestions on
   an existing test case (clarity, missing steps) — suggestions only; nothing
   is changed automatically.
+
+Priority (and a defect's severity) are sets your organization's administrator
+can customize — you may see different or additional options than the
+Low/Medium/High/Critical defaults.
 
 ## Test Runs & Execution Console
 

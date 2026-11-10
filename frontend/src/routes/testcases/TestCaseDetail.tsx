@@ -25,6 +25,7 @@ import { listUsers } from '@/api/users'
 import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
+import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -250,6 +251,7 @@ export function TestCaseDetail() {
       </div>
 
       <LinkedDefectsCard testCaseId={testCase.id} />
+      <CustomFieldsCard ownerType="test_case" ownerId={testCase.id} />
       <AttachmentsCard ownerType="test_case" ownerId={testCase.id} />
       <CommentsCard ownerType="test_case" ownerId={testCase.id} />
       <ActivityTimelineCard entries={historyQuery.data} actionLabels={TEST_CASE_HISTORY_ACTION_LABEL} />

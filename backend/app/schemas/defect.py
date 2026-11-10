@@ -1,10 +1,14 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-Severity = Literal["Low", "Medium", "High", "Critical"]
+# Tier 5 (PV-9.5): severity is tenant-configurable (app/services/field_option_service.py)
+# -- the DB CheckConstraint and this fixed Literal were both removed in favor of
+# per-tenant option codes, validated at the service layer against each tenant's
+# current `field_options` rows (seeded with these same four values by default).
+Severity = Annotated[str, Field(min_length=1, max_length=64)]
 DefectStatus = Literal["New", "Open", "Fixed", "Verified", "Closed"]
 LinkableType = Literal["execution_step", "test_case", "defect"]
 LinkType = Literal["relates_to", "duplicate_of", "caused_by"]
@@ -135,6 +139,7 @@ class DefectOut(BaseModel):
     title: str
     severity: Severity
     status: DefectStatus
+    status_label: str
     description: str | None
     actual_result: str | None
     expected_result: str | None
@@ -156,3 +161,4 @@ class DefectOut(BaseModel):
     last_reopened_at: datetime | None
     links: list[DefectLinkOut] = []
     execution_evidence: ExecutionEvidenceOut | None = None
+    custom_fields: dict[str, object] = {}

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { createDefect, listDefects, type DefectStatus, type Severity } from '@/api/defects'
+import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
@@ -14,9 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
-import { SEVERITY_TONE, STATUS_ORDER, STATUS_TONE } from './statusDisplay'
-
-const SEVERITIES: Severity[] = ['Low', 'Medium', 'High', 'Critical']
+import { STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
 export function DefectsList() {
   const { user } = useAuth()
@@ -34,6 +33,10 @@ export function DefectsList() {
     queryFn: () => listProjects({ page_size: 100, sort: 'name' }),
   })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const severitiesQuery = useQuery({
+    queryKey: ['field-options', 'defect_severity'],
+    queryFn: () => listFieldOptions('defect_severity'),
+  })
   const defectsQuery = useQuery({
     queryKey: ['defects', projectId, status, severity, reportedBy, createdFrom, createdTo],
     queryFn: () =>
@@ -93,9 +96,9 @@ export function DefectsList() {
           className="w-40"
         >
           <option value="">All Severities</option>
-          {SEVERITIES.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {(severitiesQuery.data ?? []).map((s) => (
+            <option key={s.code} value={s.code}>
+              {s.label}
             </option>
           ))}
         </Select>
@@ -171,10 +174,10 @@ export function DefectsList() {
                 </td>
                 <td className="px-4 py-2">{d.project_name}</td>
                 <td className="px-4 py-2">
-                  <Badge tone={SEVERITY_TONE[d.severity]}>{d.severity}</Badge>
+                  <Badge tone={severityTone(d.severity)}>{d.severity}</Badge>
                 </td>
                 <td className="px-4 py-2">
-                  <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>
+                  <Badge tone={STATUS_TONE[d.status]}>{d.status_label}</Badge>
                 </td>
                 <td className="px-4 py-2">
                   {d.sla_breached ? (
@@ -218,6 +221,10 @@ function NewDefectDialog({
   const [title, setTitle] = useState('')
   const [severity, setSeverity] = useState<Severity>('Medium')
   const [description, setDescription] = useState('')
+  const severitiesQuery = useQuery({
+    queryKey: ['field-options', 'defect_severity'],
+    queryFn: () => listFieldOptions('defect_severity'),
+  })
 
   const createMutation = useMutation({
     mutationFn: () => createDefect({ project_id: projectId, title, severity, description }),
@@ -257,9 +264,9 @@ function NewDefectDialog({
             value={severity}
             onChange={(e) => setSeverity(e.target.value as Severity)}
           >
-            {SEVERITIES.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {(severitiesQuery.data ?? []).map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.label}
               </option>
             ))}
           </Select>

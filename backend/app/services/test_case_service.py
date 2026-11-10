@@ -26,7 +26,12 @@ from app.schemas.test_case import (
     TestCaseVersionOut,
     VersionCompareOut,
 )
-from app.services import notification_service
+from app.services import (
+    custom_field_service,
+    field_option_service,
+    notification_service,
+    status_label_service,
+)
 from app.services.project_service import is_assigned
 
 SORTABLE_FIELDS = {
@@ -101,6 +106,10 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
         reviewer_name = db.execute(
             select(User.name).where(User.id == case.reviewer_id)
         ).scalar_one_or_none()
+    status_labels = status_label_service.get_labels_map(db, case.tenant_id, "test_case")
+    custom_fields = custom_field_service.get_values_for_owner(
+        db, case.tenant_id, "test_case", case.id
+    )
     return TestCaseOut(
         id=case.id,
         project_id=case.project_id,
@@ -108,6 +117,7 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
         description=version.description,
         priority=cast(Priority, case.priority),
         status=cast(TestCaseStatus, case.status),
+        status_label=status_labels.get(case.status, case.status),
         assignee_id=case.assignee_id,
         module_id=case.module_id,
         reviewer_id=case.reviewer_id,
@@ -116,6 +126,7 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
         created_by=case.created_by,
         created_at=case.created_at,
         steps=_steps_for_version(db, version.id),
+        custom_fields=custom_fields,
     )
 
 
@@ -235,9 +246,7 @@ def list_versions(
     ]
 
 
-def _get_version_by_number(
-    db: Session, test_case_id: UUID, version_number: int
-) -> TestCaseVersion:
+def _get_version_by_number(db: Session, test_case_id: UUID, version_number: int) -> TestCaseVersion:
     version = db.execute(
         select(TestCaseVersion).where(
             TestCaseVersion.test_case_id == test_case_id,
@@ -371,6 +380,7 @@ def create_test_case(
 ) -> TestCase:
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
+    field_option_service.validate_code(db, tenant_id, "test_case_priority", req.priority)
 
     case = TestCase(
         tenant_id=tenant_id,
@@ -479,6 +489,7 @@ def update_test_case(
     if "title" in changes:
         case.title = changes["title"]
     if "priority" in changes:
+        field_option_service.validate_code(db, tenant_id, "test_case_priority", changes["priority"])
         case.priority = changes["priority"]
     if "assignee_id" in changes:
         previous_assignee_id = case.assignee_id

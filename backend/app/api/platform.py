@@ -10,6 +10,7 @@ from app.models.identity import PlatformAdmin
 from app.schemas.platform import (
     TenantCreateRequest,
     TenantCreateResponse,
+    TenantDataRegionUpdateRequest,
     TenantOut,
     TenantStatusUpdateRequest,
 )
@@ -50,6 +51,19 @@ def update_tenant_status(
     admin: PlatformAdmin = Depends(require_platform_admin),
 ) -> dict:
     tenant = platform_service.update_tenant_status(db, tenant_id, req.status, admin.id)
+    return envelope(TenantOut.model_validate(tenant).model_dump())
+
+
+# Tier 4 / ADR-054: data residency readiness (PV-11.6) -- metadata only,
+# platform-admin-only (see platform_service.update_tenant_data_region).
+@router.patch("/tenants/{tenant_id}/data-region")
+def update_tenant_data_region(
+    tenant_id: UUID,
+    req: TenantDataRegionUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    tenant = platform_service.update_tenant_data_region(db, tenant_id, req.data_region, admin.id)
     return envelope(TenantOut.model_validate(tenant).model_dump())
 
 

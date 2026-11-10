@@ -61,9 +61,9 @@ def run_job(db: Session, job: BackgroundJob) -> None:
     set per-job inside the worker's own transaction (ADR-007's RLS GUC is
     transaction-local -- it must never be reused across jobs for
     different tenants)."""
-    # Imported here, not at module load, to avoid a csv_import_service <->
-    # job_service import cycle (csv_import.py's API module imports both).
-    from app.services import csv_import_service
+    # Imported here, not at module load, to avoid import cycles (the API
+    # modules for these import both job_service and their own service).
+    from app.services import csv_import_service, export_service
 
     set_tenant_context(db, str(job.tenant_id))
     try:
@@ -76,6 +76,9 @@ def run_job(db: Session, job: BackgroundJob) -> None:
                 job.payload["csv_text"],
             )
             job.result = report.model_dump(mode="json")
+            job.status = "succeeded"
+        elif job.job_type == export_service.TENANT_EXPORT_JOB_TYPE:
+            job.result = export_service.run_export(db, job.tenant_id)
             job.status = "succeeded"
         else:
             raise ValueError(f"Unknown job_type: {job.job_type}")

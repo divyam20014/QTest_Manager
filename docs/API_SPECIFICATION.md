@@ -167,6 +167,23 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /audit-logs | filterable (action, entity_type, entity_id, user_id, date_from, date_to), paginated (max 200/page), full record incl. metadata/prev_hash (ADR-029, ADR-039), read-only | admin (`audit.view`) |
 | GET | /audit-logs/export | CSV export of the full (unpaginated, capped at 50k rows) filtered audit trail — same filters as the list endpoint (ADR-039) | admin (`audit.view`) |
 | GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side; returns valid/checked_count/broken_at_id (ADR-029) | admin (`audit.view`) |
-| GET | /settings | tenant self-service settings (`default_currency_code`, `default_timezone`, `ai_enabled`, `ai_provider`, `ai_api_key_configured`) (AI/SaaS roadmap Phase 1/3, ADR-043/ADR-045, GAP-80/GAP-72) | admin (`tenant.settings.manage`) |
-| PATCH | /settings | update tenant settings; partial updates supported, audit-logged (`tenant.settings_updated`); `ai_api_key` is write-only (never returned), `""` clears it; enabling AI requires a key already configured | admin (`tenant.settings.manage`) |
+| GET | /settings | tenant self-service settings (`default_currency_code`, `default_timezone`, `ai_enabled`, `ai_provider`, `ai_api_key_configured`, `ip_allowlist`) (AI/SaaS roadmap Phase 1/3, ADR-043/ADR-045, GAP-80/GAP-72; `ip_allowlist` is Tier 4, ADR-054, PV-11.3) | admin (`tenant.settings.manage`) |
+| PATCH | /settings | update tenant settings; partial updates supported, audit-logged (`tenant.settings_updated`); `ai_api_key` is write-only (never returned), `""` clears it; enabling AI requires a key already configured; `ip_allowlist` is a full replace (CIDR list, `[]` clears it) | admin (`tenant.settings.manage`) |
 | GET | /settings/subscription | read-only view of the tenant's current plan/status/seat count — assignment is platform-admin-only (Tier 1, ADR-053) | admin (`tenant.settings.manage`) |
+| GET | /settings/branding | tenant branding (`display_name`, `primary_color`, `has_logo`) (Tier 4, ADR-054, PV-11.4) | all (authenticated) |
+| PUT | /settings/branding | update display name/primary color | admin (`tenant.settings.manage`) |
+| POST | /settings/branding/logo | multipart upload of a PNG/JPEG/SVG/WebP logo (2MB cap), stored via the Tier 1 storage abstraction | admin (`tenant.settings.manage`) |
+| GET | /settings/branding/logo | stream the uploaded logo bytes | all (authenticated) |
+| POST | /export | enqueue a tenant-wide data export job (zip of every entity's raw rows + manifest), via the Tier 1 background job queue (Tier 4, ADR-054, PV-11.5) | admin (`tenant.settings.manage`) |
+| GET | /export/jobs/{id} | poll export job status/result | admin (`tenant.settings.manage`) |
+| GET | /export/jobs/{id}/download | download the finished export archive | admin (`tenant.settings.manage`) |
+| GET | /auth/sso/{tenant_id}/status | public: whether this tenant has SSO enabled (no issuer/client details exposed) (Tier 4, ADR-054, PV-11.1) | public |
+| GET | /auth/sso/{tenant_id}/login | redirect to the tenant's configured OIDC authorization endpoint | public |
+| GET | /auth/sso/{tenant_id}/callback | OIDC authorization-code callback; provisions/logs in the user, bypasses this app's own MFA (ADR-054) | public |
+| GET | /sso/config | tenant SSO configuration (issuer/client_id, never the secret) | admin (`sso.manage`) |
+| PUT | /sso/config | create/update SSO configuration (OIDC only — no SAML, ADR-054) | admin (`sso.manage`) |
+| POST | /scim-tokens | create a new per-tenant SCIM bearer token (shown once) (Tier 4, ADR-054, PV-11.2) | admin (`sso.manage`) |
+| GET | /scim-tokens | list this tenant's SCIM tokens (metadata only) | admin (`sso.manage`) |
+| DELETE | /scim-tokens/{id} | revoke a SCIM token | admin (`sso.manage`) |
+| GET/POST/PUT/PATCH/DELETE | /scim/v2/{tenant_id}/Users[/{id}] | minimal SCIM 2.0 server, Users only, bearer-token authenticated (not session-cookie); DELETE deactivates, never hard-deletes (ADR-054) | SCIM bearer token |
+| PATCH | /platform/tenants/{id}/data-region | set a tenant's data-residency metadata (`us`/`eu`/`apac`/...); readiness only, no per-region deployment exists (Tier 4, ADR-054, PV-11.6, see `docs/DATA_RESIDENCY.md`) | platform admin |

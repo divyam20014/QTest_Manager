@@ -73,7 +73,14 @@ services:
   worker:
     build:
       context: ./backend
-    command: ["python", "-m", "app.worker"]
+    # Tier 4 / ADR-054: mirrors the api service's own CMD (backend/Dockerfile)
+    # -- overriding `command:` bypasses that Dockerfile CMD entirely, so
+    # without this the worker ran directly as root while api ran as the
+    # unprivileged `app` user, leaving any file the worker wrote under
+    # /data/attachments root-owned and unwritable by api afterward (the
+    # bug that surfaced when the tenant-export job tried to create a
+    # subdirectory there).
+    command: ["sh", "-c", "chown -R app:app /data/attachments && su app -s /bin/sh -c 'python -m app.worker'"]
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://qtesthub_app:${APP_DB_PASSWORD:-qtesthub_app}@db:5432/${POSTGRES_DB:-qtesthub}
@@ -84,6 +91,14 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
+    # Tier 4 / ADR-054: the tenant-export job (and any future worker job
+    # touching the local storage backend) reads/writes through
+    # app/core/storage.py's LocalFilesystemStorage, which resolves to this
+    # same path -- without this mount the worker and api containers each
+    # see their own, unrelated filesystem, so a file the worker writes is
+    # invisible to the api container that later serves its download.
+    volumes:
+      - qtesthub_attachments:/data/attachments
 
 volumes:
   qtesthub_pgdata:

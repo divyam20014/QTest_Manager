@@ -1,6 +1,10 @@
 import { apiFetch } from '@/api/client'
 
-export type Severity = 'Low' | 'Medium' | 'High' | 'Critical'
+// Tier 5 / ADR-055: tenant-configurable value set (app/services/field_option_service.py)
+// -- no longer a fixed literal union. The four defaults every tenant is
+// seeded with still work as plain strings; `string` just stops pretending
+// a tenant-added option like "Blocker" is a type error.
+export type Severity = string
 export type DefectStatus = 'New' | 'Open' | 'Fixed' | 'Verified' | 'Closed'
 export type Verdict = 'pass' | 'fail' | 'ignore'
 export type RootCause =
@@ -47,6 +51,7 @@ export interface Defect {
   title: string
   severity: Severity
   status: DefectStatus
+  status_label: string
   description: string | null
   actual_result: string | null
   expected_result: string | null
@@ -68,6 +73,7 @@ export interface Defect {
   last_reopened_at: string | null
   links: DefectLink[]
   execution_evidence: ExecutionEvidence | null
+  custom_fields: Record<string, unknown>
 }
 
 export interface PossibleDuplicate {

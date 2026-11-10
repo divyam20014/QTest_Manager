@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address, ip_network
 from uuid import UUID
 
 from fastapi import Depends, Request, Response
@@ -23,6 +24,42 @@ class SessionContext:
     user_id: UUID
     role_code: str
     permissions: set[str]
+
+
+def client_ip(request: Request) -> str | None:
+    """Tier 4 / ADR-054: resolves the caller's IP for allowlist enforcement
+    (PV-11.3). Only honors X-Forwarded-For when `trust_proxy_headers` is on
+    -- see config.py's note on why a bare client-supplied header is never
+    trusted by default."""
+    if settings.trust_proxy_headers:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+def _enforce_ip_allowlist(db: Session, tenant_id: UUID, request: Request) -> None:
+    allowlist = db.execute(
+        select(Tenant.ip_allowlist).where(Tenant.id == tenant_id)
+    ).scalar_one_or_none()
+    if not allowlist:
+        return  # unset/empty means no restriction (PV-11.3's documented default)
+
+    caller_ip = client_ip(request)
+    if caller_ip is None:
+        raise ForbiddenError("Access denied: client IP could not be determined")
+    try:
+        caller = ip_address(caller_ip)
+    except ValueError:
+        raise ForbiddenError("Access denied: client IP could not be determined") from None
+
+    for cidr in allowlist:
+        try:
+            if caller in ip_network(cidr, strict=False):
+                return
+        except ValueError:
+            continue  # a malformed stored entry never silently blocks every request
+    raise ForbiddenError("Access denied: your network is not on this organization's allowlist")
 
 
 def parse_session_cookie(request: Request) -> UUID:
@@ -87,6 +124,8 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
     ).scalar_one_or_none()
     if tenant_status is not None and tenant_status != "approved":
         raise ForbiddenError("This organization's account is no longer active.")
+
+    _enforce_ip_allowlist(db, session_row.tenant_id, request)
 
     session_row.last_seen_at = now
     db.commit()

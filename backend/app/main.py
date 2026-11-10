@@ -19,12 +19,17 @@ from app.api import (
     csv_import,
     defects,
     execution,
+    export,
+    field_customization,
     notifications,
     platform,
     projects,
     reporting,
     requirements,
+    scim,
     search,
+    sso,
+    templates,
     test_assets,
     test_cases,
     test_modules,
@@ -165,6 +170,13 @@ app.include_router(ai.router, prefix="/api/v1")
 app.include_router(test_assets.router, prefix="/api/v1")
 app.include_router(test_modules.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
+app.include_router(export.router, prefix="/api/v1")
+app.include_router(sso.router, prefix="/api/v1")
+app.include_router(sso.admin_router, prefix="/api/v1")
+app.include_router(scim.router, prefix="/api/v1")
+app.include_router(scim.admin_router, prefix="/api/v1")
+app.include_router(field_customization.router, prefix="/api/v1")
+app.include_router(templates.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")
