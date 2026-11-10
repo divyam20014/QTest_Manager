@@ -196,6 +196,7 @@ def verify_chain(db: Session, tenant_id: UUID) -> ChainVerificationResult:
         payload = {
             "tenant_id": str(row.tenant_id),
             "user_id": str(row.user_id) if row.user_id else None,
+            "platform_admin_id": str(row.platform_admin_id) if row.platform_admin_id else None,
             "action": row.action,
             "entity_type": row.entity_type,
             "entity_id": str(row.entity_id),

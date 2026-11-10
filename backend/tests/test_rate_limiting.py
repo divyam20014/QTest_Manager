@@ -34,3 +34,66 @@ def test_login_is_rate_limited_after_ten_attempts_per_minute(client: TestClient)
     assert statuses[:10] == [401] * 10
     assert statuses[10] == 429
     assert responses[10].json()["error"]["code"] == "rate_limited"
+
+
+def test_platform_tenants_is_rate_limited_after_sixty_attempts_per_minute(
+    client: TestClient,
+) -> None:
+    """Tier 0 / ADR-052: the platform-admin HTTP Basic plane previously had
+    no throttling at all (same class of gap as GAP-16's login route). The
+    cap is looser than login's (60/minute, not 10/minute) since this
+    dependency also gates the read-only tenant list the frontend legitimately
+    re-polls after every mutation, and the per-admin lockout (5 wrong
+    passwords -> 15 min) is the primary brute-force defense here, not this
+    rate limit."""
+    limiter.enabled = True
+    limiter.reset()
+    try:
+        responses = [
+            client.post(
+                "/api/v1/platform/tenants",
+                auth=("nobody@example.com", "WrongPassword1!"),
+                json={
+                    "tenant_name": "x",
+                    "admin_name": "x",
+                    "admin_email": "x@example.com",
+                    "admin_password": "x",
+                },
+            )
+            for _ in range(61)
+        ]
+    finally:
+        limiter.enabled = False
+        limiter.reset()
+
+    statuses = [r.status_code for r in responses]
+    assert statuses[:60] == [401] * 60
+    assert statuses[60] == 429
+    assert responses[60].json()["error"]["code"] == "rate_limited"
+
+
+def test_csv_import_is_rate_limited_after_ten_attempts_per_minute(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Tier 0 / ADR-052: CSV import is a resource-intensive write endpoint
+    that previously had no throttling."""
+    from tests.test_csv_import import _setup_admin_and_project
+
+    _setup_admin_and_project(client, platform_admin, "Rate Limit Project")
+
+    limiter.enabled = True
+    limiter.reset()
+    try:
+        responses = [
+            client.post(
+                "/api/v1/test-cases/import",
+                files={"file": ("x.csv", b"not,real,csv", "text/csv")},
+            )
+            for _ in range(11)
+        ]
+    finally:
+        limiter.enabled = False
+        limiter.reset()
+
+    statuses = [r.status_code for r in responses]
+    assert 429 in statuses

@@ -1,0 +1,103 @@
+# Tier 0 / ADR-052: production deployment compose file, separate from the
+# dev-focused docker-compose.yml (fast rebuilds, exposed DB port, dev
+# server). See docs/PRODUCTION_DEPLOYMENT_GUIDE.md for the full walkthrough.
+#
+# Copy .env.example to .env and fill in real values before running this --
+# every variable below with no default (${VAR:?...}) is required and this
+# file will refuse to start without it.
+#
+# `name:` is set explicitly so this never shares a Compose project (and
+# therefore never shares container names/volumes) with the dev
+# docker-compose.yml when both are run from the same directory -- without
+# this, `docker compose -f docker-compose.prod.yml down -v` would delete the
+# DEV stack's containers and data if both default to the directory-derived
+# project name.
+name: qtesthub-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    # No host port mapping: the database is reachable only from other
+    # containers on this compose network, never directly from the host.
+    volumes:
+      - qtesthub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://qtesthub_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      ENVIRONMENT: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MFA_DELIVERY_MODE: ${MFA_DELIVERY_MODE:-real}
+      NOTIFICATION_EMAIL_DELIVERY_MODE: ${NOTIFICATION_EMAIL_DELIVERY_MODE:-real}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-no-reply@example.com}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:?Set CORS_ALLOW_ORIGINS in .env, e.g. https://app.example.com}
+      AI_CREDENTIAL_ENCRYPTION_KEY: ${AI_CREDENTIAL_ENCRYPTION_KEY:?Set AI_CREDENTIAL_ENCRYPTION_KEY in .env}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - qtesthub_attachments:/data/attachments
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx/reverse-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount your TLS certificate/key here (see docs/PRODUCTION_DEPLOYMENT_GUIDE.md);
+      # e.g. a certbot-managed /etc/letsencrypt directory.
+      - ${TLS_CERT_DIR:-./deploy/nginx/certs}:/etc/nginx/certs:ro
+
+volumes:
+  qtesthub_pgdata:
+  qtesthub_attachments:

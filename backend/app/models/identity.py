@@ -27,6 +27,12 @@ class PlatformAdmin(Base, UUIDPKMixin):
     email: Mapped[str] = mapped_column(CITEXT, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Tier 0 / ADR-052: brute-force lockout on the HTTP Basic plane (a full
+    # session+MFA replacement was deliberately deferred -- see ADR-052).
+    failed_login_count: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Role(Base, UUIDPKMixin):

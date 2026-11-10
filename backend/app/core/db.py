@@ -7,7 +7,14 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_timeout=settings.db_pool_timeout,
+    pool_recycle=settings.db_pool_recycle_seconds,
+)
 # expire_on_commit=False: services commit once and then build a response
 # from the same objects. With the default (True), that post-commit access
 # would trigger a refresh query in a NEW transaction that no longer has

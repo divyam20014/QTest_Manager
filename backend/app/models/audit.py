@@ -19,6 +19,15 @@ class AuditLog(Base, TenantScopedMixin):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    # Tier 0 / ADR-052: platform-admin actions (tenant provisioning/status
+    # changes) previously recorded user_id=None with no individual
+    # attribution at all, since PlatformAdmin isn't a `users` row. Separate
+    # nullable FK rather than widening user_id's FK target, since the two
+    # identities are deliberately distinct planes (ADR-008) and a row is
+    # attributed to exactly one of them, never both.
+    platform_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("platform_admins.id"), nullable=True
+    )
     action: Mapped[str] = mapped_column(String, nullable=False)
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

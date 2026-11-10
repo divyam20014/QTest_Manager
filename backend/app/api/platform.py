@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.platform_auth import require_platform_admin
 from app.core.responses import envelope
+from app.models.identity import PlatformAdmin
 from app.schemas.platform import (
     TenantCreateRequest,
     TenantCreateResponse,
@@ -14,30 +15,38 @@ from app.schemas.platform import (
 )
 from app.services import platform_service
 
-router = APIRouter(
-    prefix="/platform", tags=["platform"], dependencies=[Depends(require_platform_admin)]
-)
+router = APIRouter(prefix="/platform", tags=["platform"])
 
 
 @router.post("/tenants")
-def create_tenant(req: TenantCreateRequest, db: Session = Depends(get_db)) -> dict:
-    tenant, admin = platform_service.create_tenant_with_admin(db, req)
+def create_tenant(
+    req: TenantCreateRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    tenant, created_admin = platform_service.create_tenant_with_admin(db, req, admin.id)
     return envelope(
         TenantCreateResponse(
-            tenant=TenantOut.model_validate(tenant), admin_user_id=admin.id
+            tenant=TenantOut.model_validate(tenant), admin_user_id=created_admin.id
         ).model_dump()
     )
 
 
 @router.get("/tenants")
-def list_tenants(db: Session = Depends(get_db)) -> dict:
+def list_tenants(
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
     tenants = platform_service.list_tenants(db)
     return envelope([TenantOut.model_validate(t).model_dump() for t in tenants])
 
 
 @router.patch("/tenants/{tenant_id}/status")
 def update_tenant_status(
-    tenant_id: UUID, req: TenantStatusUpdateRequest, db: Session = Depends(get_db)
+    tenant_id: UUID,
+    req: TenantStatusUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
 ) -> dict:
-    tenant = platform_service.update_tenant_status(db, tenant_id, req.status)
+    tenant = platform_service.update_tenant_status(db, tenant_id, req.status, admin.id)
     return envelope(TenantOut.model_validate(tenant).model_dump())

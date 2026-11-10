@@ -32,7 +32,7 @@ Status values: **Done**, **Partial**, **Missing**. A requirement already fully c
 |---|---|---|---|---|
 | SR-2.1 | Tenant registration and provisioning | Done (via BRD) | — | Platform-admin-driven (`POST /platform/tenants`), not self-service signup — acceptable for current scope; self-service signup is a distinct future product decision, not assumed here. |
 | SR-2.2 | Tenant activation, suspension, deactivation | Done (via BRD) | — | `PATCH /platform/tenants/{id}/status`, enforced at login time too. |
-| SR-2.3 | Tenant-specific configuration | Missing | L | `Tenant.default_currency_code`/`default_timezone` columns exist but have no read/write API or UI — set once at creation, never editable. |
+| SR-2.3 | Tenant-specific configuration | Done | L | `GET/PATCH /api/v1/settings` (`backend/app/api/settings.py`, ADR-043) reads/writes tenant settings including `default_currency_code`/`default_timezone`, gated by `tenant.settings.manage`, with a real `Settings.tsx` UI. Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-2.4 | Tenant-specific user invitations | Missing | L | All users are directly created by an admin with an admin-set password. No email-verified invite/accept flow. |
 | SR-2.5 | Tenant-specific project and test data | Done (via BRD) | — | Full FK chain, confirmed. |
 | SR-2.6 | Tenant-aware file storage | Done (via BRD) | — | Path-partitioned per tenant (`{attachments_dir}/{tenant_id}/{test_case_id}/`); shares one physical volume across tenants (isolation is path-based, not storage-account-based — acceptable at current scale, revisit with SR-1.8). |
@@ -62,18 +62,18 @@ See `docs/SAAS_GAP_ANALYSIS.md` SAAS-GAP-1 for the recommended foundation-only f
 | ID | Requirement | Status | Class | Notes |
 |---|---|---|---|---|
 | SR-4.1 | Clean, professional interface | Done | — | Delivered in this session's enterprise redesign (dark sidebar, consistent cards/tables/badges). |
-| SR-4.2 | Responsive layouts | Missing | L | Sidebar is fixed-width with no collapse at any breakpoint; tables clip (`overflow-hidden`) instead of scrolling. Breaks visibly under ~768px. |
-| SR-4.3 | Collapsible sidebar | Missing | L | No toggle, no persisted state, no icon-only mode. |
+| SR-4.2 | Responsive layouts | Done | L | `frontend/src/routes/AppShell.tsx` now has `md:w-16`/`md:w-60` responsive breakpoint classes (ADR-041). Corrected 2026-11-10 per the implementation audit after direct code verification. |
+| SR-4.3 | Collapsible sidebar | Done | L | `frontend/src/routes/AppShell.tsx` has a `localStorage`-persisted `collapsed` toggle with an icon-only mode (ADR-041). Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-4.4 | Workspace switcher | N/A / Partial | — | A cross-*tenant* switcher doesn't map onto this architecture (a session is already tenant-bound by design, ADR-007/ADR-015) — switching tenants means logging in again, which is correct given the isolation model. Switching between *projects within* a tenant does exist (Projects page, Test Repository's project filter). |
 | SR-4.5 | Global search | Missing | E | Only page-scoped filters exist; no cross-entity search or command palette. |
 | SR-4.6 | Breadcrumb navigation | Done | — | `components/Breadcrumbs.tsx`, wired into the shell header. |
-| SR-4.7 | Contextual actions | Partial | L | Present and role-gated on Projects/Execution Console/Admin/Test Repository; not found on the Defects list. |
+| SR-4.7 | Contextual actions | Done | L | `frontend/src/routes/defects/DefectsList.tsx:59` now has a role-gated "New Defect" quick-create button (ADR-041), closing the previously-missing Defects list case. Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-4.8 | Reusable components | Done | — | Shared `components/ui/` primitives used consistently. |
 | SR-4.9 | Consistent tables, filters, forms | Done | — | Verified consistent markup pattern across all major list pages. |
 | SR-4.10 | Light and dark themes | Partial | L | Dark-mode tokens exist and are correctly wired (including all new redesign tokens) and follow OS preference; there is no in-app manual toggle. |
-| SR-4.11 | Notifications and activity feeds | Partial | L | Dashboard's Recent Activity feed is real (audit-log-backed); the header notification bell is an intentional empty-state placeholder with no backend — a visible inconsistency worth closing. |
+| SR-4.11 | Notifications and activity feeds | Done | L | The header notification bell now has a real backend (`backend/app/api/notifications.py`, `notification_service.py`, `frontend/src/api/notifications.ts` — Phase 9, ADR-051), alongside the Dashboard's existing audit-log-backed Recent Activity feed. Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-4.12 | Loading/empty/error/success states | Partial | L | Loading/empty/error states are consistently handled; there is **no toast/confirmation system anywhere** — successful mutations rely solely on a dialog closing or a list silently refreshing. |
-| SR-4.13 | Accessible components | Partial | L | `@axe-core/playwright` WCAG2A/AA scanning exists but only covers the 5 pre-redesign pages; every page this session's redesign added or substantially reworked (Test Repository, Test Runs Overview, Execution Console, Settings, Audit Logs) has zero accessibility test coverage. |
+| SR-4.13 | Accessible components | Done | L | `frontend/e2e/accessibility.spec.ts` extended to cover the redesigned pages (ADR-041, GAP-70). Corrected 2026-11-10 per the implementation audit; not independently re-run during the audit itself, but the extended page list is corroborated by ADR-041's text and by the routes existing. |
 | SR-4.14 | Minimal clicks for common workflows | Done (where measured) | — | Quick-create/inline-action patterns genuinely reduce clicks for test case creation and fail→defect reporting (see SAAS_GAP_ANALYSIS for click counts); not every workflow was re-measured. |
 
 ## SR-5. Platform Administration
@@ -85,15 +85,15 @@ See `docs/SAAS_GAP_ANALYSIS.md` SAAS-GAP-1 for the recommended foundation-only f
 | SR-5.3 | Activate/suspend tenants | Done | — | |
 | SR-5.4 | Configure subscription plans | Missing | F | Depends on SR-3. |
 | SR-5.5 | Monitor platform usage (cross-tenant metrics) | Missing | L | No aggregation endpoint exists across tenants. |
-| SR-5.6 | View system health | Partial | L | `/api/v1/health` exists but is liveness-only (no DB connectivity check) — not a true readiness probe. |
+| SR-5.6 | View system health | Done | L | `GET /api/v1/ready` (`backend/app/main.py:142`) is a true readiness probe distinct from the liveness-only `/health`, doing a real `SELECT 1` round trip and returning 503 on failure. Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-5.7 | Monitor background jobs | Missing (structurally N/A) | L | No background job system exists at all yet (see SR-6.7); this requirement is blocked on that one. |
 | SR-5.8 | Review platform-level audit events | Partial | L | Platform actions *are* audited, but with `user_id=None` — no individual platform-admin attribution (GAP-13). |
 | SR-5.9 | Platform admin authentication strength | Missing | L | HTTP Basic re-checked per request, no session, no MFA, no credential rotation (GAP-14) — materially weaker than the tenant auth it gates access to tenant *provisioning* for. |
-| SR-5.10 | Tenant Admin: org settings | Missing | L | Same gap as SR-2.3. |
+| SR-5.10 | Tenant Admin: org settings | Done | L | Same fix as SR-2.3: `GET/PATCH /api/v1/settings` (ADR-043). Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-5.11 | Tenant Admin: invite/manage users | Partial | L | Direct-create exists; no invite flow (SR-2.4). |
 | SR-5.12 | Tenant Admin: assign roles/permissions | Done | — | |
 | SR-5.13 | Tenant Admin: manage projects | Done | — | |
-| SR-5.14 | Tenant Admin: tenant-specific settings | Missing | L | Duplicate of SR-2.3/SR-5.10. |
+| SR-5.14 | Tenant Admin: tenant-specific settings | Done | L | Same fix as SR-2.3/SR-5.10: `GET/PATCH /api/v1/settings` (ADR-043). Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-5.15 | Tenant Admin: view tenant usage/activity | Partial | L | Audit log exists; no distinct usage dashboard (moot without SR-3 limits to measure against). |
 | SR-5.16 | Controlled/audited platform-admin support access to tenant data | Done (by stronger means) | — | There is no code path at all from platform-admin auth into tenant data (RLS + separate auth entirely) — the directive asks for this to be "controlled and audited"; this codebase instead makes it architecturally impossible, which satisfies the underlying intent (no support-driven data exposure) even though it doesn't literally implement an audited break-glass mechanism. If a future support workflow genuinely needs platform-admin read access to a tenant's data, that would be new, explicitly-scoped work, not an extension of today's design. |
 
@@ -107,7 +107,7 @@ See `docs/SAAS_GAP_ANALYSIS.md` SAAS-GAP-1 for the recommended foundation-only f
 | SR-6.4 | Database migrations | Done | — | 16-migration Alembic chain, run automatically on container start. |
 | SR-6.5 | Persistent object storage | Missing | L | Local filesystem only (GAP-07) — blocks multi-replica scaling. |
 | SR-6.6 | Centralized application logging | Partial | L | Structured per-request logging exists but is plain-text (not JSON), stdout-only, no correlation/request ID, no shipping destination. |
-| SR-6.7 | Health and readiness endpoints | Partial | L | `/api/v1/health` is liveness-only; no DB-connectivity readiness check. |
+| SR-6.7 | Health and readiness endpoints | Done | L | Same fix as SR-5.6: `GET /api/v1/ready` (`backend/app/main.py:142`). Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-6.8 | Error monitoring | Missing | L | No Sentry/Rollbar/equivalent anywhere. |
 | SR-6.9 | Database backup and restore | Missing | L | No script, no documented procedure anywhere in the repo. |
 | SR-6.10 | Background job management | Missing | L | No Celery/RQ/Redis/task queue exists at all; CSV import (up to 2,000 rows) runs fully synchronously in-request. |
@@ -125,7 +125,7 @@ Already thoroughly covered by the existing `docs/Security_Test_Report.md` (73 pa
 | SR-7.1 | Strong authentication, MFA, RBAC, tenant isolation, password hashing, session expiry/revocation, audit logging, input validation, secure file handling, OWASP protections | Done | — | Verified via `Security_Test_Report.md` + direct code re-confirmation. |
 | SR-7.2 | Rate limiting (as a security control, not just UX) | Partial | L | Same gap as SR-6.13 — the narrow scope is a real security gap (brute-force/DoS surface on unthrottled write endpoints), not just an operational one. |
 | SR-7.3 | Backup and recovery procedures | Missing | L | Same as SR-6.9. |
-| SR-7.4 | Keep security documentation current | Partial | L | `docs/Security_Test_Report.md` currently misreports the file-upload content-sniffing item as an open finding; it was fixed later in this same session (GAP-66) and the report was never updated. Needs a correction pass, not a new security fix. |
+| SR-7.4 | Keep security documentation current | Done | L | The staleness this row itself flagged (the file-upload content-sniffing finding still shown as open in `Security_Test_Report.md` after GAP-66 fixed it) was corrected per `KNOWN_GAPS.md` GAP-70/`SAAS_GAP_ANALYSIS.md` SAAS-GAP-17. Corrected 2026-11-10 per the implementation audit. |
 
 ## SR-8. Scope and BRD Governance
 
@@ -146,7 +146,7 @@ Already thoroughly covered by the existing `docs/Security_Test_Report.md` (73 pa
 | SR-9.5 | Transaction management | Done | — | |
 | SR-9.6 | Automated unit/integration tests | Done | — | 163 backend tests, real Postgres, not mocks. |
 | SR-9.7 | Tenant isolation tests | Done | — | |
-| SR-9.8 | Centralized exception handling | Partial | L | `AppError` and `RateLimitExceeded` are handled with a consistent envelope; there is **no generic `Exception`/500 handler**, so a genuine bug produces Starlette's default (inconsistent) error shape instead of the app's `{"data":null,"error":{...}}` envelope. |
+| SR-9.8 | Centralized exception handling | Done | L | `backend/app/main.py:104` now registers a generic `@app.exception_handler(Exception)` alongside `AppError`/`RateLimitExceeded`, so an unhandled bug returns the app's consistent envelope instead of Starlette's default shape (SAAS-GAP-15). Corrected 2026-11-10 per the implementation audit after direct code verification. |
 | SR-9.9 | API documentation | Done | — | FastAPI auto-docs enabled by default (`/docs`, `/redoc`, `/openapi.json`); hand-written `API_SPECIFICATION.md` is a reasonable high-level companion. |
 
 ---

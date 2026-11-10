@@ -28,6 +28,7 @@ from app.schemas.defect import (
     Severity,
     Verdict,
 )
+from app.services import notification_service
 from app.services.project_service import is_assigned
 
 # ADR-026: strictly sequential, no skipping, no reopening.
@@ -294,6 +295,22 @@ def update_status(
     defect.status = new_status
     if new_status == "Closed":
         defect.closed_at = datetime.now(UTC)
+        reporter = db.execute(
+            select(User).where(User.id == defect.reported_by)
+        ).scalar_one_or_none()
+        if reporter is not None:
+            notification_service.notify(
+                db,
+                tenant_id,
+                actor_user_id,
+                defect.reported_by,
+                reporter.email,
+                "defect_closed",
+                "Your defect was closed",
+                f'"{defect.title}" was closed.',
+                "defect",
+                defect.id,
+            )
 
     record_audit_event(
         db,

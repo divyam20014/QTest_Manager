@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
+from app.core.rate_limit import limiter
 from app.core.responses import envelope
 from app.services import attachment_service
 from app.services.owner_access import (
@@ -31,7 +32,9 @@ def list_attachments(
 
 
 @router.post("/test-cases/{test_case_id}/attachments")
+@limiter.limit("30/minute")
 def upload_attachment(
+    request: Request,
     test_case_id: UUID,
     file: UploadFile = File(...),
     ctx: SessionContext = Depends(require_permission("testcase.edit")),
@@ -58,7 +61,9 @@ def list_defect_attachments(
 
 
 @router.post("/defects/{defect_id}/attachments")
+@limiter.limit("30/minute")
 def upload_defect_attachment(
+    request: Request,
     defect_id: UUID,
     file: UploadFile = File(...),
     ctx: SessionContext = Depends(get_current_context),
@@ -89,7 +94,9 @@ def list_execution_step_attachments(
 
 
 @router.post("/execution-steps/{execution_step_id}/attachments")
+@limiter.limit("30/minute")
 def upload_execution_step_attachment(
+    request: Request,
     execution_step_id: UUID,
     file: UploadFile = File(...),
     ctx: SessionContext = Depends(require_permission("executionstep.record")),

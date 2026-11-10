@@ -21,7 +21,7 @@ set -euo pipefail
 : "${POSTGRES_PORT:=5432}"
 : "${POSTGRES_DB:?Set POSTGRES_DB}"
 : "${POSTGRES_USER:?Set POSTGRES_USER}"
-: "${PGPASSWORD:?Set PGPASSWORD (the Postgres owner role's password)}"
+: "${PGPASSWORD:?Set PGPASSWORD (the Postgres owner role password)}"
 export PGPASSWORD
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"

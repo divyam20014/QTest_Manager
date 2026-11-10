@@ -24,6 +24,7 @@ def record_audit_event(
     entity_type: str,
     entity_id: UUID,
     metadata: dict | None = None,
+    platform_admin_id: UUID | None = None,
 ) -> AuditLog:
     """Append-only, hash-chained audit entry (ADR-006).
 
@@ -57,6 +58,7 @@ def record_audit_event(
     payload = {
         "tenant_id": str(tenant_id),
         "user_id": str(user_id) if user_id else None,
+        "platform_admin_id": str(platform_admin_id) if platform_admin_id else None,
         "action": action,
         "entity_type": entity_type,
         "entity_id": str(entity_id),
@@ -69,6 +71,7 @@ def record_audit_event(
     entry = AuditLog(
         tenant_id=tenant_id,
         user_id=user_id,
+        platform_admin_id=platform_admin_id,
         action=action,
         entity_type=entity_type,
         entity_id=entity_id,

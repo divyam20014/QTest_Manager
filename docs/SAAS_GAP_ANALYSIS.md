@@ -34,22 +34,25 @@ Status of this analysis as originally written: **audit only — nothing below ha
 
 ## L — Required before production launch
 
-### SAAS-GAP-4: Platform-admin actions are not individually attributed
+### SAAS-GAP-4: ✅ RESOLVED (ADR-052, Tier 0) — Platform-admin actions are not individually attributed
 **Evidence:** `backend/app/services/platform_service.py` lines ~40-57, ~73-81 — every `record_audit_event(...)` call for `tenant.created`/`tenant.status_changed` passes `user_id=None`. This is `GAP-13` in `docs/KNOWN_GAPS.md`, confirmed still accurate by direct code read.
 **Why launch-blocking:** tenant provisioning and suspension are high-privilege actions; an audit trail that can't say *which* platform admin suspended a customer is a real compliance/accountability gap the moment there's more than one platform admin.
 **Recommended first step:** per `SAAS_ARCHITECTURE.md` §2 — a nullable `platform_admin_id` column (or parallel table) on the audit trail.
+**Resolution (2026-11-10):** `audit_logs` gained a nullable `platform_admin_id` FK (migration `b7c8d9e0f1a2`); `platform_service.py`'s `tenant.created`/`tenant.status_changed` events now carry the real authenticated admin's id instead of `user_id=None`. See ADR-052.
 
-### SAAS-GAP-5: Platform Admin authentication has no session or MFA
+### SAAS-GAP-5: Platform Admin authentication has no session or MFA (partially addressed — see ADR-052)
 **Evidence:** `backend/app/core/platform_auth.py` — plain `HTTPBasic` credential check against `platform_admins.password_hash` on every request. `GAP-14` in `docs/KNOWN_GAPS.md`, confirmed.
 **Why launch-blocking:** this account can provision and suspend every customer tenant in the system — it is arguably the single highest-privilege credential in the whole platform, yet it's protected more weakly than an ordinary tenant user's login.
 **Recommended first step:** per `SAAS_ARCHITECTURE.md` §2 — reuse the existing session+MFA pattern with a platform-admin-scoped session table.
+**Partial resolution (2026-11-10, ADR-052):** a full session+MFA replacement was deliberately deferred — it would need a new non-tenant-scoped session/MFA model pair, a frontend auth-flow rewrite, and mechanical edits across 23 test call sites, out of proportion for the Tier 0 pass that closed the other L-priority gaps. Instead: brute-force lockout (5 failed attempts → 15 min lock, `platform_admins.failed_login_count`/`locked_until`) and rate limiting (see SAAS-GAP-6 below) were added to the existing HTTP Basic plane. The full replacement remains open for a future phase.
 
-### SAAS-GAP-6: Rate limiting covers only 2 of dozens of endpoints
+### SAAS-GAP-6: ✅ RESOLVED (ADR-052, Tier 0) — Rate limiting covers only 2 of dozens of endpoints
 **Evidence:** `backend/app/core/rate_limit.py` (in-memory `slowapi.Limiter`, IP-keyed); applied only at `backend/app/api/auth.py` on `POST /auth/login` and `POST /auth/mfa/verify` (10/min each). Every other route across projects/test-cases/execution/defects/reporting/audit/attachments/csv-import/users was confirmed unthrottled by grep for `@limiter.limit` across the whole backend.
 **Why launch-blocking:** a real multi-tenant SaaS product with unthrottled write endpoints (especially CSV import, which already does synchronous heavy work per request) is a DoS and resource-exhaustion risk from day one of having external customers.
 **Recommended first step:** extend the existing limiter to write-heavy endpoints first (CSV import, bulk actions, create/update routes), not necessarily every GET; keep the existing login/MFA limits as-is.
+**Resolution (2026-11-10):** extended to all `/platform/*` routes (60/min, uniformly — looser than login's 10/min since it also gates a read-only list the frontend re-polls, and the platform-admin lockout in SAAS-GAP-5 is the primary brute-force defense there), CSV import (10/min), and all three attachment-upload routes (30/min) — the write-heavy/resource-intensive endpoints this gap named.
 
-### SAAS-GAP-7: No tenant self-service settings
+### SAAS-GAP-7: ✅ RESOLVED (ADR-043, confirmed during the 2026-11-10 audit) — No tenant self-service settings
 **Evidence:** `Tenant.default_currency_code`/`default_timezone` columns exist (`backend/app/models/tenant.py`) but grep across `backend/app/api/*.py` found no settings read/write endpoint. The frontend's own `Settings.tsx` is an explicit, honest stub (confirmed in this session's earlier redesign work) precisely because no backend exists to back it.
 **Why launch-blocking:** a tenant admin cannot change their own organization's currency/timezone/MFA-delivery-mode after bootstrap — a basic expectation for a self-serve-feeling SaaS product, even in a sales-assisted onboarding model.
 **Recommended first step:** `GET/PATCH /settings` (already named as a planned-but-unbuilt endpoint in `docs/API_SPECIFICATION.md` historically) backed by the existing `Tenant` columns.

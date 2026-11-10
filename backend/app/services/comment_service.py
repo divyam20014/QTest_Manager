@@ -9,6 +9,7 @@ from app.core.errors import ForbiddenError, NotFoundError, ValidationAppError
 from app.models.comment import Comment, CommentMention
 from app.models.identity import User
 from app.schemas.comment import CommentCreateRequest, CommentOut, MentionedUserOut
+from app.services import notification_service
 from app.services.owner_access import authorize_owner_access
 
 
@@ -62,20 +63,26 @@ def create_comment(
 ) -> CommentOut:
     authorize_owner_access(db, tenant_id, role_code, actor_user_id, owner_type, owner_id)
 
+    mentioned_users: list[User] = []
     if req.mentioned_user_ids:
-        found_ids = set(
+        mentioned_users = list(
             db.execute(
-                select(User.id).where(
+                select(User).where(
                     User.tenant_id == tenant_id, User.id.in_(req.mentioned_user_ids)
                 )
             )
             .scalars()
             .all()
         )
+        found_ids = {u.id for u in mentioned_users}
         missing = set(req.mentioned_user_ids) - found_ids
         if missing:
             names = ", ".join(str(m) for m in missing)
             raise ValidationAppError(f"Unknown mentioned user(s): {names}")
+
+    author_name = db.execute(
+        select(User.name).where(User.id == actor_user_id)
+    ).scalar_one_or_none()
 
     comment = Comment(
         tenant_id=tenant_id,
@@ -90,6 +97,20 @@ def create_comment(
     for mentioned_id in req.mentioned_user_ids:
         db.add(CommentMention(tenant_id=tenant_id, comment_id=comment.id, user_id=mentioned_id))
     db.flush()
+
+    for mentioned_user in mentioned_users:
+        notification_service.notify(
+            db,
+            tenant_id,
+            actor_user_id,
+            mentioned_user.id,
+            mentioned_user.email,
+            "mention",
+            f"{author_name or 'Someone'} mentioned you in a comment",
+            req.body,
+            owner_type,
+            owner_id,
+        )
 
     record_audit_event(
         db,

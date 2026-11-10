@@ -100,6 +100,10 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /execution-steps/{id}/comments | list comments on an execution step | all (assigned to the step's run's project) |
 | POST | /execution-steps/{id}/comments | post a comment | all (assigned to the step's run's project) |
 | DELETE | /comments/{id} | delete (owner-type-dispatched authorization); own comment, or Admin/Manager moderation | author of the comment, or admin/manager |
+| GET | /notifications | list the caller's own notifications, newest first (max 50), optional `unread_only` (Phase 9, ADR-051, GAP-74) | all (own notifications only) |
+| GET | /notifications/unread-count | unread count for the bell badge | all (own) |
+| PATCH | /notifications/{id}/read | mark one notification read | all (own; 404 if it belongs to someone else) |
+| POST | /notifications/mark-all-read | mark all of the caller's unread notifications read | all (own) |
 
 ## CSV Import/Export (FR-TC-002, ADR-021)
 | Method | Path | Purpose | Role |

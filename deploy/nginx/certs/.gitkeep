@@ -1,0 +1,4 @@
+Place your TLS certificate (fullchain.pem) and private key (privkey.pem) in
+this directory before starting the `proxy` service in production (see
+docs/PRODUCTION_DEPLOYMENT_GUIDE.md). This file only keeps the empty
+directory tracked in git -- never commit real certificate/key material here.

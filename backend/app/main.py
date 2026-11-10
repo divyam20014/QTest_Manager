@@ -1,4 +1,5 @@
 import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,7 @@ from app.api import (
     csv_import,
     defects,
     execution,
+    notifications,
     platform,
     projects,
     reporting,
@@ -31,12 +33,24 @@ from app.api import (
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.errors import AppError
-from app.core.logging import configure_logging, logger
+from app.core.logging import configure_logging, logger, request_id_var
 from app.core.rate_limit import limiter
 from app.core.responses import envelope
 
 settings = get_settings()
 configure_logging(settings.log_level)
+
+# Tier 0 / ADR-052: optional error monitoring. A no-op when SENTRY_DSN is
+# unset (dev/test), matching the fail-quiet-when-unconfigured convention
+# used elsewhere (ai_credential_encryption_key, smtp_host) -- this one is
+# "quiet" rather than "fail loud" because losing error reporting is not as
+# dangerous as e.g. silently not sending an MFA code.
+if settings.sentry_enabled:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn, environment=settings.environment, traces_sample_rate=0.0
+    )
 
 
 @asynccontextmanager
@@ -56,6 +70,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def correlation_id(request: Request, call_next):
+    # Tier 0 / ADR-052: propagate/generate a per-request id so every log
+    # line emitted while handling this request (across service code, not
+    # just this middleware) can be correlated, and so a client/proxy that
+    # already generated one upstream is honored rather than overwritten.
+    incoming = request.headers.get("x-request-id")
+    request_id = incoming if incoming else str(uuid.uuid4())
+    token = request_id_var.set(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    response.headers["x-request-id"] = request_id
+    return response
 
 
 @app.middleware("http")
@@ -124,6 +155,7 @@ app.include_router(reporting.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(attachments.router, prefix="/api/v1")
 app.include_router(comments.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(settings_api.router, prefix="/api/v1")
 app.include_router(requirements.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")

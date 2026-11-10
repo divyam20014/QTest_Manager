@@ -9,6 +9,7 @@ from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.models.defect import Defect
 from app.models.execution import TestRunCase
+from app.models.identity import User
 from app.models.project import Project
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.schemas.test_case import (
@@ -23,6 +24,7 @@ from app.schemas.test_case import (
     TestCaseVersionOut,
     VersionCompareOut,
 )
+from app.services import notification_service
 from app.services.project_service import is_assigned
 
 SORTABLE_FIELDS = {
@@ -336,6 +338,9 @@ def create_test_case(
 
     _write_version(db, tenant_id, case, req.title, req.description, req.steps, actor_user_id)
 
+    if req.assignee_id is not None:
+        _notify_assignee(db, tenant_id, actor_user_id, req.assignee_id, case)
+
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -347,6 +352,26 @@ def create_test_case(
     )
     db.commit()
     return case
+
+
+def _notify_assignee(
+    db: Session, tenant_id: UUID, actor_user_id: UUID, assignee_id: UUID, case: TestCase
+) -> None:
+    assignee = db.execute(select(User).where(User.id == assignee_id)).scalar_one_or_none()
+    if assignee is None:
+        return
+    notification_service.notify(
+        db,
+        tenant_id,
+        actor_user_id,
+        assignee_id,
+        assignee.email,
+        "test_case_assigned",
+        "A test case was assigned to you",
+        f'"{case.title}" was assigned to you.',
+        "test_case",
+        case.id,
+    )
 
 
 def update_test_case(
@@ -408,7 +433,10 @@ def update_test_case(
     if "priority" in changes:
         case.priority = changes["priority"]
     if "assignee_id" in changes:
+        previous_assignee_id = case.assignee_id
         case.assignee_id = changes["assignee_id"]
+        if case.assignee_id is not None and case.assignee_id != previous_assignee_id:
+            _notify_assignee(db, tenant_id, actor_user_id, case.assignee_id, case)
 
     record_audit_event(
         db,

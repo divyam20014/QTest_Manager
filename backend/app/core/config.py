@@ -58,6 +58,40 @@ class Settings(BaseSettings):
     ai_request_timeout_seconds: float = 30.0
     ai_max_cases_per_request: int = 5
 
+    # Phase 9 (ADR-051): mirrors ADR-032's MFA simulated/real delivery
+    # pattern. "simulated" (default outside production) records the
+    # in-app notification only; "real" also emails it via the same SMTP
+    # settings MFA already uses.
+    notification_email_delivery_mode: str = "simulated"
+
+    # Tier 0 / ADR-052: explicit SQLAlchemy pool tuning. Defaults match
+    # SQLAlchemy's own built-in defaults (pool_size=5, max_overflow=10,
+    # pool_timeout=30) so dev/test behavior is unchanged; a prod deployment
+    # sets these via env vars sized to its expected concurrency.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout: int = 30
+    # Recycle connections periodically so a managed Postgres (which may
+    # silently drop idle connections) never hands back a dead one.
+    db_pool_recycle_seconds: int = 1800
+
+    # Tier 0 / ADR-052: optional Sentry error monitoring. Empty (the
+    # default) means "not configured" -- sentry_sdk.init is simply skipped,
+    # matching the existing fail-quiet-when-unset convention used for
+    # ai_credential_encryption_key/smtp_host being empty.
+    sentry_dsn: str = ""
+
+    # Tier 0 / ADR-052: platform-admin brute-force lockout (mirrors the
+    # spirit of MFA's attempt_count, applied to the HTTP Basic plane since
+    # a full session+MFA replacement was deliberately deferred -- see
+    # ADR-052).
+    platform_admin_max_failed_logins: int = 5
+    platform_admin_lockout_minutes: int = 15
+
+    @property
+    def sentry_enabled(self) -> bool:
+        return bool(self.sentry_dsn)
+
 
 @lru_cache
 def get_settings() -> Settings:

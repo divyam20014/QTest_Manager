@@ -24,7 +24,7 @@ fi
 : "${POSTGRES_PORT:=5432}"
 : "${POSTGRES_DB:?Set POSTGRES_DB}"
 : "${POSTGRES_USER:?Set POSTGRES_USER}"
-: "${PGPASSWORD:?Set PGPASSWORD (the Postgres owner role's password)}"
+: "${PGPASSWORD:?Set PGPASSWORD (the Postgres owner role password)}"
 export PGPASSWORD
 
 read -r -p "This will DROP and recreate database '${POSTGRES_DB}' on ${POSTGRES_HOST}. Type the database name to confirm: " CONFIRM

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from app.core.auth import SessionContext, require_permission
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import ValidationAppError
+from app.core.rate_limit import limiter
 from app.core.responses import envelope
 from app.services import csv_import_service
 
@@ -28,7 +29,9 @@ def download_template(
 
 
 @router.post("/test-cases/import")
+@limiter.limit("10/minute")
 async def import_test_cases(
+    request: Request,
     file: UploadFile,
     ctx: SessionContext = Depends(require_permission("testcase.bulk_import_export")),
     db: Session = Depends(get_db),

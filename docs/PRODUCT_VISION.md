@@ -132,12 +132,12 @@ the most substantial greenfield effort in this module.
 | ID | Item | Status | Evidence |
 |---|---|---|---|
 | PV-9.1 | Comments / mentions on entities | Done | Polymorphic `comments`/`comment_mentions` tables + endpoints for Test Case/Defect/ExecutionStep, reusing the Attachment `owner_type` pattern (Phase 8, ADR-050, GAP-74). |
-| PV-9.2 | Real notifications (in-app/email) | Missing | `NotificationBell.tsx` is confirmed to still be the known honest UI placeholder with no backend behind it. |
+| PV-9.2 | Real notifications (in-app/email) | Done | Real `notifications` table, three bounded triggers (mention/test case assignment/defect closure), in-app + email via simulated/real SMTP delivery mode (Phase 9, ADR-051, GAP-74). |
 | PV-9.3 | Per-entity activity timeline beyond the generic audit log | Missing | Only the Defect History card exists, and it's a direct reuse of the generic audit log — no bespoke per-entity timeline exists. |
 | PV-9.4 | Review-request / approval workflow | Missing | No generic review-request mechanism anywhere. |
 | PV-9.5 | Tenant-configurable statuses/severities/priorities | Missing | All are hardcoded `CheckConstraint`-backed enums, not tenant-configurable. |
 | PV-9.6 | Custom fields (EAV/extensibility mechanism) | Missing | `audit_logs.event_metadata` JSONB is the only JSONB column in the schema, and it's audit-specific — no general custom-field mechanism exists. |
-| PV-9.7 | Tenant settings infrastructure (prerequisite for several items above and for PV-3.7) | Missing | `SAAS-GAP-7`: no `GET/PATCH /settings` endpoint exists at all. |
+| PV-9.7 | Tenant settings infrastructure (prerequisite for several items above and for PV-3.7) | Done | `GET/PATCH /api/v1/settings` (`backend/app/api/settings.py`, `backend/app/services/settings_service.py`), gated by `tenant.settings.manage`, built in Phase 1 (ADR-043). This row previously said `Missing` and cited `SAAS-GAP-7`, contradicting PV-3.7's own text above saying AI settings "reused the Phase 1 mechanism... exactly as PV-9.7 anticipated" — corrected 2026-11-10 per the implementation audit (`docs/audit/IMPLEMENTATION_STATUS.md`) after direct code verification. |
 
 **Dependency**: Comments (PV-9.1) can reuse the `Attachment` polymorphic
 `owner_type` pattern as a template — cited explicitly as a reusable precedent.

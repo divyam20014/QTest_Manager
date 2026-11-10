@@ -13,6 +13,7 @@ from app.models.identity import (
     Session,
     User,
 )
+from app.models.notification import Notification
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
 from app.models.tenant import Tenant
@@ -51,4 +52,5 @@ __all__ = [
     "AIUsageLog",
     "Comment",
     "CommentMention",
+    "Notification",
 ]

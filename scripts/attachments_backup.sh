@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-: "${ATTACHMENTS_DIR:?Set ATTACHMENTS_DIR to the attachments volume's host path}"
+: "${ATTACHMENTS_DIR:?Set ATTACHMENTS_DIR to the attachments volume host path}"
 if [ ! -d "$ATTACHMENTS_DIR" ]; then
     echo "ATTACHMENTS_DIR does not exist: $ATTACHMENTS_DIR" >&2
     exit 1

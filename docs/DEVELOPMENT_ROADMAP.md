@@ -128,6 +128,7 @@ no schema change, just service/API wiring + UI.
 Replaces the `NotificationBell.tsx` placeholder with a real backend (in-app at
 minimum; email optional/deferred to a later phase if infra isn't ready).
 - **Tests**: delivery correctness, no cross-tenant leakage.
+  **Status: complete (ADR-051).**
 
 ### Phase 10 — Per-entity activity timelines (PV-9.3)
 Builds dedicated timelines (test case, defect, requirement) on top of the existing
