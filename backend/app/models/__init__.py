@@ -1,5 +1,6 @@
 from app.models.ai_usage import AIUsageLog
 from app.models.audit import AuditLog
+from app.models.comment import Comment, CommentMention
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.idempotency import IdempotencyKey
@@ -48,4 +49,6 @@ __all__ = [
     "RequirementVersion",
     "RequirementTestCaseLink",
     "AIUsageLog",
+    "Comment",
+    "CommentMention",
 ]

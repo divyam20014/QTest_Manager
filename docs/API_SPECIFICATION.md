@@ -87,8 +87,19 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | DELETE | /test-cases/{id} | delete (tester: own drafts only) | role-gated per matrix |
 | GET | /test-cases/{id}/attachments | list attachments (ADR-012, GAP-15) | all (assigned) |
 | POST | /test-cases/{id}/attachments | upload (multipart, 10MB cap, file-type allowlist per ADR-034, plus magic-byte/content-signature validation per ADR-040) | testcase.edit (admin/manager/tester) |
-| GET | /attachments/{id}/download | download file bytes | all (assigned to the owning test case's project) |
-| DELETE | /attachments/{id} | delete | testcase.edit (admin/manager/tester) |
+| GET | /defects/{id}/attachments | list attachments on a defect (Phase 7, ADR-049, GAP-75) | all (assigned to the defect's project) |
+| POST | /defects/{id}/attachments | upload (same validation as test-case attachments) | all (assigned to the defect's project; no dedicated permission, same as other defect mutations) |
+| GET | /execution-steps/{id}/attachments | list attachments on an execution step (Phase 7, ADR-049, GAP-75) | all (assigned to the step's run's project) |
+| POST | /execution-steps/{id}/attachments | upload (same validation as test-case attachments) | executionstep.record (admin/manager/tester) |
+| GET | /attachments/{id}/download | download file bytes (owner-type-dispatched visibility: test case/defect/execution step) | all (assigned to the owning entity's project) |
+| DELETE | /attachments/{id} | delete (owner-type-dispatched authorization) | all (assigned to the owning entity's project; permission requirement matches that owner type's own upload rule) |
+| GET | /test-cases/{id}/comments | list comments on a test case (Phase 8, ADR-050, GAP-74) | all (assigned) |
+| POST | /test-cases/{id}/comments | post a comment, optionally with explicit `mentioned_user_ids` | all (assigned) |
+| GET | /defects/{id}/comments | list comments on a defect | all (assigned to the defect's project) |
+| POST | /defects/{id}/comments | post a comment | all (assigned to the defect's project) |
+| GET | /execution-steps/{id}/comments | list comments on an execution step | all (assigned to the step's run's project) |
+| POST | /execution-steps/{id}/comments | post a comment | all (assigned to the step's run's project) |
+| DELETE | /comments/{id} | delete (owner-type-dispatched authorization); own comment, or Admin/Manager moderation | author of the comment, or admin/manager |
 
 ## CSV Import/Export (FR-TC-002, ADR-021)
 | Method | Path | Purpose | Role |

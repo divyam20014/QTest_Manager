@@ -13,11 +13,15 @@ from app.core.errors import NotFoundError, ValidationAppError
 from app.models.identity import User
 from app.models.test_case import Attachment
 from app.schemas.attachment import AttachmentOut
-from app.services import test_case_service
+from app.services.owner_access import authorize_owner_access
 
 settings = get_settings()
 
-OWNER_TYPE_TEST_CASE = "test_case"
+# test_case_version is in the owner_type CHECK constraint's headroom but
+# deliberately left unwired (Phase 7, ADR-049): nothing in the product
+# needs per-historical-version evidence today -- test_case already covers
+# "evidence for this case," and immutable version snapshots have no
+# in-progress-editing moment that would generate version-specific files.
 
 # Screenshots and documents only (FR-TC-001/ADR-012) -- an allowlist by
 # extension, since a client-supplied Content-Type header is not trustworthy
@@ -95,23 +99,21 @@ def _to_out(db: Session, tenant_id: UUID, attachment: Attachment) -> AttachmentO
     )
 
 
-def _attachment_dir(tenant_id: UUID, test_case_id: UUID) -> Path:
-    return Path(settings.attachments_dir) / str(tenant_id) / str(test_case_id)
+def _attachment_dir(tenant_id: UUID, owner_type: str, owner_id: UUID) -> Path:
+    return Path(settings.attachments_dir) / str(tenant_id) / owner_type / str(owner_id)
 
 
 def list_attachments(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, test_case_id: UUID
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, owner_type: str, owner_id: UUID
 ) -> list[AttachmentOut]:
-    # Reuses get_test_case's existing 404 + project-visibility checks
-    # (ADR-019) rather than duplicating them here.
-    test_case_service.get_test_case(db, tenant_id, role_code, user_id, test_case_id)
+    authorize_owner_access(db, tenant_id, role_code, user_id, owner_type, owner_id)
     set_tenant_context(db, str(tenant_id))
     rows = db.execute(
         select(Attachment)
         .where(
             Attachment.tenant_id == tenant_id,
-            Attachment.owner_type == OWNER_TYPE_TEST_CASE,
-            Attachment.owner_id == test_case_id,
+            Attachment.owner_type == owner_type,
+            Attachment.owner_id == owner_id,
         )
         .order_by(Attachment.uploaded_at.desc())
     ).scalars()
@@ -123,10 +125,11 @@ def upload_attachment(
     tenant_id: UUID,
     role_code: str,
     user_id: UUID,
-    test_case_id: UUID,
+    owner_type: str,
+    owner_id: UUID,
     file: UploadFile,
 ) -> AttachmentOut:
-    test_case_service.get_test_case(db, tenant_id, role_code, user_id, test_case_id)
+    authorize_owner_access(db, tenant_id, role_code, user_id, owner_type, owner_id)
 
     extension = Path(file.filename or "").suffix.lower()
     if extension not in ALLOWED_ATTACHMENT_EXTENSIONS:
@@ -151,7 +154,7 @@ def upload_attachment(
 
     checksum = hashlib.sha256(contents).hexdigest()
     stored_name = f"{uuid.uuid4()}_{file.filename or 'upload'}"
-    target_dir = _attachment_dir(tenant_id, test_case_id)
+    target_dir = _attachment_dir(tenant_id, owner_type, owner_id)
     target_dir.mkdir(parents=True, exist_ok=True)
     storage_path = target_dir / stored_name
     storage_path.write_bytes(contents)
@@ -159,8 +162,8 @@ def upload_attachment(
     set_tenant_context(db, str(tenant_id))
     attachment = Attachment(
         tenant_id=tenant_id,
-        owner_type=OWNER_TYPE_TEST_CASE,
-        owner_id=test_case_id,
+        owner_type=owner_type,
+        owner_id=owner_id,
         file_name=file.filename or "upload",
         mime_type=file.content_type or "application/octet-stream",
         storage_path=str(storage_path),
@@ -189,9 +192,9 @@ def get_attachment_for_download(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, attachment_id: UUID
 ) -> Attachment:
     attachment = _get_attachment_or_404(db, tenant_id, attachment_id)
-    # Re-checks the owning test case's own project-visibility rule (ADR-019)
-    # -- an attachment is never more visible than the test case it belongs to.
-    test_case_service.get_test_case(db, tenant_id, role_code, user_id, attachment.owner_id)
+    authorize_owner_access(
+        db, tenant_id, role_code, user_id, attachment.owner_type, attachment.owner_id
+    )
     return attachment
 
 
@@ -199,7 +202,9 @@ def delete_attachment(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, attachment_id: UUID
 ) -> None:
     attachment = _get_attachment_or_404(db, tenant_id, attachment_id)
-    test_case_service.get_test_case(db, tenant_id, role_code, user_id, attachment.owner_id)
+    authorize_owner_access(
+        db, tenant_id, role_code, user_id, attachment.owner_type, attachment.owner_id
+    )
     storage_path = Path(attachment.storage_path)
     db.delete(attachment)
     db.commit()

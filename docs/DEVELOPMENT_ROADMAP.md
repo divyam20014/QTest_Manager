@@ -118,10 +118,11 @@ Wire the already-designed `owner_type` headroom to `defect`/`execution_step`
 no schema change, just service/API wiring + UI.
 - **Tests**: reuse the existing attachment test suite pattern, extended to the
   new owner types; access-control parity with the test-case case.
+  **Status: complete (ADR-049).**
 
 ### Phase 8 — Comments (PV-9.1), reusing the Attachment polymorphic pattern
 - **Tests**: tenant isolation, permission checks mirroring the entity being
-  commented on.
+  commented on. **Status: complete (ADR-050).**
 
 ### Phase 9 — Real notifications (PV-9.2)
 Replaces the `NotificationBell.tsx` placeholder with a real backend (in-app at

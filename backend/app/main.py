@@ -14,6 +14,7 @@ from app.api import (
     attachments,
     audit,
     auth,
+    comments,
     csv_import,
     defects,
     execution,
@@ -122,6 +123,7 @@ app.include_router(defects.router, prefix="/api/v1")
 app.include_router(reporting.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(attachments.router, prefix="/api/v1")
+app.include_router(comments.router, prefix="/api/v1")
 app.include_router(settings_api.router, prefix="/api/v1")
 app.include_router(requirements.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")

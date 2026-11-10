@@ -121,7 +121,7 @@ needs a `TestCase` schema addition (module/folder concept) first.
 | PV-8.1 | Environment entity (vs. free-text field) | Missing | `environment` is only a free-text `String` column on `Defect`; no dedicated `Environment` entity. |
 | PV-8.2 | Build/Release tracking entity | Missing | No `Build`/`Release` model anywhere. |
 | PV-8.3 | Test data repository / masking / synthetic data | Missing | No trace of any test-data-management capability. |
-| PV-8.4 | Attachments on entities beyond Test Case | Partial | `Attachment.owner_type` CHECK constraint already architecturally permits `test_case_version`/`defect`/`execution_step`, but only `test_case` is ever wired up in service/API code — the other three are schema-level headroom, unused. |
+| PV-8.4 | Attachments on entities beyond Test Case | Done | `Defect` and `ExecutionStep` now fully wired (Phase 7, ADR-049, GAP-75); `test_case_version` deliberately stays unwired (no stated product need). |
 
 **Dependency**: PV-8.4 is the cheapest — wiring already-designed headroom, no schema
 change. PV-8.1/8.2/8.3 are greenfield new entities. PV-8.3 (test data management) is
@@ -131,7 +131,7 @@ the most substantial greenfield effort in this module.
 
 | ID | Item | Status | Evidence |
 |---|---|---|---|
-| PV-9.1 | Comments / mentions on entities | Missing | Zero comment/mention tables or endpoints. |
+| PV-9.1 | Comments / mentions on entities | Done | Polymorphic `comments`/`comment_mentions` tables + endpoints for Test Case/Defect/ExecutionStep, reusing the Attachment `owner_type` pattern (Phase 8, ADR-050, GAP-74). |
 | PV-9.2 | Real notifications (in-app/email) | Missing | `NotificationBell.tsx` is confirmed to still be the known honest UI placeholder with no backend behind it. |
 | PV-9.3 | Per-entity activity timeline beyond the generic audit log | Missing | Only the Defect History card exists, and it's a direct reuse of the generic audit log — no bespoke per-entity timeline exists. |
 | PV-9.4 | Review-request / approval workflow | Missing | No generic review-request mechanism anywhere. |

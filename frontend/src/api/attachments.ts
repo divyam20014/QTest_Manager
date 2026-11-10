@@ -1,5 +1,7 @@
 import { API_BASE_URL, apiFetch } from '@/api/client'
 
+export type AttachmentOwnerType = 'test_case' | 'defect' | 'execution_step'
+
 export interface Attachment {
   id: string
   file_name: string
@@ -10,14 +12,27 @@ export interface Attachment {
   uploaded_at: string
 }
 
-export function listAttachments(testCaseId: string): Promise<Attachment[]> {
-  return apiFetch<Attachment[]>(`/test-cases/${testCaseId}/attachments`)
+const OWNER_PATH_SEGMENT: Record<AttachmentOwnerType, string> = {
+  test_case: 'test-cases',
+  defect: 'defects',
+  execution_step: 'execution-steps',
 }
 
-export function uploadAttachment(testCaseId: string, file: File): Promise<Attachment> {
+export function listAttachments(
+  ownerType: AttachmentOwnerType,
+  ownerId: string,
+): Promise<Attachment[]> {
+  return apiFetch<Attachment[]>(`/${OWNER_PATH_SEGMENT[ownerType]}/${ownerId}/attachments`)
+}
+
+export function uploadAttachment(
+  ownerType: AttachmentOwnerType,
+  ownerId: string,
+  file: File,
+): Promise<Attachment> {
   const formData = new FormData()
   formData.append('file', file)
-  return apiFetch<Attachment>(`/test-cases/${testCaseId}/attachments`, {
+  return apiFetch<Attachment>(`/${OWNER_PATH_SEGMENT[ownerType]}/${ownerId}/attachments`, {
     method: 'POST',
     body: formData,
   })

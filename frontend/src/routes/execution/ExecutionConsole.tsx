@@ -13,6 +13,8 @@ import {
   type RunCaseStatus,
   type Verdict,
 } from '@/api/execution'
+import { AttachmentsPanel } from '@/components/AttachmentsCard'
+import { CommentsPanel } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -409,6 +411,57 @@ function StepCard({
        * The sticky bottom bar handles the current step's actions; this
        * inline control is only for re-verdicting an already-answered step. */}
       {!isCurrent && step.verdict && !disabled && <ReverdictControl onVerdict={onVerdict} isSubmitting={isSubmitting} />}
+
+      <StepAttachments stepId={step.id} />
+      <StepComments stepId={step.id} />
+    </div>
+  )
+}
+
+// Phase 7 (GAP-75): lets a tester attach evidence (a screenshot, a log
+// file) directly to the step they're executing, not just to the defect
+// filed afterward -- collapsed by default so it doesn't crowd the console's
+// already-dense step list.
+function StepAttachments({ stepId }: { stepId: string }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="mt-2 border-t border-[var(--border)] pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline"
+      >
+        {open ? 'Hide attachments' : 'Attachments'}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <AttachmentsPanel ownerType="execution_step" ownerId={stepId} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Phase 8 (GAP-74): same collapsed-by-default placement as StepAttachments,
+// reusing the same polymorphic owner_type pattern.
+function StepComments({ stepId }: { stepId: string }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="mt-2 border-t border-[var(--border)] pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline"
+      >
+        {open ? 'Hide comments' : 'Comments'}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <CommentsPanel ownerType="execution_step" ownerId={stepId} />
+        </div>
+      )}
     </div>
   )
 }

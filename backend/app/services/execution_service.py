@@ -94,6 +94,19 @@ def _authorize_run_case_access(
     return run
 
 
+def get_execution_step(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, execution_step_id: UUID
+) -> ExecutionStep:
+    """Phase 7 (attachment wiring, GAP-75): resolves a step through its run
+    case to the owning project's visibility rule, the same chain
+    open_step/record_verdict already authorize against -- an attachment on
+    a step is never more visible than the step itself."""
+    step = _get_execution_step_or_404(db, tenant_id, execution_step_id)
+    run_case = _get_run_case_or_404(db, tenant_id, step.test_run_case_id)
+    _authorize_run_case_access(db, tenant_id, role_code, user_id, run_case)
+    return step
+
+
 def _validate_bundlable_cases(
     db: Session, tenant_id: UUID, project_id: UUID, test_case_ids: list[UUID]
 ) -> list[TestCase]:

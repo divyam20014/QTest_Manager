@@ -12,6 +12,8 @@ import {
   type DefectStatus,
   type RootCause,
 } from '@/api/defects'
+import { AttachmentsCard } from '@/components/AttachmentsCard'
+import { CommentsCard } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -271,6 +273,9 @@ export function DefectDetail() {
             </ul>
           </CardContent>
         </Card>
+
+        <AttachmentsCard ownerType="defect" ownerId={defect.id} />
+        <CommentsCard ownerType="defect" ownerId={defect.id} />
       </div>
     </div>
   )

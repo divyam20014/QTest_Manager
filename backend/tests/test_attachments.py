@@ -1,5 +1,8 @@
 """GAP-15: test case attachments (ADR-012 -- bytes on disk, metadata in
-PostgreSQL)."""
+PostgreSQL). Phase 7 (GAP-75, ADR-049) extends the same polymorphic
+attachment pattern to Defect and ExecutionStep owners -- the owner_type
+headroom already designed into the schema's CHECK constraint, now wired up
+on the service/API/UI side for those two types as well."""
 
 from fastapi.testclient import TestClient
 
@@ -163,3 +166,167 @@ def test_tester_not_assigned_to_project_cannot_access_attachments(
     client.post(f"/api/v1/projects/{project_id}/members", json={"user_id": tester_id})
     allowed = tester_client.get(f"/api/v1/test-cases/{case_id}/attachments")
     assert allowed.status_code == 200
+
+
+# --- Phase 7: Defect attachments ---
+
+
+def _create_defect(client: TestClient, project_id: str, title: str = "Standalone bug") -> dict:
+    response = client.post(
+        "/api/v1/defects",
+        json={"project_id": project_id, "title": title, "severity": "Medium"},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_upload_list_download_defect_attachment(client: TestClient, platform_admin: dict) -> None:
+    _, project_id, _ = _setup_case(client, platform_admin)
+    defect = _create_defect(client, project_id)
+
+    upload = client.post(
+        f"/api/v1/defects/{defect['id']}/attachments",
+        files={"file": ("evidence.png", b"\x89PNG\r\n\x1a\nrest-of-file", "image/png")},
+    )
+    assert upload.status_code == 200, upload.text
+    attachment = upload.json()["data"]
+
+    listing = client.get(f"/api/v1/defects/{defect['id']}/attachments").json()["data"]
+    assert len(listing) == 1
+    assert listing[0]["id"] == attachment["id"]
+
+    download = client.get(f"/api/v1/attachments/{attachment['id']}/download")
+    assert download.status_code == 200
+    assert download.content == b"\x89PNG\r\n\x1a\nrest-of-file"
+
+    delete_response = client.delete(f"/api/v1/attachments/{attachment['id']}")
+    assert delete_response.status_code == 200
+    assert client.get(f"/api/v1/defects/{defect['id']}/attachments").json()["data"] == []
+
+
+def test_tester_not_assigned_to_project_cannot_access_defect_attachments(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project_id, _ = _setup_case(client, platform_admin)
+    defect = _create_defect(client, project_id)
+    client.post(
+        f"/api/v1/defects/{defect['id']}/attachments",
+        files={"file": ("evidence.txt", b"bytes", "text/plain")},
+    )
+
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+
+    forbidden = tester_client.get(f"/api/v1/defects/{defect['id']}/attachments")
+    assert forbidden.status_code == 403
+
+    client.post(f"/api/v1/projects/{project_id}/members", json={"user_id": tester_id})
+    allowed = tester_client.get(f"/api/v1/defects/{defect['id']}/attachments")
+    assert allowed.status_code == 200
+
+
+def test_defect_attachment_from_a_different_project_is_still_tenant_scoped(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Cross-tenant isolation parity check, reusing the established pattern
+    from the test-case attachment suite."""
+    _, project_id, _ = _setup_case(client, platform_admin)
+    defect = _create_defect(client, project_id)
+    attachment = client.post(
+        f"/api/v1/defects/{defect['id']}/attachments",
+        files={"file": ("evidence.txt", b"bytes", "text/plain")},
+    ).json()["data"]
+
+    other_client = TestClient(client.app)
+    other_bootstrap = other_client.post(
+        "/api/v1/platform/tenants",
+        auth=(platform_admin["email"], platform_admin["password"]),
+        json={
+            "tenant_name": "Summit Casualty",
+            "admin_name": "Admin B",
+            "admin_email": "admin@horizon.com",
+            "admin_password": "AdminPassw0rd!",
+        },
+    ).json()["data"]
+    _login_and_verify(
+        other_client, other_bootstrap["tenant"]["id"], "admin@horizon.com", "AdminPassw0rd!"
+    )
+
+    cross_tenant = other_client.get(f"/api/v1/attachments/{attachment['id']}/download")
+    assert cross_tenant.status_code == 404
+
+
+# --- Phase 7: Execution step attachments ---
+
+
+def _setup_execution_step(client: TestClient, platform_admin: dict) -> tuple[str, str, str]:
+    tenant_id, project_id, case_id = _setup_case(client, platform_admin)
+    client.post(f"/api/v1/test-cases/{case_id}/submit-review")
+    client.post(f"/api/v1/test-cases/{case_id}/approve")
+
+    run = client.post(
+        f"/api/v1/projects/{project_id}/test-runs",
+        json={
+            "name": "Sprint 42 Motor Regression",
+            "run_type": "Regression",
+            "test_case_ids": [case_id],
+        },
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+    return tenant_id, project_id, steps[0]["id"]
+
+
+def test_upload_list_download_execution_step_attachment(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, step_id = _setup_execution_step(client, platform_admin)
+
+    upload = client.post(
+        f"/api/v1/execution-steps/{step_id}/attachments",
+        files={"file": ("evidence.txt", b"step evidence bytes", "text/plain")},
+    )
+    assert upload.status_code == 200, upload.text
+    attachment = upload.json()["data"]
+
+    listing = client.get(f"/api/v1/execution-steps/{step_id}/attachments").json()["data"]
+    assert len(listing) == 1
+    assert listing[0]["id"] == attachment["id"]
+
+    download = client.get(f"/api/v1/attachments/{attachment['id']}/download")
+    assert download.status_code == 200
+    assert download.content == b"step evidence bytes"
+
+
+def test_tester_not_assigned_to_project_cannot_access_execution_step_attachments(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project_id, step_id = _setup_execution_step(client, platform_admin)
+
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+
+    forbidden = tester_client.get(f"/api/v1/execution-steps/{step_id}/attachments")
+    assert forbidden.status_code == 403
+
+    client.post(f"/api/v1/projects/{project_id}/members", json={"user_id": tester_id})
+    allowed = tester_client.get(f"/api/v1/execution-steps/{step_id}/attachments")
+    assert allowed.status_code == 200
+
+
+def test_disallowed_file_type_rejected_for_execution_step(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, step_id = _setup_execution_step(client, platform_admin)
+
+    response = client.post(
+        f"/api/v1/execution-steps/{step_id}/attachments",
+        files={"file": ("payload.exe", b"not really an executable", "application/octet-stream")},
+    )
+    assert response.status_code == 422

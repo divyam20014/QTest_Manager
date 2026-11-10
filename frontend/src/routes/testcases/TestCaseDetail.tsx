@@ -1,14 +1,8 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import {
-  attachmentDownloadUrl,
-  deleteAttachment,
-  listAttachments,
-  uploadAttachment,
-} from '@/api/attachments'
 import { reviewTestCase } from '@/api/ai'
 import { ApiError } from '@/api/client'
 import { listDefects } from '@/api/defects'
@@ -26,6 +20,8 @@ import {
   type TestCaseVersion,
 } from '@/api/testCases'
 import { listUsers } from '@/api/users'
+import { AttachmentsCard } from '@/components/AttachmentsCard'
+import { CommentsCard } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -191,7 +187,8 @@ export function TestCaseDetail() {
       </div>
 
       <LinkedDefectsCard testCaseId={testCase.id} />
-      <AttachmentsCard testCaseId={testCase.id} />
+      <AttachmentsCard ownerType="test_case" ownerId={testCase.id} />
+      <CommentsCard ownerType="test_case" ownerId={testCase.id} />
 
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} title="Edit Test Case" className="max-w-2xl">
         <TestCaseForm
@@ -412,98 +409,6 @@ function VersionHistoryCard({
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function AttachmentsCard({ testCaseId }: { testCaseId: string }) {
-  const queryClient = useQueryClient()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const attachmentsQuery = useQuery({
-    queryKey: ['test-cases', 'attachments', testCaseId],
-    queryFn: () => listAttachments(testCaseId),
-  })
-
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => uploadAttachment(testCaseId, file),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test-cases', 'attachments', testCaseId] }),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (attachmentId: string) => deleteAttachment(attachmentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['test-cases', 'attachments', testCaseId] }),
-  })
-
-  const uploadError = uploadMutation.error instanceof ApiError ? uploadMutation.error.message : null
-
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) uploadMutation.mutate(file)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Attachments</CardTitle>
-          <div>
-            <input ref={fileInputRef} type="file" className="hidden" id="attachment-file-input" onChange={handleFileChange} />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={uploadMutation.isPending}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploadMutation.isPending ? 'Uploading…' : 'Upload File'}
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {uploadError && <p className="mb-2 text-xs text-[var(--destructive)]">{uploadError}</p>}
-        {attachmentsQuery.data?.length === 0 && (
-          <p className="text-sm text-[var(--muted-foreground)]">No attachments yet.</p>
-        )}
-        <ul className="flex flex-col gap-2 text-sm">
-          {attachmentsQuery.data?.map((a) => (
-            <li
-              key={a.id}
-              className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-2 last:border-0"
-            >
-              <div>
-                <a
-                  href={attachmentDownloadUrl(a.id)}
-                  className="font-medium underline-offset-2 hover:underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {a.file_name}
-                </a>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {formatBytes(a.size_bytes)} · uploaded by {a.uploaded_by_name ?? 'Unknown'} on{' '}
-                  {new Date(a.uploaded_at).toLocaleDateString()}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate(a.id)}
-              >
-                Delete
-              </Button>
-            </li>
-          ))}
-        </ul>
       </CardContent>
     </Card>
   )

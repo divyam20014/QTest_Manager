@@ -8,6 +8,11 @@ from app.core.auth import SessionContext, get_current_context, require_permissio
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.services import attachment_service
+from app.services.owner_access import (
+    OWNER_TYPE_DEFECT,
+    OWNER_TYPE_EXECUTION_STEP,
+    OWNER_TYPE_TEST_CASE,
+)
 
 router = APIRouter(tags=["attachments"])
 
@@ -19,7 +24,8 @@ def list_attachments(
     db: Session = Depends(get_db),
 ) -> dict:
     attachments = attachment_service.list_attachments(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TEST_CASE,
+        test_case_id,
     )
     return envelope([a.model_dump(mode="json") for a in attachments])
 
@@ -32,7 +38,66 @@ def upload_attachment(
     db: Session = Depends(get_db),
 ) -> dict:
     attachment = attachment_service.upload_attachment(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, file
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TEST_CASE,
+        test_case_id, file,
+    )
+    return envelope(attachment.model_dump(mode="json"))
+
+
+@router.get("/defects/{defect_id}/attachments")
+def list_defect_attachments(
+    defect_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    attachments = attachment_service.list_attachments(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_DEFECT,
+        defect_id,
+    )
+    return envelope([a.model_dump(mode="json") for a in attachments])
+
+
+@router.post("/defects/{defect_id}/attachments")
+def upload_defect_attachment(
+    defect_id: UUID,
+    file: UploadFile = File(...),
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    # No dedicated defect.edit-style permission exists (GAP-75/Phase 7) --
+    # same project-access-only gating as defect_service's other mutations
+    # (update_status/add_link/update_root_cause), enforced inside the
+    # service via _authorize_owner_access.
+    attachment = attachment_service.upload_attachment(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_DEFECT,
+        defect_id, file,
+    )
+    return envelope(attachment.model_dump(mode="json"))
+
+
+@router.get("/execution-steps/{execution_step_id}/attachments")
+def list_execution_step_attachments(
+    execution_step_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    attachments = attachment_service.list_attachments(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id,
+        OWNER_TYPE_EXECUTION_STEP, execution_step_id,
+    )
+    return envelope([a.model_dump(mode="json") for a in attachments])
+
+
+@router.post("/execution-steps/{execution_step_id}/attachments")
+def upload_execution_step_attachment(
+    execution_step_id: UUID,
+    file: UploadFile = File(...),
+    ctx: SessionContext = Depends(require_permission("executionstep.record")),
+    db: Session = Depends(get_db),
+) -> dict:
+    attachment = attachment_service.upload_attachment(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id,
+        OWNER_TYPE_EXECUTION_STEP, execution_step_id, file,
     )
     return envelope(attachment.model_dump(mode="json"))
 
@@ -56,7 +121,10 @@ def download_attachment(
 @router.delete("/attachments/{attachment_id}")
 def delete_attachment(
     attachment_id: UUID,
-    ctx: SessionContext = Depends(require_permission("testcase.edit")),
+    # Shared across all owner types, each with its own (or no) upload-time
+    # permission -- the real gate is the owner-specific project-access
+    # check inside attachment_service.delete_attachment.
+    ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     attachment_service.delete_attachment(
