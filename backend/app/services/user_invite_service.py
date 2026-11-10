@@ -15,6 +15,7 @@ from app.core.security import hash_password, verify_password
 from app.models.identity import Role, User
 from app.models.user_invite import UserInvite
 from app.schemas.user import UserInviteOut, UserInviteRequest
+from app.services import plan_limits
 
 settings = get_settings()
 
@@ -140,6 +141,7 @@ def accept_invite(db: Session, token: str, password: str) -> User:
         raise UnauthorizedError("This invite has expired")
 
     set_tenant_context(db, str(invite.tenant_id))
+    plan_limits.enforce_seat_limit(db, invite.tenant_id)
 
     user = User(
         tenant_id=invite.tenant_id,

@@ -8,11 +8,13 @@ from app.core.errors import ConflictError, NotFoundError
 from app.models.project import Project
 from app.models.test_asset import Build, Environment, Release
 from app.schemas.test_asset import (
+    BuildBulkCreateRequest,
     BuildCreateRequest,
     BuildOut,
     EnvironmentCreateRequest,
     EnvironmentOut,
     EnvironmentUpdateRequest,
+    ReleaseBulkCreateRequest,
     ReleaseCreateRequest,
     ReleaseOut,
 )
@@ -171,6 +173,36 @@ def create_build(
     return _build_to_out(build)
 
 
+def bulk_create_builds(
+    db: Session, tenant_id: UUID, actor_user_id: UUID, project_id: UUID, req: BuildBulkCreateRequest
+) -> list[BuildOut]:
+    """Gap-closure pass (ADR-057): one request, one audit event per row,
+    one commit -- not N separate create_build calls, so a bulk import
+    can't partially commit on a mid-batch error."""
+    _get_project_or_404(db, tenant_id, project_id)
+    created: list[Build] = []
+    for row in req.builds:
+        build = Build(
+            tenant_id=tenant_id, project_id=project_id, name=row.name, built_at=row.built_at,
+            notes=row.notes,
+        )
+        db.add(build)
+        created.append(build)
+    db.flush()
+    for build in created:
+        record_audit_event(
+            db,
+            tenant_id=tenant_id,
+            user_id=actor_user_id,
+            action="build.created",
+            entity_type="build",
+            entity_id=build.id,
+            metadata={"name": build.name, "project_id": str(project_id), "bulk": True},
+        )
+    db.commit()
+    return [_build_to_out(b) for b in created]
+
+
 def delete_build(db: Session, tenant_id: UUID, actor_user_id: UUID, build_id: UUID) -> None:
     build = db.execute(
         select(Build).where(Build.tenant_id == tenant_id, Build.id == build_id)
@@ -235,6 +267,37 @@ def create_release(
     )
     db.commit()
     return _release_to_out(release)
+
+
+def bulk_create_releases(
+    db: Session,
+    tenant_id: UUID,
+    actor_user_id: UUID,
+    project_id: UUID,
+    req: ReleaseBulkCreateRequest,
+) -> list[ReleaseOut]:
+    _get_project_or_404(db, tenant_id, project_id)
+    created: list[Release] = []
+    for row in req.releases:
+        release = Release(
+            tenant_id=tenant_id, project_id=project_id, name=row.name,
+            release_date=row.release_date, notes=row.notes,
+        )
+        db.add(release)
+        created.append(release)
+    db.flush()
+    for release in created:
+        record_audit_event(
+            db,
+            tenant_id=tenant_id,
+            user_id=actor_user_id,
+            action="release.created",
+            entity_type="release",
+            entity_id=release.id,
+            metadata={"name": release.name, "project_id": str(project_id), "bulk": True},
+        )
+    db.commit()
+    return [_release_to_out(r) for r in created]
 
 
 def delete_release(db: Session, tenant_id: UUID, actor_user_id: UUID, release_id: UUID) -> None:

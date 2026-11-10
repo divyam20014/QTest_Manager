@@ -8,7 +8,13 @@ from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import NotFoundError, ValidationAppError
 from app.models.subscription import Plan, Subscription
-from app.schemas.subscription import PlanOut, SubscriptionAssignRequest, SubscriptionOut
+from app.schemas.subscription import (
+    PlanCreateRequest,
+    PlanOut,
+    PlanUpdateRequest,
+    SubscriptionAssignRequest,
+    SubscriptionOut,
+)
 
 
 def list_plans(db: Session) -> list[PlanOut]:
@@ -16,6 +22,37 @@ def list_plans(db: Session) -> list[PlanOut]:
         select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.created_at)
     ).scalars()
     return [PlanOut.model_validate(p) for p in plans]
+
+
+def create_plan(db: Session, req: PlanCreateRequest) -> PlanOut:
+    """Platform-admin-only (gap-closure pass, ADR-057). `plans` is
+    platform-wide with no RLS (same category as Role/Permission), so this
+    needs no tenant context."""
+    existing = db.execute(select(Plan).where(Plan.code == req.code)).scalar_one_or_none()
+    if existing is not None:
+        raise ValidationAppError(f"A plan with code '{req.code}' already exists")
+    plan = Plan(
+        code=req.code,
+        name=req.name,
+        seat_limit=req.seat_limit,
+        storage_limit_mb=req.storage_limit_mb,
+        ai_monthly_request_limit=req.ai_monthly_request_limit,
+        is_active=req.is_active,
+    )
+    db.add(plan)
+    db.commit()
+    return PlanOut.model_validate(plan)
+
+
+def update_plan(db: Session, plan_code: str, req: PlanUpdateRequest) -> PlanOut:
+    plan = db.execute(select(Plan).where(Plan.code == plan_code)).scalar_one_or_none()
+    if plan is None:
+        raise NotFoundError(f"Unknown plan code: {plan_code}")
+    updates = req.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(plan, field, value)
+    db.commit()
+    return PlanOut.model_validate(plan)
 
 
 def _to_out(db: Session, subscription: Subscription) -> SubscriptionOut:

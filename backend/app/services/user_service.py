@@ -12,6 +12,7 @@ from app.core.security import hash_password
 from app.models.identity import Role, User
 from app.models.identity import Session as SessionModel
 from app.schemas.user import RoleCode, UserCreateRequest, UserOut, UserUpdateRequest
+from app.services import plan_limits
 
 
 def to_out(db: Session, user: User) -> UserOut:
@@ -52,6 +53,7 @@ def _count_active_admins(db: Session, tenant_id: UUID, exclude_user_id: UUID | N
 
 
 def create_user(db: Session, tenant_id: UUID, actor_user_id: UUID, req: UserCreateRequest) -> User:
+    plan_limits.enforce_seat_limit(db, tenant_id)
     user = User(
         tenant_id=tenant_id,
         email=req.email,

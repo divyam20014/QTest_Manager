@@ -130,9 +130,11 @@ final report for the actual run output.
 ## 9. Known, disclosed gaps (not fixed in this pass, by design)
 
 - **IP allowlist self-lockout risk** (Tier 4): a tenant admin who excludes
-  their own network from the allowlist is locked out with no in-app
-  recovery — a Platform Administrator must intervene directly. Documented
-  prominently in the Settings UI and `docs/ADMINISTRATOR_GUIDE.md`.
+  their own network from the allowlist is locked out with no *tenant-side*
+  in-app recovery. **A platform-admin recovery path now exists**
+  (gap-closure pass, ADR-057): `POST /platform/tenants/{id}/clear-ip-
+  allowlist`, audit-logged, documented as the procedure in
+  `docs/ADMINISTRATOR_GUIDE.md` §1.3/§2.2.
 - **SSO/SCIM validated against stubs/spec shapes only** (Tier 4) — no real
   external IdP (Okta/Azure AD/Google Workspace) exists in this environment.
   Required before production reliance: a real-IdP validation pass.

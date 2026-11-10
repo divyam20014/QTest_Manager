@@ -16,6 +16,7 @@ import {
   type TestCaseStatus,
 } from '@/api/testCases'
 import { listUsers } from '@/api/users'
+import { listFieldOptions } from '@/api/fieldCustomization'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -67,6 +68,18 @@ export function TestCasesList() {
   const [moduleId, setModuleId] = useState('')
   const [sort, setSort] = useState('created_at')
   const [page, setPage] = useState(1)
+
+  // Gap-closure pass (ADR-057): the priority filter must reflect this
+  // tenant's actual configured value set (Tier 5 / ADR-055), the same
+  // source TestCaseForm's create/edit priority field already uses --
+  // falls back to the fixed PRIORITIES list only while this is loading.
+  const priorityOptionsQuery = useQuery({
+    queryKey: ['field-options', 'test_case_priority'],
+    queryFn: () => listFieldOptions('test_case_priority'),
+  })
+  const priorityFilterOptions: { code: string; label: string }[] = priorityOptionsQuery.data?.length
+    ? priorityOptionsQuery.data.map((o) => ({ code: o.code, label: o.label }))
+    : PRIORITIES.map((p) => ({ code: p, label: p }))
 
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -223,9 +236,9 @@ export function TestCasesList() {
             onChange={(e) => resetToFirstPage(setPriority)(e.target.value as Priority | '')}
           >
             <option value="">All priorities</option>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
+            {priorityFilterOptions.map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.label}
               </option>
             ))}
           </Select>

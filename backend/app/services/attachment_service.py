@@ -14,6 +14,7 @@ from app.core.storage import get_storage_backend
 from app.models.identity import User
 from app.models.test_case import Attachment
 from app.schemas.attachment import AttachmentOut
+from app.services import plan_limits
 from app.services.owner_access import authorize_owner_access
 
 settings = get_settings()
@@ -146,6 +147,8 @@ def upload_attachment(
         )
     if not contents:
         raise ValidationAppError("Attachment file is empty")
+
+    plan_limits.enforce_storage_limit(db, tenant_id, len(contents))
 
     if not _content_matches_extension(extension, contents):
         raise ValidationAppError(

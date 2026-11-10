@@ -14,6 +14,13 @@ class TestModuleUpdateRequest(BaseModel):
     parent_id: UUID | None = None
 
 
+class BulkAssignModuleRequest(BaseModel):
+    """Gap-closure pass (ADR-057): bulk module reassignment."""
+
+    test_case_ids: list[UUID] = Field(min_length=1, max_length=500)
+    module_id: UUID | None = None
+
+
 class TestModuleOut(BaseModel):
     id: UUID
     project_id: UUID

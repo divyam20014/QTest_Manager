@@ -7,9 +7,11 @@ from app.core.auth import SessionContext, get_current_context, require_permissio
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.test_asset import (
+    BuildBulkCreateRequest,
     BuildCreateRequest,
     EnvironmentCreateRequest,
     EnvironmentUpdateRequest,
+    ReleaseBulkCreateRequest,
     ReleaseCreateRequest,
 )
 from app.services import test_asset_service
@@ -78,6 +80,17 @@ def create_build(
     return envelope(build.model_dump(mode="json"))
 
 
+@router.post("/projects/{project_id}/builds/bulk")
+def bulk_create_builds(
+    project_id: UUID,
+    req: BuildBulkCreateRequest,
+    ctx: SessionContext = Depends(require_permission("environment.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    builds = test_asset_service.bulk_create_builds(db, ctx.tenant_id, ctx.user_id, project_id, req)
+    return envelope([b.model_dump(mode="json") for b in builds])
+
+
 @router.delete("/builds/{build_id}")
 def delete_build(
     build_id: UUID,
@@ -107,6 +120,19 @@ def create_release(
 ) -> dict:
     release = test_asset_service.create_release(db, ctx.tenant_id, ctx.user_id, project_id, req)
     return envelope(release.model_dump(mode="json"))
+
+
+@router.post("/projects/{project_id}/releases/bulk")
+def bulk_create_releases(
+    project_id: UUID,
+    req: ReleaseBulkCreateRequest,
+    ctx: SessionContext = Depends(require_permission("environment.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    releases = test_asset_service.bulk_create_releases(
+        db, ctx.tenant_id, ctx.user_id, project_id, req
+    )
+    return envelope([r.model_dump(mode="json") for r in releases])
 
 
 @router.delete("/releases/{release_id}")

@@ -81,6 +81,10 @@ a tenant does not delete any data — it is reversible.
 - **Migrations**: run automatically on deploy; see
   `docs/PRODUCTION_DEPLOYMENT_GUIDE.md` §4 for the upgrade/rollback
   procedure.
+- **IP-allowlist break-glass recovery** (gap-closure pass, ADR-057): if a
+  tenant admin locks their own organization out via Settings' IP
+  Allowlist field, `POST /api/v1/platform/tenants/{tenant_id}/clear-ip-
+  allowlist` clears it. See §2.2 below for the full procedure.
 
 ### 1.4 Assigning a tenant's subscription plan
 
@@ -138,11 +142,21 @@ take effect immediately.
 
 An **IP Allowlist** field (one CIDR block or IP per line) restricts which
 networks can sign in or use an active session at all — leave it empty for
-no restriction (the default). **Caution**: there is no in-app recovery if
-you set an allowlist that excludes your own current network — you will be
-locked out immediately, with no backdoor except a Platform Administrator's
-direct intervention. Always confirm your own network is included before
-saving.
+no restriction (the default). **Caution**: there is no *tenant-side*
+in-app recovery if you set an allowlist that excludes your own current
+network — you will be locked out immediately. Always confirm your own
+network is included before saving.
+
+**Recovery procedure (gap-closure pass, ADR-057)**: if a tenant locks
+itself out this way, a Platform Administrator can clear that tenant's
+allowlist via `POST /api/v1/platform/tenants/{tenant_id}/clear-ip-allowlist`
+(platform-admin HTTP Basic auth, same as every other `/platform/*` route —
+see Part 1 below). This is a deliberate "break glass" action: it is
+audit-logged (`tenant.ip_allowlist_cleared_by_platform_admin`) and should
+only be used when a tenant genuinely cannot reach support any other way,
+since it removes the restriction entirely rather than editing it to a
+single corrected entry — the tenant's own admin must re-add the intended
+allowlist afterward.
 
 A **Branding** card lets you set a display name, a primary color (applied to
 the sidebar accent), and upload a logo (PNG/JPEG/SVG/WebP, 2MB max) — shown

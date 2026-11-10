@@ -21,7 +21,7 @@ from app.schemas.ai import (
     ReviewTestCaseResponse,
 )
 from app.schemas.test_case import StepIn, TestCaseCreateRequest
-from app.services import requirement_service, test_case_service
+from app.services import plan_limits, requirement_service, test_case_service
 
 
 def _get_tenant(db: Session, tenant_id: UUID) -> Tenant:
@@ -80,6 +80,7 @@ def generate_test_cases_for_requirement(
 
     tenant = _get_tenant(db, tenant_id)
     _require_ai_enabled(tenant)
+    plan_limits.enforce_ai_quota(db, tenant_id)
     assert tenant.ai_api_key_encrypted is not None
 
     requirement_description = requirement_service.to_out(db, requirement).description
@@ -185,6 +186,7 @@ def review_test_case(
 
     tenant = _get_tenant(db, tenant_id)
     _require_ai_enabled(tenant)
+    plan_limits.enforce_ai_quota(db, tenant_id)
     assert tenant.ai_api_key_encrypted is not None
 
     api_key = decrypt_secret(tenant.ai_api_key_encrypted)
@@ -261,6 +263,7 @@ def analyze_requirement_change(
 
     tenant = _get_tenant(db, tenant_id)
     _require_ai_enabled(tenant)
+    plan_limits.enforce_ai_quota(db, tenant_id)
     assert tenant.ai_api_key_encrypted is not None
 
     versions = requirement_service.list_versions(

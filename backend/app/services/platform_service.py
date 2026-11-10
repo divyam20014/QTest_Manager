@@ -135,3 +135,34 @@ def update_tenant_data_region(
     )
     db.commit()
     return tenant
+
+
+def clear_ip_allowlist(
+    db: Session, tenant_id: UUID, platform_admin_id: UUID | None = None
+) -> Tenant:
+    """Gap-closure pass (ADR-057): a genuine recovery path for the
+    self-lockout risk Tier 4 disclosed (an admin excluding their own
+    network has no in-app recovery). Platform admins are a deliberately
+    separate, tenant-independent auth plane (ADR-008) -- the natural
+    "break glass" authority, since they can act even when every tenant
+    user is locked out. Audit-logged distinctly from an ordinary settings
+    change since clearing a security control is itself security-relevant."""
+    tenant = db.execute(select(Tenant).where(Tenant.id == tenant_id)).scalar_one_or_none()
+    if tenant is None:
+        raise NotFoundError("Tenant not found")
+
+    had_allowlist = bool(tenant.ip_allowlist)
+    tenant.ip_allowlist = None
+    set_tenant_context(db, str(tenant.id))
+    record_audit_event(
+        db,
+        tenant_id=tenant.id,
+        user_id=None,
+        platform_admin_id=platform_admin_id,
+        action="tenant.ip_allowlist_cleared_by_platform_admin",
+        entity_type="tenant",
+        entity_id=tenant.id,
+        metadata={"had_allowlist": had_allowlist},
+    )
+    db.commit()
+    return tenant

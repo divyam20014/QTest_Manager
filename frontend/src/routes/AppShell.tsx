@@ -36,6 +36,11 @@ interface NavItem {
   icon: ComponentType<{ className?: string }>
   end?: boolean
   adminOnly?: boolean
+  // Gap-closure pass (ADR-057): Environments is adminOnly by default but
+  // also gated at the API by `environment.manage`, which Managers also
+  // hold -- `allowedRoles` overrides adminOnly's single-role check for
+  // items where more than one role should see the nav entry.
+  allowedRoles?: Array<'admin' | 'manager' | 'tester'>
 }
 
 interface NavSection {
@@ -77,7 +82,13 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/admin/users', label: 'Users & Roles', icon: Users, adminOnly: true },
       { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText, adminOnly: true },
-      { to: '/admin/environments', label: 'Environments', icon: Layers, adminOnly: true },
+      {
+        to: '/admin/environments',
+        label: 'Environments',
+        icon: Layers,
+        adminOnly: true,
+        allowedRoles: ['admin', 'manager'],
+      },
       { to: '/settings', label: 'Settings', icon: SettingsIcon, adminOnly: true },
     ],
   },
@@ -189,9 +200,12 @@ export function AppShell() {
 
         <nav className="flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-3 pb-4">
           {NAV_SECTIONS.map((section) => {
-            const visibleItems = section.items.filter(
-              (item) => !item.adminOnly || user?.role === 'admin',
-            )
+            const visibleItems = section.items.filter((item) => {
+              if (item.allowedRoles) {
+                return !!user?.role && item.allowedRoles.includes(user.role)
+              }
+              return !item.adminOnly || user?.role === 'admin'
+            })
             if (visibleItems.length === 0) return null
             return (
               <div key={section.label} className="flex flex-col gap-1">

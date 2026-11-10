@@ -32,6 +32,7 @@ from app.api import (
     templates,
     test_assets,
     test_cases,
+    test_data,
     test_modules,
     users,
 )
@@ -184,6 +185,7 @@ app.include_router(scim.router, prefix="/api/v1")
 app.include_router(scim.admin_router, prefix="/api/v1")
 app.include_router(field_customization.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
+app.include_router(test_data.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

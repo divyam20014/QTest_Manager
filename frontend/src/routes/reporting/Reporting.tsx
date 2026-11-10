@@ -26,6 +26,7 @@ import {
   type GroupBy,
   type Metric,
 } from '@/api/reporting'
+import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -84,6 +85,17 @@ export function Reporting() {
 
   const projectsQuery = useQuery({ queryKey: ['projects', 'all'], queryFn: () => listProjects({ page_size: 100 }) })
   const usersQuery = useQuery({ queryKey: ['users', 'all'], queryFn: listUsers })
+  // Gap-closure pass (ADR-057): this filter targets test case priority
+  // (the "priority" metric is "Test Case Priority"), so it reads the same
+  // tenant-configured value set TestCasesList/TestCaseForm use, instead
+  // of the fixed PRIORITIES fallback.
+  const priorityOptionsQuery = useQuery({
+    queryKey: ['field-options', 'test_case_priority'],
+    queryFn: () => listFieldOptions('test_case_priority'),
+  })
+  const priorityFilterOptions: { code: string; label: string }[] = priorityOptionsQuery.data?.length
+    ? priorityOptionsQuery.data.map((o) => ({ code: o.code, label: o.label }))
+    : PRIORITIES.map((p) => ({ code: p, label: p }))
   const domainQuery = useQuery({ queryKey: ['dashboard', 'domain-distribution'], queryFn: fetchDomainDistribution })
   const trendQuery = useQuery({
     queryKey: ['reports', 'execution-trend', projectId],
@@ -195,9 +207,9 @@ export function Reporting() {
               className="w-36"
             >
               <option value="">All priorities</option>
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+              {priorityFilterOptions.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.label}
                 </option>
               ))}
             </Select>

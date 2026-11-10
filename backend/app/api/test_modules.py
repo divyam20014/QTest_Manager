@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
 from app.core.responses import envelope
-from app.schemas.test_module import TestModuleCreateRequest, TestModuleUpdateRequest
+from app.schemas.test_module import (
+    BulkAssignModuleRequest,
+    TestModuleCreateRequest,
+    TestModuleUpdateRequest,
+)
 from app.services import test_module_service
 
 router = APIRouter(tags=["test-modules"])
@@ -76,3 +80,15 @@ def assign_module(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, req.module_id
     )
     return envelope({"assigned": True})
+
+
+@router.post("/test-cases/bulk-assign-module")
+def bulk_assign_module(
+    req: BulkAssignModuleRequest,
+    ctx: SessionContext = Depends(require_permission("testcase.edit")),
+    db: Session = Depends(get_db),
+) -> dict:
+    count = test_module_service.bulk_assign_test_cases(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, req.test_case_ids, req.module_id
+    )
+    return envelope({"reassigned": count})

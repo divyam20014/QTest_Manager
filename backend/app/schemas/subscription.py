@@ -30,6 +30,25 @@ class SubscriptionOut(BaseModel):
     updated_at: datetime
 
 
+class PlanCreateRequest(BaseModel):
+    """Platform-admin-only (gap-closure pass, ADR-057)."""
+
+    code: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    seat_limit: int | None = Field(default=None, ge=1)
+    storage_limit_mb: int | None = Field(default=None, ge=1)
+    ai_monthly_request_limit: int | None = Field(default=None, ge=1)
+    is_active: bool = True
+
+
+class PlanUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    seat_limit: int | None = Field(default=None, ge=1)
+    storage_limit_mb: int | None = Field(default=None, ge=1)
+    ai_monthly_request_limit: int | None = Field(default=None, ge=1)
+    is_active: bool | None = None
+
+
 class SubscriptionAssignRequest(BaseModel):
     """Platform-admin-only. Schema/admin-assignment only -- no payment
     collection, no invoicing (ADR-053)."""

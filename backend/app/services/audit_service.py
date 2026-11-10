@@ -51,6 +51,7 @@ def _to_out(log: AuditLog, user_name: str | None) -> AuditLogOut:
         tenant_id=log.tenant_id,
         user_id=log.user_id,
         user_name=user_name,
+        platform_admin_id=log.platform_admin_id,
         action=log.action,
         entity_type=log.entity_type,
         entity_id=log.entity_id,

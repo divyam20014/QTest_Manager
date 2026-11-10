@@ -208,3 +208,53 @@ def assign_test_case(
         metadata={"module_id": str(module_id) if module_id else None},
     )
     db.commit()
+
+
+def bulk_assign_test_cases(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    test_case_ids: list[UUID],
+    module_id: UUID | None,
+) -> int:
+    """Gap-closure pass (ADR-057): a bulk-move for the module-assignment
+    action that was previously one-test-case-at-a-time only. Each row
+    gets the same existing validation `assign_test_case` applies (project
+    access, same-project module check) so this isn't a weaker bulk path --
+    just one commit instead of N. Returns the count actually reassigned."""
+    target_module: TestModule | None = None
+    if module_id is not None:
+        target_module = _get_module_or_404(db, tenant_id, module_id)
+
+    reassigned = 0
+    for test_case_id in test_case_ids:
+        case = db.execute(
+            select(TestCase).where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
+        ).scalar_one_or_none()
+        if case is None:
+            raise NotFoundError(f"Test case not found: {test_case_id}")
+        project = _get_project_or_404(db, tenant_id, case.project_id)
+        _require_project_access(db, project, role_code, actor_user_id)
+        if target_module is not None and target_module.project_id != case.project_id:
+            raise ConflictError(
+                f"Module belongs to a different project than test case {test_case_id}"
+            )
+        case.module_id = module_id
+        reassigned += 1
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="testcase.module_bulk_assigned",
+        entity_type="test_case",
+        entity_id=module_id or test_case_ids[0],
+        metadata={
+            "module_id": str(module_id) if module_id else None,
+            "test_case_ids": [str(i) for i in test_case_ids],
+            "count": reassigned,
+        },
+    )
+    db.commit()
+    return reassigned
