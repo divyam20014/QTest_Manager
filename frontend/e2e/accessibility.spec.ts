@@ -21,7 +21,7 @@ test.describe('accessibility', () => {
     await expectNoSeriousViolations(page)
   })
 
-  test('Dashboard, Projects, Reporting, Defects, Administration have no serious violations', async ({
+  test('Dashboard, Projects, Reports, Defects, Users & Roles have no serious violations', async ({
     page,
     request,
   }) => {
@@ -37,13 +37,13 @@ test.describe('accessibility', () => {
     await page.waitForSelector('h1:has-text("Defects")')
     await expectNoSeriousViolations(page)
 
-    await page.click('a:has-text("Reporting")')
+    await page.click('a:has-text("Reports")')
     await page.waitForSelector('text=Project & Test Case Distribution by Domain')
     await page.waitForTimeout(500) // let the chart's SVG settle before scanning
     await expectNoSeriousViolations(page)
 
-    await page.click('a:has-text("Administration")')
-    await page.waitForSelector('text=Users & Roles')
+    await page.click('a:has-text("Users & Roles")')
+    await page.waitForSelector('h1:has-text("Users & Roles")')
     await expectNoSeriousViolations(page)
   })
 })

@@ -59,7 +59,7 @@ test('Executing a run: failing a step auto-opens a defect, case rolls up to Fail
   await page.waitForSelector('text=Verify Total Loss Settlement Calculation', { timeout: 10000 })
   await page.click('a:has-text("← Apex Motor Claims Modernization")')
   await page.waitForSelector('text=Team Members', { timeout: 10000 })
-  await page.click('a:has-text("Test Runs")')
+  await page.click('main a:has-text("Test Runs")')
   await page.click('button:has-text("New Test Run")')
   await page.waitForSelector('text=New Test Run')
   await page.fill('#run-name', 'Sprint 42 Motor Regression Cycle')

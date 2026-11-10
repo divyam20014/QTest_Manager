@@ -8,11 +8,16 @@ import { Link, useLocation } from 'react-router-dom'
 const SEGMENT_LABELS: Record<string, string> = {
   projects: 'Projects',
   'test-cases': 'Test Case',
-  'test-runs': 'Test Run',
+  'test-repository': 'Test Repository',
+  'test-runs': 'Test Runs',
   'test-run-cases': 'Execution',
+  execution: 'Execution Console',
   defects: 'Defects',
   reporting: 'Reporting',
   admin: 'Administration',
+  users: 'Users & Roles',
+  'audit-logs': 'Audit Logs',
+  settings: 'Settings',
   account: 'My Account',
 }
 

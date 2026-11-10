@@ -10,7 +10,49 @@
   --primary-foreground: #f9fafb;
   --destructive: #dc2626;
   --ring: #a1a1aa;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
+
+  /* Brand accent -- used for active nav states, links, primary data
+     emphasis. Distinct from --primary (the neutral ink/button color)
+     so brand color stays a deliberate accent, not the default button
+     fill (keeps dense tables/forms calm per the dataviz skill's "text
+     wears text tokens, not series color" principle). */
+  --brand: #2a78d6;
+  --brand-foreground: #ffffff;
+  --brand-muted: #eaf1fb;
+  /* Darker than --brand specifically for small text on a light
+     background (links, "View all" affordances) -- #2a78d6 fails WCAG AA
+     contrast (4.41:1) at 12px on white; this passes. Keep --brand for
+     icons/borders/active-nav backgrounds, which aren't text-contrast
+     constrained the same way. */
+  --link: #15539e;
+
+  /* Dedicated sidebar palette -- a fixed dark surface independent of
+     the light/dark mode of the main content area, matching the
+     dark-sidebar/light-content pattern of the reference enterprise QA
+     tools (BrowserStack, Testmo, Testiny, Jira). */
+  --sidebar-bg: #11182b;
+  --sidebar-bg-raised: #161f38;
+  --sidebar-foreground: #cbd5e1;
+  --sidebar-foreground-muted: #7c8aa8;
+  --sidebar-border: #232f4d;
+  --sidebar-active-bg: #1f2b4d;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-accent: #5b9dee;
+
+  /* Status tokens, reserved for state (never reused as a categorical
+     series color) -- backs badges/pills across runs, defects, test
+     case status. */
+  --status-good: #0f8a5f;
+  --status-good-bg: #e6f6ef;
+  --status-warning: #b45309;
+  --status-warning-bg: #fef3e2;
+  --status-serious: #b91c1c;
+  --status-serious-bg: #fde8e8;
+  --status-critical: #7c1d6f;
+  --status-critical-bg: #f7e6f4;
+  --status-neutral: #52525b;
+  --status-neutral-bg: #f1f1f3;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +66,22 @@
     --primary-foreground: #0a0a0a;
     --destructive: #f87171;
     --ring: #52525b;
+
+    --brand: #5b9dee;
+    --brand-foreground: #0a0a0a;
+    --brand-muted: #16263f;
+    --link: #8ab8f5;
+
+    --status-good: #3dd68c;
+    --status-good-bg: #0f2a20;
+    --status-warning: #f5a623;
+    --status-warning-bg: #332308;
+    --status-serious: #f87171;
+    --status-serious-bg: #3a1414;
+    --status-critical: #e391d6;
+    --status-critical-bg: #321830;
+    --status-neutral: #a1a1aa;
+    --status-neutral-bg: #232326;
   }
 }
 

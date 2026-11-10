@@ -8,14 +8,19 @@ import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { DefectDetail } from '@/routes/defects/DefectDetail'
 import { DefectsList } from '@/routes/defects/DefectsList'
 import { ExecutionConsole } from '@/routes/execution/ExecutionConsole'
+import { ExecutionOverview } from '@/routes/execution/ExecutionOverview'
 import { TestRunDetail } from '@/routes/execution/TestRunDetail'
 import { TestRunsList } from '@/routes/execution/TestRunsList'
-import { Administration } from '@/routes/admin/Administration'
+import { TestRunsOverview } from '@/routes/execution/TestRunsOverview'
+import { AuditLogs } from '@/routes/admin/AuditLogs'
+import { Settings } from '@/routes/admin/Settings'
+import { UsersRoles } from '@/routes/admin/UsersRoles'
 import { ProjectDetail } from '@/routes/projects/ProjectDetail'
 import { ProjectsList } from '@/routes/projects/ProjectsList'
 import { MyAccount } from '@/routes/MyAccount'
 import { CompliancePrintView } from '@/routes/reporting/CompliancePrintView'
 import { Reporting } from '@/routes/reporting/Reporting'
+import { TestRepository } from '@/routes/testrepository/TestRepository'
 import { TestCaseDetail } from '@/routes/testcases/TestCaseDetail'
 import { TestCasesList } from '@/routes/testcases/TestCasesList'
 
@@ -35,10 +40,16 @@ export function App() {
           <Route path="/projects/:projectId/test-runs" element={<TestRunsList />} />
           <Route path="/test-runs/:runId" element={<TestRunDetail />} />
           <Route path="/test-run-cases/:runCaseId" element={<ExecutionConsole />} />
+          <Route path="/test-repository" element={<TestRepository />} />
+          <Route path="/test-runs" element={<TestRunsOverview />} />
+          <Route path="/execution" element={<ExecutionOverview />} />
           <Route path="/defects" element={<DefectsList />} />
           <Route path="/defects/:defectId" element={<DefectDetail />} />
           <Route path="/reporting" element={<Reporting />} />
-          <Route path="/admin" element={<Administration />} />
+          <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
+          <Route path="/admin/users" element={<UsersRoles />} />
+          <Route path="/admin/audit-logs" element={<AuditLogs />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/account" element={<MyAccount />} />
         </Route>
       </Route>

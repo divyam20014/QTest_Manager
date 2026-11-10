@@ -43,7 +43,7 @@ export function AuditLogs() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Audit Logs</h2>
+        <h1 className="text-lg font-semibold">Audit Logs</h1>
         <div className="flex gap-2">
           <a
             href={auditExportUrl(filters)}

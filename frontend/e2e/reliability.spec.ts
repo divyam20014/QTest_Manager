@@ -61,7 +61,7 @@ test('Browser refresh during execution preserves in-progress step state', async 
   await page.waitForSelector('text=Verify Reliability Refresh Case', { timeout: 10000 })
   await page.click('a:has-text("← Reliability Regression Project")')
   await page.waitForSelector('text=Team Members', { timeout: 10000 })
-  await page.click('a:has-text("Test Runs")')
+  await page.click('main a:has-text("Test Runs")')
   await page.click('button:has-text("New Test Run")')
   await page.waitForSelector('text=New Test Run')
   await page.fill('#run-name', 'Reliability Refresh Run')

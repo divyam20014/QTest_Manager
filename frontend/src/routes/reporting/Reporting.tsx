@@ -67,7 +67,7 @@ export function Reporting() {
   const { user } = useAuth()
   const [metric, setMetric] = useState<Metric>('run_status')
   const [groupBy, setGroupBy] = useState<GroupBy>('project')
-  const [chartType, setChartType] = useState<'bar' | 'pie'>('bar')
+  const [chartType, setChartType] = useState<'bar' | 'pie' | 'line'>('bar')
   const [projectId, setProjectId] = useState('')
   const [domain, setDomain] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
@@ -342,11 +342,12 @@ export function Reporting() {
             <Select
               aria-label="Chart type"
               value={chartType}
-              onChange={(e) => setChartType(e.target.value as 'bar' | 'pie')}
+              onChange={(e) => setChartType(e.target.value as 'bar' | 'pie' | 'line')}
               className="w-32"
             >
               <option value="bar">Bar chart</option>
               <option value="pie">Pie / donut</option>
+              <option value="line">Line chart</option>
             </Select>
           </div>
           {groupBy === 'assignee' && (
@@ -395,7 +396,7 @@ export function Reporting() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          ) : (
+          ) : chartType === 'pie' ? (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -414,6 +415,47 @@ export function Reporting() {
                     ))}
                   </Pie>
                 </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={aggregateData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <XAxis
+                    dataKey="group_label"
+                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: isDark ? '#1a1a19' : '#fcfcfb',
+                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  {valueOrder.map((value, i) => (
+                    <Line
+                      key={value}
+                      type="monotone"
+                      dataKey={value}
+                      name={value}
+                      stroke={categoricalColor(i, isDark)}
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
+                  ))}
+                </LineChart>
               </ResponsiveContainer>
             </div>
           )}

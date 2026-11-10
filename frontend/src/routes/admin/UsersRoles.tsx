@@ -40,7 +40,7 @@ export function UsersRoles() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Users &amp; Roles</h2>
+        <h1 className="text-lg font-semibold">Users &amp; Roles</h1>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           New User
         </Button>

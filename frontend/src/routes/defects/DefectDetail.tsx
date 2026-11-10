@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Bug, Building2, ChevronRight, FileStack, ListChecks, PlayCircle } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
@@ -7,6 +8,7 @@ import { getDefect, getDefectHistory, updateDefectStatus, type DefectStatus } fr
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { SEVERITY_TONE, STATUS_ORDER, STATUS_TONE } from './statusDisplay'
 
@@ -127,54 +129,45 @@ export function DefectDetail() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Traceability</CardTitle>
           </CardHeader>
           <CardContent>
-            <dl className="grid grid-cols-2 gap-y-2 text-sm">
-              <dt className="text-[var(--muted-foreground)]">Project</dt>
-              <dd>
-                <Link to={`/projects/${defect.project_id}`} className="underline-offset-2 hover:underline">
-                  {defect.project_name}
-                </Link>
-              </dd>
-              <dt className="text-[var(--muted-foreground)]">Test Case</dt>
-              <dd>
-                {defect.test_case_id ? (
-                  <Link to={`/test-cases/${defect.test_case_id}`} className="underline-offset-2 hover:underline">
-                    {defect.test_case_title}
-                  </Link>
-                ) : (
-                  '—'
-                )}
-              </dd>
-              <dt className="text-[var(--muted-foreground)]">Test Case Version</dt>
-              <dd>{defect.test_case_version_number !== null ? `v${defect.test_case_version_number}` : '—'}</dd>
-              <dt className="text-[var(--muted-foreground)]">Test Run</dt>
-              <dd>
-                {defect.test_run_id ? (
-                  <Link to={`/test-runs/${defect.test_run_id}`} className="underline-offset-2 hover:underline">
-                    {defect.test_run_name}
-                  </Link>
-                ) : (
-                  '—'
-                )}
-              </dd>
-              <dt className="text-[var(--muted-foreground)]">Failed Step</dt>
-              <dd>
-                {defect.step_number !== null ? (
-                  executionConsoleUrl ? (
-                    <Link to={executionConsoleUrl} className="underline-offset-2 hover:underline">
-                      Step {defect.step_number} (open in console)
-                    </Link>
-                  ) : (
-                    `Step ${defect.step_number}`
-                  )
-                ) : (
-                  '—'
-                )}
-              </dd>
+            <div className="flex flex-col flex-wrap items-stretch gap-2 md:flex-row md:items-center">
+              <TraceNode
+                icon={Building2}
+                label="Project"
+                value={defect.project_name}
+                to={`/projects/${defect.project_id}`}
+              />
+              <TraceArrow />
+              <TraceNode
+                icon={FileStack}
+                label="Test Case"
+                value={defect.test_case_title}
+                sub={defect.test_case_version_number !== null ? `v${defect.test_case_version_number}` : undefined}
+                to={defect.test_case_id ? `/test-cases/${defect.test_case_id}` : null}
+              />
+              <TraceArrow />
+              <TraceNode
+                icon={PlayCircle}
+                label="Test Run"
+                value={defect.test_run_name}
+                to={defect.test_run_id ? `/test-runs/${defect.test_run_id}` : null}
+              />
+              <TraceArrow />
+              <TraceNode
+                icon={ListChecks}
+                label="Failed Step"
+                value={defect.step_number !== null ? `Step ${defect.step_number}` : null}
+                to={executionConsoleUrl}
+              />
+              <TraceArrow />
+              <TraceNode icon={Bug} label="Defect" value={defect.title} current />
+            </div>
+
+            <dl className="mt-4 grid grid-cols-2 gap-y-2 border-t border-[var(--border)] pt-4 text-sm">
               <dt className="text-[var(--muted-foreground)]">Reported</dt>
               <dd>{new Date(defect.created_at).toLocaleString()}</dd>
               <dt className="text-[var(--muted-foreground)]">Closed</dt>
@@ -240,4 +233,53 @@ export function DefectDetail() {
       </div>
     </div>
   )
+}
+
+function TraceArrow() {
+  return (
+    <ChevronRight className="hidden size-4 shrink-0 self-center text-[var(--muted-foreground)] md:block" />
+  )
+}
+
+function TraceNode({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  to,
+  current,
+}: {
+  icon: typeof Bug
+  label: string
+  value: string | null | undefined
+  sub?: string
+  to?: string | null
+  current?: boolean
+}) {
+  const content = (
+    <div
+      className={cn(
+        'flex min-w-0 flex-1 items-center gap-2.5 rounded-md border px-3 py-2 md:flex-none md:basis-44',
+        current
+          ? 'border-[var(--brand)] bg-[var(--brand-muted)]'
+          : 'border-[var(--border)]',
+        to && 'hover:bg-[var(--muted)]',
+      )}
+    >
+      <Icon className="size-4 shrink-0 text-[var(--muted-foreground)]" />
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
+        <p className="truncate text-sm font-medium">{value ?? '—'}</p>
+        {sub && <p className="text-xs text-[var(--muted-foreground)]">{sub}</p>}
+      </div>
+    </div>
+  )
+  if (to && value) {
+    return (
+      <Link to={to} className="block min-w-0 md:flex-none">
+        {content}
+      </Link>
+    )
+  }
+  return content
 }

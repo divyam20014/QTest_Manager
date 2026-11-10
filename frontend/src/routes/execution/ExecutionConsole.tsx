@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
-import { listDefects } from '@/api/defects'
+import { listDefects, type Defect } from '@/api/defects'
 import {
   getRunCaseContext,
+  getTestRun,
   listRunCaseSteps,
   openStep,
   recordVerdict,
   type ExecutionStep,
+  type RunCaseStatus,
   type Verdict,
 } from '@/api/execution'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { DefectQuickCreateDialog, type FailedStepContext } from './DefectQuickCreateDialog'
 
 const VERDICT_TONE = { pass: 'positive', fail: 'critical', ignore: 'neutral' } as const
@@ -21,6 +25,14 @@ const PRIORITY_TONE: Record<string, 'neutral' | 'warning' | 'critical'> = {
   Medium: 'warning',
   High: 'warning',
   Critical: 'critical',
+}
+const RUN_CASE_STATUS_TONE: Record<RunCaseStatus, 'neutral' | 'positive' | 'warning' | 'critical'> = {
+  pending: 'neutral',
+  in_progress: 'warning',
+  passed: 'positive',
+  failed: 'critical',
+  blocked: 'critical',
+  ignored: 'neutral',
 }
 
 export function ExecutionConsole() {
@@ -43,8 +55,17 @@ export function ExecutionConsole() {
     enabled: !!runCaseId,
   })
 
+  // Left panel: every other test case in this run, for in-console
+  // navigation without dropping back to the Test Run detail page.
+  const runQuery = useQuery({
+    queryKey: ['execution-console', 'run', runId],
+    queryFn: () => getTestRun(runId!),
+    enabled: !!runId,
+  })
+
   // GAP-20: one batched call per run to find out which steps already have
-  // a defect reported, instead of a per-step lookup.
+  // a defect reported, instead of a per-step lookup. Also backs the right
+  // panel's "Defects" card (filtered to this run-case specifically).
   const runDefectsQuery = useQuery({
     queryKey: ['defects', 'by-run', runId],
     queryFn: () => listDefects({ test_run_id: runId! }),
@@ -60,6 +81,9 @@ export function ExecutionConsole() {
     (runDefectsQuery.data ?? []).flatMap((d) =>
       d.links.filter((l) => l.linkable_type === 'execution_step').map((l) => l.linkable_id),
     ),
+  )
+  const caseDefects: Defect[] = (runDefectsQuery.data ?? []).filter(
+    (d) => d.test_run_case_id === runCaseId,
   )
 
   const steps = stepsQuery.data ?? []
@@ -87,6 +111,7 @@ export function ExecutionConsole() {
     onSuccess: (updatedStep) => {
       queryClient.invalidateQueries({ queryKey: ['execution-steps', runCaseId] })
       queryClient.invalidateQueries({ queryKey: ['test-runs'] })
+      queryClient.invalidateQueries({ queryKey: ['execution-console', 'run', runId] })
       if (updatedStep.verdict === 'fail' && context) {
         setFailedStepContext({
           executionStepId: updatedStep.id,
@@ -135,85 +160,186 @@ export function ExecutionConsole() {
   const progressPercent = steps.length ? Math.round((answeredCount / steps.length) * 100) : 0
 
   return (
-    <div className="flex flex-col gap-4 pb-24">
-      <div>
-        <h1 className="text-lg font-semibold">Execution Console</h1>
-        {context && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[var(--muted-foreground)]">
-            <span>
-              Run: <span className="font-medium text-[var(--foreground)]">{context.run_name}</span>
-            </span>
-            <span>
-              Project: <span className="font-medium text-[var(--foreground)]">{context.project_name}</span>
-            </span>
-            <span>
-              Test Case: <span className="font-medium text-[var(--foreground)]">{context.test_case_title}</span>
-            </span>
-            <span className="flex items-center gap-1">
-              Priority: <Badge tone={PRIORITY_TONE[context.priority] ?? 'neutral'}>{context.priority}</Badge>
-            </span>
-            <span>Version: v{context.version_number}</span>
-            <span>Assignee: {context.assignee_name ?? 'Unassigned'}</span>
-            {context.run_paused && <Badge tone="warning">Run Paused</Badge>}
-            {context.run_finished && <Badge tone="neutral">Run Finished</Badge>}
-          </div>
-        )}
-        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
-          <div className="h-full bg-[var(--primary)] transition-all" style={{ width: `${progressPercent}%` }} />
+    <div className="flex h-[calc(100vh-7.5rem)] gap-4">
+      {/* Left panel: test case navigation within this run */}
+      <aside className="flex w-64 shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]">
+        <div className="shrink-0 border-b border-[var(--border)] p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Test Run</p>
+          <p className="truncate text-sm font-medium">{runQuery.data?.name ?? context?.run_name ?? '—'}</p>
         </div>
-        <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-          {answeredCount}/{steps.length} steps complete
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        {steps.map((step) => (
-          <StepCard
-            key={step.id}
-            step={step}
-            isCurrent={currentStep?.id === step.id}
-            hasDefect={
-              reportedVersionStepIds.has(step.test_case_version_step_id) ||
-              reportedExecutionStepIds.has(step.id)
-            }
-            onVerdict={(verdict) => verdictMutation.mutate({ stepId: step.id, verdict })}
-            isSubmitting={verdictMutation.isPending}
-            disabled={!!runLocked}
-          />
-        ))}
-      </div>
-
-      {currentStep && !runLocked && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-[var(--border)] bg-[var(--background)] p-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Step {currentStep.step_number}: {currentStep.action}
+        <div className="flex-1 overflow-y-auto p-2">
+          {!runQuery.data && (
+            <p className="p-2 text-xs text-[var(--muted-foreground)]">
+              No run context — opened outside a test run.
             </p>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => submitVerdict('pass')}
-                disabled={verdictMutation.isPending}
-                className="bg-emerald-600 hover:opacity-90"
-              >
-                Pass <kbd className="ml-1 opacity-60">P</kbd>
-              </Button>
-              <Button size="sm" variant="destructive" onClick={() => submitVerdict('fail')} disabled={verdictMutation.isPending}>
-                Fail <kbd className="ml-1 opacity-60">F</kbd>
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => submitVerdict('ignore')} disabled={verdictMutation.isPending}>
-                Ignore <kbd className="ml-1 opacity-60">I</kbd>
-              </Button>
+          )}
+          {runQuery.data?.cases.map((c) => (
+            <Link
+              key={c.id}
+              to={`/test-run-cases/${c.id}?runId=${runId}`}
+              className={cn(
+                'flex flex-col gap-1 rounded-md px-2.5 py-2 text-sm hover:bg-[var(--muted)]',
+                c.id === runCaseId && 'bg-[var(--muted)] font-medium',
+              )}
+            >
+              <span className="truncate">{c.title}</span>
+              <span className="flex items-center justify-between gap-2">
+                <Badge tone={RUN_CASE_STATUS_TONE[c.status]} className="text-[10px]">
+                  {c.status.replace(/_/g, ' ')}
+                </Badge>
+                <span className="text-[10px] text-[var(--muted-foreground)]">
+                  {c.passed_count}/{c.step_count}
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </aside>
+
+      {/* Main panel: step execution */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]">
+        <div className="shrink-0 border-b border-[var(--border)] p-4">
+          <h1 className="text-lg font-semibold">{context?.test_case_title ?? 'Execution Console'}</h1>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+            <div className="h-full bg-[var(--primary)] transition-all" style={{ width: `${progressPercent}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            {answeredCount}/{steps.length} steps complete
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex flex-col gap-3">
+            {steps.map((step) => (
+              <StepCard
+                key={step.id}
+                step={step}
+                isCurrent={currentStep?.id === step.id}
+                hasDefect={
+                  reportedVersionStepIds.has(step.test_case_version_step_id) ||
+                  reportedExecutionStepIds.has(step.id)
+                }
+                onVerdict={(verdict) => verdictMutation.mutate({ stepId: step.id, verdict })}
+                isSubmitting={verdictMutation.isPending}
+                disabled={!!runLocked}
+              />
+            ))}
+          </div>
+        </div>
+
+        {currentStep && !runLocked && (
+          <div className="shrink-0 border-t border-[var(--border)] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 truncate text-sm text-[var(--muted-foreground)]">
+                Step {currentStep.step_number}: {currentStep.action}
+              </p>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => submitVerdict('pass')}
+                  disabled={verdictMutation.isPending}
+                  className="bg-emerald-600 hover:opacity-90"
+                >
+                  Pass <kbd className="ml-1 opacity-60">P</kbd>
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => submitVerdict('fail')} disabled={verdictMutation.isPending}>
+                  Fail <kbd className="ml-1 opacity-60">F</kbd>
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => submitVerdict('ignore')} disabled={verdictMutation.isPending}>
+                  Ignore <kbd className="ml-1 opacity-60">I</kbd>
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+        {runLocked && (
+          <div className="shrink-0 border-t border-[var(--border)] p-3 text-center text-xs text-[var(--muted-foreground)]">
+            {context?.run_paused ? 'Run paused — resume it to continue executing.' : 'Run finished.'}
+          </div>
+        )}
+      </div>
+
+      {/* Right panel: execution info + defect details */}
+      <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>Execution Info</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {context ? (
+              <dl className="flex flex-col gap-2 text-xs">
+                <InfoRow label="Run" value={context.run_name} />
+                <InfoRow label="Project" value={context.project_name} />
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-[var(--muted-foreground)]">Priority</dt>
+                  <dd>
+                    <Badge tone={PRIORITY_TONE[context.priority] ?? 'neutral'}>{context.priority}</Badge>
+                  </dd>
+                </div>
+                <InfoRow label="Version" value={`v${context.version_number}`} />
+                <InfoRow label="Assignee" value={context.assignee_name ?? 'Unassigned'} />
+                {context.run_paused && (
+                  <div className="pt-1">
+                    <Badge tone="warning">Run Paused</Badge>
+                  </div>
+                )}
+                {context.run_finished && (
+                  <div className="pt-1">
+                    <Badge tone="neutral">Run Finished</Badge>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p className="text-xs text-[var(--muted-foreground)]">Loading…</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Defects</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {caseDefects.length === 0 ? (
+              <p className="text-xs text-[var(--muted-foreground)]">No defects reported for this test case yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {caseDefects.map((d) => (
+                  <li key={d.id}>
+                    <Link
+                      to={`/defects/${d.id}`}
+                      className="flex flex-col gap-1 rounded-md border border-[var(--border)] px-2.5 py-2 text-xs hover:bg-[var(--muted)]"
+                    >
+                      <span className="truncate font-medium">{d.title}</span>
+                      <span className="flex items-center gap-1.5">
+                        <Badge tone={d.severity === 'Critical' || d.severity === 'High' ? 'critical' : 'neutral'}>
+                          {d.severity}
+                        </Badge>
+                        <Badge tone="neutral">{d.status}</Badge>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </aside>
 
       <DefectQuickCreateDialog
         open={failedStepContext !== null}
         onClose={handleDefectDialogClose}
         context={failedStepContext}
       />
+    </div>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-[var(--muted-foreground)]">{label}</dt>
+      <dd className="truncate text-right font-medium text-[var(--foreground)]">{value}</dd>
     </div>
   )
 }
