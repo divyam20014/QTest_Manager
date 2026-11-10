@@ -46,4 +46,39 @@ test.describe('accessibility', () => {
     await page.waitForSelector('h1:has-text("Users & Roles")')
     await expectNoSeriousViolations(page)
   })
+
+  // SAAS-GAP-12: the pages this session's enterprise redesign added or
+  // substantially reworked had zero accessibility coverage -- every page
+  // below is new or materially changed since the original 5-page scan
+  // above was written.
+  test('Test Repository, Test Runs, Execution Console, Audit Logs, Settings have no serious violations', async ({
+    page,
+    request,
+  }) => {
+    const tenant = await bootstrapTenant(request, 'A11yRedesign')
+    await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
+
+    await page.click('a:has-text("Test Repository")')
+    await page.waitForSelector('h1:has-text("Test Repository")')
+    await page.waitForTimeout(500) // let the per-project queries settle
+    await expectNoSeriousViolations(page)
+
+    await page.click('a:has-text("Test Runs")')
+    await page.waitForSelector('h1:has-text("Test Runs")')
+    await page.waitForTimeout(500)
+    await expectNoSeriousViolations(page)
+
+    await page.click('a:has-text("Execution Console")')
+    await page.waitForSelector('text=Active Executions')
+    await page.waitForTimeout(500)
+    await expectNoSeriousViolations(page)
+
+    await page.click('a:has-text("Audit Logs")')
+    await page.waitForSelector('h1:has-text("Audit Logs")')
+    await expectNoSeriousViolations(page)
+
+    await page.click('a:has-text("Settings")')
+    await page.waitForSelector('text=Organization Settings')
+    await expectNoSeriousViolations(page)
+  })
 })

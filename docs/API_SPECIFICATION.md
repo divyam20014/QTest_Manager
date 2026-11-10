@@ -9,6 +9,12 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 - All list endpoints are tenant-scoped automatically via session context; `tenant_id` is never a request parameter.
 - Pagination: `?page=&page_size=` on all list endpoints, `{ "items": [...], "total": N }` under `data`.
 
+## Operational endpoints (no auth, no tenant context)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /health | Liveness only — always returns `{"status":"ok"}` if the process is up. |
+| GET | /ready | Readiness — does a real `SELECT 1` against the database; 503 if unreachable (SAAS-GAP-16). Used by the `api` service's Docker healthcheck. |
+
 ## Platform Administration (no tenant context)
 | Method | Path | Purpose | Role |
 |---|---|---|---|

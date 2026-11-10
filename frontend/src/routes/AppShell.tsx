@@ -6,13 +6,17 @@ import {
   ClipboardList,
   FileStack,
   LayoutDashboard,
+  Menu,
   MonitorPlay,
+  PanelLeftClose,
+  PanelLeftOpen,
   ScrollText,
   Settings as SettingsIcon,
   ShieldCheck,
   Users,
+  X,
 } from 'lucide-react'
-import { type ComponentType } from 'react'
+import { type ComponentType, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
@@ -74,9 +78,39 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ]
 
+const COLLAPSE_STORAGE_KEY = 'qtesthub:sidebar-collapsed'
+
+// SAAS-GAP-10/9: a per-viewer UI preference, not tenant data -- fine to
+// keep in localStorage (per-device convenience, never a source of truth),
+// wrapped defensively since private-browsing/blocked-storage contexts can
+// throw on read or write.
+function useCollapsedPreference(): [boolean, (value: boolean) => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+
+  function update(value: boolean) {
+    setCollapsed(value)
+    try {
+      localStorage.setItem(COLLAPSE_STORAGE_KEY, value ? '1' : '0')
+    } catch {
+      // Private browsing / blocked storage -- the toggle still works for
+      // this page view, it just won't persist across reloads.
+    }
+  }
+
+  return [collapsed, update]
+}
+
 export function AppShell() {
   const { user, refresh } = useAuth()
   const navigate = useNavigate()
+  const [collapsed, setCollapsed] = useCollapsedPreference()
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   const logoutMutation = useMutation({
     mutationFn: logout,
@@ -86,17 +120,58 @@ export function AppShell() {
     },
   })
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[var(--sidebar-foreground)] transition-colors hover:bg-[var(--sidebar-bg-raised)] hover:text-white',
+      collapsed && 'md:justify-center',
+      isActive && 'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)]',
+    )
+
   return (
     <div className="flex min-h-svh">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)]">
-        <div className="flex items-center gap-2 px-4 py-4">
-          <span className="flex size-7 items-center justify-center rounded-md bg-[var(--sidebar-accent)] text-sm font-bold text-[var(--sidebar-bg)]">
-            Q
-          </span>
-          <span className="text-sm font-semibold tracking-wide text-white">QTestHub</span>
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] md:duration-200',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          collapsed ? 'md:w-16' : 'md:w-60',
+        )}
+      >
+        <div className="flex items-center justify-between gap-2 px-4 py-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-accent)] text-sm font-bold text-[var(--sidebar-bg)]">
+              Q
+            </span>
+            {!collapsed && (
+              <span className="truncate text-sm font-semibold tracking-wide text-white">QTestHub</span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="hidden shrink-0 rounded-md p-1.5 text-[var(--sidebar-foreground-muted)] hover:bg-[var(--sidebar-bg-raised)] hover:text-white md:block"
+          >
+            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+            className="shrink-0 rounded-md p-1.5 text-[var(--sidebar-foreground-muted)] hover:bg-[var(--sidebar-bg-raised)] hover:text-white md:hidden"
+          >
+            <X className="size-4" />
+          </button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4">
+        <nav className="flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-3 pb-4">
           {NAV_SECTIONS.map((section) => {
             const visibleItems = section.items.filter(
               (item) => !item.adminOnly || user?.role === 'admin',
@@ -104,24 +179,22 @@ export function AppShell() {
             if (visibleItems.length === 0) return null
             return (
               <div key={section.label} className="flex flex-col gap-1">
-                <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sidebar-foreground-muted)]">
-                  {section.label}
-                </p>
+                {!collapsed && (
+                  <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sidebar-foreground-muted)]">
+                    {section.label}
+                  </p>
+                )}
                 {visibleItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
                     end={item.end}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[var(--sidebar-foreground)] transition-colors hover:bg-[var(--sidebar-bg-raised)] hover:text-white',
-                        isActive &&
-                          'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)]',
-                      )
-                    }
+                    title={collapsed ? item.label : undefined}
+                    className={navLinkClass}
+                    onClick={() => setMobileOpen(false)}
                   >
                     <item.icon className="size-4 shrink-0" />
-                    {item.label}
+                    {!collapsed && <span className="truncate">{item.label}</span>}
                   </NavLink>
                 ))}
               </div>
@@ -132,44 +205,46 @@ export function AppShell() {
         <div className="border-t border-[var(--sidebar-border)] px-3 py-3">
           <NavLink
             to="/account"
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[var(--sidebar-foreground)] transition-colors hover:bg-[var(--sidebar-bg-raised)] hover:text-white',
-                isActive &&
-                  'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)]',
-              )
-            }
+            title={collapsed ? 'Profile' : undefined}
+            className={navLinkClass}
+            onClick={() => setMobileOpen(false)}
           >
             <Users className="size-4 shrink-0" />
-            Profile
+            {!collapsed && 'Profile'}
           </NavLink>
           {user?.role === 'admin' && (
             <NavLink
               to="/settings"
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[var(--sidebar-foreground)] transition-colors hover:bg-[var(--sidebar-bg-raised)] hover:text-white',
-                  isActive &&
-                    'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)]',
-                )
-              }
+              title={collapsed ? 'Organization' : undefined}
+              className={navLinkClass}
+              onClick={() => setMobileOpen(false)}
             >
               <Building2 className="size-4 shrink-0" />
-              Organization
+              {!collapsed && 'Organization'}
             </NavLink>
           )}
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--background)] px-6 py-3">
-          <Breadcrumbs />
-          <div className="flex items-center gap-1 text-sm">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 py-3 md:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:hidden"
+            >
+              <Menu className="size-5" />
+            </button>
+            <Breadcrumbs />
+          </div>
+          <div className="flex shrink-0 items-center gap-1 text-sm">
             <NotificationBell />
             <UserMenu name={user?.name} role={user?.role} onLogout={() => logoutMutation.mutate()} />
           </div>
         </header>
-        <main className="flex-1 bg-[var(--muted)]/40 p-6">
+        <main className="flex-1 bg-[var(--muted)]/40 p-4 md:p-6">
           <Outlet />
         </main>
       </div>

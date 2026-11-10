@@ -71,7 +71,7 @@ export function TestRunsList() {
         <Button onClick={() => setCreateOpen(true)}>New Test Run</Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
           <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>

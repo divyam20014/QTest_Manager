@@ -126,7 +126,7 @@ export function TestRunDetail() {
       </div>
       {finishError && <p className="text-xs text-[var(--destructive)]">{finishError}</p>}
 
-      <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
           <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>

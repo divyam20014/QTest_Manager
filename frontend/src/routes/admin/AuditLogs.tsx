@@ -123,7 +123,7 @@ export function AuditLogs() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
           <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>
@@ -169,11 +169,7 @@ function AuditRow({
 }) {
   return (
     <>
-      <tr
-        className="cursor-pointer border-t border-[var(--border)] hover:bg-[var(--muted)]"
-        onClick={onToggle}
-        aria-expanded={expanded}
-      >
+      <tr className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
         <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
           {new Date(entry.created_at).toLocaleString()}
         </td>
@@ -187,8 +183,20 @@ function AuditRow({
         <td className="px-4 py-2 font-mono text-xs text-[var(--muted-foreground)]">
           {entry.record_hash.slice(0, 12)}…
         </td>
-        <td className="px-4 py-2 text-right text-xs text-[var(--muted-foreground)]">
-          {expanded ? 'Hide' : 'Details'}
+        <td className="px-4 py-2 text-right text-xs">
+          {/* aria-expanded is only valid on treegrid rows, not plain
+              <tr> (axe: aria-conditional-attr) -- it belongs on the
+              actual interactive control, which also makes this
+              keyboard-operable where the old click-anywhere-on-the-row
+              pattern was not. */}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:underline"
+          >
+            {expanded ? 'Hide' : 'Details'}
+          </button>
         </td>
       </tr>
       {expanded && (

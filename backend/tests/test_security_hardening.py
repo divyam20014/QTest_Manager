@@ -201,7 +201,7 @@ def test_idor_random_uuid_on_every_get_by_id_route_404s(
 # (login, mfa/verify) or use a wholly separate auth scheme (platform/*
 # HTTP Basic) -- built from the live route table, not a hand-maintained
 # list, so it can never silently drift out of sync with app/api/*.py.
-_PUBLIC_OR_SEPARATE_AUTH_PREFIXES = ("/api/v1/platform", "/api/v1/health")
+_PUBLIC_OR_SEPARATE_AUTH_PREFIXES = ("/api/v1/platform", "/api/v1/health", "/api/v1/ready")
 _PRE_SESSION_ROUTES = {
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/mfa/verify"),

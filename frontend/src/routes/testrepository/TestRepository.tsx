@@ -255,7 +255,7 @@ export function TestRepository() {
       )}
       {bulkMessage && <p className="text-xs text-[var(--muted-foreground)]">{bulkMessage}</p>}
 
-      <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]">
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)]">
         <table className="w-full text-sm">
           <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>

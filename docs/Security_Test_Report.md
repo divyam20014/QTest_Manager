@@ -85,14 +85,11 @@ Grep across `frontend/src` for `dangerouslySetInnerHTML` or any raw-innerHTML-eq
 
 ## 10. File upload validation
 
-**Status: FINDING — confirmed, pre-existing gap, documented not fixed.**
+**Status: RESOLVED (post-report fix).** *Updated 2026-11-10 — see correction note below; the finding as originally written is no longer accurate.*
 
-`backend/app/services/attachment_service.py` (lines 25–28, 82–87) enforces an **extension-based allowlist only** (`Path(file.filename).suffix.lower()` checked against a fixed set of permitted extensions: png/jpg/jpeg/gif/webp/bmp/pdf/doc/docx/xls/xlsx/csv/txt/log) — there is no magic-byte/content-type sniffing of the actual file bytes.
-
-- Existing coverage: `test_attachments.py::test_disallowed_file_type_rejected` (a `.exe` file is correctly rejected), `test_attachment_exceeding_size_limit_rejected`, `test_empty_attachment_rejected` — all PASS, these guard the allowlist mechanism itself.
-- **New finding:** `test_attachment_allowlist_is_extension_only_not_content_sniffed` uploads a file named `innocuous.txt` whose actual byte content is an ELF binary header + shell script payload. **The upload is accepted (HTTP 200).** A malicious binary disguised with a permitted extension passes validation today.
-- **Severity assessment for this application's actual threat model:** moderate-to-low. Attachments are stored on disk under a tenant/test-case-scoped path and are only ever served back for **download** — the application never executes an uploaded file server-side, and the content-disposition on download is `attachment` (forces save, not inline render) per the existing attachment download implementation. The practical risk is a malicious file being stored and later downloaded by another user who then executes it locally on their own machine — a real but secondary risk (same category as email attachment hygiene), not a direct server-compromise vector.
-- **Recommendation:** add magic-byte/content-type sniffing (e.g. via `python-magic` or a signature-based check) as a follow-up hardening item if this is judged worth closing — this was deliberately **not built** in this pass (new validation logic is new application behavior, out of the "no new business features" scope for a testing-only engagement), only confirmed and documented per the brief's instruction to report actual results, not mark gaps as passing.
+> **Correction note:** this section originally reported file-upload content-sniffing as an open, unfixed finding. In a later pass within this same engagement, the user explicitly asked for this finding (GAP-66) fixed, and it was: `backend/app/services/attachment_service.py` now checks uploaded bytes against real magic-byte signatures (PNG/JPEG/GIF/BMP/PDF/legacy-OLE .doc+.xls/ZIP-based .docx+.xlsx/WEBP) or a "looks like text" check for .csv/.txt/.log, rejecting (422) a mismatch between extension and actual content — see `docs/ARCHITECTURE_DECISIONS.md` ADR-040 and `docs/KNOWN_GAPS.md` GAP-66 for full detail. This report was not updated at the time, so it continued to describe a gap that had already been closed; this note (added during the SaaS gap-analysis pass, SAAS-GAP-17) corrects that staleness. The original finding text is preserved below for history.
+>
+> **Original finding (now fixed, kept for record):** `backend/app/services/attachment_service.py` (lines 25–28, 82–87) enforced an **extension-based allowlist only** — there was no magic-byte/content-type sniffing of the actual file bytes. `test_attachment_allowlist_is_extension_only_not_content_sniffed` uploaded a file named `innocuous.txt` whose actual byte content was an ELF binary header + shell script payload, and the upload was accepted (HTTP 200). That test has since been replaced by `test_attachment_content_sniffing_rejects_mismatched_payload`, which confirms the same disguised payload is now rejected (422), alongside positive-case assertions that genuine files with matching extensions (including a real PNG) are still accepted, and that bytes mismatched against a *different* extension are also rejected.
 
 ## 11. Sensitive data exposure
 
@@ -131,7 +128,7 @@ See §3 and §6 — the new 56-route parametrized sweep (`test_no_session_cookie
 | SQL injection | PASS (no attack surface) | 0 (nothing to test) | — |
 | XSS | PASS (by construction) | 0 | — |
 | CSRF | Documented, accepted design | 1 | — |
-| File upload validation | **FINDING** | 1 | 3 |
+| File upload validation | PASS (fixed post-report, see §10 correction) | 1 | — |
 | Sensitive data exposure | PASS | — (verified by review) | — |
 | Audit manipulation | PASS | 2 | 1 |
 | Unauthorized API access | PASS | covered by sweep | — |
@@ -140,7 +137,7 @@ See §3 and §6 — the new 56-route parametrized sweep (`test_no_session_cookie
 
 ## Outstanding risks (carried forward, not closed in this pass)
 
-1. **File upload content-sniffing gap** (§10) — moderate-to-low severity given this app's storage-and-download-only usage pattern; recommend a future hardening pass if judged worth the new-feature scope.
+1. ~~File upload content-sniffing gap~~ **Resolved post-report** — see §10 correction note. No longer an outstanding risk.
 2. **No CSRF token (defense-in-depth)** (§9) — `SameSite=Lax` provides real but not complete protection; accepted as-is per existing design, not newly discovered.
 3. **No XSS-specific regression test** (§8) — structurally low risk (no raw-HTML injection point exists), but a `<script>`-payload regression test would make this an explicitly-verified guarantee rather than an inference from code construction.
 4. Pre-existing, unchanged by this pass (see `docs/KNOWN_GAPS.md`): audit hash-chain is tamper-evident, not tamper-proof against a privileged DBA (GAP-01); platform-level tenant actions aren't attributed to an individual platform admin (GAP-13); Platform Admin auth has no session/MFA (GAP-14).

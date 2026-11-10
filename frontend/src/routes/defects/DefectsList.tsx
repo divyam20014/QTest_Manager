@@ -1,25 +1,33 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
-import { listDefects, type DefectStatus, type Severity } from '@/api/defects'
+import { ApiError } from '@/api/client'
+import { createDefect, listDefects, type DefectStatus, type Severity } from '@/api/defects'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { useAuth } from '@/lib/auth'
 import { SEVERITY_TONE, STATUS_ORDER, STATUS_TONE } from './statusDisplay'
 
 const SEVERITIES: Severity[] = ['Low', 'Medium', 'High', 'Critical']
 
 export function DefectsList() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
   const [projectId, setProjectId] = useState('')
   const [status, setStatus] = useState<DefectStatus | ''>('')
   const [severity, setSeverity] = useState<Severity | ''>('')
   const [reportedBy, setReportedBy] = useState('')
   const [createdFrom, setCreatedFrom] = useState('')
   const [createdTo, setCreatedTo] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all-for-filter'],
@@ -39,9 +47,17 @@ export function DefectsList() {
       }),
   })
 
+  // defect.create is granted to every role (admin/manager/tester) per
+  // ADR-014's seed, so this is a contextual action available uniformly --
+  // not role-gated, matching the backend permission it calls.
+  const canCreate = !!user
+
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-lg font-semibold">Defects</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">Defects</h1>
+        {canCreate && <Button onClick={() => setCreateOpen(true)}>New Defect</Button>}
+      </div>
 
       <div className="flex flex-wrap items-end gap-3">
         <Select
@@ -122,7 +138,7 @@ export function DefectsList() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-[var(--border)]">
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
           <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>
@@ -168,6 +184,100 @@ export function DefectsList() {
           </tbody>
         </table>
       </div>
+
+      <NewDefectDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        projects={projectsQuery.data?.items ?? []}
+        onCreated={() => queryClient.invalidateQueries({ queryKey: ['defects'] })}
+      />
     </div>
+  )
+}
+
+function NewDefectDialog({
+  open,
+  onClose,
+  projects,
+  onCreated,
+}: {
+  open: boolean
+  onClose: () => void
+  projects: { id: string; name: string }[]
+  onCreated: () => void
+}) {
+  const [projectId, setProjectId] = useState('')
+  const [title, setTitle] = useState('')
+  const [severity, setSeverity] = useState<Severity>('Medium')
+  const [description, setDescription] = useState('')
+
+  const createMutation = useMutation({
+    mutationFn: () => createDefect({ project_id: projectId, title, severity, description }),
+    onSuccess: () => {
+      onCreated()
+      setProjectId('')
+      setTitle('')
+      setSeverity('Medium')
+      setDescription('')
+      onClose()
+    },
+  })
+  const serverError = createMutation.error instanceof ApiError ? createMutation.error.message : null
+
+  return (
+    <Dialog open={open} onClose={onClose} title="New Defect">
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-defect-project">Project</Label>
+          <Select id="new-defect-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">Select a project…</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-defect-title">Title</Label>
+          <Input id="new-defect-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-defect-severity">Severity</Label>
+          <Select
+            id="new-defect-severity"
+            value={severity}
+            onChange={(e) => setSeverity(e.target.value as Severity)}
+          >
+            {SEVERITIES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-defect-description">Description</Label>
+          <Textarea
+            id="new-defect-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={!projectId || !title || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+          >
+            {createMutation.isPending ? 'Creating…' : 'Create Defect'}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
