@@ -78,6 +78,34 @@ class AIChangeImpactResult:
     total_tokens: int
 
 
+@dataclass
+class AIAssistantAnswer:
+    """Post-gap-closure pass (ADR-060): the AI QA Assistant's answer. Plain
+    free text, not a schema-validated JSON array like the other three
+    capabilities -- a conversational answer doesn't have a fixed shape to
+    validate against."""
+
+    answer: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+@dataclass
+class AIRootCauseSuggestion:
+    """ADR-060: the AI Defect Assistant's suggestion. `category` must be one
+    of the existing fixed 7-value root-cause taxonomy (ADR-048) -- the
+    caller validates this, never a category the rest of the app doesn't
+    already know about."""
+
+    category: str
+    reasoning: str
+    next_steps: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
 class AIProvider(ABC):
     """Provider-agnostic interface (ADR-045): the rest of the app calls this
     abstraction, never a concrete SDK, so swapping the first implementation
@@ -115,3 +143,26 @@ class AIProvider(ABC):
         new_description: str,
         candidates: list[ChangeImpactCandidate],
     ) -> AIChangeImpactResult: ...
+
+    @abstractmethod
+    def answer_question(
+        self,
+        *,
+        api_key: str,
+        question: str,
+        context: str,
+    ) -> AIAssistantAnswer: ...
+
+    @abstractmethod
+    def suggest_defect_root_cause(
+        self,
+        *,
+        api_key: str,
+        title: str,
+        description: str,
+        actual_result: str | None,
+        expected_result: str | None,
+        environment: str | None,
+        severity: str,
+        taxonomy: list[str],
+    ) -> AIRootCauseSuggestion: ...

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bug, Building2, ChevronRight, FileStack, ListChecks, PlayCircle } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
+import { suggestDefectRootCause, type RootCauseSuggestion } from '@/api/ai'
 import { ApiError } from '@/api/client'
 import {
   getDefect,
@@ -89,6 +90,12 @@ export function DefectDetail() {
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
     },
+  })
+
+  const [aiSuggestion, setAiSuggestion] = useState<RootCauseSuggestion | null>(null)
+  const aiSuggestMutation = useMutation({
+    mutationFn: () => suggestDefectRootCause(defectId!),
+    onSuccess: (data) => setAiSuggestion(data),
   })
 
   const reopenMutation = useMutation({
@@ -426,6 +433,60 @@ export function DefectDetail() {
                 </li>
               ))}
             </ul>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Suggestion</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3 text-sm">
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Suggestion only — never applied automatically. AI-generated, verify independently.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-start"
+                disabled={aiSuggestMutation.isPending}
+                onClick={() => aiSuggestMutation.mutate()}
+              >
+                {aiSuggestMutation.isPending ? 'Thinking…' : 'Suggest Root Cause'}
+              </Button>
+              {aiSuggestMutation.isError && (
+                <p className="text-xs text-[var(--destructive)]">
+                  {aiSuggestMutation.error instanceof ApiError
+                    ? aiSuggestMutation.error.message
+                    : 'The assistant is unavailable.'}
+                </p>
+              )}
+              {aiSuggestion && (
+                <div className="flex flex-col gap-2 rounded border border-[var(--border)] p-3">
+                  <p className="text-xs">
+                    <span className="font-medium">Suggested category:</span>{' '}
+                    {ROOT_CAUSE_LABEL[aiSuggestion.category as keyof typeof ROOT_CAUSE_LABEL] ??
+                      aiSuggestion.category}
+                  </p>
+                  <p className="text-xs text-[var(--muted-foreground)]">{aiSuggestion.reasoning}</p>
+                  <p className="text-xs">
+                    <span className="font-medium">Next steps:</span> {aiSuggestion.next_steps}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="self-start"
+                    disabled={rootCauseMutation.isPending}
+                    onClick={() =>
+                      rootCauseMutation.mutate(aiSuggestion.category as RootCause)
+                    }
+                  >
+                    Apply this category
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 

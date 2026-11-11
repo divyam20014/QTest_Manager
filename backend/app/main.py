@@ -15,6 +15,7 @@ from app.api import (
     attachments,
     audit,
     auth,
+    ci,
     comments,
     csv_import,
     defects,
@@ -28,6 +29,7 @@ from app.api import (
     requirements,
     scim,
     search,
+    service_tokens,
     sso,
     templates,
     test_assets,
@@ -186,6 +188,8 @@ app.include_router(scim.admin_router, prefix="/api/v1")
 app.include_router(field_customization.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
 app.include_router(test_data.router, prefix="/api/v1")
+app.include_router(service_tokens.router, prefix="/api/v1")
+app.include_router(ci.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

@@ -22,6 +22,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
 import { getBranding, getLogoUrl } from '@/api/settings'
+import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
@@ -271,6 +272,7 @@ export function AppShell() {
           </div>
           <div className="flex shrink-0 items-center gap-2 text-sm">
             <GlobalSearch />
+            <AIAssistantPanel />
             <ThemeToggle />
             <NotificationBell />
             <UserMenu name={user?.name} role={user?.role} onLogout={() => logoutMutation.mutate()} />

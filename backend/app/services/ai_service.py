@@ -1,6 +1,7 @@
+import re
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.ai.base import AIProviderError, ChangeImpactCandidate, ReviewStep
@@ -10,18 +11,41 @@ from app.core.crypto import decrypt_secret
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, NotFoundError
 from app.models.ai_usage import AIUsageLog
+from app.models.defect import Defect
+from app.models.requirement import Requirement
 from app.models.tenant import Tenant
 from app.models.test_case import TestCase
 from app.schemas.ai import (
     AIUsageSummaryOut,
     AnalyzeRequirementChangeResponse,
+    AssistantQueryResponse,
     ChangeImpactFindingOut,
     GenerateTestCasesResponse,
     ReviewSuggestionOut,
     ReviewTestCaseResponse,
+    RootCauseSuggestionOut,
 )
 from app.schemas.test_case import StepIn, TestCaseCreateRequest
-from app.services import plan_limits, requirement_service, test_case_service
+from app.services import plan_limits, project_service, requirement_service, test_case_service
+
+_STOPWORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "what", "which", "who",
+    "how", "many", "much", "for", "of", "in", "on", "to", "do", "does",
+    "did", "i", "my", "our", "show", "me", "and", "or", "about", "with",
+    "list", "all", "any", "there", "have", "has", "can", "you",
+}
+_ROOT_CAUSE_TAXONOMY = [
+    "requirements_gap",
+    "code_defect",
+    "design_flaw",
+    "test_data_issue",
+    "environment_issue",
+    "third_party_integration",
+    "other",
+]
+_MAX_CONTEXT_CHARS = 4000
+_MAX_PROJECTS_SCANNED = 10
+_MAX_ITEMS_PER_KIND = 10
 
 
 def _get_tenant(db: Session, tenant_id: UUID) -> Tenant:
@@ -385,4 +409,231 @@ def get_usage_summary(db: Session, tenant_id: UUID) -> AIUsageSummaryOut:
         total_prompt_tokens=row[2],
         total_completion_tokens=row[3],
         total_tokens=row[4],
+    )
+
+
+# -- AI QA Assistant (ADR-060) -- conversational Q&A over tenant data ----
+#
+# First-version retrieval: simple keyword/ILIKE matching, scoped to the
+# caller's own visible projects (reusing project_service.list_projects,
+# which already applies the exact same tester-assignment visibility rule
+# every other page in this app uses) -- not a vector-embedding RAG
+# pipeline. A future version wanting better recall on paraphrased
+# questions would need real embeddings + a vector index; deliberately not
+# built here, see ADR-060 for the explicit scoping rationale.
+
+
+def _extract_keywords(question: str) -> list[str]:
+    words = re.findall(r"[a-zA-Z0-9]+", question.lower())
+    keywords = [w for w in words if len(w) > 2 and w not in _STOPWORDS]
+    # Longest-first: more specific terms are more useful as ILIKE anchors
+    # than short, generic ones when only a handful can be used.
+    return sorted(set(keywords), key=len, reverse=True)[:5]
+
+
+def _build_assistant_context(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, question: str
+) -> str:
+    set_tenant_context(db, str(tenant_id))
+    projects, _ = project_service.list_projects(
+        db, tenant_id, role_code, user_id, page=1, page_size=_MAX_PROJECTS_SCANNED
+    )
+    project_ids = [p.id for p in projects]
+    project_names = {p.id: p.name for p in projects}
+    if not project_ids:
+        return ""
+
+    keywords = _extract_keywords(question)
+    lines: list[str] = []
+
+    if "coverage" in question.lower():
+        for project in projects[:_MAX_PROJECTS_SCANNED]:
+            report = requirement_service.get_coverage_report(
+                db, tenant_id, role_code, user_id, project.id
+            )
+            lines.append(
+                f"Project '{project.name}': requirement coverage "
+                f"{report.covered_requirements}/{report.total_requirements} "
+                f"({report.coverage_percentage:.0f}%)"
+            )
+
+    if keywords:
+        ilike_clauses_tc = [TestCase.title.ilike(f"%{kw}%") for kw in keywords]
+        cases = db.execute(
+            select(TestCase)
+            .where(TestCase.tenant_id == tenant_id, TestCase.project_id.in_(project_ids))
+            .where(or_(*ilike_clauses_tc))
+            .limit(_MAX_ITEMS_PER_KIND)
+        ).scalars()
+        for c in cases:
+            lines.append(
+                f"Test case '{c.title}' (project '{project_names.get(c.project_id, '?')}'): "
+                f"status={c.status}, priority={c.priority}"
+            )
+
+        ilike_clauses_req = [Requirement.title.ilike(f"%{kw}%") for kw in keywords]
+        reqs = db.execute(
+            select(Requirement)
+            .where(Requirement.tenant_id == tenant_id, Requirement.project_id.in_(project_ids))
+            .where(or_(*ilike_clauses_req))
+            .limit(_MAX_ITEMS_PER_KIND)
+        ).scalars()
+        for r in reqs:
+            proj_name = project_names.get(r.project_id, "?")
+            lines.append(f"Requirement '{r.title}' (project '{proj_name}')")
+
+        ilike_clauses_defect = [Defect.title.ilike(f"%{kw}%") for kw in keywords]
+        defects = db.execute(
+            select(Defect)
+            .where(Defect.tenant_id == tenant_id, Defect.project_id.in_(project_ids))
+            .where(or_(*ilike_clauses_defect))
+            .limit(_MAX_ITEMS_PER_KIND)
+        ).scalars()
+        for d in defects:
+            lines.append(
+                f"Defect '{d.title}' (project '{project_names.get(d.project_id, '?')}'): "
+                f"status={d.status}, severity={d.severity}"
+            )
+
+    context = "\n".join(lines)
+    return context[:_MAX_CONTEXT_CHARS]
+
+
+def answer_assistant_question(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    question: str,
+) -> AssistantQueryResponse:
+    tenant = _get_tenant(db, tenant_id)
+    _require_ai_enabled(tenant)
+    plan_limits.enforce_ai_quota(db, tenant_id)
+    assert tenant.ai_api_key_encrypted is not None
+
+    context = _build_assistant_context(db, tenant_id, role_code, actor_user_id, question)
+    api_key = decrypt_secret(tenant.ai_api_key_encrypted)
+    provider = get_provider(tenant.ai_provider)
+
+    try:
+        result = provider.answer_question(api_key=api_key, question=question, context=context)
+    except AIProviderError as exc:
+        _record_usage(
+            db, tenant_id, actor_user_id, tenant.ai_provider, "assistant_query", None, 0, 0, 0,
+            success=False,
+        )
+        db.commit()
+        raise ConflictError(f"AI provider request failed: {exc}") from exc
+
+    _record_usage(
+        db,
+        tenant_id,
+        actor_user_id,
+        tenant.ai_provider,
+        "assistant_query",
+        None,
+        result.prompt_tokens,
+        result.completion_tokens,
+        result.total_tokens,
+        success=True,
+    )
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="ai.assistant_queried",
+        entity_type="user",
+        entity_id=actor_user_id,
+        metadata={"provider": tenant.ai_provider, "total_tokens": result.total_tokens},
+    )
+    db.commit()
+
+    return AssistantQueryResponse(
+        answer=result.answer,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        total_tokens=result.total_tokens,
+    )
+
+
+# -- AI Defect Assistant (ADR-060) -- root-cause/fix suggestions ---------
+#
+# Strictly suggestion-only, same no-auto-mutation invariant as Phase 4's
+# AI Test Case Reviewer: this NEVER sets Defect.root_cause itself. A human
+# applies the suggestion manually via the existing, unchanged
+# PATCH /defects/{id}/root-cause endpoint if they agree with it.
+
+
+def suggest_defect_root_cause(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    defect: Defect,
+) -> RootCauseSuggestionOut:
+    tenant = _get_tenant(db, tenant_id)
+    _require_ai_enabled(tenant)
+    plan_limits.enforce_ai_quota(db, tenant_id)
+    assert tenant.ai_api_key_encrypted is not None
+
+    api_key = decrypt_secret(tenant.ai_api_key_encrypted)
+    provider = get_provider(tenant.ai_provider)
+
+    try:
+        result = provider.suggest_defect_root_cause(
+            api_key=api_key,
+            title=defect.title,
+            description=defect.description or "",
+            actual_result=defect.actual_result,
+            expected_result=defect.expected_result,
+            environment=defect.environment,
+            severity=defect.severity,
+            taxonomy=_ROOT_CAUSE_TAXONOMY,
+        )
+    except AIProviderError as exc:
+        _record_usage(
+            db, tenant_id, actor_user_id, tenant.ai_provider, "defect_root_cause_suggested",
+            None, 0, 0, 0, success=False,
+        )
+        db.commit()
+        raise ConflictError(f"AI provider request failed: {exc}") from exc
+
+    # Never trust the model's category choice blindly -- it must be a
+    # value the rest of the app's fixed taxonomy actually recognizes.
+    category = result.category if result.category in _ROOT_CAUSE_TAXONOMY else "other"
+
+    _record_usage(
+        db,
+        tenant_id,
+        actor_user_id,
+        tenant.ai_provider,
+        "defect_root_cause_suggested",
+        None,
+        result.prompt_tokens,
+        result.completion_tokens,
+        result.total_tokens,
+        success=True,
+    )
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="ai.defect_root_cause_suggested",
+        entity_type="defect",
+        entity_id=defect.id,
+        metadata={
+            "suggested_category": category,
+            "provider": tenant.ai_provider,
+            "total_tokens": result.total_tokens,
+        },
+    )
+    db.commit()
+
+    return RootCauseSuggestionOut(
+        category=category,
+        reasoning=result.reasoning,
+        next_steps=result.next_steps,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        total_tokens=result.total_tokens,
     )

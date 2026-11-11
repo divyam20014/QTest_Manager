@@ -1,13 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.rate_limit import limiter
 from app.core.responses import envelope
-from app.schemas.ai import GenerateTestCasesRequest
+from app.schemas.ai import AssistantQueryRequest, GenerateTestCasesRequest
 from app.services import ai_service
 
 router = APIRouter(tags=["ai"])
@@ -47,6 +48,20 @@ def analyze_requirement_change(
 ) -> dict:
     result = ai_service.analyze_requirement_change(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id
+    )
+    return envelope(result.model_dump(mode="json"))
+
+
+@router.post("/ai/assistant/query")
+@limiter.limit("20/minute")
+def query_assistant(
+    req: AssistantQueryRequest,
+    request: Request,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    result = ai_service.answer_assistant_question(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, req.question
     )
     return envelope(result.model_dump(mode="json"))
 

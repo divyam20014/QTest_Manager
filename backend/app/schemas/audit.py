@@ -10,6 +10,7 @@ class AuditLogOut(BaseModel):
     user_id: UUID | None
     user_name: str | None
     platform_admin_id: UUID | None
+    service_token_id: UUID | None
     action: str
     entity_type: str
     entity_id: UUID

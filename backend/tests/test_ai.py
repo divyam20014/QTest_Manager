@@ -8,10 +8,12 @@ normal `draft` test cases a human must review)."""
 from fastapi.testclient import TestClient
 
 from app.core.ai.base import (
+    AIAssistantAnswer,
     AIChangeImpactResult,
     AIGenerationResult,
     AIProviderError,
     AIReviewResult,
+    AIRootCauseSuggestion,
     ChangeImpactFinding,
     GeneratedStep,
     GeneratedTestCase,
@@ -39,6 +41,8 @@ class FakeProvider:
         self.calls: list[dict] = []
         self.review_calls: list[dict] = []
         self.change_impact_calls: list[dict] = []
+        self.assistant_calls: list[dict] = []
+        self.root_cause_calls: list[dict] = []
 
     def generate_test_cases(
         self, *, api_key, requirement_title, requirement_description, max_cases
@@ -98,6 +102,43 @@ class FakeProvider:
         )
         return AIChangeImpactResult(
             findings=findings, prompt_tokens=8, completion_tokens=12, total_tokens=20
+        )
+
+    def answer_question(self, *, api_key, question, context):
+        self.assistant_calls.append({"api_key": api_key, "question": question, "context": context})
+        if self.raises:
+            raise AIProviderError("simulated provider failure")
+        return AIAssistantAnswer(
+            answer="Based on the data provided, here is the answer.",
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_tokens=30,
+        )
+
+    def suggest_defect_root_cause(
+        self,
+        *,
+        api_key,
+        title,
+        description,
+        actual_result,
+        expected_result,
+        environment,
+        severity,
+        taxonomy,
+    ):
+        self.root_cause_calls.append(
+            {"api_key": api_key, "title": title, "severity": severity, "taxonomy": taxonomy}
+        )
+        if self.raises:
+            raise AIProviderError("simulated provider failure")
+        return AIRootCauseSuggestion(
+            category="code_defect",
+            reasoning="The described behavior matches a logic error pattern.",
+            next_steps="Review the payout calculation branch for an off-by-one error.",
+            prompt_tokens=12,
+            completion_tokens=18,
+            total_tokens=30,
         )
 
 
@@ -600,3 +641,161 @@ def test_tester_without_project_membership_cannot_analyze_change(
 
     response = tester_client.post(f"/api/v1/requirements/{requirement_id}/analyze-change")
     assert response.status_code == 403, response.text
+
+
+# -- AI QA Assistant (ADR-060) -------------------------------------------
+
+
+def test_assistant_query_is_rejected_when_ai_is_not_enabled(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    _patch_provider(monkeypatch, FakeProvider())
+
+    response = client.post("/api/v1/ai/assistant/query", json={"question": "How many test cases?"})
+    assert response.status_code == 409
+
+
+def test_assistant_query_answers_using_only_this_tenants_data(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    _create_test_case(client, project_id, "Verify Flood Damage Exclusion Clause")
+    _enable_ai(client)
+    provider = _patch_provider(monkeypatch, FakeProvider())
+
+    response = client.post(
+        "/api/v1/ai/assistant/query", json={"question": "Tell me about Flood Damage"}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert body["answer"]
+    assert len(provider.assistant_calls) == 1
+    assert "Flood Damage" in provider.assistant_calls[0]["context"]
+
+
+def test_assistant_context_never_crosses_tenants(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    # A second, separate tenant has a matching-keyword test case -- the
+    # first tenant's assistant query must never see it.
+    other_bootstrap = _bootstrap_tenant(client, platform_admin, name="Other Insurer")
+    other_tenant_id = other_bootstrap["tenant"]["id"]
+    other_client = TestClient(client.app)
+    _login_and_verify(other_client, other_tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+    other_project = _create_project(other_client, name="Other Project")
+    _create_test_case(other_client, other_project["id"], "Verify Secret Underwriting Formula")
+
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    _create_test_case(client, project_id, "Verify Public Claims Workflow")
+    _enable_ai(client)
+    provider = _patch_provider(monkeypatch, FakeProvider())
+
+    response = client.post(
+        "/api/v1/ai/assistant/query", json={"question": "Tell me about Secret Underwriting Formula"}
+    )
+    assert response.status_code == 200, response.text
+    assert "Secret Underwriting" not in provider.assistant_calls[0]["context"]
+
+
+def test_assistant_query_respects_tester_project_visibility(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    _create_test_case(client, project_id, "Verify Restricted Admin-Only Case")
+    _enable_ai(client)
+    provider = _patch_provider(monkeypatch, FakeProvider())
+
+    client.post(
+        "/api/v1/users",
+        json={
+            "email": "tester2@horizon.com",
+            "name": "Tester Two",
+            "role": "tester",
+            "password": "TesterPassw0rd!",
+        },
+    )
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester2@horizon.com", "TesterPassw0rd!")
+    _patch_provider(monkeypatch, provider)
+
+    response = tester_client.post(
+        "/api/v1/ai/assistant/query", json={"question": "Tell me about Restricted Admin-Only Case"}
+    )
+    assert response.status_code == 200, response.text
+    assert "Restricted Admin-Only" not in provider.assistant_calls[-1]["context"]
+
+
+def test_assistant_query_records_usage(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    _enable_ai(client)
+    _patch_provider(monkeypatch, FakeProvider())
+
+    client.post("/api/v1/ai/assistant/query", json={"question": "How many projects exist?"})
+    usage = client.get("/api/v1/ai/usage").json()["data"]
+    assert usage["total_requests"] >= 1
+
+
+# -- AI Defect Assistant (ADR-060) ----------------------------------------
+
+
+def _create_defect(client: TestClient, project_id: str, title: str) -> dict:
+    response = client.post(
+        "/api/v1/defects",
+        json={"project_id": project_id, "title": title, "severity": "High", "description": "x"},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_defect_root_cause_suggestion_is_rejected_when_ai_is_not_enabled(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    defect = _create_defect(client, project_id, "Payout calculated incorrectly")
+    _patch_provider(monkeypatch, FakeProvider())
+
+    response = client.post(f"/api/v1/defects/{defect['id']}/ai-suggest-root-cause")
+    assert response.status_code == 409
+
+
+def test_defect_root_cause_suggestion_never_auto_applies(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    defect = _create_defect(client, project_id, "Payout calculated incorrectly")
+    _enable_ai(client)
+    provider = _patch_provider(monkeypatch, FakeProvider())
+
+    response = client.post(f"/api/v1/defects/{defect['id']}/ai-suggest-root-cause")
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert body["category"] == "code_defect"
+    assert body["reasoning"]
+    assert len(provider.root_cause_calls) == 1
+
+    # The suggestion must never have been written to the defect itself.
+    reloaded = client.get(f"/api/v1/defects/{defect['id']}").json()["data"]
+    assert reloaded["root_cause"] is None
+
+
+def test_defect_root_cause_suggestion_falls_back_to_other_for_invalid_category(
+    client: TestClient, platform_admin: dict, monkeypatch
+) -> None:
+    tenant_id, project_id, _ = _setup_admin_project_and_requirement(client, platform_admin)
+    defect = _create_defect(client, project_id, "Payout calculated incorrectly")
+    _enable_ai(client)
+
+    class BadCategoryProvider(FakeProvider):
+        def suggest_defect_root_cause(self, **kwargs):
+            result = super().suggest_defect_root_cause(**kwargs)
+            result.category = "not_a_real_category"
+            return result
+
+    _patch_provider(monkeypatch, BadCategoryProvider())
+
+    response = client.post(f"/api/v1/defects/{defect['id']}/ai-suggest-root-cause")
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["category"] == "other"

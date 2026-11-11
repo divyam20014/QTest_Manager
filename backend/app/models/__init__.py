@@ -24,6 +24,7 @@ from app.models.notification import Notification
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
 from app.models.scim_token import ScimToken
+from app.models.service_token import ServiceToken
 from app.models.sso_config import SsoConfig
 from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
@@ -76,6 +77,7 @@ __all__ = [
     "TestModule",
     "SsoConfig",
     "ScimToken",
+    "ServiceToken",
     "FieldOption",
     "StatusLabel",
     "CustomFieldDefinition",

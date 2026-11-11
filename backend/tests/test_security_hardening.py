@@ -211,6 +211,11 @@ _PUBLIC_OR_SEPARATE_AUTH_PREFIXES = (
     # cookie this sweep is built to check.
     "/api/v1/auth/sso",
     "/api/v1/scim/v2",
+    # Post-gap-closure pass / ADR-059: CI webhooks use their own per-tenant
+    # service-token bearer auth, the same wholly-separate-scheme reasoning
+    # as SCIM above -- this sweep is built to check the session-cookie
+    # plane, not this one.
+    "/api/v1/ci/",
 )
 _PRE_SESSION_ROUTES = {
     ("POST", "/api/v1/auth/login"),

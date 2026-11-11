@@ -110,9 +110,9 @@ def test_audit_hash_chain_is_internally_consistent(
         rows = (
             conn.execute(
                 text(
-                    "SELECT tenant_id, user_id, platform_admin_id, action, entity_type, "
-                    "entity_id, metadata, prev_hash, record_hash, created_at FROM audit_logs "
-                    "WHERE tenant_id = :tenant_id ORDER BY created_at, ctid"
+                    "SELECT tenant_id, user_id, platform_admin_id, service_token_id, action, "
+                    "entity_type, entity_id, metadata, prev_hash, record_hash, created_at "
+                    "FROM audit_logs WHERE tenant_id = :tenant_id ORDER BY created_at, ctid"
                 ),
                 {"tenant_id": tenant_id},
             )
@@ -129,6 +129,9 @@ def test_audit_hash_chain_is_internally_consistent(
             "user_id": str(row["user_id"]) if row["user_id"] else None,
             "platform_admin_id": (
                 str(row["platform_admin_id"]) if row["platform_admin_id"] else None
+            ),
+            "service_token_id": (
+                str(row["service_token_id"]) if row["service_token_id"] else None
             ),
             "action": row["action"],
             "entity_type": row["entity_type"],

@@ -74,3 +74,46 @@ export function analyzeRequirementChange(
 export function getAIUsageSummary(): Promise<AIUsageSummary> {
   return apiFetch<AIUsageSummary>('/ai/usage')
 }
+
+// Post-gap-closure pass / ADR-060: AI QA Assistant (conversational Q&A
+// over this tenant's own data) and AI Defect Assistant (root-cause/fix
+// suggestions) -- the two capabilities the original roadmap left
+// explicitly unscheduled, now built per the user's own later approval.
+
+export interface AssistantQueryResponse {
+  answer: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
+export function queryAssistant(question: string): Promise<AssistantQueryResponse> {
+  return apiFetch<AssistantQueryResponse>('/ai/assistant/query', {
+    method: 'POST',
+    body: JSON.stringify({ question }),
+  })
+}
+
+export type RootCauseCategory =
+  | 'requirements_gap'
+  | 'code_defect'
+  | 'design_flaw'
+  | 'test_data_issue'
+  | 'environment_issue'
+  | 'third_party_integration'
+  | 'other'
+
+export interface RootCauseSuggestion {
+  category: RootCauseCategory | string
+  reasoning: string
+  next_steps: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
+export function suggestDefectRootCause(defectId: string): Promise<RootCauseSuggestion> {
+  return apiFetch<RootCauseSuggestion>(`/defects/${defectId}/ai-suggest-root-cause`, {
+    method: 'POST',
+  })
+}

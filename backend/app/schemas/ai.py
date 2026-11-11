@@ -61,3 +61,23 @@ class AIUsageLogOut(BaseModel):
     total_tokens: int
     success: bool
     created_at: datetime
+
+
+class AssistantQueryRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class AssistantQueryResponse(BaseModel):
+    answer: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class RootCauseSuggestionOut(BaseModel):
+    category: str
+    reasoning: str
+    next_steps: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int

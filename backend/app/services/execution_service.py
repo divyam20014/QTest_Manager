@@ -688,6 +688,87 @@ def record_verdict(
     return step
 
 
+# -- CI/CD result ingestion (ADR-059, PV-5/GAP-73) -----------------------
+#
+# A service token is not a `users` row -- there is no role_code/user_id to
+# authorize against here. The token's own tenant+scope binding (checked by
+# app/core/service_token_auth.py before this function is ever called) IS
+# the authorization; this intentionally does NOT call
+# _authorize_run_case_access, which assumes a human actor.
+#
+# CI tools report one pass/fail/skip per TEST, not per STEP -- there is no
+# meaningful way for an external CI job to know this app's internal
+# per-step granularity. The documented, deliberate simplification: a CI
+# result applies the SAME verdict to every one of that run case's
+# not-yet-verdicted steps in one pass, reusing the exact same
+# row-locked-recompute logic record_verdict already uses so the status
+# rollup stays correct and race-safe under concurrent webhook deliveries.
+_CI_STATUS_TO_VERDICT = {"passed": "pass", "failed": "fail", "skipped": "ignore"}
+
+
+def record_ci_result(
+    db: Session,
+    tenant_id: UUID,
+    test_run_case_id: UUID,
+    ci_status: str,
+    service_token_id: UUID,
+) -> TestRunCase:
+    # Re-assert tenant context: this project's recurring bug class (the RLS
+    # GUC resets on COMMIT, not just ROLLBACK) -- the auth dependency's own
+    # authenticate() call commits (to persist last_used_at) before this
+    # function ever runs, clearing app.current_tenant for any subsequent
+    # query on this same session/transaction.
+    set_tenant_context(db, str(tenant_id))
+    verdict = _CI_STATUS_TO_VERDICT[ci_status]
+    run_case = _get_run_case_or_404(db, tenant_id, test_run_case_id)
+    run = _get_run_or_404(db, tenant_id, run_case.test_run_id)
+    if run.finished_at is not None:
+        raise ConflictError("Cannot record results on a finished test run")
+    if run.paused_at is not None:
+        raise ConflictError("Test run is paused")
+
+    # Same row lock record_verdict takes (GAP-49) -- concurrent webhook
+    # deliveries for sibling steps of the same run case must serialize
+    # around the status recompute below, for the identical reason.
+    db.execute(
+        select(TestRunCase).where(TestRunCase.id == run_case.id).with_for_update()
+    ).scalar_one()
+
+    now = datetime.now(UTC)
+    steps = list(
+        db.execute(
+            select(ExecutionStep).where(
+                ExecutionStep.test_run_case_id == run_case.id, ExecutionStep.verdict.is_(None)
+            )
+        ).scalars()
+    )
+    for step in steps:
+        step.opened_at = step.opened_at or now
+        step.closed_at = now
+        step.duration_ms = int((step.closed_at - step.opened_at).total_seconds() * 1000)
+        step.verdict = verdict
+        step.executed_by = None  # no human actor -- attributed via the audit row instead
+
+    if run_case.started_at is None:
+        run_case.started_at = now
+
+    db.flush()
+    _recompute_run_case_status(db, run_case)
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=None,
+        service_token_id=service_token_id,
+        action="executionstep.verdict_recorded_via_ci",
+        entity_type="test_run_case",
+        entity_id=run_case.id,
+        metadata={"ci_status": ci_status, "verdict": verdict, "steps_updated": len(steps)},
+    )
+    db.commit()
+    return run_case
+
+
 def finish_test_run(db: Session, tenant_id: UUID, actor_user_id: UUID, run_id: UUID) -> TestRun:
     run = _get_run_or_404(db, tenant_id, run_id)
     if run.finished_at is not None:

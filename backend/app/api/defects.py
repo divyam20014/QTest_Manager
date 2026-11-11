@@ -16,7 +16,7 @@ from app.schemas.defect import (
     DefectRootCauseUpdateRequest,
     DefectStatusUpdateRequest,
 )
-from app.services import defect_service
+from app.services import ai_service, defect_service
 
 router = APIRouter(prefix="/defects", tags=["defects"])
 
@@ -188,6 +188,22 @@ def update_root_cause(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id, req.root_cause
     )
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+
+
+@router.post("/{defect_id}/ai-suggest-root-cause")
+def ai_suggest_root_cause(
+    defect_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-060: suggestion-only, same as Phase 4's AI Test Case Reviewer --
+    never auto-sets Defect.root_cause. View-level access (same bar as
+    GET /defects/{id}), since this doesn't change anything."""
+    defect = defect_service.get_defect(db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id)
+    result = ai_service.suggest_defect_root_cause(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect
+    )
+    return envelope(result.model_dump(mode="json"))
 
 
 @router.post("/{defect_id}/links")

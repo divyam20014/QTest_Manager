@@ -28,6 +28,13 @@ class AuditLog(Base, TenantScopedMixin):
     platform_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("platform_admins.id"), nullable=True
     )
+    # Item 2 of the post-gap-closure pass: a third distinct actor plane
+    # (service tokens / CI webhooks), same reasoning as platform_admin_id
+    # above -- a row is attributed to exactly one of the three, never more
+    # than one.
+    service_token_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("service_tokens.id"), nullable=True
+    )
     action: Mapped[str] = mapped_column(String, nullable=False)
     entity_type: Mapped[str] = mapped_column(String, nullable=False)
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

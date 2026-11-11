@@ -17,6 +17,7 @@ import {
   type FieldKey,
 } from '@/api/fieldCustomization'
 import { createScimToken, listScimTokens, revokeScimToken } from '@/api/scim'
+import { createServiceToken, listServiceTokens, revokeServiceToken } from '@/api/serviceTokens'
 import { ApiError } from '@/api/client'
 import {
   getBranding,
@@ -80,6 +81,7 @@ export function Settings() {
       <CustomFieldsCard entityType="requirement" title="Requirement Custom Fields" />
       <SsoCard />
       <ScimTokensCard />
+      <ServiceTokensCard />
       <ExportCard />
     </div>
   )
@@ -859,6 +861,98 @@ function ScimTokensCard() {
               >
                 <span className="text-xs text-[var(--muted-foreground)]">
                   Created {new Date(token.created_at).toLocaleDateString()}
+                  {token.revoked_at && ' — revoked'}
+                </span>
+                {!token.revoked_at && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={revokeMutation.isPending}
+                    onClick={() => revokeMutation.mutate(token.id)}
+                  >
+                    Revoke
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// Post-gap-closure pass / ADR-059: machine-to-machine auth plane for
+// CI/CD result ingestion (PV-5, GAP-73) -- a third, deliberately narrow
+// auth plane alongside the session cookie and platform-admin Basic auth.
+// Mirrors ScimTokensCard above exactly, plus a name field and visible
+// scope (only "ci_results" exists today).
+function ServiceTokensCard() {
+  const queryClient = useQueryClient()
+  const tokensQuery = useQuery({ queryKey: ['service-tokens'], queryFn: listServiceTokens })
+  const forbidden = tokensQuery.error instanceof ApiError && tokensQuery.error.code === 'forbidden'
+  const [name, setName] = useState('')
+  const [justCreated, setJustCreated] = useState<string | null>(null)
+
+  const createMutation = useMutation({
+    mutationFn: () => createServiceToken(name),
+    onSuccess: (data) => {
+      setJustCreated(data.raw_value)
+      setName('')
+      queryClient.invalidateQueries({ queryKey: ['service-tokens'] })
+    },
+  })
+
+  const revokeMutation = useMutation({
+    mutationFn: revokeServiceToken,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['service-tokens'] }),
+  })
+
+  if (forbidden) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>CI/CD Integration Tokens</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex max-w-md flex-col gap-3 text-sm">
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Lets a CI job report test results directly into this tenant's test runs, authenticated
+            by a bearer token scoped to result ingestion only.
+          </p>
+          {justCreated && (
+            <div className="rounded border border-[var(--border)] bg-[var(--muted)] p-2">
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Copy this token now — it will not be shown again:
+              </p>
+              <p className="break-all font-mono text-xs">{justCreated}</p>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input
+              placeholder="Token name (e.g. GitHub Actions)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <Button
+              type="button"
+              size="sm"
+              disabled={createMutation.isPending || !name.trim()}
+              onClick={() => createMutation.mutate()}
+            >
+              {createMutation.isPending ? 'Creating…' : 'Create Token'}
+            </Button>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {tokensQuery.data?.map((token) => (
+              <li
+                key={token.id}
+                className="flex items-center justify-between rounded border border-[var(--border)] px-2 py-1"
+              >
+                <span className="text-xs text-[var(--muted-foreground)]">
+                  {token.name} — created {new Date(token.created_at).toLocaleDateString()}
                   {token.revoked_at && ' — revoked'}
                 </span>
                 {!token.revoked_at && (
