@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import cast
 from uuid import UUID
 
@@ -9,10 +10,11 @@ from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.models.audit import AuditLog
 from app.models.defect import Defect
-from app.models.execution import TestRunCase
+from app.models.execution import ExecutionStep, TestRunCase
 from app.models.identity import User
 from app.models.project import Project
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
+from app.models.test_module import TestModule
 from app.schemas.test_case import (
     Priority,
     StepDiff,
@@ -94,6 +96,35 @@ def _authorize_case_access(
     _require_project_access(db, project, role_code, user_id)
 
 
+def _last_execution(
+    db: Session, tenant_id: UUID, test_case_id: UUID
+) -> tuple[str | None, str | None, datetime | None]:
+    """Pass 2: Actual_Result/Executed_By/Execution_Date are NOT stored
+    fields -- derived read-only from this test case's most recent executed
+    step across any test run (highest closed_at), never settable via
+    create/update/import."""
+    row = db.execute(
+        select(ExecutionStep.verdict, ExecutionStep.executed_by, ExecutionStep.closed_at)
+        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
+        .where(
+            TestRunCase.tenant_id == tenant_id,
+            TestRunCase.test_case_id == test_case_id,
+            ExecutionStep.closed_at.is_not(None),
+        )
+        .order_by(ExecutionStep.closed_at.desc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return None, None, None
+    verdict, executed_by, closed_at = row
+    executed_by_name = None
+    if executed_by is not None:
+        executed_by_name = db.execute(
+            select(User.name).where(User.id == executed_by)
+        ).scalar_one_or_none()
+    return verdict, executed_by_name, closed_at
+
+
 def to_out(db: Session, case: TestCase) -> TestCaseOut:
     # Callers may invoke this right after a service function committed
     # (ending the transaction that held app.current_tenant); re-assert it
@@ -109,6 +140,9 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
     status_labels = status_label_service.get_labels_map(db, case.tenant_id, "test_case")
     custom_fields = custom_field_service.get_values_for_owner(
         db, case.tenant_id, "test_case", case.id
+    )
+    last_result, last_executed_by_name, last_execution_date = _last_execution(
+        db, case.tenant_id, case.id
     )
     return TestCaseOut(
         id=case.id,
@@ -127,6 +161,13 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
         created_at=case.created_at,
         steps=_steps_for_version(db, version.id),
         custom_fields=custom_fields,
+        scenario_id=version.scenario_id,
+        scenario_description=version.scenario_description,
+        prerequisite=version.prerequisite,
+        test_data=version.test_data,
+        last_execution_result=last_result,
+        last_executed_by_name=last_executed_by_name,
+        last_execution_date=last_execution_date,
     )
 
 
@@ -324,6 +365,20 @@ def compare_versions(
     )
 
 
+def _validate_module(db: Session, tenant_id: UUID, project_id: UUID, module_id: UUID) -> None:
+    module = db.execute(
+        select(TestModule).where(
+            TestModule.tenant_id == tenant_id,
+            TestModule.id == module_id,
+            TestModule.project_id == project_id,
+        )
+    ).scalar_one_or_none()
+    if module is None:
+        raise NotFoundError("module_id must belong to this test case's project")
+
+
+
+
 def _write_version(
     db: Session,
     tenant_id: UUID,
@@ -332,6 +387,10 @@ def _write_version(
     description: str,
     steps: list[StepIn],
     actor_user_id: UUID,
+    scenario_id: str | None = None,
+    scenario_description: str | None = None,
+    prerequisite: str | None = None,
+    test_data: str | None = None,
 ) -> TestCaseVersion:
     next_number = (
         db.execute(
@@ -350,6 +409,10 @@ def _write_version(
         version_number=next_number,
         title=title,
         description=description,
+        scenario_id=scenario_id,
+        scenario_description=scenario_description,
+        prerequisite=prerequisite,
+        test_data=test_data,
         created_by=actor_user_id,
     )
     db.add(version)
@@ -381,6 +444,8 @@ def create_test_case(
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
     field_option_service.validate_code(db, tenant_id, "test_case_priority", req.priority)
+    if req.module_id is not None:
+        _validate_module(db, tenant_id, project_id, req.module_id)
 
     case = TestCase(
         tenant_id=tenant_id,
@@ -389,12 +454,25 @@ def create_test_case(
         priority=req.priority,
         status="draft",
         assignee_id=req.assignee_id,
+        module_id=req.module_id,
         created_by=actor_user_id,
     )
     db.add(case)
     db.flush()
 
-    _write_version(db, tenant_id, case, req.title, req.description, req.steps, actor_user_id)
+    _write_version(
+        db,
+        tenant_id,
+        case,
+        req.title,
+        req.description,
+        req.steps,
+        actor_user_id,
+        req.scenario_id,
+        req.scenario_description,
+        req.prerequisite,
+        req.test_data,
+    )
 
     if req.assignee_id is not None:
         _notify_assignee(db, tenant_id, actor_user_id, req.assignee_id, case)
@@ -451,6 +529,18 @@ def update_test_case(
     new_description: str = (
         req.description if req.description is not None else current_version.description
     )
+    new_scenario_id = (
+        req.scenario_id if "scenario_id" in changes else current_version.scenario_id
+    )
+    new_scenario_description = (
+        req.scenario_description
+        if "scenario_description" in changes
+        else current_version.scenario_description
+    )
+    new_prerequisite = (
+        req.prerequisite if "prerequisite" in changes else current_version.prerequisite
+    )
+    new_test_data = req.test_data if "test_data" in changes else current_version.test_data
     new_steps: list[StepIn]
     if req.steps is not None:
         new_steps = req.steps
@@ -463,13 +553,29 @@ def update_test_case(
     if was_approved:
         # ADR-020: any edit to an approved case forks a new version and
         # reverts to draft, pending re-approval.
-        _write_version(db, tenant_id, case, new_title, new_description, new_steps, actor_user_id)
+        _write_version(
+            db,
+            tenant_id,
+            case,
+            new_title,
+            new_description,
+            new_steps,
+            actor_user_id,
+            new_scenario_id,
+            new_scenario_description,
+            new_prerequisite,
+            new_test_data,
+        )
         case.status = "draft"
     else:
         # ADR-020: draft/ready_for_review edits mutate the current version
         # in place -- nothing has been approved or executed against it yet.
         current_version.title = new_title
         current_version.description = new_description
+        current_version.scenario_id = new_scenario_id
+        current_version.scenario_description = new_scenario_description
+        current_version.prerequisite = new_prerequisite
+        current_version.test_data = new_test_data
         if "steps" in changes:
             db.query(TestCaseVersionStep).filter(
                 TestCaseVersionStep.test_case_version_id == current_version.id
@@ -496,6 +602,9 @@ def update_test_case(
         case.assignee_id = changes["assignee_id"]
         if case.assignee_id is not None and case.assignee_id != previous_assignee_id:
             _notify_assignee(db, tenant_id, actor_user_id, case.assignee_id, case)
+    if "module_id" in changes and changes["module_id"] is not None:
+        _validate_module(db, tenant_id, case.project_id, changes["module_id"])
+        case.module_id = changes["module_id"]
 
     record_audit_event(
         db,

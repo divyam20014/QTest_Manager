@@ -16,6 +16,7 @@ import {
   type TestCaseCreateRequest,
   type TestCaseStatus,
 } from '@/api/testCases'
+import { listModules } from '@/api/modules'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { TestCaseForm, type TestCaseFormValues } from '@/routes/testcases/TestCaseForm'
+import { useToast } from '@/lib/toast'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
 
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
@@ -31,9 +33,14 @@ const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'de
 
 const DEFAULT_FORM_VALUES: TestCaseFormValues = {
   title: '',
+  module_id: '',
   description: '',
   priority: 'Medium',
   assignee_id: '',
+  scenario_id: '',
+  scenario_description: '',
+  prerequisite: '',
+  test_data: '',
   steps: [{ action: '', expected: '' }],
 }
 
@@ -72,12 +79,18 @@ export function TestRepository() {
   const [bulkPending, setBulkPending] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createProjectId, setCreateProjectId] = useState('')
+  const { show: showToast } = useToast()
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all'],
     queryFn: () => listProjects({ page_size: 100 }),
   })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const createModulesQuery = useQuery({
+    queryKey: ['test-modules', createProjectId],
+    queryFn: () => listModules(createProjectId),
+    enabled: !!createProjectId,
+  })
 
   const projects = projectsQuery.data?.items ?? []
   const targetProjects = projectId ? projects.filter((p) => p.id === projectId) : projects
@@ -123,12 +136,26 @@ export function TestRepository() {
 
   const inlineActionMutation = useMutation({
     mutationFn: (tc: TestCase) => runNextAction(tc),
-    onSuccess: invalidateRepository,
+    onSuccess: () => {
+      invalidateRepository()
+      showToast('success', 'Test case updated')
+    },
+    // This mutation previously had no error handling at all -- a failed
+    // inline action (e.g. an invalid status transition) failed completely
+    // silently. Added as part of the app-wide toast sweep (GAP-90).
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not update that test case'),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteTestCase(id),
-    onSuccess: invalidateRepository,
+    onSuccess: () => {
+      invalidateRepository()
+      showToast('success', 'Test case deleted')
+    },
+    // Same previously-silent-failure gap as inlineActionMutation above.
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not delete that test case'),
   })
 
   const createMutation = useMutation({
@@ -136,7 +163,9 @@ export function TestRepository() {
     onSuccess: () => {
       invalidateRepository()
       setCreateOpen(false)
+      showToast('success', 'Test case created')
     },
+    // No onError toast -- `createError` below already renders this inline.
   })
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
 
@@ -383,6 +412,7 @@ export function TestRepository() {
             isSubmitting={createMutation.isPending}
             serverError={createError}
             users={usersQuery.data ?? []}
+            modules={createModulesQuery.data ?? []}
             onSubmit={(values) => createMutation.mutate(values)}
           />
         </div>

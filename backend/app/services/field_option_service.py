@@ -39,7 +39,7 @@ def seed_defaults_for_tenant(db: Session, tenant_id: UUID) -> None:
     alongside the Tier 1 subscription seed -- same "every tenant gets this
     at birth" pattern, not only a migration-time backfill of pre-existing
     tenants."""
-    for field_key in ("defect_severity", "test_case_priority"):
+    for field_key in ("defect_severity", "test_case_priority", "defect_priority"):
         for order, code in enumerate(_DEFAULTS):
             db.add(
                 FieldOption(
@@ -160,25 +160,24 @@ def delete_option(db: Session, tenant_id: UUID, actor_user_id: UUID, option_id: 
     if option is None:
         raise NotFoundError("Field option not found")
 
-    in_use: bool
-    if option.field_key == "defect_severity":
-        in_use = (
-            db.execute(
-                select(Defect.id)
-                .where(Defect.tenant_id == tenant_id, Defect.severity == option.code)
-                .limit(1)
-            ).scalar_one_or_none()
-            is not None
-        )
-    else:
-        in_use = (
-            db.execute(
-                select(TestCase.id)
-                .where(TestCase.tenant_id == tenant_id, TestCase.priority == option.code)
-                .limit(1)
-            ).scalar_one_or_none()
-            is not None
-        )
+    # field_key -> (model, column) this value actually lives on. A binary
+    # defect_severity-vs-else branch was correct while only two field_keys
+    # existed; `defect_priority` (Pass 2) would have silently fallen into
+    # the TestCase.priority branch under that assumption.
+    in_use_column = {
+        "defect_severity": Defect.severity,
+        "defect_priority": Defect.priority,
+        "test_case_priority": TestCase.priority,
+    }[option.field_key]
+    in_use_model = Defect if option.field_key.startswith("defect_") else TestCase
+    in_use = (
+        db.execute(
+            select(in_use_model.id)
+            .where(in_use_model.tenant_id == tenant_id, in_use_column == option.code)
+            .limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
     if in_use:
         raise ConflictError(
             f"'{option.code}' is still used by at least one existing record and cannot be deleted"

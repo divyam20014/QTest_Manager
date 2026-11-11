@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
-import { addDefectLink, createDefect, listDefects, type Severity } from '@/api/defects'
+import { addDefectLink, createDefect, listDefects, type Priority, type Severity } from '@/api/defects'
 import { ApiError } from '@/api/client'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { useToast } from '@/lib/toast'
 
 export interface FailedStepContext {
   executionStepId: string
@@ -56,11 +57,14 @@ function DefectQuickCreateForm({
   const [mode, setMode] = useState<'new' | 'existing'>('new')
   const [title, setTitle] = useState(`Step ${context.stepNumber} Failed: ${context.action}`)
   const [severity, setSeverity] = useState<Severity>('Medium')
+  const [priority, setPriority] = useState<Priority>('Medium')
   const [description, setDescription] = useState('')
+  const [stepsToReproduce, setStepsToReproduce] = useState('')
   const [actualResult, setActualResult] = useState('')
   const [expectedResult, setExpectedResult] = useState(context.expected)
   const [environment, setEnvironment] = useState('')
   const [existingDefectId, setExistingDefectId] = useState('')
+  const { show: showToast } = useToast()
 
   const existingDefectsQuery = useQuery({
     queryKey: ['defects', 'linkable', context.projectId],
@@ -71,6 +75,10 @@ function DefectQuickCreateForm({
     queryKey: ['field-options', 'defect_severity'],
     queryFn: () => listFieldOptions('defect_severity'),
   })
+  const prioritiesQuery = useQuery({
+    queryKey: ['field-options', 'defect_priority'],
+    queryFn: () => listFieldOptions('defect_priority'),
+  })
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -78,12 +86,21 @@ function DefectQuickCreateForm({
         execution_step_id: context.executionStepId,
         title,
         severity,
+        priority,
         description: description || undefined,
+        steps_to_reproduce: stepsToReproduce || undefined,
         actual_result: actualResult || undefined,
         expected_result: expectedResult || undefined,
         environment: environment || undefined,
       }),
-    onSuccess: resetAndClose,
+    onSuccess: () => {
+      // Deliberately distinct from the existing "🐞 Defect reported" badge
+      // text shown elsewhere on this page -- an identical toast message
+      // caused a real strict-mode locator collision, found via a live
+      // Playwright run during this pass.
+      showToast('success', 'New defect created')
+      resetAndClose()
+    },
   })
 
   const linkMutation = useMutation({
@@ -92,14 +109,19 @@ function DefectQuickCreateForm({
         linkable_type: 'execution_step',
         linkable_id: context.executionStepId,
       }),
-    onSuccess: resetAndClose,
+    onSuccess: () => {
+      showToast('success', 'Linked to existing defect')
+      resetAndClose()
+    },
   })
 
   function resetAndClose() {
     setDescription('')
+    setStepsToReproduce('')
     setActualResult('')
     setEnvironment('')
     setSeverity('Medium')
+    setPriority('Medium')
     onClose()
   }
 
@@ -144,15 +166,27 @@ function DefectQuickCreateForm({
               <Label htmlFor="defect-title">Title (auto-suggested, editable)</Label>
               <Input id="defect-title" value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="defect-severity">Severity</Label>
-              <Select id="defect-severity" value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
-                {(severitiesQuery.data ?? []).map((s) => (
-                  <option key={s.code} value={s.code}>
-                    {s.label}
-                  </option>
-                ))}
-              </Select>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="defect-severity">Severity</Label>
+                <Select id="defect-severity" value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
+                  {(severitiesQuery.data ?? []).map((s) => (
+                    <option key={s.code} value={s.code}>
+                      {s.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="defect-priority">Priority</Label>
+                <Select id="defect-priority" value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
+                  {(prioritiesQuery.data ?? []).map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="defect-description">Description</Label>
@@ -161,6 +195,16 @@ function DefectQuickCreateForm({
                 placeholder="What went wrong?"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="defect-steps-to-reproduce">Steps to Reproduce</Label>
+              <Textarea
+                id="defect-steps-to-reproduce"
+                rows={2}
+                placeholder="1. ... 2. ... 3. ..."
+                value={stepsToReproduce}
+                onChange={(e) => setStepsToReproduce(e.target.value)}
               />
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

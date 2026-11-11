@@ -23,7 +23,18 @@ class SessionContext:
     session_id: UUID
     tenant_id: UUID
     user_id: UUID
+    # ADR-059: for a system role this is the real code ("admin"/"manager"/
+    # "tester"), unchanged from before custom roles existed. For a custom
+    # role (no fixed code), this is a derived access-tier value -- "manager"
+    # if the role holds `project.view.all`, else "tester" -- so every
+    # pre-existing `role_code in ("admin","manager")` / `== "tester"` check
+    # across the codebase (dozens of call sites, several reached only
+    # indirectly via owner_access.py/ai.py/search.py/etc.) keeps working
+    # unchanged and composes correctly with custom roles, without needing
+    # to touch each call site individually. Never shown to the end user as
+    # their role name -- see `display_role` for that.
     role_code: str
+    display_role: str
     permissions: set[str]
 
 
@@ -76,16 +87,23 @@ def parse_session_cookie(request: Request) -> UUID:
         raise UnauthorizedError("Invalid session") from exc
 
 
-def _load_role_and_permissions(db: Session, tenant_id: UUID, user_id: UUID) -> tuple[str, set[str]]:
+_SYSTEM_ROLE_CODES = ("admin", "manager", "tester")
+
+
+def _load_role_and_permissions(
+    db: Session, tenant_id: UUID, user_id: UUID
+) -> tuple[str, str, set[str]]:
     user_row = db.execute(
         select(User.role_id, User.is_active).where(User.id == user_id, User.tenant_id == tenant_id)
     ).first()
     if user_row is None or not user_row.is_active:
         raise UnauthorizedError("User not found or deactivated")
 
-    role_code = db.execute(select(Role.code).where(Role.id == user_row.role_id)).scalar_one()
+    role_row = db.execute(
+        select(Role.code, Role.name).where(Role.id == user_row.role_id)
+    ).one()
 
-    permission_codes = (
+    permission_codes = set(
         db.execute(
             select(Permission.code)
             .join(RolePermission, RolePermission.permission_id == Permission.id)
@@ -94,7 +112,18 @@ def _load_role_and_permissions(db: Session, tenant_id: UUID, user_id: UUID) -> t
         .scalars()
         .all()
     )
-    return role_code, set(permission_codes)
+
+    if role_row.code in _SYSTEM_ROLE_CODES:
+        effective_role_code = role_row.code
+        display_role = role_row.code
+    else:
+        # ADR-059: a custom role maps onto whichever existing access tier
+        # its permissions match most closely, so it composes with every
+        # pre-existing hardcoded role_code comparison in the codebase.
+        effective_role_code = "manager" if "project.view.all" in permission_codes else "tester"
+        display_role = role_row.name
+
+    return effective_role_code, display_role, permission_codes
 
 
 def get_current_context(request: Request, db: Session = Depends(get_db)) -> SessionContext:
@@ -135,7 +164,7 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
     db.commit()
 
     set_tenant_context(db, str(session_row.tenant_id))
-    role_code, permissions = _load_role_and_permissions(
+    role_code, display_role, permissions = _load_role_and_permissions(
         db, session_row.tenant_id, session_row.user_id
     )
 
@@ -144,6 +173,7 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
         tenant_id=session_row.tenant_id,
         user_id=session_row.user_id,
         role_code=role_code,
+        display_role=display_role,
         permissions=permissions,
     )
 

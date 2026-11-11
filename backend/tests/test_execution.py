@@ -532,3 +532,70 @@ def test_concurrent_verdicts_on_different_steps_do_not_corrupt_rollup(
     updated_case = run_detail["cases"][0]
     assert updated_case["passed_count"] == 3
     assert updated_case["status"] == "passed"
+
+
+def test_tester_cannot_execute_unassigned_run_case(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """ADR-059: strict assignee-based execution -- a Tester (or any role
+    without project.view.all) may only execute a run case explicitly
+    assigned to them. No unassigned-run-case fallback."""
+    tenant_id, project, case = _setup_admin_project_and_case(client, platform_admin)
+    tester_id = _create_user(
+        client, "tester2@horizon.com", "Tester Two", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project['id']}/members", json={"user_id": tester_id})
+
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Strict Assign Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester2@horizon.com", "TesterPassw0rd!")
+
+    # Not assigned -- blocked even though they're a project member.
+    blocked = tester_client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+    assert blocked.status_code == 403, blocked.text
+
+    # Admin assigns the run case to this tester.
+    assign = client.patch(
+        f"/api/v1/test-run-cases/{run_case_id}/assign", json={"assigned_to": tester_id}
+    )
+    assert assign.status_code == 200, assign.text
+
+    # Now the assigned tester can execute it.
+    allowed = tester_client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+    assert allowed.status_code == 200, allowed.text
+    verdict = tester_client.post(
+        f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "pass"}
+    )
+    assert verdict.status_code == 200, verdict.text
+
+
+def test_admin_and_manager_execute_without_assignment(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Full-access roles (Admin/Manager, or a custom role with
+    project.view.all) are unaffected by the strict assignee rule."""
+    tenant_id, project, case = _setup_admin_project_and_case(client, platform_admin)
+    manager_id = _create_user(
+        client, "manager2@horizon.com", "Manager Two", "manager", "ManagerPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project['id']}/members", json={"user_id": manager_id})
+
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "Manager Run", "run_type": "Smoke", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+
+    manager_client = TestClient(client.app)
+    _login_and_verify(manager_client, tenant_id, "manager2@horizon.com", "ManagerPassw0rd!")
+
+    # Unassigned run case -- Manager can still execute it directly.
+    allowed = manager_client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
+    assert allowed.status_code == 200, allowed.text

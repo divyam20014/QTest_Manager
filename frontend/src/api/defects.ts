@@ -5,6 +5,9 @@ import { apiFetch } from '@/api/client'
 // seeded with still work as plain strings; `string` just stops pretending
 // a tenant-added option like "Blocker" is a type error.
 export type Severity = string
+// Pass 2 (ADR-061): same tenant-configurable value set mechanism as
+// severity, 'defect_priority' field_key.
+export type Priority = string
 export type DefectStatus = 'New' | 'Open' | 'Fixed' | 'Verified' | 'Closed'
 export type Verdict = 'pass' | 'fail' | 'ignore'
 export type RootCause =
@@ -50,9 +53,11 @@ export interface Defect {
   step_number: number | null
   title: string
   severity: Severity
+  priority: Priority
   status: DefectStatus
   status_label: string
   description: string | null
+  steps_to_reproduce: string | null
   actual_result: string | null
   expected_result: string | null
   environment: string | null
@@ -63,6 +68,10 @@ export interface Defect {
   fixed_in_release_id: string | null
   fixed_in_release_name: string | null
   root_cause: RootCause | null
+  module_id: string | null
+  module_name: string | null
+  assigned_to: string | null
+  assigned_to_name: string | null
   reported_by: string
   reported_by_name: string | null
   created_at: string
@@ -98,10 +107,24 @@ export interface DefectCreateRequest {
   test_run_id?: string
   title?: string
   severity: Severity
+  priority?: Priority
   description?: string
+  steps_to_reproduce?: string
   actual_result?: string
   expected_result?: string
   environment?: string
+  module_id?: string | null
+  assigned_to?: string | null
+}
+
+export interface DefectUpdateRequest {
+  title?: string
+  severity?: Severity
+  priority?: Priority
+  description?: string
+  steps_to_reproduce?: string
+  assigned_to?: string | null
+  module_id?: string | null
 }
 
 export interface DefectLinkCreateRequest {
@@ -191,4 +214,8 @@ export function updateDefectRootCause(id: string, rootCause: RootCause | null): 
     method: 'PATCH',
     body: JSON.stringify({ root_cause: rootCause }),
   })
+}
+
+export function updateDefect(id: string, req: DefectUpdateRequest): Promise<Defect> {
+  return apiFetch<Defect>(`/defects/${id}`, { method: 'PATCH', body: JSON.stringify(req) })
 }

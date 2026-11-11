@@ -27,6 +27,7 @@ from app.api import (
     projects,
     reporting,
     requirements,
+    roles,
     scim,
     search,
     service_tokens,
@@ -189,6 +190,7 @@ app.include_router(field_customization.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
 app.include_router(test_data.router, prefix="/api/v1")
 app.include_router(service_tokens.router, prefix="/api/v1")
+app.include_router(roles.router, prefix="/api/v1")
 app.include_router(ci.router, prefix="/api/v1")
 
 

@@ -25,7 +25,14 @@ export function Dialog({
     >
       <div
         className={cn(
-          'w-full max-w-lg rounded-lg border border-[var(--border)] bg-[var(--background)] p-5 shadow-lg',
+          // Pass 2: a dialog's content can grow taller than the viewport
+          // (e.g. the Test Case form after its schema-realignment fields) --
+          // without a capped height + internal scroll, the bottom (often
+          // the only submit button) ends up permanently unreachable, for a
+          // real user on a short screen as much as for Playwright. Found
+          // via a real E2E failure during this pass, not anticipated
+          // up front.
+          'flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg border border-[var(--border)] bg-[var(--background)] shadow-lg',
           className,
         )}
         onClick={(e) => e.stopPropagation()}
@@ -33,8 +40,8 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
       >
-        <h2 className="mb-4 text-sm font-semibold">{title}</h2>
-        {children}
+        <h2 className="mb-4 shrink-0 px-5 pt-5 text-sm font-semibold">{title}</h2>
+        <div className="overflow-y-auto px-5 pb-5">{children}</div>
       </div>
     </div>
   )

@@ -22,6 +22,7 @@ import {
   type TestCaseVersion,
 } from '@/api/testCases'
 import { listUsers } from '@/api/users'
+import { listModules } from '@/api/modules'
 import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
@@ -34,6 +35,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
+import { isAdmin, isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { STATUS_DISPLAY } from './statusDisplay'
@@ -63,6 +65,11 @@ export function TestCaseDetail() {
     enabled: !!testCaseId,
   })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const modulesQuery = useQuery({
+    queryKey: ['test-modules', caseQuery.data?.project_id],
+    queryFn: () => listModules(caseQuery.data!.project_id),
+    enabled: !!caseQuery.data?.project_id,
+  })
   const historyQuery = useQuery({
     queryKey: ['test-cases', 'history', testCaseId],
     queryFn: () => getTestCaseHistory(testCaseId!),
@@ -133,18 +140,23 @@ export function TestCaseDetail() {
   if (caseQuery.isLoading) return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
   if (caseQuery.isError || !testCase) return <p className="text-sm text-[var(--destructive)]">Test case not found.</p>
 
-  const canApprove = user?.role === 'admin' || user?.role === 'manager'
+  const canApprove = isManagerOrAbove(user)
   const isAssignedReviewer =
-    testCase.reviewer_id === null || testCase.reviewer_id === user?.user_id || user?.role === 'admin'
+    testCase.reviewer_id === null || testCase.reviewer_id === user?.user_id || isAdmin(user)
   const canActOnReview = canApprove && isAssignedReviewer
   const updateError = updateMutation.error instanceof ApiError ? updateMutation.error.message : null
   const usersById = new Map((usersQuery.data ?? []).map((u) => [u.id, u.name]))
 
   const formValues: TestCaseFormValues = {
     title: testCase.title,
+    module_id: testCase.module_id ?? '',
     description: testCase.description,
     priority: testCase.priority,
     assignee_id: testCase.assignee_id ?? '',
+    scenario_id: testCase.scenario_id ?? '',
+    scenario_description: testCase.scenario_description ?? '',
+    prerequisite: testCase.prerequisite ?? '',
+    test_data: testCase.test_data ?? '',
     steps: testCase.steps.map((s) => ({ action: s.action, expected: s.expected })),
   }
 
@@ -224,6 +236,46 @@ export function TestCaseDetail() {
       </div>
       {actionError && <p className="text-xs text-[var(--destructive)]">{actionError}</p>}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-xs text-[var(--muted-foreground)]">Scenario ID</p>
+            <p>{testCase.scenario_id || '—'}</p>
+          </div>
+          <div className="sm:col-span-1 lg:col-span-3">
+            <p className="text-xs text-[var(--muted-foreground)]">Scenario Description</p>
+            <p>{testCase.scenario_description || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--muted-foreground)]">Prerequisite</p>
+            <p>{testCase.prerequisite || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--muted-foreground)]">Test Data</p>
+            <p>{testCase.test_data || '—'}</p>
+          </div>
+          <div className="border-l border-[var(--border)] pl-3 sm:col-span-2 lg:col-span-2">
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Last Execution Result <span className="italic">(read-only, from the most recent run)</span>
+            </p>
+            {testCase.last_execution_result ? (
+              <p>
+                {testCase.last_execution_result} — executed by{' '}
+                {testCase.last_executed_by_name ?? 'Unknown'} on{' '}
+                {testCase.last_execution_date
+                  ? new Date(testCase.last_execution_date).toLocaleString()
+                  : '—'}
+              </p>
+            ) : (
+              <p>Not yet executed</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -263,6 +315,7 @@ export function TestCaseDetail() {
           isSubmitting={updateMutation.isPending}
           serverError={updateError}
           users={usersQuery.data ?? []}
+          modules={modulesQuery.data ?? []}
           onSubmit={(values) => updateMutation.mutate(values)}
         />
       </Dialog>

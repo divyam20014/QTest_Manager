@@ -25,3 +25,13 @@ export const templateDownloadUrl = `${API_BASE_URL}/test-cases/import/template.c
 export function exportUrl(projectId: string): string {
   return `${API_BASE_URL}/projects/${projectId}/test-cases/export.csv`
 }
+
+// Pass 2 (ADR-061): Defect bulk import, newly built -- mirrors the test
+// case import pattern exactly.
+export function importDefects(file: File): Promise<ImportReport> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiFetch<ImportReport>('/defects/import', { method: 'POST', body: formData })
+}
+
+export const defectTemplateDownloadUrl = `${API_BASE_URL}/defects/import/template.csv`

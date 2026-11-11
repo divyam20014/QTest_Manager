@@ -5,12 +5,13 @@ import { Navigate } from 'react-router-dom'
 import { fetchComplianceDetail } from '@/api/reporting'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
 
 export function CompliancePrintView() {
   const { user } = useAuth()
   const [periodFrom, setPeriodFrom] = useState('')
   const [periodTo, setPeriodTo] = useState('')
-  const canView = user?.role === 'admin' || user?.role === 'manager'
+  const canView = isManagerOrAbove(user)
 
   const reportQuery = useQuery({
     queryKey: ['reports', 'compliance-detail', periodFrom, periodTo],

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useToast } from '@/lib/toast'
 
 // Tier 2 (PV-8.1): tenant-wide Environments (Staging/Production/etc.),
 // shared across projects -- distinct from project-scoped Builds/Releases,
@@ -15,6 +16,7 @@ export function Environments() {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const { show: showToast } = useToast()
 
   const environmentsQuery = useQuery({ queryKey: ['environments'], queryFn: listEnvironments })
 
@@ -24,12 +26,18 @@ export function Environments() {
       setName('')
       setDescription('')
       queryClient.invalidateQueries({ queryKey: ['environments'] })
+      showToast('success', 'Environment added')
     },
+    // No onError toast -- `createError` below already renders this inline.
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteEnvironment(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['environments'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['environments'] })
+      showToast('success', 'Environment removed')
+    },
+    onError: () => showToast('error', 'Could not remove that environment'),
   })
 
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null

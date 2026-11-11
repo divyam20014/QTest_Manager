@@ -9,16 +9,38 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit_event
 from app.core.config import get_settings
 from app.core.errors import ForbiddenError, NotFoundError, ValidationAppError
+from app.models.defect import Defect
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
+from app.models.test_module import TestModule
 from app.schemas.csv_import import ImportReport, ImportRowResult
 from app.services import field_option_service
 from app.services.project_service import is_assigned
 
 settings = get_settings()
 
-EXPECTED_HEADERS = ["Title", "Project Name", "Priority", "Status", "Assignee Email", "Steps"]
+# Pass 2 (schema realignment): Module/Description are now mandatory
+# (matching TestCaseCreateRequest's own mandatory set), Scenario Id/
+# Scenario Description/Prerequisite/Test Data/Sub Module are optional.
+# Actual_Result/Executed_By/Execution_Date/Status-as-outcome are NOT
+# columns here at all -- they are derived from real execution history
+# (test_case_service._last_execution), never importable.
+EXPECTED_HEADERS = [
+    "Title",
+    "Module",
+    "Sub Module",
+    "Project Name",
+    "Priority",
+    "Status",
+    "Description",
+    "Scenario Id",
+    "Scenario Description",
+    "Prerequisite",
+    "Test Data",
+    "Assignee Email",
+    "Steps",
+]
 
 STATUS_MAP = {
     "draft": "draft",
@@ -33,11 +55,26 @@ STATUS_DISPLAY = {
 }
 
 TEMPLATE_CSV = (
-    "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-    '"Verify Total Loss Settlement Calculation","Apex Motor Claims Modernization",'
-    '"Critical","Draft","tester@example.com",'
+    "Title,Module,Sub Module,Project Name,Priority,Status,Description,"
+    "Scenario Id,Scenario Description,Prerequisite,Test Data,Assignee Email,Steps\n"
+    '"Verify Total Loss Settlement Calculation","Claims","Total Loss",'
+    '"Apex Motor Claims Modernization","Critical","Draft",'
+    '"Confirms the system correctly computes a total-loss settlement.",'
+    '"SCN-001","Total loss settlement with a comprehensive endorsement",'
+    '"Policy must be active with comprehensive coverage",'
+    '"Policy Number: AUTO-100234",'
+    '"tester@example.com",'
     '"Input Policy Number with Comprehensive Endorsement|System displays vehicle ACV;'
     'Apply $500 deductible|Payout amount equals ACV minus $500"\n'
+)
+# Columns marked (required) in the header comment below are enforced
+# server-side; Actual Result/Executed By/Execution Date intentionally do
+# not appear here -- they are read-only, derived from real execution
+# history, never importable (see TestCaseOut.last_execution_*).
+TEMPLATE_NOTES = (
+    "# Required columns: Title, Module, Project Name, Priority, Description, Steps.\n"
+    "# All other columns are optional. Sub Module nests under Module.\n"
+    "# Steps format: 'Action|Expected' pairs separated by ';'.\n"
 )
 
 
@@ -130,6 +167,58 @@ def import_test_cases(
     case_rows: list[dict] = []
     version_rows: list[dict] = []
     step_rows: list[dict] = []
+    # (project_id, parent_name_or_None, module_name) -> TestModule.id,
+    # reused across rows in the same batch so a repeated Module/Sub Module
+    # pairing on later rows doesn't re-query/re-create.
+    module_cache: dict[tuple[UUID, str | None, str], UUID] = {}
+
+    def _resolve_module(project_id: UUID, module_name: str, sub_module_name: str) -> UUID:
+        key = (project_id, None, module_name)
+        parent_id = module_cache.get(key)
+        if parent_id is None:
+            parent = db.execute(
+                select(TestModule).where(
+                    TestModule.tenant_id == tenant_id,
+                    TestModule.project_id == project_id,
+                    TestModule.parent_id.is_(None),
+                    TestModule.name == module_name,
+                )
+            ).scalar_one_or_none()
+            if parent is None:
+                parent = TestModule(
+                    tenant_id=tenant_id, project_id=project_id, parent_id=None, name=module_name
+                )
+                db.add(parent)
+                db.flush()
+            parent_id = parent.id
+            module_cache[key] = parent_id
+
+        if not sub_module_name:
+            return parent_id
+
+        child_key = (project_id, module_name, sub_module_name)
+        child_id = module_cache.get(child_key)
+        if child_id is None:
+            child = db.execute(
+                select(TestModule).where(
+                    TestModule.tenant_id == tenant_id,
+                    TestModule.project_id == project_id,
+                    TestModule.parent_id == parent_id,
+                    TestModule.name == sub_module_name,
+                )
+            ).scalar_one_or_none()
+            if child is None:
+                child = TestModule(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    parent_id=parent_id,
+                    name=sub_module_name,
+                )
+                db.add(child)
+                db.flush()
+            child_id = child.id
+            module_cache[child_key] = child_id
+        return child_id
 
     for row_number, row in enumerate(rows, start=1):
         total_rows += 1
@@ -138,6 +227,20 @@ def import_test_cases(
         title = (row.get("Title") or "").strip()
         if len(title) < 5:
             errors.append("Title must be at least 5 characters.")
+
+        module_name = (row.get("Module") or "").strip()
+        if not module_name:
+            errors.append("Module is required.")
+        sub_module_name = (row.get("Sub Module") or "").strip()
+
+        description = (row.get("Description") or "").strip()
+        if not description:
+            errors.append("Description is required.")
+
+        scenario_id = (row.get("Scenario Id") or "").strip() or None
+        scenario_description = (row.get("Scenario Description") or "").strip() or None
+        prerequisite = (row.get("Prerequisite") or "").strip() or None
+        test_data = (row.get("Test Data") or "").strip() or None
 
         project_name = (row.get("Project Name") or "").strip()
         project = projects_by_name.get(project_name.lower())
@@ -193,6 +296,8 @@ def import_test_cases(
 
         assert project is not None  # for type-checkers; guaranteed by the error branch above
 
+        module_id = _resolve_module(project.id, module_name, sub_module_name)
+
         # Plain dict rows + Core-style bulk insert (not ORM Model(...)
         # instances + session.add()) -- at 2,000+ rows, per-object
         # unit-of-work/identity-map tracking was the dominant cost, far
@@ -216,6 +321,7 @@ def import_test_cases(
                 "priority": priority,
                 "status": status_internal,
                 "assignee_id": assignee.id if assignee else None,
+                "module_id": module_id,
                 "created_by": actor_user_id,
             }
         )
@@ -226,6 +332,11 @@ def import_test_cases(
             "test_case_id": case_id,
             "version_number": 1,
             "title": title,
+            "description": description,
+            "scenario_id": scenario_id,
+            "scenario_description": scenario_description,
+            "prerequisite": prerequisite,
+            "test_data": test_data,
             "created_by": actor_user_id,
             "approved_by": actor_user_id if status_internal == "approved" else None,
             "approved_at": datetime.now(UTC) if status_internal == "approved" else None,
@@ -315,6 +426,12 @@ def export_test_cases_csv(
     users_by_id = {
         u.id: u for u in db.execute(select(User).where(User.tenant_id == tenant_id)).scalars()
     }
+    modules_by_id = {
+        m.id: m
+        for m in db.execute(
+            select(TestModule).where(TestModule.tenant_id == tenant_id)
+        ).scalars()
+    }
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -332,15 +449,257 @@ def export_test_cases_csv(
         steps_cell = ";".join(f"{s.action}|{s.expected}" for s in steps)
         assignee_email = users_by_id[case.assignee_id].email if case.assignee_id else ""
 
+        module_name = ""
+        sub_module_name = ""
+        if case.module_id is not None:
+            module = modules_by_id.get(case.module_id)
+            if module is not None:
+                if module.parent_id is None:
+                    module_name = module.name
+                else:
+                    sub_module_name = module.name
+                    parent = modules_by_id.get(module.parent_id)
+                    module_name = parent.name if parent is not None else ""
+
         writer.writerow(
             [
                 case.title,
+                module_name,
+                sub_module_name,
                 project.name,
                 case.priority,
                 STATUS_DISPLAY.get(case.status, case.status),
+                version.description,
+                version.scenario_id or "",
+                version.scenario_description or "",
+                version.prerequisite or "",
+                version.test_data or "",
                 assignee_email,
                 steps_cell,
             ]
         )
 
     return buffer.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Defect bulk import/export (Pass 2) -- newly built, following the exact same
+# architecture as import_test_cases/export_test_cases_csv above (materialize
+# rows up front, per-row validation with collected errors, bulk Core insert,
+# audit event, no partial-success silent failures).
+# ---------------------------------------------------------------------------
+
+DEFECT_EXPECTED_HEADERS = [
+    "Title",
+    "Project Name",
+    "Severity",
+    "Priority",
+    "Description",
+    "Steps to Reproduce",
+    "Expected Result",
+    "Actual Result",
+    "Environment",
+    "Module",
+    "Assignee Email",
+]
+
+DEFECT_TEMPLATE_CSV = (
+    "Title,Project Name,Severity,Priority,Description,Steps to Reproduce,"
+    "Expected Result,Actual Result,Environment,Module,Assignee Email\n"
+    '"Settlement amount incorrect for total loss claim",'
+    '"Apex Motor Claims Modernization","High","High",'
+    '"The computed settlement amount does not match policy terms.",'
+    '"1. Open claim AUTO-100234|2. Mark vehicle as total loss|3. Review settlement",'
+    '"Settlement = ACV - deductible","Settlement = ACV","Staging","Claims",'
+    '""\n'
+)
+# Required columns: Title, Project Name, Severity, Priority, Description.
+# Status/Reported By are system-managed (New / the importing user) and are
+# intentionally not import columns.
+
+
+def import_defects(
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, csv_text: str
+) -> ImportReport:
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if reader.fieldnames is None or list(reader.fieldnames) != DEFECT_EXPECTED_HEADERS:
+        raise ValidationAppError(
+            f"CSV headers must be exactly: {', '.join(DEFECT_EXPECTED_HEADERS)}. "
+            f"Download /defects/import/template.csv for a valid example."
+        )
+
+    rows = list(reader)
+    if len(rows) > settings.csv_import_max_rows:
+        raise ValidationAppError(
+            f"CSV has {len(rows)} rows, exceeding the {settings.csv_import_max_rows}-row "
+            "import limit. Split the file into smaller batches."
+        )
+
+    projects_by_name = {
+        p.name.lower(): p
+        for p in db.execute(select(Project).where(Project.tenant_id == tenant_id)).scalars()
+    }
+    users_by_email = {
+        u.email.lower(): u
+        for u in db.execute(
+            select(User).where(User.tenant_id == tenant_id, User.is_active.is_(True))
+        ).scalars()
+    }
+    assigned_project_ids: set[UUID] = set()
+    if role_code == "tester":
+        assigned_project_ids = set(
+            db.execute(
+                select(ProjectMember.project_id).where(ProjectMember.user_id == actor_user_id)
+            ).scalars()
+        )
+    valid_severities = {
+        o.code for o in field_option_service.list_options(db, tenant_id, "defect_severity")
+    }
+    valid_priorities = {
+        o.code for o in field_option_service.list_options(db, tenant_id, "defect_priority")
+    }
+    project_member_ids: dict[UUID, set[UUID]] = {}
+
+    def _project_members(project_id: UUID) -> set[UUID]:
+        if project_id not in project_member_ids:
+            project_member_ids[project_id] = set(
+                db.execute(
+                    select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)
+                ).scalars()
+            )
+        return project_member_ids[project_id]
+
+    module_cache: dict[tuple[UUID, str], UUID] = {}
+
+    def _resolve_module(project_id: UUID, name: str) -> UUID | None:
+        if not name:
+            return None
+        key = (project_id, name)
+        if key in module_cache:
+            return module_cache[key]
+        module = db.execute(
+            select(TestModule).where(
+                TestModule.tenant_id == tenant_id,
+                TestModule.project_id == project_id,
+                TestModule.parent_id.is_(None),
+                TestModule.name == name,
+            )
+        ).scalar_one_or_none()
+        if module is None:
+            module = TestModule(
+                tenant_id=tenant_id, project_id=project_id, parent_id=None, name=name
+            )
+            db.add(module)
+            db.flush()
+        module_cache[key] = module.id
+        return module.id
+
+    error_rows: list[ImportRowResult] = []
+    created_count = 0
+    total_rows = 0
+    defect_rows: list[dict] = []
+
+    for row_number, row in enumerate(rows, start=1):
+        total_rows += 1
+        errors: list[str] = []
+
+        title = (row.get("Title") or "").strip()
+        if len(title) < 5:
+            errors.append("Title must be at least 5 characters.")
+
+        project_name = (row.get("Project Name") or "").strip()
+        project = projects_by_name.get(project_name.lower())
+        if project is None:
+            errors.append(f"Project '{project_name}' does not exist in this tenant.")
+        elif (
+            role_code == "tester"
+            and project.owner_id != actor_user_id
+            and project.id not in assigned_project_ids
+        ):
+            errors.append(f"You are not assigned to project '{project_name}'.")
+
+        severity = (row.get("Severity") or "").strip()
+        if severity not in valid_severities:
+            errors.append(
+                f"Severity '{severity}' is invalid; must be one of {sorted(valid_severities)}."
+            )
+
+        priority = (row.get("Priority") or "").strip()
+        if priority not in valid_priorities:
+            errors.append(
+                f"Priority '{priority}' is invalid; must be one of {sorted(valid_priorities)}."
+            )
+
+        description = (row.get("Description") or "").strip()
+        if not description:
+            errors.append("Description is required.")
+
+        assignee_email = (row.get("Assignee Email") or "").strip()
+        assignee: User | None = None
+        if assignee_email:
+            assignee = users_by_email.get(assignee_email.lower())
+            if assignee is None:
+                errors.append(f"Assignee email '{assignee_email}' does not match an active user.")
+            elif project is not None and assignee.id not in _project_members(
+                project.id
+            ) and assignee.id != project.owner_id:
+                errors.append(
+                    f"Assignee '{assignee_email}' is not a member of project '{project_name}'."
+                )
+
+        if errors:
+            error_rows.append(ImportRowResult(row_number=row_number, status="error", errors=errors))
+            continue
+
+        assert project is not None
+
+        module_id = _resolve_module(project.id, (row.get("Module") or "").strip())
+
+        defect_rows.append(
+            {
+                "id": uuid4(),
+                "tenant_id": tenant_id,
+                "project_id": project.id,
+                "title": title,
+                "severity": severity,
+                "priority": priority,
+                "status": "New",
+                "description": description,
+                "steps_to_reproduce": (row.get("Steps to Reproduce") or "").strip() or None,
+                "expected_result": (row.get("Expected Result") or "").strip() or None,
+                "actual_result": (row.get("Actual Result") or "").strip() or None,
+                "environment": (row.get("Environment") or "").strip() or None,
+                "module_id": module_id,
+                "assigned_to": assignee.id if assignee else None,
+                "reported_by": actor_user_id,
+            }
+        )
+        created_count += 1
+
+    error_count = len(error_rows)
+
+    if defect_rows:
+        db.execute(insert(Defect), defect_rows)
+
+    batch_id = uuid4()
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="defect.bulk_imported",
+        entity_type="defect_import_batch",
+        entity_id=batch_id,
+        metadata={
+            "created_count": created_count,
+            "error_count": error_count,
+            "total_rows": total_rows,
+        },
+    )
+    db.commit()
+
+    return ImportReport(
+        total_rows=total_rows,
+        created_count=created_count,
+        error_count=error_count,
+        rows=error_rows,
+    )

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import type { RoleCode } from '@/api/auth'
+import { listRoles, type Role } from '@/api/roles'
 import {
   createUser,
   deactivateUser,
@@ -19,8 +20,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
+import { useToast } from '@/lib/toast'
 
-const ROLES: RoleCode[] = ['admin', 'manager', 'tester']
+const INVITE_ROLES: RoleCode[] = ['admin', 'manager', 'tester']
 
 export function UsersRoles() {
   const { user: currentUser } = useAuth()
@@ -28,22 +30,38 @@ export function UsersRoles() {
   const [createOpen, setCreateOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [resetTarget, setResetTarget] = useState<User | null>(null)
+  const { show: showToast } = useToast()
 
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: listRoles })
+  const activeRoles = (rolesQuery.data ?? []).filter((r) => r.is_active)
 
   const roleMutation = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: RoleCode }) => updateUser(id, { role }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    mutationFn: ({ id, roleId }: { id: string; roleId: string }) =>
+      updateUser(id, { role_id: roleId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      showToast('success', 'Role updated')
+    },
+    onError: () => showToast('error', 'Could not update that user’s role'),
   })
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => deactivateUser(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      showToast('success', 'User deactivated')
+    },
+    onError: () => showToast('error', 'Could not deactivate that user'),
   })
 
   const activateMutation = useMutation({
     mutationFn: (id: string) => updateUser(id, { is_active: true }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      showToast('success', 'User activated')
+    },
+    onError: () => showToast('error', 'Could not activate that user'),
   })
 
   return (
@@ -76,8 +94,9 @@ export function UsersRoles() {
               <UserRow
                 key={u.id}
                 user={u}
+                roles={activeRoles}
                 isSelf={u.id === currentUser?.user_id}
-                onRoleChange={(role) => roleMutation.mutate({ id: u.id, role })}
+                onRoleChange={(roleId) => roleMutation.mutate({ id: u.id, roleId })}
                 onDeactivate={() => deactivateMutation.mutate(u.id)}
                 onActivate={() => activateMutation.mutate(u.id)}
                 onResetPassword={() => setResetTarget(u)}
@@ -99,6 +118,7 @@ export function UsersRoles() {
 
 function UserRow({
   user,
+  roles,
   isSelf,
   onRoleChange,
   onDeactivate,
@@ -106,8 +126,9 @@ function UserRow({
   onResetPassword,
 }: {
   user: User
+  roles: Role[]
   isSelf: boolean
-  onRoleChange: (role: RoleCode) => void
+  onRoleChange: (roleId: string) => void
   onDeactivate: () => void
   onActivate: () => void
   onResetPassword: () => void
@@ -121,14 +142,14 @@ function UserRow({
       <td className="px-4 py-2">
         <Select
           aria-label={`Role for ${user.name}`}
-          value={user.role}
+          value={user.role_id}
           disabled={isSelf}
-          onChange={(e) => onRoleChange(e.target.value as RoleCode)}
-          className="w-32"
+          onChange={(e) => onRoleChange(e.target.value)}
+          className="w-40"
         >
-          {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {r}
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
             </option>
           ))}
         </Select>
@@ -159,13 +180,16 @@ function UserRow({
 
 function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: () => void }) {
   const [password, setPassword] = useState('')
+  const { show: showToast } = useToast()
 
   const resetMutation = useMutation({
     mutationFn: () => resetPassword(user!.id, password),
     onSuccess: () => {
       setPassword('')
       onClose()
+      showToast('success', 'Password reset -- the user has been signed out of all sessions')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = resetMutation.error instanceof ApiError ? resetMutation.error.message : null
@@ -204,21 +228,26 @@ function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: ()
 
 function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: listRoles })
+  const activeRoles = (rolesQuery.data ?? []).filter((r) => r.is_active)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
-  const [role, setRole] = useState<RoleCode>('tester')
+  const [roleId, setRoleId] = useState('')
   const [password, setPassword] = useState('')
+  const { show: showToast } = useToast()
 
   const createMutation = useMutation({
-    mutationFn: () => createUser({ email, name, role, password }),
+    mutationFn: () => createUser({ email, name, role_id: roleId, password }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setEmail('')
       setName('')
-      setRole('tester')
+      setRoleId('')
       setPassword('')
       onClose()
+      showToast('success', 'User created')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = createMutation.error instanceof ApiError ? createMutation.error.message : null
@@ -236,10 +265,13 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="user-role">Role</Label>
-          <Select id="user-role" value={role} onChange={(e) => setRole(e.target.value as RoleCode)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
+          <Select id="user-role" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+            <option value="" disabled>
+              Select a role…
+            </option>
+            {activeRoles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
               </option>
             ))}
           </Select>
@@ -261,7 +293,11 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>
+          <Button
+            size="sm"
+            disabled={createMutation.isPending || !roleId}
+            onClick={() => createMutation.mutate()}
+          >
             {createMutation.isPending ? 'Creating…' : 'Create User'}
           </Button>
         </div>
@@ -279,6 +315,7 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [name, setName] = useState('')
   const [role, setRole] = useState<RoleCode>('tester')
   const [sentLink, setSentLink] = useState<string | null>(null)
+  const { show: showToast } = useToast()
 
   const inviteMutation = useMutation({
     mutationFn: () => inviteUser({ email, name, role }),
@@ -288,8 +325,10 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
         setSentLink(`${window.location.origin}/accept-invite/${data.invite_token}`)
       } else {
         handleClose()
+        showToast('success', 'Invite sent')
       }
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = inviteMutation.error instanceof ApiError ? inviteMutation.error.message : null
@@ -337,7 +376,7 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="invite-role">Role</Label>
               <Select id="invite-role" value={role} onChange={(e) => setRole(e.target.value as RoleCode)}>
-                {ROLES.map((r) => (
+                {INVITE_ROLES.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>

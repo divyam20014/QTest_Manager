@@ -35,6 +35,16 @@ export interface TestCase {
   created_at: string
   steps: StepOut[]
   custom_fields: Record<string, unknown>
+  scenario_id: string | null
+  scenario_description: string | null
+  prerequisite: string | null
+  test_data: string | null
+  // Pass 2: NOT editable -- derived read-only from the most recent real
+  // execution of this test case across any test run. Absent (null) if
+  // never executed.
+  last_execution_result: string | null
+  last_executed_by_name: string | null
+  last_execution_date: string | null
 }
 
 export interface TestCaseListResponse {
@@ -87,10 +97,15 @@ export interface VersionCompare {
 
 export interface TestCaseCreateRequest {
   title: string
+  module_id?: string | null
   description?: string
   priority: Priority
   assignee_id?: string | null
   steps: StepIn[]
+  scenario_id?: string | null
+  scenario_description?: string | null
+  prerequisite?: string | null
+  test_data?: string | null
 }
 
 export type TestCaseUpdateRequest = Partial<TestCaseCreateRequest>

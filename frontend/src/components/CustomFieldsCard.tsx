@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useToast } from '@/lib/toast'
 
 // Tier 5 / ADR-055: tenant-defined custom fields. Values are already
 // included inline on the owning entity's own GET response (`custom_fields`)
@@ -119,13 +120,16 @@ export function CustomFieldsCard({
   // inside an effect for what's really a derived value.
   const [edits, setEdits] = useState<Record<string, unknown>>({})
   const merged = { ...valuesQuery.data?.values, ...edits }
+  const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
     mutationFn: () => setCustomFieldValues(ownerType, ownerId, merged),
     onSuccess: (data) => {
       queryClient.setQueryData(['custom-field-values', ownerType, ownerId], data)
       setEdits({})
+      showToast('success', 'Custom field values saved')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null

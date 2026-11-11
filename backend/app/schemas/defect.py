@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field, model_validator
 # per-tenant option codes, validated at the service layer against each tenant's
 # current `field_options` rows (seeded with these same four values by default).
 Severity = Annotated[str, Field(min_length=1, max_length=64)]
+# Pass 2: Defect gains a Priority value set, same tenant-configurable
+# field_options mechanism as severity ('defect_priority' field_key) --
+# never a hardcoded enum.
+Priority = Annotated[str, Field(min_length=1, max_length=64)]
 DefectStatus = Literal["New", "Open", "Fixed", "Verified", "Closed"]
 LinkableType = Literal["execution_step", "test_case", "defect"]
 LinkType = Literal["relates_to", "duplicate_of", "caused_by"]
@@ -36,11 +40,22 @@ class DefectCreateRequest(BaseModel):
     test_run_id: UUID | None = None
     title: str | None = Field(default=None, min_length=5)
     severity: Severity
+    # Pass 2: mandatory in the UI form and CSV import (per the confirmed
+    # spreadsheet schema), but kept optional here with a safe default --
+    # matching the same backward-compatibility reasoning as TestCase's
+    # module_id/description (see ADR-061): dozens of pre-existing tests
+    # create defects without a priority.
+    priority: Priority = "Medium"
     description: str | None = None
+    steps_to_reproduce: str | None = None
     actual_result: str | None = None
     expected_result: str | None = None
     environment: str | None = None
     environment_id: UUID | None = None
+    module_id: UUID | None = None
+    # Pass 2: restricted at the service layer to users already assigned to
+    # this defect's project.
+    assigned_to: UUID | None = None
 
     @model_validator(mode="after")
     def _require_project_or_step_or_run(self) -> "DefectCreateRequest":
@@ -49,6 +64,21 @@ class DefectCreateRequest(BaseModel):
         if self.execution_step_id is None and self.title is None:
             raise ValueError("title is required unless created from a failed execution step")
         return self
+
+
+class DefectUpdateRequest(BaseModel):
+    """Pass 2: a generic edit endpoint didn't exist before -- field-specific
+    PATCH routes (status/environment/build-release/root-cause) covered
+    everything editable until this schema realignment added several more
+    plain fields with no workflow logic attached."""
+
+    title: str | None = Field(default=None, min_length=5)
+    severity: Severity | None = None
+    priority: Priority | None = None
+    description: str | None = None
+    steps_to_reproduce: str | None = None
+    assigned_to: UUID | None = None
+    module_id: UUID | None = None
 
 
 class DefectStatusUpdateRequest(BaseModel):
@@ -138,9 +168,11 @@ class DefectOut(BaseModel):
     step_number: int | None
     title: str
     severity: Severity
+    priority: Priority
     status: DefectStatus
     status_label: str
     description: str | None
+    steps_to_reproduce: str | None
     actual_result: str | None
     expected_result: str | None
     environment: str | None
@@ -151,6 +183,10 @@ class DefectOut(BaseModel):
     fixed_in_release_id: UUID | None
     fixed_in_release_name: str | None
     root_cause: RootCause | None
+    module_id: UUID | None
+    module_name: str | None
+    assigned_to: UUID | None
+    assigned_to_name: str | None
     reported_by: UUID
     reported_by_name: str | None
     created_at: datetime

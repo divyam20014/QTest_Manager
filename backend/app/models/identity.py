@@ -36,12 +36,30 @@ class PlatformAdmin(Base, UUIDPKMixin):
 
 
 class Role(Base, UUIDPKMixin):
-    """Fixed seed set per BRD §3.2 (ADR-014): admin, manager, tester."""
+    """ADR-014 originally fixed this to 3 seed rows (admin/manager/tester).
+    ADR-059 formally supersedes that: a tenant may now also define its own
+    custom roles. System roles keep `tenant_id IS NULL` (shared by every
+    tenant, exactly as before -- no per-tenant duplication); a custom role
+    is scoped to the one tenant that created it via `tenant_id`. `code` stays
+    unique-but-nullable (Postgres treats multiple NULLs as distinct), since
+    only the 3 system roles are ever referenced by a fixed code string
+    elsewhere in the codebase -- custom roles are only ever looked up by id.
+    """
 
     __tablename__ = "roles"
 
-    code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    code: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    # Deliberately not a ForeignKey("tenants.id") -- see the migration's
+    # own comment: a real FK would make `TRUNCATE tenants CASCADE` wipe
+    # every system role along with it. Validated service-side instead.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.text("false")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa.text("true")
+    )
 
 
 class Permission(Base, UUIDPKMixin):

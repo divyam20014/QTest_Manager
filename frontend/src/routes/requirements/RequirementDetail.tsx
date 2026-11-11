@@ -25,6 +25,8 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
+import { useToast } from '@/lib/toast'
 
 const REQUIREMENT_HISTORY_ACTION_LABEL: Record<string, string> = {
   'requirement.created': 'Requirement created',
@@ -39,7 +41,7 @@ const REQUIREMENT_HISTORY_ACTION_LABEL: Record<string, string> = {
 export function RequirementDetail() {
   const { requirementId } = useParams<{ requirementId: string }>()
   const { user } = useAuth()
-  const canManage = user?.role === 'admin' || user?.role === 'manager'
+  const canManage = isManagerOrAbove(user)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
@@ -47,6 +49,7 @@ export function RequirementDetail() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const [analyzeOpen, setAnalyzeOpen] = useState(false)
+  const { show: showToast } = useToast()
 
   const requirementQuery = useQuery({
     queryKey: ['requirements', 'detail', requirementId],
@@ -67,12 +70,22 @@ export function RequirementDetail() {
 
   const unlinkMutation = useMutation({
     mutationFn: (testCaseId: string) => unlinkTestCase(requirementId!, testCaseId),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Test case unlinked')
+    },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not unlink that test case'),
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteRequirement(requirementId!),
-    onSuccess: () => navigate(`/projects/${requirementQuery.data?.project_id}/requirements`),
+    onSuccess: () => {
+      navigate(`/projects/${requirementQuery.data?.project_id}/requirements`)
+      showToast('success', 'Requirement deleted')
+    },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not delete this requirement'),
   })
 
   if (requirementQuery.isLoading) {
@@ -390,11 +403,13 @@ function EditRequirementDialog({
   const [title, setTitle] = useState(initialTitle)
   const [description, setDescription] = useState(initialDescription)
 
+  const { show: showToast } = useToast()
   const saveMutation = useMutation({
     mutationFn: () => updateRequirement(requirementId, { title, description }),
     onSuccess: () => {
       onSaved()
       onClose()
+      showToast('success', 'Requirement saved as a new version')
     },
   })
 
@@ -459,12 +474,19 @@ function LinkTestCaseDialog({
     enabled: open,
   })
 
+  const { show: showToast } = useToast()
   const linkMutation = useMutation({
     mutationFn: () => linkTestCase(requirementId, selected),
     onSuccess: () => {
       onLinked()
       setSelected('')
       onClose()
+      // Deliberately distinct from the "Test case linked" history-entry
+      // label (HISTORY_ACTION_LABEL['requirement.linked']) shown on this
+      // same page -- an identical toast message caused a real strict-mode
+      // locator collision elsewhere in this pass; avoiding the same risk
+      // here pre-emptively.
+      showToast('success', 'Linked test case to requirement')
     },
   })
 

@@ -59,8 +59,10 @@ export function ImportDialog({
     <Dialog open={open} onClose={handleClose} title="Import Test Cases" className="max-w-xl">
       <div className="flex flex-col gap-3 text-sm">
         <p className="text-[var(--muted-foreground)]">
-          Upload a CSV with columns: Title, Project Name, Priority, Status, Assignee Email, Steps. Each row names
-          its own project, so one file can cover multiple projects.{' '}
+          Upload a CSV with columns: Title, Module (required), Sub Module, Project Name, Priority,
+          Status, Description (required), Scenario Id, Scenario Description, Prerequisite, Test
+          Data, Assignee Email, Steps. Each row names its own project, so one file can cover
+          multiple projects.{' '}
           <a href={templateDownloadUrl} className="underline" target="_blank" rel="noopener noreferrer">
             Download template
           </a>

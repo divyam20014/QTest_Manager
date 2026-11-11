@@ -11,6 +11,7 @@ import {
 import { ApiError } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useToast } from '@/lib/toast'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -32,6 +33,7 @@ export function AttachmentsPanel({
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryKey = ['attachments', ownerType, ownerId]
+  const { show: showToast } = useToast()
 
   const attachmentsQuery = useQuery({
     queryKey,
@@ -40,12 +42,20 @@ export function AttachmentsPanel({
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadAttachment(ownerType, ownerId, file),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey })
+      showToast('success', 'File uploaded')
+    },
+    // No onError toast -- `uploadError` below already renders this inline.
   })
 
   const deleteMutation = useMutation({
     mutationFn: (attachmentId: string) => deleteAttachment(attachmentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey })
+      showToast('success', 'Attachment deleted')
+    },
+    onError: () => showToast('error', 'Could not delete that attachment'),
   })
 
   const uploadError = uploadMutation.error instanceof ApiError ? uploadMutation.error.message : null

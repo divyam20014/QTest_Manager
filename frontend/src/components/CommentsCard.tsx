@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
+import { useToast } from '@/lib/toast'
 
 // Phase 8 (AI/SaaS vision roadmap, GAP-74): reuses the exact same
 // polymorphic owner_type pattern Phase 7's AttachmentsCard established --
@@ -26,6 +28,7 @@ export function CommentsPanel({
   const queryKey = ['comments', ownerType, ownerId]
   const [body, setBody] = useState('')
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([])
+  const { show: showToast } = useToast()
 
   const commentsQuery = useQuery({ queryKey, queryFn: () => listComments(ownerType, ownerId) })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
@@ -36,16 +39,22 @@ export function CommentsPanel({
       queryClient.invalidateQueries({ queryKey })
       setBody('')
       setMentionedUserIds([])
+      showToast('success', 'Comment posted')
     },
+    // No onError toast -- `createError` below already renders this inline.
   })
 
   const deleteMutation = useMutation({
     mutationFn: (commentId: string) => deleteComment(commentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey })
+      showToast('success', 'Comment deleted')
+    },
+    onError: () => showToast('error', 'Could not delete that comment'),
   })
 
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
-  const canManage = user?.role === 'admin' || user?.role === 'manager'
+  const canManage = isManagerOrAbove(user)
 
   function toggleMention(userId: string) {
     setMentionedUserIds((prev) =>

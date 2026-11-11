@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
-import { createDefect, listDefects, type DefectStatus, type Severity } from '@/api/defects'
+import { createDefect, listDefects, type DefectStatus, type Priority, type Severity } from '@/api/defects'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
+import { useToast } from '@/lib/toast'
+import { DefectImportDialog } from './DefectImportDialog'
 import { STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
 export function DefectsList() {
@@ -27,6 +29,7 @@ export function DefectsList() {
   const [createdFrom, setCreatedFrom] = useState('')
   const [createdTo, setCreatedTo] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all-for-filter'],
@@ -59,7 +62,12 @@ export function DefectsList() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Defects</h1>
-        {canCreate && <Button onClick={() => setCreateOpen(true)}>New Defect</Button>}
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            Import
+          </Button>
+          {canCreate && <Button onClick={() => setCreateOpen(true)}>New Defect</Button>}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -148,6 +156,7 @@ export function DefectsList() {
               <th className="px-4 py-2 font-medium">Title</th>
               <th className="px-4 py-2 font-medium">Project</th>
               <th className="px-4 py-2 font-medium">Severity</th>
+              <th className="px-4 py-2 font-medium">Priority</th>
               <th className="px-4 py-2 font-medium">Status</th>
               <th className="px-4 py-2 font-medium">SLA</th>
               <th className="px-4 py-2 font-medium">Reported By</th>
@@ -157,7 +166,7 @@ export function DefectsList() {
           <tbody>
             {defectsQuery.data?.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                <td colSpan={8} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
                   No defects found.
                 </td>
               </tr>
@@ -176,6 +185,7 @@ export function DefectsList() {
                 <td className="px-4 py-2">
                   <Badge tone={severityTone(d.severity)}>{d.severity}</Badge>
                 </td>
+                <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">{d.priority}</td>
                 <td className="px-4 py-2">
                   <Badge tone={STATUS_TONE[d.status]}>{d.status_label}</Badge>
                 </td>
@@ -202,6 +212,7 @@ export function DefectsList() {
         projects={projectsQuery.data?.items ?? []}
         onCreated={() => queryClient.invalidateQueries({ queryKey: ['defects'] })}
       />
+      <DefectImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   )
 }
@@ -220,22 +231,36 @@ function NewDefectDialog({
   const [projectId, setProjectId] = useState('')
   const [title, setTitle] = useState('')
   const [severity, setSeverity] = useState<Severity>('Medium')
+  const [priority, setPriority] = useState<Priority>('Medium')
   const [description, setDescription] = useState('')
   const severitiesQuery = useQuery({
     queryKey: ['field-options', 'defect_severity'],
     queryFn: () => listFieldOptions('defect_severity'),
   })
+  const prioritiesQuery = useQuery({
+    queryKey: ['field-options', 'defect_priority'],
+    queryFn: () => listFieldOptions('defect_priority'),
+  })
 
+  const { show: showToast } = useToast()
   const createMutation = useMutation({
-    mutationFn: () => createDefect({ project_id: projectId, title, severity, description }),
+    mutationFn: () => createDefect({ project_id: projectId, title, severity, priority, description }),
     onSuccess: () => {
       onCreated()
       setProjectId('')
       setTitle('')
       setSeverity('Medium')
+      setPriority('Medium')
       setDescription('')
       onClose()
+      // Deliberately distinct from the "Defect created" history-entry
+      // label shown on the defect detail page -- matching text caused a
+      // real strict-mode locator collision elsewhere in this pass.
+      showToast('success', 'New defect created')
     },
+    // No onError toast -- `serverError` below already renders this inline,
+    // avoiding the duplicate-text strict-mode-locator problem confirmed by
+    // a real Playwright failure elsewhere in this pass.
   })
   const serverError = createMutation.error instanceof ApiError ? createMutation.error.message : null
 
@@ -267,6 +292,20 @@ function NewDefectDialog({
             {(severitiesQuery.data ?? []).map((s) => (
               <option key={s.code} value={s.code}>
                 {s.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-defect-priority">Priority</Label>
+          <Select
+            id="new-defect-priority"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as Priority)}
+          >
+            {(prioritiesQuery.data ?? []).map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.label}
               </option>
             ))}
           </Select>

@@ -5,7 +5,8 @@ export interface User {
   id: string
   email: string
   name: string
-  role: RoleCode
+  role: string
+  role_id: string
   is_active: boolean
   created_at: string
 }
@@ -13,13 +14,17 @@ export interface User {
 export interface UserCreateRequest {
   email: string
   name: string
-  role: RoleCode
+  // ADR-059: pass exactly one -- `role` for a fixed system role (back-
+  // compat), `role_id` to assign any of the tenant's own custom roles.
+  role?: RoleCode
+  role_id?: string
   password: string
 }
 
 export interface UserUpdateRequest {
   name?: string
   role?: RoleCode
+  role_id?: string
   is_active?: boolean
 }
 

@@ -4,6 +4,37 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
+# Pass 2 (ADR-061): Module and Description are new mandatory CSV columns;
+# Sub Module/Scenario Id/Scenario Description/Prerequisite/Test Data are new
+# optional ones. HEADER mirrors csv_import_service.EXPECTED_HEADERS exactly.
+HEADER = (
+    "Title,Module,Sub Module,Project Name,Priority,Status,Description,"
+    "Scenario Id,Scenario Description,Prerequisite,Test Data,Assignee Email,Steps"
+)
+DEFAULT_DESCRIPTION = "A functional description covering this test scenario."
+
+
+def _row(
+    title: str,
+    project_name: str,
+    priority: str = "Medium",
+    status: str = "Draft",
+    assignee_email: str = "",
+    steps: str = "Do something|Expected outcome",
+    module: str = "Claims",
+    sub_module: str = "",
+    description: str = DEFAULT_DESCRIPTION,
+    scenario_id: str = "",
+    scenario_description: str = "",
+    prerequisite: str = "",
+    test_data: str = "",
+) -> str:
+    return (
+        f'"{title}","{module}","{sub_module}","{project_name}","{priority}","{status}",'
+        f'"{description}","{scenario_id}","{scenario_description}","{prerequisite}",'
+        f'"{test_data}","{assignee_email}","{steps}"\n'
+    )
+
 
 def _bootstrap_tenant(client: TestClient, platform_admin: dict) -> dict:
     response = client.post(
@@ -79,17 +110,27 @@ def test_template_download(client: TestClient, platform_admin: dict) -> None:
     response = client.get("/api/v1/test-cases/import/template.csv")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
-    assert "Title,Project Name,Priority,Status,Assignee Email,Steps" in response.text
+    assert HEADER in response.text
 
 
 def test_valid_rows_import_successfully(client: TestClient, platform_admin: dict) -> None:
     _, project = _setup_admin_and_project(client, platform_admin, "Apex Motor Claims Modernization")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Verify Total Loss Settlement","Apex Motor Claims Modernization","Critical","Draft",,'
-        '"Input Policy Number|ACV displayed;Apply $500 deductible|Payout = ACV - 500"\n'
-        '"Verify NCB Retention","Apex Motor Claims Modernization","High","Approved",,'
-        '"Add secondary driver|Surcharge applied without dropping NCB"\n'
+        HEADER + "\n"
+        + _row(
+            "Verify Total Loss Settlement",
+            "Apex Motor Claims Modernization",
+            priority="Critical",
+            status="Draft",
+            steps="Input Policy Number|ACV displayed;Apply $500 deductible|Payout = ACV - 500",
+        )
+        + _row(
+            "Verify NCB Retention",
+            "Apex Motor Claims Modernization",
+            priority="High",
+            status="Approved",
+            steps="Add secondary driver|Surcharge applied without dropping NCB",
+        )
     )
     report = _upload_csv(client, csv_text)
     assert report["total_rows"] == 2
@@ -100,6 +141,7 @@ def test_valid_rows_import_successfully(client: TestClient, platform_admin: dict
     assert len(cases) == 2
     approved = next(c for c in cases if c["title"] == "Verify NCB Retention")
     assert approved["status"] == "approved"
+    assert approved["description"] == DEFAULT_DESCRIPTION
 
 
 def test_invalid_rows_reported_without_blocking_valid_rows(
@@ -107,20 +149,46 @@ def test_invalid_rows_reported_without_blocking_valid_rows(
 ) -> None:
     _, project = _setup_admin_and_project(client, platform_admin, "Apex Motor Claims Modernization")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Valid Row Title Here","Apex Motor Claims Modernization","High","Draft",,'
-        '"Do something|Expected outcome"\n'
-        '"Bad","Apex Motor Claims Modernization","High","Draft",,"Do something|Expected outcome"\n'
-        '"Nonexistent Project Row","Does Not Exist Project","High","Draft",,"Action|Expected"\n'
-        '"Bad Priority Row Here","Apex Motor Claims Modernization","Severe","Draft",,"Action|Expected"\n'  # noqa: E501
-        '"Bad Assignee Row Here","Apex Motor Claims Modernization","High","Draft","nobody@nowhere.com",'  # noqa: E501
-        '"Action|Expected"\n'
-        '"Malformed Steps Row Here","Apex Motor Claims Modernization","High","Draft",,"no pipe here"\n'  # noqa: E501
+        HEADER + "\n"
+        + _row("Valid Row Title Here", "Apex Motor Claims Modernization", priority="High")
+        + _row("Bad", "Apex Motor Claims Modernization", priority="High")
+        + _row(
+            "Nonexistent Project Row",
+            "Does Not Exist Project",
+            priority="High",
+            steps="Action|Expected",
+        )
+        + _row(
+            "Bad Priority Row Here",
+            "Apex Motor Claims Modernization",
+            priority="Severe",
+            steps="Action|Expected",
+        )
+        + _row(
+            "Bad Assignee Row Here",
+            "Apex Motor Claims Modernization",
+            priority="High",
+            assignee_email="nobody@nowhere.com",
+            steps="Action|Expected",
+        )
+        + _row(
+            "Malformed Steps Row Here",
+            "Apex Motor Claims Modernization",
+            priority="High",
+            steps="no pipe here",
+        )
+        + _row(
+            "Missing Module Row Here",
+            "Apex Motor Claims Modernization",
+            priority="High",
+            steps="Action|Expected",
+            module="",
+        )
     )
     report = _upload_csv(client, csv_text)
-    assert report["total_rows"] == 6
+    assert report["total_rows"] == 7
     assert report["created_count"] == 1
-    assert report["error_count"] == 5
+    assert report["error_count"] == 6
 
     error_rows = [r for r in report["rows"] if r["status"] == "error"]
     assert any("Title must be at least 5 characters" in e for r in error_rows for e in r["errors"])
@@ -128,6 +196,7 @@ def test_invalid_rows_reported_without_blocking_valid_rows(
     assert any("Priority" in e and "invalid" in e for r in error_rows for e in r["errors"])
     assert any("does not match an active user" in e for r in error_rows for e in r["errors"])
     assert any("Malformed step" in e for r in error_rows for e in r["errors"])
+    assert any("Module is required" in e for r in error_rows for e in r["errors"])
 
     cases = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]["items"]
     assert len(cases) == 1
@@ -157,9 +226,16 @@ def test_tester_restricted_to_assigned_project_rows(
     _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
 
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Allowed Project Row Here","Visible Project","High","Draft",,"Action|Expected"\n'
-        f'"Blocked Project Row Here","{hidden_project["name"]}","High","Draft",,"Action|Expected"\n'
+        HEADER + "\n"
+        + _row(
+            "Allowed Project Row Here", "Visible Project", priority="High", steps="Action|Expected"
+        )
+        + _row(
+            "Blocked Project Row Here",
+            hidden_project["name"],
+            priority="High",
+            steps="Action|Expected",
+        )
     )
     report = _upload_csv(tester_client, csv_text)
     assert report["created_count"] == 1
@@ -171,15 +247,23 @@ def test_tester_restricted_to_assigned_project_rows(
 def test_export_round_trip(client: TestClient, platform_admin: dict) -> None:
     _, project = _setup_admin_and_project(client, platform_admin, "Apex Motor Claims Modernization")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Round Trip Test Case","Apex Motor Claims Modernization","High","Draft",,'
-        '"Step one action|Step one expected;Step two action|Step two expected"\n'
+        HEADER + "\n"
+        + _row(
+            "Round Trip Test Case",
+            "Apex Motor Claims Modernization",
+            priority="High",
+            module="Claims",
+            sub_module="Total Loss",
+            steps="Step one action|Step one expected;Step two action|Step two expected",
+        )
     )
     _upload_csv(client, csv_text)
 
     export_response = client.get(f"/api/v1/projects/{project['id']}/test-cases/export.csv")
     assert export_response.status_code == 200
     assert "Round Trip Test Case" in export_response.text
+    assert "Claims" in export_response.text
+    assert "Total Loss" in export_response.text
     assert (
         "Step one action|Step one expected;Step two action|Step two expected"
         in export_response.text
@@ -187,11 +271,15 @@ def test_export_round_trip(client: TestClient, platform_admin: dict) -> None:
 
 
 def _generate_bulk_csv(project_name: str, n: int) -> str:
-    lines = ["Title,Project Name,Priority,Status,Assignee Email,Steps"]
+    lines = [HEADER]
     for i in range(n):
         lines.append(
-            f'"Bulk Generated Test Case {i:05d}","{project_name}","Medium","Draft",,'
-            f'"Perform action {i}|Expect outcome {i};Second step {i}|Second outcome {i}"'
+            _row(
+                f"Bulk Generated Test Case {i:05d}",
+                project_name,
+                priority="Medium",
+                steps=f"Perform action {i}|Expect outcome {i};Second step {i}|Second outcome {i}",
+            ).rstrip("\n")
         )
     return "\n".join(lines) + "\n"
 
@@ -317,11 +405,9 @@ def test_row_count_exceeding_cap_rejected(client: TestClient, platform_admin: di
 def test_duplicate_title_within_batch_rejected(client: TestClient, platform_admin: dict) -> None:
     _, project = _setup_admin_and_project(client, platform_admin, "Dedup Batch Project")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Verify Duplicate Handling Here","Dedup Batch Project","High","Draft",,'
-        '"Do something|Expected outcome"\n'
-        '"Verify Duplicate Handling Here","Dedup Batch Project","High","Draft",,'
-        '"Do something|Expected outcome"\n'
+        HEADER + "\n"
+        + _row("Verify Duplicate Handling Here", "Dedup Batch Project", priority="High")
+        + _row("Verify Duplicate Handling Here", "Dedup Batch Project", priority="High")
     )
     report = _upload_csv(client, csv_text)
     assert report["total_rows"] == 2
@@ -346,9 +432,8 @@ def test_duplicate_title_against_existing_case_rejected(
         },
     )
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Already Exists In Project","Dedup Existing Project","High","Draft",,'
-        '"Do something|Expected outcome"\n'
+        HEADER + "\n"
+        + _row("Already Exists In Project", "Dedup Existing Project", priority="High")
     )
     report = _upload_csv(client, csv_text)
     assert report["total_rows"] == 1
@@ -363,11 +448,9 @@ def test_same_title_in_different_projects_is_not_a_duplicate(
     _setup_admin_and_project(client, platform_admin, "Shared Title Project A")
     _create_project(client, "Shared Title Project B")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Verify Shared Title Case","Shared Title Project A","High","Draft",,'
-        '"Do something|Expected outcome"\n'
-        '"Verify Shared Title Case","Shared Title Project B","High","Draft",,'
-        '"Do something|Expected outcome"\n'
+        HEADER + "\n"
+        + _row("Verify Shared Title Case", "Shared Title Project A", priority="High")
+        + _row("Verify Shared Title Case", "Shared Title Project B", priority="High")
     )
     report = _upload_csv(client, csv_text)
     assert report["total_rows"] == 2
@@ -378,9 +461,10 @@ def test_same_title_in_different_projects_is_not_a_duplicate(
 def test_special_characters_in_fields_round_trip(client: TestClient, platform_admin: dict) -> None:
     _, project = _setup_admin_and_project(client, platform_admin, "Spécial Çhars Project")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Vérify “Smart Quotes”, Emoji 🚀 & Comma","Spécial Çhars Project","High","Draft",,'
-        '"Type \"\"quoted\"\" value|Résult contains é, ü, 中文"\n'
+        HEADER + "\n"
+        + '"Vérify “Smart Quotes”, Emoji 🚀 & Comma","Claims","","Spécial Çhars Project",'
+        '"High","Draft","Descripción con acentos é, ü, 中文","","","","",'
+        '"","Type ""quoted"" value|Résult contains é, ü, 中文"\n'
     )
     report = _upload_csv(client, csv_text)
     assert report["total_rows"] == 1
@@ -398,11 +482,15 @@ def test_concurrent_imports_do_not_corrupt_data(client: TestClient, platform_adm
     _, project = _setup_admin_and_project(client, platform_admin, "Concurrent Import Project")
 
     def _make_csv(prefix: str) -> str:
-        lines = ["Title,Project Name,Priority,Status,Assignee Email,Steps"]
+        lines = [HEADER]
         for i in range(25):
             lines.append(
-                f'"{prefix} Case Number {i:03d}","Concurrent Import Project","Medium","Draft",,'
-                f'"Do action {i}|Expect outcome {i}"'
+                _row(
+                    f"{prefix} Case Number {i:03d}",
+                    "Concurrent Import Project",
+                    priority="Medium",
+                    steps=f"Do action {i}|Expect outcome {i}",
+                ).rstrip("\n")
             )
         return "\n".join(lines) + "\n"
 

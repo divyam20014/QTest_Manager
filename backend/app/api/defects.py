@@ -15,6 +15,7 @@ from app.schemas.defect import (
     DefectLinkCreateRequest,
     DefectRootCauseUpdateRequest,
     DefectStatusUpdateRequest,
+    DefectUpdateRequest,
 )
 from app.services import ai_service, defect_service
 
@@ -101,6 +102,19 @@ def get_defect(
     db: Session = Depends(get_db),
 ) -> dict:
     defect = defect_service.get_defect(db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id)
+    return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+
+
+@router.patch("/{defect_id}")
+def update_defect(
+    defect_id: UUID,
+    req: DefectUpdateRequest,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    defect = defect_service.update_defect(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id, req
+    )
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
 
 

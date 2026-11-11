@@ -26,6 +26,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
+import { useToast } from '@/lib/toast'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
 import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
@@ -35,6 +37,7 @@ export function ProjectDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [newMemberId, setNewMemberId] = useState('')
+  const { show: showToast } = useToast()
 
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -45,12 +48,16 @@ export function ProjectDetail() {
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canManage() })
 
   function canManage() {
-    return user?.role === 'admin' || user?.role === 'manager'
+    return isManagerOrAbove(user)
   }
 
   const updateMutation = useMutation({
     mutationFn: (req: ProjectUpdateRequest) => updateProject(projectId!, req),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects', projectId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      showToast('success', 'Project updated')
+    },
+    // No onError toast -- `updateError` below already renders this inline.
   })
 
   const deleteMutation = useMutation({
@@ -58,7 +65,9 @@ export function ProjectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       navigate('/projects')
+      showToast('success', 'Project deleted')
     },
+    // No onError toast -- `deleteError` below already renders this inline.
   })
 
   const addMemberMutation = useMutation({
@@ -66,12 +75,18 @@ export function ProjectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
       setNewMemberId('')
+      showToast('success', 'Member added')
     },
+    onError: () => showToast('error', 'Could not add that member'),
   })
 
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) => removeProjectMember(projectId!, userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects', projectId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      showToast('success', 'Member removed')
+    },
+    onError: () => showToast('error', 'Could not remove that member'),
   })
 
   const project = projectQuery.data
@@ -239,6 +254,7 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
   const queryClient = useQueryClient()
   const [buildName, setBuildName] = useState('')
   const [releaseName, setReleaseName] = useState('')
+  const { show: showToast } = useToast()
 
   const buildsQuery = useQuery({
     queryKey: ['builds', projectId],
@@ -254,22 +270,34 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
     onSuccess: () => {
       setBuildName('')
       queryClient.invalidateQueries({ queryKey: ['builds', projectId] })
+      showToast('success', 'Build added')
     },
+    onError: () => showToast('error', 'Could not add that build'),
   })
   const deleteBuildMutation = useMutation({
     mutationFn: (id: string) => deleteBuild(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['builds', projectId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['builds', projectId] })
+      showToast('success', 'Build removed')
+    },
+    onError: () => showToast('error', 'Could not remove that build'),
   })
   const createReleaseMutation = useMutation({
     mutationFn: () => createRelease(projectId, { name: releaseName }),
     onSuccess: () => {
       setReleaseName('')
       queryClient.invalidateQueries({ queryKey: ['releases', projectId] })
+      showToast('success', 'Release added')
     },
+    onError: () => showToast('error', 'Could not add that release'),
   })
   const deleteReleaseMutation = useMutation({
     mutationFn: (id: string) => deleteRelease(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['releases', projectId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['releases', projectId] })
+      showToast('success', 'Release removed')
+    },
+    onError: () => showToast('error', 'Could not remove that release'),
   })
 
   return (

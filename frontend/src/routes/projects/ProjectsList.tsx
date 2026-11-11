@@ -19,6 +19,8 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
+import { useToast } from '@/lib/toast'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
 import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
@@ -68,15 +70,21 @@ export function ProjectsList() {
       listProjects({ search, domain, status, priority, sort, page, page_size: PAGE_SIZE }),
   })
 
+  const { show: showToast } = useToast()
   const createMutation = useMutation({
     mutationFn: (req: ProjectCreateRequest) => createProject(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       setCreateOpen(false)
+      showToast('success', 'Project created')
     },
+    // No onError toast here -- `createError` already renders this same
+    // message inline via the form's `serverError` prop; toasting it too
+    // would duplicate the text and trip strict-mode locators that match
+    // on it (confirmed by a real Playwright failure during this pass).
   })
 
-  const canCreate = user?.role === 'admin' || user?.role === 'manager'
+  const canCreate = isManagerOrAbove(user)
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canCreate })
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
 

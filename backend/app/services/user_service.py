@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
@@ -7,24 +6,58 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
+from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, NotFoundError, ValidationAppError
 from app.core.security import hash_password
 from app.models.identity import Role, User
 from app.models.identity import Session as SessionModel
-from app.schemas.user import RoleCode, UserCreateRequest, UserOut, UserUpdateRequest
+from app.schemas.user import UserCreateRequest, UserOut, UserUpdateRequest
 from app.services import plan_limits
 
 
 def to_out(db: Session, user: User) -> UserOut:
-    role_code = db.execute(select(Role.code).where(Role.id == user.role_id)).scalar_one()
+    # The transaction-local `app.current_tenant` GUC resets on every commit
+    # -- callers routinely call this right after create_user/update_user's
+    # own commit, so it must be re-asserted before this query touches the
+    # RLS-protected `roles` table (same recurring bug class fixed
+    # repeatedly elsewhere in this codebase: GAP-17, GAP-49, and every
+    # `_to_out` added since Tier 4).
+    set_tenant_context(db, str(user.tenant_id))
+    role_row = db.execute(
+        select(Role.code, Role.name).where(Role.id == user.role_id)
+    ).one()
     return UserOut(
         id=user.id,
         email=user.email,
         name=user.name,
-        role=cast(RoleCode, role_code),
+        role=role_row.code or role_row.name,
+        role_id=user.role_id,
         is_active=user.is_active,
         created_at=user.created_at,
     )
+
+
+def resolve_role_id(
+    db: Session, tenant_id: UUID, *, role: str | None, role_id: UUID | None
+) -> UUID:
+    """ADR-059: exactly one of the legacy fixed-code `role` or the new
+    `role_id` (any tenant-visible role, system or custom) must be given."""
+    if role_id is not None and role is not None:
+        raise ValidationAppError("Provide either role or role_id, not both")
+    if role_id is not None:
+        found = db.execute(
+            select(Role.id).where(
+                Role.id == role_id,
+                (Role.tenant_id.is_(None)) | (Role.tenant_id == tenant_id),
+                Role.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if found is None:
+            raise ValidationAppError("role_id does not refer to a usable role in this tenant")
+        return found
+    if role is not None:
+        return _role_id_for_code(db, role)
+    raise ValidationAppError("Provide either role or role_id")
 
 
 def list_users(db: Session, tenant_id: UUID) -> list[User]:
@@ -58,7 +91,7 @@ def create_user(db: Session, tenant_id: UUID, actor_user_id: UUID, req: UserCrea
         tenant_id=tenant_id,
         email=req.email,
         name=req.name,
-        role_id=_role_id_for_code(db, req.role),
+        role_id=resolve_role_id(db, tenant_id, role=req.role, role_id=req.role_id),
         password_hash=hash_password(req.password),
     )
     db.add(user)
@@ -95,7 +128,11 @@ def update_user(
 ) -> User:
     user = _get_user_or_404(db, tenant_id, user_id)
 
-    demoting_admin = req.role is not None and req.role != "admin"
+    # Any role change away from the system Admin role -- whether via the
+    # legacy `role` code or a `role_id` pointing at any other role,
+    # including a custom one -- counts as demotion for this guard.
+    changing_role = req.role is not None or req.role_id is not None
+    demoting_admin = changing_role and req.role != "admin"
     deactivating = req.is_active is False
     current_role = db.execute(select(Role.code).where(Role.id == user.role_id)).scalar_one()
 
@@ -105,8 +142,8 @@ def update_user(
 
     if req.name is not None:
         user.name = req.name
-    if req.role is not None:
-        user.role_id = _role_id_for_code(db, req.role)
+    if changing_role:
+        user.role_id = resolve_role_id(db, tenant_id, role=req.role, role_id=req.role_id)
     if req.is_active is not None:
         user.is_active = req.is_active
 

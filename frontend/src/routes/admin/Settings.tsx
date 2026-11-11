@@ -37,6 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useToast } from '@/lib/toast'
 
 // Phase 1 (AI/SaaS vision roadmap): the tenant self-service settings
 // mechanism (GAP-80 / SAAS-GAP-7), extended in Phase 3 (ADR-045) with the
@@ -73,6 +74,7 @@ export function Settings() {
       <SubscriptionCard />
       <BrandingCard />
       <FieldOptionsCard fieldKey="defect_severity" title="Defect Severities" />
+      <FieldOptionsCard fieldKey="defect_priority" title="Defect Priorities" />
       <FieldOptionsCard fieldKey="test_case_priority" title="Test Case Priorities" />
       <StatusLabelsCard entityType="defect" title="Defect Status Labels" />
       <StatusLabelsCard entityType="test_case" title="Test Case Status Labels" />
@@ -98,17 +100,24 @@ function FieldOptionsCard({ fieldKey, title }: { fieldKey: FieldKey; title: stri
   })
   const forbidden = optionsQuery.error instanceof ApiError && optionsQuery.error.code === 'forbidden'
   const [code, setCode] = useState('')
+  const { show: showToast } = useToast()
 
   const createMutation = useMutation({
     mutationFn: () => createFieldOption({ field_key: fieldKey, code, label: code }),
     onSuccess: () => {
       setCode('')
       queryClient.invalidateQueries({ queryKey: ['field-options', fieldKey] })
+      showToast('success', `"${title}" option added`)
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
   const deleteMutation = useMutation({
     mutationFn: deleteFieldOption,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['field-options', fieldKey] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['field-options', fieldKey] })
+      showToast('success', `"${title}" option removed`)
+    },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   if (forbidden) return null
@@ -182,10 +191,15 @@ function StatusLabelsCard({
   })
   const forbidden = labelsQuery.error instanceof ApiError && labelsQuery.error.code === 'forbidden'
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
     mutationFn: (statusCode: string) => setStatusLabel(entityType, statusCode, drafts[statusCode] ?? null),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['status-labels', entityType] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['status-labels', entityType] })
+      showToast('success', 'Status label saved')
+    },
+    onError: () => showToast('error', 'Could not save that status label'),
   })
 
   if (forbidden) return null
@@ -256,6 +270,7 @@ function CustomFieldsCard({
   const [label, setLabel] = useState('')
   const [fieldType, setFieldType] = useState<CustomFieldType>('text')
   const [optionsText, setOptionsText] = useState('')
+  const { show: showToast } = useToast()
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -277,12 +292,17 @@ function CustomFieldsCard({
       setLabel('')
       setOptionsText('')
       queryClient.invalidateQueries({ queryKey: ['custom-field-definitions', entityType] })
+      showToast('success', 'Custom field added')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
   const deleteMutation = useMutation({
     mutationFn: deleteCustomFieldDefinition,
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['custom-field-definitions', entityType] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['custom-field-definitions', entityType] })
+      showToast('success', 'Custom field removed')
+    },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   if (forbidden) return null
@@ -434,7 +454,7 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
   const [currencyCode, setCurrencyCode] = useState(initial.default_currency_code)
   const [timezone, setTimezone] = useState(initial.default_timezone)
   const [allowlistText, setAllowlistText] = useState(initial.ip_allowlist.join('\n'))
-  const [savedMessage, setSavedMessage] = useState(false)
+  const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -448,9 +468,9 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(['settings'], data)
-      setSavedMessage(true)
-      setTimeout(() => setSavedMessage(false), 3000)
+      showToast('success', 'Organization settings saved')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null
@@ -460,7 +480,6 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
       className="flex max-w-sm flex-col gap-3 text-sm"
       onSubmit={(e) => {
         e.preventDefault()
-        setSavedMessage(false)
         saveMutation.mutate()
       }}
     >
@@ -504,7 +523,6 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
         <Button type="submit" size="sm" disabled={saveMutation.isPending}>
           {saveMutation.isPending ? 'Saving…' : 'Save Changes'}
         </Button>
-        {savedMessage && <span className="text-xs text-[var(--status-good)]">Saved.</span>}
       </div>
     </form>
   )
@@ -528,16 +546,16 @@ export function AISettingsCard() {
 function AISettingsForm({ initial }: { initial: TenantSettings }) {
   const queryClient = useQueryClient()
   const [apiKeyInput, setApiKeyInput] = useState('')
-  const [savedMessage, setSavedMessage] = useState(false)
+  const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
     mutationFn: (req: { ai_enabled?: boolean; ai_api_key?: string }) => updateSettings(req),
     onSuccess: (data) => {
       queryClient.setQueryData(['settings'], data)
       setApiKeyInput('')
-      setSavedMessage(true)
-      setTimeout(() => setSavedMessage(false), 3000)
+      showToast('success', 'AI settings saved')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null
@@ -601,7 +619,6 @@ function AISettingsForm({ initial }: { initial: TenantSettings }) {
             </span>
           </div>
           {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-          {savedMessage && <span className="text-xs text-[var(--status-good)]">Saved.</span>}
         </div>
       </CardContent>
     </Card>
@@ -621,20 +638,24 @@ function BrandingForm({ initial }: { initial: TenantBranding }) {
   const queryClient = useQueryClient()
   const [displayName, setDisplayName] = useState(initial.display_name ?? '')
   const [primaryColor, setPrimaryColor] = useState(initial.primary_color ?? '')
-  const [savedMessage, setSavedMessage] = useState(false)
+  const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
     mutationFn: () => updateBranding({ display_name: displayName, primary_color: primaryColor }),
     onSuccess: (data) => {
       queryClient.setQueryData(['branding'], data)
-      setSavedMessage(true)
-      setTimeout(() => setSavedMessage(false), 3000)
+      showToast('success', 'Branding saved')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const logoMutation = useMutation({
     mutationFn: (file: File) => uploadLogo(file),
-    onSuccess: (data) => queryClient.setQueryData(['branding'], data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['branding'], data)
+      showToast('success', 'Logo uploaded')
+    },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError =
@@ -683,7 +704,6 @@ function BrandingForm({ initial }: { initial: TenantBranding }) {
             <Button type="button" size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
               {saveMutation.isPending ? 'Saving…' : 'Save Branding'}
             </Button>
-            {savedMessage && <span className="text-xs text-[var(--status-good)]">Saved.</span>}
           </div>
         </div>
       </CardContent>
@@ -725,7 +745,7 @@ function SsoForm({
   const [clientId, setClientId] = useState(initial.client_id ?? '')
   const [clientSecret, setClientSecret] = useState('')
   const [defaultRole, setDefaultRole] = useState(initial.default_role_code)
-  const [savedMessage, setSavedMessage] = useState(false)
+  const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -739,9 +759,9 @@ function SsoForm({
     onSuccess: (data) => {
       queryClient.setQueryData(['sso-config'], data)
       setClientSecret('')
-      setSavedMessage(true)
-      setTimeout(() => setSavedMessage(false), 3000)
+      showToast('success', 'SSO settings saved')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null
@@ -800,7 +820,6 @@ function SsoForm({
         <Button type="submit" size="sm" disabled={saveMutation.isPending}>
           {saveMutation.isPending ? 'Saving…' : 'Save SSO Settings'}
         </Button>
-        {savedMessage && <span className="text-xs text-[var(--status-good)]">Saved.</span>}
       </div>
     </form>
   )
@@ -814,18 +833,25 @@ function ScimTokensCard() {
   const tokensQuery = useQuery({ queryKey: ['scim-tokens'], queryFn: listScimTokens })
   const forbidden = tokensQuery.error instanceof ApiError && tokensQuery.error.code === 'forbidden'
   const [justCreated, setJustCreated] = useState<string | null>(null)
+  const { show: showToast } = useToast()
 
   const createMutation = useMutation({
     mutationFn: createScimToken,
     onSuccess: (data) => {
       setJustCreated(data.token)
       queryClient.invalidateQueries({ queryKey: ['scim-tokens'] })
+      showToast('success', 'SCIM token created')
     },
+    onError: () => showToast('error', 'Could not create a SCIM token'),
   })
 
   const revokeMutation = useMutation({
     mutationFn: revokeScimToken,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scim-tokens'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scim-tokens'] })
+      showToast('success', 'SCIM token revoked')
+    },
+    onError: () => showToast('error', 'Could not revoke that SCIM token'),
   })
 
   if (forbidden) return null
@@ -894,6 +920,7 @@ function ServiceTokensCard() {
   const forbidden = tokensQuery.error instanceof ApiError && tokensQuery.error.code === 'forbidden'
   const [name, setName] = useState('')
   const [justCreated, setJustCreated] = useState<string | null>(null)
+  const { show: showToast } = useToast()
 
   const createMutation = useMutation({
     mutationFn: () => createServiceToken(name),
@@ -901,12 +928,18 @@ function ServiceTokensCard() {
       setJustCreated(data.raw_value)
       setName('')
       queryClient.invalidateQueries({ queryKey: ['service-tokens'] })
+      showToast('success', 'Service token created')
     },
+    onError: () => showToast('error', 'Could not create a service token'),
   })
 
   const revokeMutation = useMutation({
     mutationFn: revokeServiceToken,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['service-tokens'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['service-tokens'] })
+      showToast('success', 'Service token revoked')
+    },
+    onError: () => showToast('error', 'Could not revoke that service token'),
   })
 
   if (forbidden) return null
@@ -980,10 +1013,15 @@ function ServiceTokensCard() {
 // job queue rather than blocking the request.
 function ExportCard() {
   const [jobId, setJobId] = useState<string | null>(null)
+  const { show: showToast } = useToast()
 
   const requestMutation = useMutation({
     mutationFn: requestExport,
-    onSuccess: (data) => setJobId(data.job_id),
+    onSuccess: (data) => {
+      setJobId(data.job_id)
+      showToast('success', 'Export requested -- this may take a moment to generate')
+    },
+    onError: () => showToast('error', 'Could not request an export'),
   })
 
   const jobQuery = useQuery({

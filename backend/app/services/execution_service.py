@@ -94,6 +94,25 @@ def _authorize_run_case_access(
     return run
 
 
+def _require_execution_rights(role_code: str, user_id: UUID, run_case: TestRunCase) -> None:
+    """ADR-059: strict assignee-based execution. A role without tenant-wide
+    project access (today's Tester, or a custom role lacking
+    `project.view.all`) may only execute -- open a step or record a
+    verdict on -- a run case explicitly assigned to them. Unlike the
+    read-only visibility check in `_authorize_run_case_access`, there is no
+    unassigned-run-case fallback: an unassigned run case is simply not
+    executable by such a role until an Admin/Manager assigns one. Full-
+    access roles are unaffected."""
+    if role_code in ("admin", "manager"):
+        return
+    if run_case.assigned_to == user_id:
+        return
+    raise ForbiddenError(
+        "This test case is not assigned to you. Ask an Admin or Manager to assign it "
+        "before you can execute it."
+    )
+
+
 def get_execution_step(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, execution_step_id: UUID
 ) -> ExecutionStep:
@@ -588,6 +607,7 @@ def open_step(
         select(TestRunCase).where(TestRunCase.id == step.test_run_case_id)
     ).scalar_one()
     run = _authorize_run_case_access(db, tenant_id, role_code, user_id, run_case)
+    _require_execution_rights(role_code, user_id, run_case)
     if run.finished_at is not None:
         raise ConflictError("Cannot modify steps on a finished test run")
     if run.paused_at is not None:
@@ -637,6 +657,7 @@ def record_verdict(
         select(TestRunCase).where(TestRunCase.id == step.test_run_case_id)
     ).scalar_one()
     run = _authorize_run_case_access(db, tenant_id, role_code, user_id, run_case)
+    _require_execution_rights(role_code, user_id, run_case)
     if run.finished_at is not None:
         raise ConflictError("Cannot modify steps on a finished test run")
     if run.paused_at is not None:

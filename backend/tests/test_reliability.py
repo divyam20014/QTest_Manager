@@ -289,11 +289,15 @@ def test_csv_import_commits_valid_rows_even_when_other_rows_in_the_same_batch_fa
     project = _create_project(client)
 
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        f'"Valid Reliability Case One","{project["name"]}","High","Draft","",'
+        "Title,Module,Sub Module,Project Name,Priority,Status,Description,Scenario Id,"
+        "Scenario Description,Prerequisite,Test Data,Assignee Email,Steps\n"
+        f'"Valid Reliability Case One","Reliability","","{project["name"]}","High","Draft",'
+        '"Description one.","","","","","",'
         '"Do X|See Y"\n'
-        f'"Bad","{project["name"]}","High","Draft","","Do X|See Y"\n'  # title too short
-        f'"Valid Reliability Case Two","{project["name"]}","High","Draft","",'
+        f'"Bad","Reliability","","{project["name"]}","High","Draft","Desc.","","","","","",'
+        '"Do X|See Y"\n'  # title too short
+        f'"Valid Reliability Case Two","Reliability","","{project["name"]}","High","Draft",'
+        '"Description two.","","","","","",'
         '"Do X|See Y"\n'
     )
 

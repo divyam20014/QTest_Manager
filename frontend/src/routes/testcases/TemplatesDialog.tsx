@@ -6,6 +6,7 @@ import { importTemplates, listTemplates } from '@/api/templates'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
+import { useToast } from '@/lib/toast'
 
 // Tier 5 / ADR-055 / PV-10.1: Insurance QA Pack -- a small, generic
 // template library (Claims/Underwriting/Policy Admin). Importing creates
@@ -23,6 +24,7 @@ export function TemplatesDialog({
 }) {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const { show: showToast } = useToast()
 
   const templatesQuery = useQuery({
     queryKey: ['templates'],
@@ -35,9 +37,12 @@ export function TemplatesDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
       queryClient.invalidateQueries({ queryKey: ['modules', projectId] })
+      const count = selected.size
       setSelected(new Set())
       onClose()
+      showToast('success', `${count} template${count === 1 ? '' : 's'} imported`)
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = importMutation.error instanceof ApiError ? importMutation.error.message : null

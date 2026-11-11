@@ -11,13 +11,18 @@ import {
   getPossibleDuplicates,
   reopenDefect,
   setDefectEnvironment,
+  updateDefect,
   updateDefectBuildRelease,
   updateDefectRootCause,
   updateDefectStatus,
   type DefectStatus,
+  type Priority,
   type RootCause,
 } from '@/api/defects'
+import { listFieldOptions } from '@/api/fieldCustomization'
+import { listModules } from '@/api/modules'
 import { listBuilds, listEnvironments, listReleases } from '@/api/testAssets'
+import { listUsers } from '@/api/users'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
@@ -27,6 +32,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
+import { useToast } from '@/lib/toast'
 import { ROOT_CAUSE_LABEL, ROOT_CAUSES, STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
 const HISTORY_ACTION_LABEL: Record<string, string> = {
@@ -45,7 +52,10 @@ export function DefectDetail() {
   const { defectId } = useParams<{ defectId: string }>()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
   const [verificationConfirmed, setVerificationConfirmed] = useState(false)
+  const onMutationError = (err: unknown, fallback: string) =>
+    showToast('error', err instanceof ApiError ? err.message : fallback)
 
   const defectQuery = useQuery({
     queryKey: ['defects', 'detail', defectId],
@@ -74,6 +84,30 @@ export function DefectDetail() {
     queryFn: () => listReleases(projectId!),
     enabled: !!projectId,
   })
+  const prioritiesQuery = useQuery({
+    queryKey: ['field-options', 'defect_priority'],
+    queryFn: () => listFieldOptions('defect_priority'),
+  })
+  const modulesQuery = useQuery({
+    queryKey: ['test-modules', projectId],
+    queryFn: () => listModules(projectId!),
+    enabled: !!projectId,
+  })
+  // Pass 2: assigned_to is restricted server-side to project members; this
+  // tenant-wide list is a simpler v1 (no dedicated "list project members"
+  // endpoint exists yet) -- a non-member selection is rejected by the
+  // server with a clear error rather than silently allowed.
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+
+  const updateMutation = useMutation({
+    mutationFn: (req: Parameters<typeof updateDefect>[1]) => updateDefect(defectId!, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
+      queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+      showToast('success', 'Defect updated')
+    },
+    onError: (err) => onMutationError(err, 'Could not update defect'),
+  })
 
   const statusMutation = useMutation({
     mutationFn: (status: DefectStatus) => updateDefectStatus(defectId!, status, verificationConfirmed),
@@ -81,7 +115,11 @@ export function DefectDetail() {
       setVerificationConfirmed(false)
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+      showToast('success', 'Status updated')
     },
+    // No onError toast -- `statusError` already renders this inline below
+    // (see JSX), avoiding the duplicate-text strict-mode-locator problem
+    // confirmed by a real Playwright failure elsewhere in this pass.
   })
 
   const rootCauseMutation = useMutation({
@@ -89,7 +127,9 @@ export function DefectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+      showToast('success', 'Root cause updated')
     },
+    onError: (err) => onMutationError(err, 'Could not update root cause'),
   })
 
   const [aiSuggestion, setAiSuggestion] = useState<RootCauseSuggestion | null>(null)
@@ -103,7 +143,9 @@ export function DefectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+      showToast('success', 'Defect reopened')
     },
+    onError: (err) => onMutationError(err, 'Could not reopen defect'),
   })
 
   const environmentMutation = useMutation({
@@ -111,7 +153,9 @@ export function DefectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+      showToast('success', 'Environment updated')
     },
+    onError: (err) => onMutationError(err, 'Could not update environment'),
   })
 
   const buildReleaseMutation = useMutation({
@@ -120,7 +164,9 @@ export function DefectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defects', 'detail', defectId] })
       queryClient.invalidateQueries({ queryKey: ['defects', 'history', defectId] })
+      showToast('success', 'Build/Release updated')
     },
+    onError: (err) => onMutationError(err, 'Could not update build/release'),
   })
 
   const defect = defectQuery.data
@@ -130,7 +176,7 @@ export function DefectDetail() {
   const currentIndex = STATUS_ORDER.indexOf(defect.status)
   const nextStatus = STATUS_ORDER[currentIndex + 1]
   const isClosing = nextStatus === 'Closed'
-  const canCloseRole = user?.role === 'admin' || user?.role === 'manager'
+  const canCloseRole = isManagerOrAbove(user)
   const canAdvance = !isClosing || canCloseRole
   const advanceDisabled = !canAdvance || statusMutation.isPending || (isClosing && !verificationConfirmed)
   const statusError = statusMutation.error instanceof ApiError ? statusMutation.error.message : null
@@ -225,6 +271,66 @@ export function DefectDetail() {
               <div>
                 <dt className="text-xs text-[var(--muted-foreground)]">Description</dt>
                 <dd>{defect.description || 'No description provided.'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">Steps to Reproduce</dt>
+                <dd className="whitespace-pre-line">{defect.steps_to_reproduce || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">Priority</dt>
+                <dd>
+                  <Select
+                    aria-label="Priority"
+                    value={defect.priority}
+                    disabled={updateMutation.isPending}
+                    onChange={(e) => updateMutation.mutate({ priority: e.target.value as Priority })}
+                    className="w-56"
+                  >
+                    {(prioritiesQuery.data ?? []).map((p) => (
+                      <option key={p.code} value={p.code}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </Select>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">Module</dt>
+                <dd>
+                  <Select
+                    aria-label="Module"
+                    value={defect.module_id ?? ''}
+                    disabled={updateMutation.isPending}
+                    onChange={(e) => updateMutation.mutate({ module_id: e.target.value || null })}
+                    className="w-56"
+                  >
+                    <option value="">Not set</option>
+                    {modulesQuery.data?.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.parent_id ? `↳ ${m.name}` : m.name}
+                      </option>
+                    ))}
+                  </Select>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-[var(--muted-foreground)]">Assigned To</dt>
+                <dd>
+                  <Select
+                    aria-label="Assigned to"
+                    value={defect.assigned_to ?? ''}
+                    disabled={updateMutation.isPending}
+                    onChange={(e) => updateMutation.mutate({ assigned_to: e.target.value || null })}
+                    className="w-56"
+                  >
+                    <option value="">Unassigned</option>
+                    {usersQuery.data?.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </Select>
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-[var(--muted-foreground)]">Actual Result</dt>

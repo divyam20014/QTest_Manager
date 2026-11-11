@@ -16,6 +16,7 @@ from app.models.identity import User
 from app.models.project import Project
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
+from app.models.test_module import TestModule
 from app.schemas.defect import (
     DefectCreateRequest,
     DefectHistoryEntryOut,
@@ -23,10 +24,12 @@ from app.schemas.defect import (
     DefectLinkOut,
     DefectOut,
     DefectStatus,
+    DefectUpdateRequest,
     ExecutionEvidenceOut,
     LinkableType,
     LinkType,
     PossibleDuplicateOut,
+    Priority,
     RootCause,
     Severity,
     Verdict,
@@ -92,6 +95,37 @@ def _assigned_project_ids(db: Session, user_id: UUID) -> set[UUID]:
     )
 
 
+def _validate_assignee_membership(
+    db: Session, project: Project, assignee_id: UUID | None
+) -> None:
+    """Pass 2: Defect.assigned_to is confirmed-scoped to users already
+    assigned to the defect's own project -- same membership rule used
+    everywhere else (_require_project_access), never any tenant user."""
+    if assignee_id is None:
+        return
+    assignee = db.execute(select(User).where(User.id == assignee_id)).scalar_one_or_none()
+    if assignee is None or assignee.tenant_id != project.tenant_id:
+        raise ValidationAppError("assigned_to must be an active user in this tenant")
+    if not is_assigned(db, project, assignee_id):
+        raise ValidationAppError("assigned_to must be a member of this defect's project")
+
+
+def _validate_module(
+    db: Session, tenant_id: UUID, project_id: UUID, module_id: UUID | None
+) -> None:
+    if module_id is None:
+        return
+    module = db.execute(
+        select(TestModule).where(
+            TestModule.tenant_id == tenant_id,
+            TestModule.id == module_id,
+            TestModule.project_id == project_id,
+        )
+    ).scalar_one_or_none()
+    if module is None:
+        raise ValidationAppError("module_id must belong to this defect's project")
+
+
 def create_defect(
     db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, req: DefectCreateRequest
 ) -> Defect:
@@ -148,6 +182,9 @@ def create_defect(
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
     field_option_service.validate_code(db, tenant_id, "defect_severity", req.severity)
+    field_option_service.validate_code(db, tenant_id, "defect_priority", req.priority)
+    _validate_assignee_membership(db, project, req.assigned_to)
+    _validate_module(db, tenant_id, project_id, req.module_id)
 
     assert title is not None  # enforced by the schema validator for the standalone/in-run path
 
@@ -160,11 +197,15 @@ def create_defect(
         test_case_version_step_id=test_case_version_step_id,
         title=title,
         severity=req.severity,
+        priority=req.priority,
         description=req.description,
+        steps_to_reproduce=req.steps_to_reproduce,
         actual_result=req.actual_result,
         expected_result=expected_result,
         environment=req.environment,
         environment_id=req.environment_id,
+        module_id=req.module_id,
+        assigned_to=req.assigned_to,
         reported_by=actor_user_id,
     )
     db.add(defect)
@@ -178,6 +219,53 @@ def create_defect(
         entity_type="defect",
         entity_id=defect.id,
         metadata={"title": title, "severity": req.severity},
+    )
+    db.commit()
+    return defect
+
+
+def update_defect(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    defect_id: UUID,
+    req: DefectUpdateRequest,
+) -> Defect:
+    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    project = _get_project_or_404(db, tenant_id, defect.project_id)
+    _require_project_access(db, project, role_code, actor_user_id)
+
+    changes = req.model_dump(exclude_unset=True)
+    if "severity" in changes:
+        new_severity = cast(str, req.severity)
+        field_option_service.validate_code(db, tenant_id, "defect_severity", new_severity)
+        defect.severity = new_severity
+    if "priority" in changes:
+        new_priority = cast(str, req.priority)
+        field_option_service.validate_code(db, tenant_id, "defect_priority", new_priority)
+        defect.priority = new_priority
+    if "title" in changes:
+        defect.title = cast(str, req.title)
+    if "description" in changes:
+        defect.description = req.description
+    if "steps_to_reproduce" in changes:
+        defect.steps_to_reproduce = req.steps_to_reproduce
+    if "assigned_to" in changes:
+        _validate_assignee_membership(db, project, req.assigned_to)
+        defect.assigned_to = req.assigned_to
+    if "module_id" in changes:
+        _validate_module(db, tenant_id, project.id, req.module_id)
+        defect.module_id = req.module_id
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="defect.updated",
+        entity_type="defect",
+        entity_id=defect.id,
+        metadata={"fields": sorted(changes.keys())},
     )
     db.commit()
     return defect
@@ -698,6 +786,18 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
             select(Release.name).where(Release.id == defect.fixed_in_release_id)
         ).scalar_one_or_none()
 
+    module_name: str | None = None
+    if defect.module_id is not None:
+        module_name = db.execute(
+            select(TestModule.name).where(TestModule.id == defect.module_id)
+        ).scalar_one_or_none()
+
+    assigned_to_name: str | None = None
+    if defect.assigned_to is not None:
+        assigned_to_name = db.execute(
+            select(User.name).where(User.id == defect.assigned_to)
+        ).scalar_one_or_none()
+
     evidence = _execution_evidence(db, defect)
     test_run_case_id = evidence.test_run_case_id if evidence is not None else None
 
@@ -723,9 +823,11 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         step_number=step_number,
         title=defect.title,
         severity=cast(Severity, defect.severity),
+        priority=cast(Priority, defect.priority),
         status=cast(DefectStatus, defect.status),
         status_label=status_labels.get(defect.status, defect.status),
         description=defect.description,
+        steps_to_reproduce=defect.steps_to_reproduce,
         actual_result=defect.actual_result,
         expected_result=defect.expected_result,
         environment=defect.environment,
@@ -736,6 +838,10 @@ def to_out(db: Session, defect: Defect) -> DefectOut:
         fixed_in_release_id=defect.fixed_in_release_id,
         fixed_in_release_name=fixed_in_release_name,
         root_cause=cast(RootCause, defect.root_cause) if defect.root_cause else None,
+        module_id=defect.module_id,
+        module_name=module_name,
+        assigned_to=defect.assigned_to,
+        assigned_to_name=assigned_to_name,
         reported_by=defect.reported_by,
         reported_by_name=reported_by_name,
         created_at=defect.created_at,

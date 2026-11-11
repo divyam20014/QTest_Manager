@@ -19,6 +19,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useToast } from '@/lib/toast'
 
 // Platform Administration manages tenant lifecycle (create/approve/suspend)
 // and is intentionally separate from the tenant app's own auth/RBAC
@@ -108,6 +109,7 @@ function TenantConsole({
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [planTarget, setPlanTarget] = useState<Tenant | null>(null)
+  const { show: showToast } = useToast()
   const tenantsQuery = useQuery({
     queryKey: ['platform-tenants'],
     queryFn: () => listTenants(credentials),
@@ -116,7 +118,11 @@ function TenantConsole({
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: Tenant['status'] }) =>
       updateTenantStatus(credentials, id, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-tenants'] }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
+      showToast('success', `Tenant ${vars.status}`)
+    },
+    onError: () => showToast('error', 'Could not update that tenant’s status'),
   })
 
   // Tier 4 / ADR-054: data residency readiness (PV-11.6) -- metadata
@@ -124,7 +130,11 @@ function TenantConsole({
   const dataRegionMutation = useMutation({
     mutationFn: ({ id, dataRegion }: { id: string; dataRegion: string }) =>
       updateTenantDataRegion(credentials, id, dataRegion),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-tenants'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
+      showToast('success', 'Data region updated')
+    },
+    onError: () => showToast('error', 'Could not update the data region'),
   })
 
   return (
@@ -243,6 +253,7 @@ function PlanDialog({
   const [planCode, setPlanCode] = useState('')
   const [status, setStatus] = useState<'trialing' | 'active' | 'past_due' | 'canceled'>('active')
   const [seatCount, setSeatCount] = useState(1)
+  const { show: showToast } = useToast()
 
   const plansQuery = useQuery({
     queryKey: ['platform-plans'],
@@ -260,7 +271,9 @@ function PlanDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
       onClose()
+      showToast('success', 'Subscription updated')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = assignMutation.error instanceof ApiError ? assignMutation.error.message : null
@@ -337,6 +350,7 @@ function NewTenantDialog({
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
   const [dataRegion, setDataRegion] = useState('us')
+  const { show: showToast } = useToast()
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -355,7 +369,9 @@ function NewTenantDialog({
       setAdminPassword('')
       setDataRegion('us')
       onClose()
+      showToast('success', 'Tenant created')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = createMutation.error instanceof ApiError ? createMutation.error.message : null

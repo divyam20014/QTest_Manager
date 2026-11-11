@@ -15,6 +15,7 @@ import { TestRunsList } from '@/routes/execution/TestRunsList'
 import { TestRunsOverview } from '@/routes/execution/TestRunsOverview'
 import { AuditLogs } from '@/routes/admin/AuditLogs'
 import { Environments } from '@/routes/admin/Environments'
+import { RolesPermissions } from '@/routes/admin/RolesPermissions'
 import { Settings } from '@/routes/admin/Settings'
 import { UsersRoles } from '@/routes/admin/UsersRoles'
 import { ProjectDetail } from '@/routes/projects/ProjectDetail'
@@ -55,6 +56,7 @@ export function App() {
           <Route path="/reporting" element={<Reporting />} />
           <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
           <Route path="/admin/users" element={<UsersRoles />} />
+          <Route path="/admin/roles" element={<RolesPermissions />} />
           <Route path="/admin/audit-logs" element={<AuditLogs />} />
           <Route path="/admin/environments" element={<Environments />} />
           <Route path="/settings" element={<Settings />} />

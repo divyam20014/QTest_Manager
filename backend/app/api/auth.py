@@ -65,6 +65,7 @@ def me(ctx: SessionContext = Depends(get_current_context), db: Session = Depends
             tenant_id=ctx.tenant_id,
             email=user.email,
             name=user.name,
-            role=ctx.role_code,
+            role=ctx.display_role,
+            permissions=sorted(ctx.permissions),
         ).model_dump()
     )

@@ -71,8 +71,10 @@ def test_async_csv_import_enqueues_and_completes_via_the_worker(
 ) -> None:
     project = _setup_admin_and_project(client, platform_admin, "Apex Motor Claims Modernization")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        '"Verify Total Loss Settlement","Apex Motor Claims Modernization","Critical","Draft",,'
+        "Title,Module,Sub Module,Project Name,Priority,Status,Description,Scenario Id,"
+        "Scenario Description,Prerequisite,Test Data,Assignee Email,Steps\n"
+        '"Verify Total Loss Settlement","Claims","","Apex Motor Claims Modernization",'
+        '"Critical","Draft","Confirms settlement math.","","","","",,'
         '"Input Policy Number|ACV displayed;Apply $500 deductible|Payout = ACV - 500"\n'
     )
     files = {"file": ("import.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")}
@@ -129,8 +131,10 @@ def test_async_csv_import_failure_is_recorded_on_the_job(
 def test_a_tenant_cannot_read_another_tenants_job(client: TestClient, platform_admin: dict) -> None:
     project_a = _setup_admin_and_project(client, platform_admin, "Apex Motor Claims Modernization")
     csv_text = (
-        "Title,Project Name,Priority,Status,Assignee Email,Steps\n"
-        f'"Verify Case","{project_a["name"]}","Critical","Draft",,'
+        "Title,Module,Sub Module,Project Name,Priority,Status,Description,Scenario Id,"
+        "Scenario Description,Prerequisite,Test Data,Assignee Email,Steps\n"
+        f'"Verify Case","Claims","","{project_a["name"]}","Critical","Draft",'
+        '"Description here.","","","","",,'
         '"Step|Expected"\n'
     )
     files = {"file": ("import.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")}

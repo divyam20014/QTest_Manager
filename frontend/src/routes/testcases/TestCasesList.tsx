@@ -31,9 +31,14 @@ import { STATUS_DISPLAY, priorityTone } from './statusDisplay'
 
 const DEFAULT_VALUES: TestCaseFormValues = {
   title: '',
+  module_id: '',
   description: '',
   priority: 'Medium',
   assignee_id: '',
+  scenario_id: '',
+  scenario_description: '',
+  prerequisite: '',
+  test_data: '',
   steps: [{ action: '', expected: '' }],
 }
 
@@ -392,6 +397,7 @@ export function TestCasesList() {
           isSubmitting={createMutation.isPending}
           serverError={createError}
           users={usersQuery.data ?? []}
+          modules={modulesQuery.data ?? []}
           onSubmit={(values) => createMutation.mutate(values)}
         />
       </Dialog>

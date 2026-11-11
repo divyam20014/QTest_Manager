@@ -12,6 +12,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useToast } from '@/lib/toast'
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
 
@@ -23,6 +24,7 @@ export function TestRunsList() {
   const [name, setName] = useState('')
   const [runType, setRunType] = useState<RunType>('Regression')
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
+  const { show: showToast } = useToast()
 
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -46,7 +48,9 @@ export function TestRunsList() {
     onSuccess: (run) => {
       queryClient.invalidateQueries({ queryKey: ['test-runs', projectId] })
       navigate(`/test-runs/${run.id}`)
+      showToast('success', 'Test run created')
     },
+    // No onError toast -- `createError` below already renders this inline.
   })
 
   function toggleCase(id: string) {

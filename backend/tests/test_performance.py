@@ -254,10 +254,14 @@ def test_search_filter_latency_against_seeded_dataset(
 
 
 def _generate_bulk_csv(project_name: str, n: int) -> str:
-    lines = ["Title,Project Name,Priority,Status,Assignee Email,Steps"]
+    lines = [
+        "Title,Module,Sub Module,Project Name,Priority,Status,Description,Scenario Id,"
+        "Scenario Description,Prerequisite,Test Data,Assignee Email,Steps"
+    ]
     for i in range(n):
         lines.append(
-            f'"Bulk Perf Test Case {i:05d}","{project_name}","Medium","Draft",,'
+            f'"Bulk Perf Test Case {i:05d}","Perf","","{project_name}","Medium","Draft",'
+            f'"Perf test row {i}.","","","","",,'
             f'"Perform action {i}|Expect outcome {i};Second step {i}|Second outcome {i}"'
         )
     return "\n".join(lines) + "\n"

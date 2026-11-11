@@ -33,6 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
 import { pivotAggregateRows } from './aggregate'
 import { categoricalColor, prefersDark, SEQUENTIAL_BLUE_LIGHT } from './palette'
 import { QAManagerIntelligenceCard } from './QAManagerIntelligenceCard'
@@ -131,7 +132,7 @@ export function Reporting() {
     value,
     count: aggregateData.reduce((sum, row) => sum + (Number(row[value]) || 0), 0),
   }))
-  const canExport = user?.role === 'admin' || user?.role === 'manager'
+  const canExport = isManagerOrAbove(user)
   const exportPeriod = {
     periodFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
     periodTo: dateTo ? new Date(dateTo).toISOString() : undefined,

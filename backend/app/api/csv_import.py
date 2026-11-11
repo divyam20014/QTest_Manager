@@ -111,3 +111,35 @@ def export_test_cases(
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="test_cases_export.csv"'},
     )
+
+
+# --- Defect bulk import (Pass 2) -- newly built; reuses the same
+# "defect.create" permission a single defect create already requires,
+# rather than introducing a separate bulk_import_export permission for
+# a capability that didn't exist before this pass. ---------------------
+
+
+@router.get("/defects/import/template.csv")
+def download_defect_template(
+    ctx: SessionContext = Depends(require_permission("defect.create")),
+) -> PlainTextResponse:
+    return PlainTextResponse(
+        csv_import_service.DEFECT_TEMPLATE_CSV,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="defect_import_template.csv"'},
+    )
+
+
+@router.post("/defects/import")
+@limiter.limit("10/minute")
+async def import_defects(
+    request: Request,
+    file: UploadFile,
+    ctx: SessionContext = Depends(require_permission("defect.create")),
+    db: Session = Depends(get_db),
+) -> dict:
+    csv_text = await _read_and_validate_csv(file)
+    report = csv_import_service.import_defects(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, csv_text
+    )
+    return envelope(report.model_dump(mode="json"))

@@ -25,6 +25,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
+import { useToast } from '@/lib/toast'
 
 const CASE_STATUS_TONE = {
   pending: 'neutral',
@@ -43,6 +45,7 @@ export function TestRunDetail() {
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
   const [addCasesOpen, setAddCasesOpen] = useState(false)
+  const { show: showToast } = useToast()
 
   const runQuery = useQuery({ queryKey: ['test-runs', 'detail', runId], queryFn: () => getTestRun(runId!), enabled: !!runId })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
@@ -54,28 +57,54 @@ export function TestRunDetail() {
 
   const finishMutation = useMutation({
     mutationFn: () => finishTestRun(runId!),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Test run finished')
+    },
+    // No onError toast -- `finishError` below already renders this inline.
   })
 
-  const pauseMutation = useMutation({ mutationFn: () => pauseTestRun(runId!), onSuccess: invalidate })
-  const resumeMutation = useMutation({ mutationFn: () => resumeTestRun(runId!), onSuccess: invalidate })
+  const pauseMutation = useMutation({
+    mutationFn: () => pauseTestRun(runId!),
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Run paused')
+    },
+    onError: () => showToast('error', 'Failed to pause the run'),
+  })
+  const resumeMutation = useMutation({
+    mutationFn: () => resumeTestRun(runId!),
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Run resumed')
+    },
+    onError: () => showToast('error', 'Failed to resume the run'),
+  })
 
   const removeMutation = useMutation({
     mutationFn: (runCaseId: string) => removeTestRunCase(runId!, runCaseId),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Test case removed from run')
+    },
+    onError: () => showToast('error', 'Could not remove this test case from the run'),
   })
 
   const assignMutation = useMutation({
     mutationFn: ({ runCaseId, userId }: { runCaseId: string; userId: string | null }) =>
       assignRunCase(runCaseId, userId),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Assignee updated')
+    },
+    onError: () => showToast('error', 'Could not update the assignee'),
   })
 
   const run = runQuery.data
   if (runQuery.isLoading) return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
   if (runQuery.isError || !run) return <p className="text-sm text-[var(--destructive)]">Test run not found.</p>
 
-  const canManage = user?.role === 'admin' || user?.role === 'manager'
+  const canManage = isManagerOrAbove(user)
   const canFinish = canManage && !run.finished_at
   const executionStarted = run.cases.some((rc) => rc.started_at !== null)
   const canEdit = canManage && !run.finished_at && !executionStarted
@@ -224,13 +253,16 @@ function EditRunDialog({
   const queryClient = useQueryClient()
   const [name, setName] = useState(initialName)
   const [runType, setRunType] = useState<RunType>(initialRunType)
+  const { show: showToast } = useToast()
 
   const updateMutation = useMutation({
     mutationFn: () => updateTestRun(runId, { name, run_type: runType }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['test-runs', 'detail', runId] })
       onClose()
+      showToast('success', 'Run details updated')
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   const serverError = updateMutation.error instanceof ApiError ? updateMutation.error.message : null
@@ -281,6 +313,7 @@ function AddCasesDialog({
 }) {
   const queryClient = useQueryClient()
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const { show: showToast } = useToast()
 
   const casesQuery = useQuery({
     queryKey: ['test-cases', projectId, 'approved-for-run'],
@@ -291,11 +324,14 @@ function AddCasesDialog({
 
   const addMutation = useMutation({
     mutationFn: () => addTestRunCases(runId, selectedIds),
-    onSuccess: () => {
+    onSuccess: (_data, _vars) => {
       queryClient.invalidateQueries({ queryKey: ['test-runs', 'detail', runId] })
+      const count = selectedIds.length
       setSelectedIds([])
       onClose()
+      showToast('success', `${count} test case${count === 1 ? '' : 's'} added to run`)
     },
+    // No onError toast -- `serverError` below already renders this inline.
   })
 
   function toggle(id: string) {

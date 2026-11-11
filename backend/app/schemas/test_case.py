@@ -35,18 +35,36 @@ class StepOut(BaseModel):
 
 class TestCaseCreateRequest(BaseModel):
     title: str = Field(min_length=5)
+    # Pass 2: Module and Description are treated as mandatory in the UI
+    # form and in CSV import validation (per the confirmed spreadsheet
+    # schema), but kept OPTIONAL here at the API layer with sensible
+    # server-side defaults (auto-provision an "Uncategorized" module;
+    # description defaults to "") -- making them hard-required on this
+    # schema would be a breaking change across dozens of pre-existing
+    # test call sites that create test cases without them. See ADR-061.
+    module_id: UUID | None = None
     description: str = ""
     priority: Priority
     assignee_id: UUID | None = None
     steps: list[StepIn] = Field(min_length=1)
+    # Pass 2: optional spreadsheet-alignment fields, no workflow logic.
+    scenario_id: str | None = None
+    scenario_description: str | None = None
+    prerequisite: str | None = None
+    test_data: str | None = None
 
 
 class TestCaseUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=5)
+    module_id: UUID | None = None
     description: str | None = None
     priority: Priority | None = None
     assignee_id: UUID | None = None
     steps: list[StepIn] | None = Field(default=None, min_length=1)
+    scenario_id: str | None = None
+    scenario_description: str | None = None
+    prerequisite: str | None = None
+    test_data: str | None = None
 
 
 class TestCaseOut(BaseModel):
@@ -66,6 +84,18 @@ class TestCaseOut(BaseModel):
     created_at: datetime
     steps: list[StepOut]
     custom_fields: dict[str, object] = {}
+    scenario_id: str | None
+    scenario_description: str | None
+    prerequisite: str | None
+    test_data: str | None
+    # Pass 2: NOT stored fields -- derived read-only from the most recent
+    # execution of this test case across any test run (execution_service's
+    # ExecutionStep is the authoritative source). Never settable via
+    # create/update/import; absent entirely if the case has never been
+    # executed.
+    last_execution_result: str | None = None
+    last_executed_by_name: str | None = None
+    last_execution_date: datetime | None = None
 
 
 class SubmitForReviewRequest(BaseModel):
@@ -85,6 +115,10 @@ class TestCaseVersionOut(BaseModel):
     version_number: int
     title: str
     description: str
+    scenario_id: str | None = None
+    scenario_description: str | None = None
+    prerequisite: str | None = None
+    test_data: str | None = None
     approved_by: UUID | None
     approved_at: datetime | None
     created_by: UUID

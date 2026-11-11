@@ -44,10 +44,27 @@ class Defect(Base, TenantScopedMixin):
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     severity: Mapped[str] = mapped_column(String, nullable=False)
+    # Pass 2: priority is tenant-configurable (field_options, field_key
+    # 'defect_priority'), same mechanism Tier 5 gave severity -- mandatory
+    # going forward, backfilled to 'Medium' for pre-existing rows.
+    priority: Mapped[str] = mapped_column(String, nullable=False, server_default="Medium")
     status: Mapped[str] = mapped_column(String, nullable=False, default="New", server_default="New")
     description: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Pass 2: distinct from `description` -- a reproduction recipe, not the
+    # general problem narrative.
+    steps_to_reproduce: Mapped[str | None] = mapped_column(String, nullable=True)
     actual_result: Mapped[str | None] = mapped_column(String, nullable=True)
     expected_result: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Pass 2: optional, restricted at the service layer to users already
+    # assigned to this defect's project (same membership check used
+    # everywhere else), mirroring TestCase.assignee_id.
+    assigned_to: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    # Pass 2: optional parity with TestCase.module_id (Tier 3's TestModule).
+    module_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("test_modules.id"), nullable=True
+    )
     # Tier 2 (PV-8.1): environment is being promoted from free text to a
     # real Environment entity. The free-text column stays, nullable, as a
     # transition aid (old rows / clients that haven't moved to

@@ -18,6 +18,7 @@ import { CommentsPanel } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { DefectQuickCreateDialog, type FailedStepContext } from './DefectQuickCreateDialog'
 
@@ -43,6 +44,7 @@ export function ExecutionConsole() {
   const runId = searchParams.get('runId')
   const queryClient = useQueryClient()
   const [failedStepContext, setFailedStepContext] = useState<FailedStepContext | null>(null)
+  const { show: showToast } = useToast()
 
   const contextQuery = useQuery({
     queryKey: ['execution-context', runCaseId],
@@ -126,7 +128,13 @@ export function ExecutionConsole() {
           expected: updatedStep.expected,
         })
       }
+      // Deliberately no success toast here: the step's verdict badge
+      // renders immediately as visible confirmation, and this fires on
+      // every P/F/I keypress -- a toast per step would be noisy, not
+      // helpful, during a long execution run.
     },
+    onError: () =>
+      showToast('error', 'Could not record that verdict -- the step was not updated. Try again.'),
   })
 
   function handleDefectDialogClose() {

@@ -84,6 +84,13 @@ class TestCaseVersion(Base, TenantScopedMixin):
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String, nullable=False, default="", server_default="")
+    # Pass 2 (UI/UX + schema realignment): free-text spreadsheet-style
+    # fields, versioned alongside title/description/steps per ADR-003's
+    # immutable-snapshot model -- all optional, no workflow logic attached.
+    scenario_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    scenario_description: Mapped[str | None] = mapped_column(String, nullable=True)
+    prerequisite: Mapped[str | None] = mapped_column(String, nullable=True)
+    test_data: Mapped[str | None] = mapped_column(String, nullable=True)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )

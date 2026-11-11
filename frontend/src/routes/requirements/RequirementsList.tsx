@@ -17,16 +17,19 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
+import { isManagerOrAbove } from '@/api/auth'
+import { useToast } from '@/lib/toast'
 
 const PAGE_SIZE = 20
 
 export function RequirementsList() {
   const { projectId } = useParams<{ projectId: string }>()
   const { user } = useAuth()
-  const canManage = user?.role === 'admin' || user?.role === 'manager'
+  const canManage = isManagerOrAbove(user)
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [page, setPage] = useState(1)
+  const { show: showToast } = useToast()
 
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -50,7 +53,9 @@ export function RequirementsList() {
       queryClient.invalidateQueries({ queryKey: ['requirements', projectId] })
       queryClient.invalidateQueries({ queryKey: ['requirements-coverage', projectId] })
       setCreateOpen(false)
+      showToast('success', 'Requirement created')
     },
+    // No onError toast -- `createError` below already renders this inline.
   })
 
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null

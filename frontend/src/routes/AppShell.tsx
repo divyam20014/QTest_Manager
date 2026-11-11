@@ -28,6 +28,7 @@ import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserMenu } from '@/components/UserMenu'
+import { isAdmin, isManagerOrAbove } from '@/api/auth'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 
@@ -41,7 +42,11 @@ interface NavItem {
   // also gated at the API by `environment.manage`, which Managers also
   // hold -- `allowedRoles` overrides adminOnly's single-role check for
   // items where more than one role should see the nav entry.
-  allowedRoles?: Array<'admin' | 'manager' | 'tester'>
+  // Pass 2: the only current use is "manager-or-above", so this now checks
+  // the same permission-based helper every other admin/manager gate in the
+  // app uses (ADR-059) instead of a role-name array a custom role could
+  // never match.
+  allowedRoles?: 'manager-or-above'[]
 }
 
 interface NavSection {
@@ -82,13 +87,14 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Administration',
     items: [
       { to: '/admin/users', label: 'Users & Roles', icon: Users, adminOnly: true },
+      { to: '/admin/roles', label: 'Roles & Permissions', icon: Users, adminOnly: true },
       { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText, adminOnly: true },
       {
         to: '/admin/environments',
         label: 'Environments',
         icon: Layers,
         adminOnly: true,
-        allowedRoles: ['admin', 'manager'],
+        allowedRoles: ['manager-or-above'],
       },
       { to: '/settings', label: 'Settings', icon: SettingsIcon, adminOnly: true },
     ],
@@ -202,10 +208,10 @@ export function AppShell() {
         <nav className="flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-3 pb-4">
           {NAV_SECTIONS.map((section) => {
             const visibleItems = section.items.filter((item) => {
-              if (item.allowedRoles) {
-                return !!user?.role && item.allowedRoles.includes(user.role)
+              if (item.allowedRoles?.includes('manager-or-above')) {
+                return isManagerOrAbove(user)
               }
-              return !item.adminOnly || user?.role === 'admin'
+              return !item.adminOnly || isAdmin(user)
             })
             if (visibleItems.length === 0) return null
             return (
@@ -243,7 +249,7 @@ export function AppShell() {
             <Users className="size-4 shrink-0" />
             {!collapsed && 'Profile'}
           </NavLink>
-          {user?.role === 'admin' && (
+          {isAdmin(user) && (
             <NavLink
               to="/settings"
               title={collapsed ? 'Organization' : undefined}

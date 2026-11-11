@@ -25,3 +25,9 @@ class MeResponse(BaseModel):
     email: str
     name: str
     role: str
+    # Pass 2: the frontend previously had no way to recognize a custom role
+    # (ADR-059) as admin/manager-equivalent -- several `role === 'admin'`
+    # conditionals wouldn't light up for a custom role granted the same
+    # real permissions. Exposing the actual permission set lets those
+    # checks test capability instead of a hardcoded role name.
+    permissions: list[str] = []
