@@ -88,6 +88,15 @@ class Defect(Base, TenantScopedMixin):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Pass C (deferred item #4): set once the SLA-breach notification has
+    # fired for this defect, so the worker's periodic sweep never re-sends
+    # it on every poll. Cleared implicitly by nothing -- a defect that's
+    # reopened (see reopened_count) keeps its history; a fresh breach after
+    # reopening re-ages from created_at, so this flag intentionally isn't
+    # reset on reopen (the budget is lifecycle-wide, see compute_aging).
+    sla_breach_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Tier 2 (PV-6.3): additive analytics only -- ADR-026's forward-only
     # status sequence is deliberately NOT reversed. A "reopen" moves status
     # back to 'Open' via a dedicated path (defect_service.reopen_defect),

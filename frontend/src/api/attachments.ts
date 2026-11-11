@@ -1,6 +1,6 @@
 import { API_BASE_URL, apiFetch } from '@/api/client'
 
-export type AttachmentOwnerType = 'test_case' | 'defect' | 'execution_step'
+export type AttachmentOwnerType = 'test_case' | 'defect' | 'execution_step' | 'requirement'
 
 export interface Attachment {
   id: string
@@ -16,6 +16,7 @@ const OWNER_PATH_SEGMENT: Record<AttachmentOwnerType, string> = {
   test_case: 'test-cases',
   defect: 'defects',
   execution_step: 'execution-steps',
+  requirement: 'requirements',
 }
 
 export function listAttachments(

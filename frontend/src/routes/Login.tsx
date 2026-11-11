@@ -52,6 +52,10 @@ export function Login() {
     mutationFn: login,
     onSuccess: (data) => {
       setDebugCode(data.debug_code ?? null)
+      // Belt-and-suspenders against the "prefilled code" report -- genuinely
+      // blank on every entry into this step, not whatever a previous
+      // attempt (or aggressive browser autofill) left behind.
+      codeForm.reset({ code: '' })
       setStep('mfa')
     },
   })
@@ -137,7 +141,16 @@ export function Login() {
               )}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="code">Verification code</Label>
-                <Input id="code" inputMode="numeric" maxLength={6} {...codeForm.register('code')} />
+                <Input
+                  id="code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  {...codeForm.register('code')}
+                />
                 {codeForm.formState.errors.code && (
                   <p className="text-xs text-[var(--destructive)]">{codeForm.formState.errors.code.message}</p>
                 )}
@@ -146,7 +159,14 @@ export function Login() {
               <Button type="submit" disabled={verifyMutation.isPending}>
                 {verifyMutation.isPending ? 'Verifying…' : 'Verify'}
               </Button>
-              <Button type="button" variant="ghost" onClick={() => setStep('credentials')}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  codeForm.reset({ code: '' })
+                  setStep('credentials')
+                }}
+              >
                 Back
               </Button>
             </form>

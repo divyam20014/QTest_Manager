@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/lib/toast'
 
@@ -44,6 +45,9 @@ import { useToast } from '@/lib/toast'
 // AI Test Case Generator's enable/disable toggle and API key. Future
 // phases (notification preferences, branding) add their own fields here
 // once each is separately approved.
+// Split into tabs (was ~15 stacked sections on one long-scrolling page --
+// each section kept its own existing Save button, unchanged; the tabs
+// are purely a navigation/grouping layer on top, not a behavior change).
 export function Settings() {
   const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings })
   const forbidden = settingsQuery.error instanceof ApiError && settingsQuery.error.code === 'forbidden'
@@ -51,40 +55,82 @@ export function Settings() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-lg font-semibold">Settings</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Organization Settings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {forbidden ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <SettingsIcon className="size-8 text-[var(--muted-foreground)]" />
-              <p className="max-w-sm text-sm text-[var(--muted-foreground)]">
-                Only an Administrator can view or change organization settings.
-              </p>
-            </div>
-          ) : settingsQuery.isLoading || !settingsQuery.data ? (
-            <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
-          ) : (
-            <SettingsForm initial={settingsQuery.data} />
-          )}
-        </CardContent>
-      </Card>
-      <AISettingsCard />
-      <SubscriptionCard />
-      <BrandingCard />
-      <FieldOptionsCard fieldKey="defect_severity" title="Defect Severities" />
-      <FieldOptionsCard fieldKey="defect_priority" title="Defect Priorities" />
-      <FieldOptionsCard fieldKey="test_case_priority" title="Test Case Priorities" />
-      <StatusLabelsCard entityType="defect" title="Defect Status Labels" />
-      <StatusLabelsCard entityType="test_case" title="Test Case Status Labels" />
-      <CustomFieldsCard entityType="test_case" title="Test Case Custom Fields" />
-      <CustomFieldsCard entityType="defect" title="Defect Custom Fields" />
-      <CustomFieldsCard entityType="requirement" title="Requirement Custom Fields" />
-      <SsoCard />
-      <ScimTokensCard />
-      <ServiceTokensCard />
-      <ExportCard />
+      <Tabs
+        items={[
+          {
+            key: 'general',
+            label: 'General',
+            content: (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Organization Settings</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {forbidden ? (
+                    <div className="flex flex-col items-center gap-3 py-10 text-center">
+                      <SettingsIcon className="size-8 text-[var(--muted-foreground)]" />
+                      <p className="max-w-sm text-sm text-[var(--muted-foreground)]">
+                        Only an Administrator can view or change organization settings.
+                      </p>
+                    </div>
+                  ) : settingsQuery.isLoading || !settingsQuery.data ? (
+                    <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+                  ) : (
+                    <SettingsForm initial={settingsQuery.data} />
+                  )}
+                </CardContent>
+              </Card>
+            ),
+          },
+          {
+            key: 'branding',
+            label: 'Branding',
+            content: <BrandingCard />,
+          },
+          {
+            key: 'fields',
+            label: 'Fields',
+            content: (
+              <div className="flex flex-col gap-4">
+                <FieldOptionsCard fieldKey="defect_severity" title="Defect Severities" />
+                <FieldOptionsCard fieldKey="defect_priority" title="Defect Priorities" />
+                <FieldOptionsCard fieldKey="test_case_priority" title="Test Case Priorities" />
+                <StatusLabelsCard entityType="defect" title="Defect Status Labels" />
+                <StatusLabelsCard entityType="test_case" title="Test Case Status Labels" />
+                <CustomFieldsCard entityType="test_case" title="Test Case Custom Fields" />
+                <CustomFieldsCard entityType="defect" title="Defect Custom Fields" />
+                <CustomFieldsCard entityType="requirement" title="Requirement Custom Fields" />
+              </div>
+            ),
+          },
+          {
+            key: 'security',
+            label: 'Security & SSO',
+            content: <SsoCard />,
+          },
+          {
+            key: 'integrations',
+            label: 'Integrations',
+            content: (
+              <div className="flex flex-col gap-4">
+                <ScimTokensCard />
+                <ServiceTokensCard />
+              </div>
+            ),
+          },
+          {
+            key: 'data',
+            label: 'Data',
+            content: (
+              <div className="flex flex-col gap-4">
+                <AISettingsCard />
+                <SubscriptionCard />
+                <ExportCard />
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }
@@ -156,6 +202,7 @@ function FieldOptionsCard({ fieldKey, title }: { fieldKey: FieldKey; title: stri
           <div className="flex items-center gap-2">
             <Input
               placeholder="New option name"
+              aria-label="New option name"
               value={code}
               onChange={(e) => setCode(e.target.value)}
             />
@@ -217,6 +264,7 @@ function StatusLabelsCard({
                 {entry.status_code}
               </span>
               <Input
+                aria-label={`Label for ${entry.status_code}`}
                 value={drafts[entry.status_code] ?? entry.label}
                 onChange={(e) =>
                   setDrafts((prev) => ({ ...prev, [entry.status_code]: e.target.value }))
@@ -966,6 +1014,7 @@ function ServiceTokensCard() {
           <div className="flex gap-2">
             <Input
               placeholder="Token name (e.g. GitHub Actions)"
+              aria-label="Token name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />

@@ -17,10 +17,16 @@ const SEGMENT_LABELS: Record<string, string> = {
   reporting: 'Reporting',
   admin: 'Administration',
   users: 'Users & Roles',
+  roles: 'Roles & Permissions',
+  environments: 'Environments',
   'audit-logs': 'Audit Logs',
   settings: 'Settings',
   account: 'My Account',
 }
+
+// Bug #6: every route segment must resolve to a friendly label -- a raw
+// or truncated path segment slipping through here (e.g. "environmen…")
+// was the actual bug report, not a CSS truncation issue downstream.
 
 function isId(segment: string) {
   return /^[0-9a-f-]{8,}$/i.test(segment)

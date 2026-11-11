@@ -30,6 +30,10 @@ class TestCaseSummary(BaseModel):
 class TestRunSummary(BaseModel):
     active: int
     step_pass_percentage: float
+    # Pass B UI/UX overhaul: lets the dashboard distinguish a genuinely
+    # reliable pass-rate from one computed off a handful of steps (e.g.
+    # "100%" off a single step), which looked misleadingly confident.
+    step_sample_size: int
 
 
 class DefectBacklogSummary(BaseModel):
@@ -152,6 +156,28 @@ class ComplianceProjectSection(BaseModel):
     critical_defects: int
     test_cases: list[ComplianceTestCaseRow]
     defects: list[ComplianceDefectRow]
+    # Pass D: requirements coverage (reuses requirement_service's existing RTM
+    # computation) and defect aging/SLA compliance (reuses Phase 6's existing
+    # age_days/sla_breached computation) -- makes the compliance report answer
+    # "are requirements adequately tested?" and "are we meeting our own SLA
+    # budgets?", not just "what exists."
+    requirement_total: int
+    requirement_covered: int
+    requirement_coverage_percentage: float
+    defect_aging: DefectAgingSummary
+
+
+class CompliancePeriodComparison(BaseModel):
+    """A cheap this-period-vs-prior-period comparison (same-length prior
+    window immediately before period_from) -- reuses data already being
+    queried, not a new trend-computation engine."""
+
+    test_cases_created_current: int
+    test_cases_created_prior: int
+    defects_opened_current: int
+    defects_opened_prior: int
+    defects_closed_current: int
+    defects_closed_prior: int
 
 
 class ComplianceReport(BaseModel):
@@ -162,6 +188,7 @@ class ComplianceReport(BaseModel):
     period_from: datetime | None
     period_to: datetime | None
     projects: list[ComplianceProjectSection]
+    trend: CompliancePeriodComparison | None
 
 
 class ReleaseReadinessReport(BaseModel):

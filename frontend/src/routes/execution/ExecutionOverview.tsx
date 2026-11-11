@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { listTestRuns, getTestRun, type TestRunCase } from '@/api/execution'
 import { listProjects, type Project } from '@/api/projects'
 import { Badge } from '@/components/ui/badge'
+import { humanizeKey } from '@/lib/labels'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface ActiveRow {
@@ -101,7 +102,7 @@ export function ExecutionOverview() {
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {runCase.passed_count}/{runCase.step_count} steps
                     </span>
-                    <Badge tone={STATUS_TONE[runCase.status]}>{runCase.status.replace(/_/g, ' ')}</Badge>
+                    <Badge tone={STATUS_TONE[runCase.status]}>{humanizeKey(runCase.status)}</Badge>
                   </span>
                 </Link>
               </li>

@@ -9,6 +9,7 @@ export interface User {
   role_id: string
   is_active: boolean
   created_at: string
+  last_login_at: string | null
 }
 
 export interface UserCreateRequest {

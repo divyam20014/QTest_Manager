@@ -53,12 +53,24 @@ export function GlobalSearch() {
   const results = query.trim().length > 1 ? (data?.results ?? []) : []
 
   return (
-    <div ref={containerRef} className="relative hidden w-72 md:block">
+    <div
+      ref={containerRef}
+      role="search"
+      className="relative hidden w-72 md:block"
+    >
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
         <input
           type="search"
+          name="qtesthub-global-search"
           placeholder="Search test cases, defects, requirements…"
+          aria-label="Search test cases, defects, and requirements"
+          // Bug report: this field was getting browser-autofilled with an
+          // email address on Dashboard/Settings -- Chrome heuristically
+          // matches a bare "search" input against saved form data unless
+          // explicitly told not to. `off` is the correct value here (not
+          // a specific autofill token, since there's nothing to suggest).
+          autoComplete="off"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)

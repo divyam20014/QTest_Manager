@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 
 import { fetchComplianceDetail } from '@/api/reporting'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
+import { STATUS_DISPLAY } from '@/routes/testcases/statusDisplay'
 
 export function CompliancePrintView() {
   const { user } = useAuth()
@@ -45,7 +46,12 @@ export function CompliancePrintView() {
       `}</style>
 
       <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
-        <h1 className="text-lg font-semibold">Compliance Report (Print / PDF)</h1>
+        <div>
+          <Link to="/reporting" className="text-xs text-[var(--muted-foreground)] hover:underline">
+            ← Back to Reporting
+          </Link>
+          <h1 className="text-lg font-semibold">Compliance Report (Print / PDF)</h1>
+        </div>
         <div className="flex items-center gap-2">
           <Input
             aria-label="Period from"
@@ -99,6 +105,8 @@ export function CompliancePrintView() {
                   <th>Ready for Review</th>
                   <th>Open Defects</th>
                   <th>Critical Defects</th>
+                  <th>Requirement Coverage</th>
+                  <th>SLA Breached</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,17 +120,73 @@ export function CompliancePrintView() {
                     <td>{p.ready_for_review_test_cases}</td>
                     <td>{p.open_defects}</td>
                     <td>{p.critical_defects}</td>
+                    <td>
+                      {p.requirement_covered}/{p.requirement_total} ({p.requirement_coverage_percentage}%)
+                    </td>
+                    <td>{p.defect_aging.total_breached}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </section>
 
+          {report.trend && (
+            <section className="mb-6">
+              <h2 className="mb-2 text-base font-semibold">Period-over-Period Trend</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Current Period</th>
+                    <th>Prior Period</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Test Cases Created</td>
+                    <td>{report.trend.test_cases_created_current}</td>
+                    <td>{report.trend.test_cases_created_prior}</td>
+                  </tr>
+                  <tr>
+                    <td>Defects Opened</td>
+                    <td>{report.trend.defects_opened_current}</td>
+                    <td>{report.trend.defects_opened_prior}</td>
+                  </tr>
+                  <tr>
+                    <td>Defects Closed</td>
+                    <td>{report.trend.defects_closed_current}</td>
+                    <td>{report.trend.defects_closed_prior}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          )}
+
           {report.projects.map((p) => (
             <section key={p.project_id} className="mb-6">
               <h2 className="mb-2 text-base font-semibold">
                 {p.name} ({p.domain})
               </h2>
+
+              <h3 className="mb-1 text-sm font-semibold">Defect Aging by Severity</h3>
+              <table className="mb-4">
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Open</th>
+                    <th>SLA Breached</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.defect_aging.buckets.map((b) => (
+                    <tr key={b.severity}>
+                      <td>{b.severity}</td>
+                      <td>{b.open_count}</td>
+                      <td>{b.breached_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
               <h3 className="mb-1 text-sm font-semibold">Test Cases</h3>
               <table className="mb-4">
@@ -139,7 +203,9 @@ export function CompliancePrintView() {
                     <tr key={tc.id}>
                       <td>{tc.id}</td>
                       <td>{tc.title}</td>
-                      <td>{tc.status}</td>
+                      <td>
+                        {STATUS_DISPLAY[tc.status as keyof typeof STATUS_DISPLAY]?.label ?? tc.status}
+                      </td>
                       <td>{tc.priority}</td>
                     </tr>
                   ))}

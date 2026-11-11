@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
@@ -19,11 +19,12 @@ import { listUsers } from '@/api/users'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, Drawer } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
+import { useUrlFilters } from '@/lib/useUrlFilters'
 import { ImportDialog } from './ImportDialog'
 import { TemplatesDialog } from './TemplatesDialog'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
@@ -66,13 +67,35 @@ export function TestCasesList() {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
 
-  const [search, setSearch] = useState('')
-  const [priority, setPriority] = useState<Priority | ''>('')
-  const [status, setStatus] = useState<TestCaseStatus | ''>('')
-  const [assigneeId, setAssigneeId] = useState('')
-  const [moduleId, setModuleId] = useState('')
-  const [sort, setSort] = useState('created_at')
-  const [page, setPage] = useState(1)
+  // Bug #13: filters now persist in the URL (shareable, survives
+  // refresh) instead of plain component state.
+  const filterDefaults = useMemo(
+    () => ({
+      search: '',
+      priority: '',
+      status: '',
+      assigneeId: '',
+      moduleId: '',
+      sort: 'created_at',
+      page: '1',
+    }),
+    [],
+  )
+  const urlFilters = useUrlFilters(filterDefaults)
+  const search = urlFilters.values.search
+  const priority = urlFilters.values.priority as Priority | ''
+  const status = urlFilters.values.status as TestCaseStatus | ''
+  const assigneeId = urlFilters.values.assigneeId
+  const moduleId = urlFilters.values.moduleId
+  const sort = urlFilters.values.sort
+  const page = Number(urlFilters.values.page) || 1
+  // Bug #8: deprecated cases cluttered the list by default -- hidden on
+  // this page's items unless toggled on or explicitly filtered to
+  // Deprecated. Filtered client-side (not an extra server param) since
+  // the list endpoint only supports "equals one status", not "exclude
+  // one status" -- a page can show fewer than PAGE_SIZE rows as a result,
+  // which is an acceptable trade-off for this fix.
+  const [showDeprecated, setShowDeprecated] = useState(false)
 
   // Gap-closure pass (ADR-057): the priority filter must reflect this
   // tenant's actual configured value set (Tier 5 / ADR-055), the same
@@ -153,21 +176,33 @@ export function TestCasesList() {
   const total = testCasesQuery.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  function resetToFirstPage<T>(setter: (v: T) => void) {
-    return (value: T) => {
-      setter(value)
-      setPage(1)
-    }
+  function setFilter(key: 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId', value: string) {
+    urlFilters.setFilters({ [key]: value, page: '1' })
   }
 
   function toggleSort(key: string) {
-    setSort((current) => {
-      const currentKey = current.replace(/^-/, '')
-      if (currentKey !== key) return key
-      return current.startsWith('-') ? key : `-${key}`
-    })
-    setPage(1)
+    const currentKey = sort.replace(/^-/, '')
+    const next = currentKey !== key ? key : sort.startsWith('-') ? key : `-${key}`
+    urlFilters.setFilters({ sort: next, page: '1' })
   }
+
+  function setPage(next: number) {
+    urlFilters.setFilter('page', String(Math.max(1, next)))
+  }
+
+  const FILTER_CHIP_LABEL: Record<string, string> = {
+    search: 'Search',
+    status: 'Status',
+    priority: 'Priority',
+    assigneeId: 'Assignee',
+    moduleId: 'Module',
+  }
+  const chipDisplayValue: Record<string, string> = {
+    status: status ? STATUS_DISPLAY[status]?.label ?? status : '',
+    assigneeId: usersQuery.data?.find((u) => u.id === assigneeId)?.name ?? assigneeId,
+    moduleId: modules.find((m) => m.id === moduleId)?.name ?? moduleId,
+  }
+  const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
 
   return (
     <div className="flex flex-col gap-4">
@@ -209,7 +244,7 @@ export function TestCasesList() {
             id="tc-search"
             placeholder="Search by title…"
             value={search}
-            onChange={(e) => resetToFirstPage(setSearch)(e.target.value)}
+            onChange={(e) => setFilter('search', e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -220,7 +255,7 @@ export function TestCasesList() {
             id="tc-filter-status"
             className="w-40"
             value={status}
-            onChange={(e) => resetToFirstPage(setStatus)(e.target.value as TestCaseStatus | '')}
+            onChange={(e) => setFilter('status', e.target.value)}
           >
             <option value="">All statuses</option>
             {STATUSES.map((s) => (
@@ -238,7 +273,7 @@ export function TestCasesList() {
             id="tc-filter-priority"
             className="w-36"
             value={priority}
-            onChange={(e) => resetToFirstPage(setPriority)(e.target.value as Priority | '')}
+            onChange={(e) => setFilter('priority', e.target.value)}
           >
             <option value="">All priorities</option>
             {priorityFilterOptions.map((p) => (
@@ -256,7 +291,7 @@ export function TestCasesList() {
             id="tc-filter-assignee"
             className="w-40"
             value={assigneeId}
-            onChange={(e) => resetToFirstPage(setAssigneeId)(e.target.value)}
+            onChange={(e) => setFilter('assigneeId', e.target.value)}
           >
             <option value="">All assignees</option>
             {(usersQuery.data ?? []).map((u) => (
@@ -274,7 +309,7 @@ export function TestCasesList() {
             id="tc-filter-module"
             className="w-40"
             value={moduleId}
-            onChange={(e) => resetToFirstPage(setModuleId)(e.target.value)}
+            onChange={(e) => setFilter('moduleId', e.target.value)}
           >
             <option value="">All modules</option>
             {modules.map((m) => (
@@ -284,7 +319,41 @@ export function TestCasesList() {
             ))}
           </Select>
         </div>
+        <label className="flex items-center gap-2 pb-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showDeprecated}
+            onChange={(e) => setShowDeprecated(e.target.checked)}
+          />
+          Show deprecated
+        </label>
+        {visibleFilterChips.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={urlFilters.clearAll}>
+            Clear filters
+          </Button>
+        )}
       </div>
+
+      {visibleFilterChips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {visibleFilterChips.map((key) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-2.5 py-1 text-xs"
+            >
+              {FILTER_CHIP_LABEL[key]}: {chipDisplayValue[key] ?? urlFilters.values[key]}
+              <button
+                type="button"
+                onClick={() => setFilter(key as 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId', '')}
+                aria-label={`Remove ${FILTER_CHIP_LABEL[key]} filter`}
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
@@ -317,14 +386,27 @@ export function TestCasesList() {
             </tr>
           </thead>
           <tbody>
-            {testCasesQuery.data?.items.length === 0 && (
-              <tr>
-                <td colSpan={COLUMNS.length} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No test cases match these filters.
-                </td>
-              </tr>
-            )}
-            {testCasesQuery.data?.items.map((tc) => (
+            {(() => {
+              const allItems = testCasesQuery.data?.items ?? []
+              const visibleItems = allItems.filter(
+                (tc) => showDeprecated || status === 'deprecated' || tc.status !== 'deprecated',
+              )
+              const hiddenCount = allItems.length - visibleItems.length
+              return (
+                <>
+                  {testCasesQuery.data && visibleItems.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={COLUMNS.length}
+                        className="px-4 py-6 text-center text-[var(--muted-foreground)]"
+                      >
+                        {hiddenCount > 0
+                          ? `No test cases match these filters — ${hiddenCount} deprecated case${hiddenCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
+                          : 'No test cases match these filters.'}
+                      </td>
+                    </tr>
+                  )}
+                  {visibleItems.map((tc) => (
               <tr key={tc.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
                 <td className="px-4 py-2">
                   <Link to={`/test-cases/${tc.id}`} className="font-medium underline-offset-2 hover:underline">
@@ -359,7 +441,10 @@ export function TestCasesList() {
                 <td className="px-4 py-2">v{tc.version_number}</td>
                 <td className="px-4 py-2">{tc.steps.length}</td>
               </tr>
-            ))}
+                  ))}
+                </>
+              )
+            })()}
           </tbody>
         </table>
       </div>
@@ -374,7 +459,7 @@ export function TestCasesList() {
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => setPage(page - 1)}
             >
               Previous
             </Button>
@@ -382,7 +467,7 @@ export function TestCasesList() {
               variant="outline"
               size="sm"
               disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
             >
               Next
             </Button>
@@ -390,7 +475,10 @@ export function TestCasesList() {
         </div>
       )}
 
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case" className="max-w-2xl">
+      {/* GAP-91 item 1: a 10+ field form no longer fits well in a centered
+          Dialog -- a full-height Drawer gives it real room, same
+          focus-trap/Escape/unsaved-changes behavior underneath. */}
+      <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case">
         <TestCaseForm
           defaultValues={DEFAULT_VALUES}
           submitLabel="Create Test Case"
@@ -400,7 +488,7 @@ export function TestCasesList() {
           modules={modulesQuery.data ?? []}
           onSubmit={(values) => createMutation.mutate(values)}
         />
-      </Dialog>
+      </Drawer>
 
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} projectId={projectId!} />
       <TemplatesDialog open={templatesOpen} onClose={() => setTemplatesOpen(false)} projectId={projectId!} />

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import {
@@ -57,9 +57,15 @@ export function ProjectsList() {
   const [createOpen, setCreateOpen] = useState(false)
   const queryClient = useQueryClient()
 
+  // Pass C (deferred item #3): the Dashboard's "Active Projects" KPI
+  // links here with `?status=Active` -- read once on mount so that deep
+  // link actually pre-filters instead of silently landing unfiltered.
+  const [searchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [domain, setDomain] = useState<Domain | ''>('')
-  const [status, setStatus] = useState<ProjectStatus | ''>('')
+  const [status, setStatus] = useState<ProjectStatus | ''>(
+    (searchParams.get('status') as ProjectStatus | null) ?? '',
+  )
   const [priority, setPriority] = useState<Priority | ''>('')
   const [sort, setSort] = useState('name')
   const [page, setPage] = useState(1)

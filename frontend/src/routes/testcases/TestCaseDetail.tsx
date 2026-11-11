@@ -30,7 +30,7 @@ import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, Drawer } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -308,7 +308,9 @@ export function TestCaseDetail() {
       <CommentsCard ownerType="test_case" ownerId={testCase.id} />
       <ActivityTimelineCard entries={historyQuery.data} actionLabels={TEST_CASE_HISTORY_ACTION_LABEL} />
 
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} title="Edit Test Case" className="max-w-2xl">
+      {/* GAP-91 item 1: a 10+ field form no longer fits well in a centered
+          Dialog -- a full-height Drawer gives it real room. */}
+      <Drawer open={editOpen} onClose={() => setEditOpen(false)} title="Edit Test Case">
         <TestCaseForm
           defaultValues={formValues}
           submitLabel="Save Changes"
@@ -318,7 +320,7 @@ export function TestCaseDetail() {
           modules={modulesQuery.data ?? []}
           onSubmit={(values) => updateMutation.mutate(values)}
         />
-      </Dialog>
+      </Drawer>
       <ReviewWithAIDialog
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}

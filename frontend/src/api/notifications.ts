@@ -1,7 +1,7 @@
 import { apiFetch } from '@/api/client'
 
 export type NotificationType = 'mention' | 'test_case_assigned' | 'defect_closed'
-export type NotificationEntityType = 'test_case' | 'defect' | 'execution_step'
+export type NotificationEntityType = 'test_case' | 'defect' | 'execution_step' | 'test_run'
 
 export interface Notification {
   id: string

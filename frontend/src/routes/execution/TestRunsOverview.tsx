@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { listTestRuns, type TestRunSummary } from '@/api/execution'
 import { listProjects, type Project } from '@/api/projects'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import { TableSkeleton } from '@/components/ui/skeleton'
 
 // Cross-project test run overview (foundation pass for the "Test Runs"
 // sidebar item). Same client-side-merge approach as TestRepository.tsx --
@@ -13,7 +14,19 @@ import { Select } from '@/components/ui/select'
 // fetched and merged here rather than adding a new backend aggregate.
 export function TestRunsOverview() {
   const [projectId, setProjectId] = useState('')
-  const [showFinished, setShowFinished] = useState(false)
+  // Pass C (deferred item #3): the Dashboard's "Active Test Runs" KPI
+  // links here with `?status=in_progress`, a deep link that silently did
+  // nothing until this page actually read it. Read once on mount (not a
+  // full bidirectional URL sync like Test Cases/Defects got, since this
+  // page has only the one boolean toggle) so landing on that link
+  // actually pre-filters.
+  const [searchParams] = useSearchParams()
+  // Bug #9: this previously defaulted to hiding finished runs, so a
+  // tenant with only finished runs saw a dead-end "No test runs match"
+  // on first visit even though data existed. Show everything by default;
+  // the toggle now narrows down to active-only instead of opting in to
+  // seeing finished runs at all.
+  const [activeOnly, setActiveOnly] = useState(searchParams.get('status') === 'in_progress')
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all'],
@@ -32,7 +45,7 @@ export function TestRunsOverview() {
   const isLoading = perProjectQueries.some((q) => q.isLoading)
   const rows: { project: Project; run: TestRunSummary }[] = perProjectQueries
     .flatMap((q) => (q.data ? q.data.runs.map((run) => ({ project: q.data!.project, run })) : []))
-    .filter((r) => showFinished || !r.run.finished_at)
+    .filter((r) => !activeOnly || !r.run.finished_at)
     .sort((a, b) => b.run.created_at.localeCompare(a.run.created_at))
 
   return (
@@ -61,10 +74,10 @@ export function TestRunsOverview() {
         <label className="flex items-center gap-2 pb-2 text-sm">
           <input
             type="checkbox"
-            checked={showFinished}
-            onChange={(e) => setShowFinished(e.target.checked)}
+            checked={activeOnly}
+            onChange={(e) => setActiveOnly(e.target.checked)}
           />
-          Include finished runs
+          Active runs only
         </label>
       </div>
 
@@ -88,13 +101,7 @@ export function TestRunsOverview() {
                 </td>
               </tr>
             )}
-            {isLoading && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  Loading…
-                </td>
-              </tr>
-            )}
+            {isLoading && <TableSkeleton columns={6} />}
             {rows.map(({ project, run }) => (
               <tr key={run.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
                 <td className="px-4 py-2">

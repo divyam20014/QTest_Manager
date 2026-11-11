@@ -1,9 +1,11 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
+import { usePageTitleFromRoute } from '@/lib/usePageTitle'
 import { AcceptInvite } from '@/routes/AcceptInvite'
 import { AppShell } from '@/routes/AppShell'
 import { Dashboard } from '@/routes/Dashboard'
 import { Login } from '@/routes/Login'
+import { NotFound } from '@/routes/NotFound'
 import { PlatformAdmin } from '@/routes/PlatformAdmin'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { DefectDetail } from '@/routes/defects/DefectDetail'
@@ -30,6 +32,7 @@ import { TestCaseDetail } from '@/routes/testcases/TestCaseDetail'
 import { TestCasesList } from '@/routes/testcases/TestCasesList'
 
 export function App() {
+  usePageTitleFromRoute()
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -61,9 +64,10 @@ export function App() {
           <Route path="/admin/environments" element={<Environments />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/account" element={<MyAccount />} />
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }

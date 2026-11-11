@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { listProjects, type Project } from '@/api/projects'
@@ -20,10 +20,11 @@ import { listModules } from '@/api/modules'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
+import { Drawer } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { TestCaseForm, type TestCaseFormValues } from '@/routes/testcases/TestCaseForm'
 import { useToast } from '@/lib/toast'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
@@ -71,8 +72,18 @@ async function runNextAction(tc: TestCase): Promise<void> {
 export function TestRepository() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<TestCaseStatus | ''>('')
+  // Pass C (deferred item #3): the Dashboard's test-case KPIs link here
+  // with `?status=approved` -- read once on mount so that deep link
+  // actually pre-filters instead of silently landing unfiltered.
+  const [searchParams] = useSearchParams()
+  const [status, setStatus] = useState<TestCaseStatus | ''>(
+    (searchParams.get('status') as TestCaseStatus | null) ?? '',
+  )
   const [priority, setPriority] = useState<Priority | ''>('')
+  // Bug #8: deprecated cases cluttered the list by default (every seeded
+  // case here happened to be deprecated) -- hidden unless explicitly
+  // toggled on, or unless the status filter itself is set to Deprecated.
+  const [showDeprecated, setShowDeprecated] = useState(false)
   const [projectId, setProjectId] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkMessage, setBulkMessage] = useState<string | null>(null)
@@ -113,9 +124,13 @@ export function TestRepository() {
   )
 
   const isLoading = perProjectQueries.some((q) => q.isLoading)
-  const rows: { project: Project; case: TestCase }[] = perProjectQueries
+  const allRows: { project: Project; case: TestCase }[] = perProjectQueries
     .flatMap((q) => (q.data ? q.data.items.map((c) => ({ project: q.data!.project, case: c })) : []))
     .sort((a, b) => b.case.created_at.localeCompare(a.case.created_at))
+  const rows = allRows.filter(
+    (r) => showDeprecated || status === 'deprecated' || r.case.status !== 'deprecated',
+  )
+  const hiddenDeprecatedCount = allRows.length - rows.length
 
   function invalidateRepository() {
     queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'test-repository' })
@@ -195,7 +210,12 @@ export function TestRepository() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Test Repository</h1>
-        <Button onClick={() => { setCreateProjectId(projectId || projects[0]?.id || ''); setCreateOpen(true) }} disabled={projects.length === 0}>
+        {/* Bug #11: previously defaulted to projects[0] when viewing "All
+            projects" -- silently created the case in whichever project
+            happened to sort first. Now defaults to unselected (forcing an
+            explicit choice) unless the list is already filtered to one
+            specific project. */}
+        <Button onClick={() => { setCreateProjectId(projectId); setCreateOpen(true) }} disabled={projects.length === 0}>
           New Test Case
         </Button>
       </div>
@@ -266,6 +286,14 @@ export function TestRepository() {
             ))}
           </Select>
         </div>
+        <label className="flex items-center gap-2 pb-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showDeprecated}
+            onChange={(e) => setShowDeprecated(e.target.checked)}
+          />
+          Show deprecated
+        </label>
       </div>
 
       {selected.size > 0 && (
@@ -309,17 +337,13 @@ export function TestRepository() {
             {!isLoading && rows.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No test cases match these filters.
+                  {hiddenDeprecatedCount > 0
+                    ? `No test cases match these filters — ${hiddenDeprecatedCount} deprecated case${hiddenDeprecatedCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
+                    : 'No test cases match these filters.'}
                 </td>
               </tr>
             )}
-            {isLoading && (
-              <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  Loading…
-                </td>
-              </tr>
-            )}
+            {isLoading && <TableSkeleton columns={7} />}
             {rows.map(({ project, case: tc }) => {
               const nextAction = NEXT_ACTION[tc.status]
               return (
@@ -394,11 +418,23 @@ export function TestRepository() {
         </p>
       )}
 
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case" className="max-w-2xl">
+      {/* GAP-91 item 1: a 10+ field form no longer fits well in a centered
+          Dialog -- a full-height Drawer gives it real room. */}
+      <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="create-project">Project</Label>
-            <Select id="create-project" value={createProjectId} onChange={(e) => setCreateProjectId(e.target.value)}>
+            <Label htmlFor="create-project">
+              Project <span className="text-[var(--destructive)]">*</span>
+            </Label>
+            <Select
+              id="create-project"
+              required
+              value={createProjectId}
+              onChange={(e) => setCreateProjectId(e.target.value)}
+            >
+              <option value="" disabled>
+                Select a project…
+              </option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -406,17 +442,23 @@ export function TestRepository() {
               ))}
             </Select>
           </div>
-          <TestCaseForm
-            defaultValues={DEFAULT_FORM_VALUES}
-            submitLabel="Create Test Case"
-            isSubmitting={createMutation.isPending}
-            serverError={createError}
-            users={usersQuery.data ?? []}
-            modules={createModulesQuery.data ?? []}
-            onSubmit={(values) => createMutation.mutate(values)}
-          />
+          {createProjectId ? (
+            <TestCaseForm
+              defaultValues={DEFAULT_FORM_VALUES}
+              submitLabel="Create Test Case"
+              isSubmitting={createMutation.isPending}
+              serverError={createError}
+              users={usersQuery.data ?? []}
+              modules={createModulesQuery.data ?? []}
+              onSubmit={(values) => createMutation.mutate(values)}
+            />
+          ) : (
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Choose a project above to continue.
+            </p>
+          )}
         </div>
-      </Dialog>
+      </Drawer>
     </div>
   )
 }

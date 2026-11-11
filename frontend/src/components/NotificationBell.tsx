@@ -22,6 +22,7 @@ const POLL_INTERVAL_MS = 30_000
 const ENTITY_LINK: Partial<Record<Notification['entity_type'], (id: string) => string>> = {
   test_case: (id) => `/test-cases/${id}`,
   defect: (id) => `/defects/${id}`,
+  test_run: (id) => `/test-runs/${id}`,
   // execution_step has no direct detail route of its own (it's reached via
   // a test-run-case id, which the notification doesn't carry) -- shown as
   // plain text instead of a broken link.

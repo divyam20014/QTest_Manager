@@ -338,6 +338,50 @@ def test_compliance_detail_reflects_known_dataset(client: TestClient, platform_a
     assert len(section["defects"]) == 1
 
 
+def test_compliance_detail_includes_requirement_coverage_and_defect_aging(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Pass D: compliance report deepened with requirements coverage (reuses
+    the RTM computation) and defect aging/SLA compliance (reuses Phase 6's
+    existing age_days/sla_breached computation) -- no requirements were
+    linked in this scenario, so coverage is correctly 0%, and the one open
+    Critical defect is correctly bucketed."""
+    _full_scenario(client, platform_admin)
+
+    report = client.get("/api/v1/reports/compliance-detail").json()["data"]
+    section = report["projects"][0]
+    assert section["requirement_total"] == 0
+    assert section["requirement_covered"] == 0
+    assert section["requirement_coverage_percentage"] == 0.0
+    assert section["defect_aging"]["total_open"] == 1
+    critical_bucket = next(
+        b for b in section["defect_aging"]["buckets"] if b["severity"] == "Critical"
+    )
+    assert critical_bucket["open_count"] == 1
+
+
+def test_compliance_detail_trend_is_none_without_a_period(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _full_scenario(client, platform_admin)
+    report = client.get("/api/v1/reports/compliance-detail").json()["data"]
+    assert report["trend"] is None
+
+
+def test_compliance_detail_trend_computed_with_a_period(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _full_scenario(client, platform_admin)
+    report = client.get(
+        "/api/v1/reports/compliance-detail",
+        params={"period_from": "2026-01-01T00:00:00Z", "period_to": "2026-12-31T23:59:59Z"},
+    ).json()["data"]
+    assert report["trend"] is not None
+    assert report["trend"]["test_cases_created_current"] == 1
+    assert report["trend"]["defects_opened_current"] == 1
+    assert report["trend"]["test_cases_created_prior"] == 0
+
+
 def test_compliance_csv_includes_period_and_detail_tables(
     client: TestClient, platform_admin: dict
 ) -> None:

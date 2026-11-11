@@ -69,6 +69,69 @@ def _setup_case(client: TestClient, platform_admin: dict) -> tuple[str, str, str
     return tenant_id, project["id"], case["id"]
 
 
+def test_upload_list_download_requirement_attachment(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Pass D: BRD/FRD/TRD document upload on a Requirement, reusing the same
+    polymorphic owner_type/owner_id pattern -- the authorization dispatcher
+    already supported 'requirement', only the DB CHECK constraint and the
+    API routes were missing."""
+    _, project_id, _ = _setup_case(client, platform_admin)
+    req = client.post(
+        f"/api/v1/projects/{project_id}/requirements",
+        json={"title": "System shall calculate ACV on total loss", "description": "Per BRD FR-7"},
+    ).json()["data"]
+
+    upload = client.post(
+        f"/api/v1/requirements/{req['id']}/attachments",
+        files={"file": ("BRD-7.pdf", b"%PDF-1.4 fake brd contents", "application/pdf")},
+    )
+    assert upload.status_code == 200, upload.text
+    attachment = upload.json()["data"]
+    assert attachment["file_name"] == "BRD-7.pdf"
+
+    listing = client.get(f"/api/v1/requirements/{req['id']}/attachments").json()["data"]
+    assert len(listing) == 1
+    assert listing[0]["id"] == attachment["id"]
+
+    download = client.get(f"/api/v1/attachments/{attachment['id']}/download")
+    assert download.status_code == 200
+    assert download.content == b"%PDF-1.4 fake brd contents"
+
+    delete = client.delete(f"/api/v1/attachments/{attachment['id']}")
+    assert delete.status_code == 200, delete.text
+    assert client.get(f"/api/v1/requirements/{req['id']}/attachments").json()["data"] == []
+
+
+def test_requirement_attachment_is_tenant_scoped(client: TestClient, platform_admin: dict) -> None:
+    _, project_id, _ = _setup_case(client, platform_admin)
+    req = client.post(
+        f"/api/v1/projects/{project_id}/requirements",
+        json={"title": "System shall validate theft claims", "description": ""},
+    ).json()["data"]
+    upload = client.post(
+        f"/api/v1/requirements/{req['id']}/attachments",
+        files={"file": ("spec.txt", b"spec contents", "text/plain")},
+    ).json()["data"]
+
+    other_client = TestClient(client.app)
+    other_bootstrap = other_client.post(
+        "/api/v1/platform/tenants",
+        auth=(platform_admin["email"], platform_admin["password"]),
+        json={
+            "tenant_name": "Summit Casualty",
+            "admin_name": "Admin B",
+            "admin_email": "admin@summit.com",
+            "admin_password": "AdminPassw0rd!",
+        },
+    ).json()["data"]
+    _login_and_verify(
+        other_client, other_bootstrap["tenant"]["id"], "admin@summit.com", "AdminPassw0rd!"
+    )
+    cross_tenant_download = other_client.get(f"/api/v1/attachments/{upload['id']}/download")
+    assert cross_tenant_download.status_code == 404
+
+
 def test_upload_list_download_attachment(client: TestClient, platform_admin: dict) -> None:
     _, _, case_id = _setup_case(client, platform_admin)
 

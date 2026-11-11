@@ -5,16 +5,28 @@ import { auditExportUrl, listAuditLogs, verifyAuditChain, type AuditLogEntry } f
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { humanizeActionCode, humanizeKey } from '@/lib/labels'
+import { useUrlFilters } from '@/lib/useUrlFilters'
 
+// GAP-91 item 2: URL-persisted filters + chips, same pattern as
+// Test Cases/Defects. No pagination exists on `GET /audit-logs` today
+// (it returns the full filtered array) -- adding server-side pagination
+// is a backend change out of scope for this frontend rollout, noted
+// rather than silently worked around. No bulk actions apply (a read-only
+// log) and no column-picker (the audit schema's columns are fixed), so
+// neither is added here. Sort is already fixed (newest first) server-side.
 export function AuditLogs() {
-  const [action, setAction] = useState('')
-  const [entityType, setEntityType] = useState('')
-  const [entityId, setEntityId] = useState('')
-  const [userId, setUserId] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const filterDefaults = { action: '', entityType: '', entityId: '', userId: '', dateFrom: '', dateTo: '' }
+  const urlFilters = useUrlFilters(filterDefaults)
+  const action = urlFilters.values.action
+  const entityType = urlFilters.values.entityType
+  const entityId = urlFilters.values.entityId
+  const userId = urlFilters.values.userId
+  const dateFrom = urlFilters.values.dateFrom
+  const dateTo = urlFilters.values.dateTo
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [verifyRequested, setVerifyRequested] = useState(false)
 
@@ -28,6 +40,19 @@ export function AuditLogs() {
     date_from: dateFrom ? new Date(dateFrom).toISOString() : undefined,
     date_to: dateTo ? new Date(dateTo).toISOString() : undefined,
   }
+
+  const FILTER_CHIP_LABEL: Record<string, string> = {
+    action: 'Action',
+    entityType: 'Entity type',
+    entityId: 'Entity ID',
+    userId: 'User',
+    dateFrom: 'From',
+    dateTo: 'To',
+  }
+  const chipDisplayValue: Record<string, string> = {
+    userId: usersQuery.data?.find((u) => u.id === userId)?.name ?? userId,
+  }
+  const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
 
   const logsQuery = useQuery({
     queryKey: ['audit-logs', filters],
@@ -82,24 +107,29 @@ export function AuditLogs() {
           aria-label="Filter by action"
           placeholder="Filter by action (e.g. user.created)"
           value={action}
-          onChange={(e) => setAction(e.target.value)}
+          onChange={(e) => urlFilters.setFilter('action', e.target.value)}
           className="w-56"
         />
         <Input
           aria-label="Filter by entity type"
           placeholder="Filter by entity type (e.g. project)"
           value={entityType}
-          onChange={(e) => setEntityType(e.target.value)}
+          onChange={(e) => urlFilters.setFilter('entityType', e.target.value)}
           className="w-56"
         />
         <Input
           aria-label="Filter by entity ID"
           placeholder="Filter by entity ID"
           value={entityId}
-          onChange={(e) => setEntityId(e.target.value)}
+          onChange={(e) => urlFilters.setFilter('entityId', e.target.value)}
           className="w-56"
         />
-        <Select aria-label="Filter by user" value={userId} onChange={(e) => setUserId(e.target.value)} className="w-48">
+        <Select
+          aria-label="Filter by user"
+          value={userId}
+          onChange={(e) => urlFilters.setFilter('userId', e.target.value)}
+          className="w-48"
+        >
           <option value="">All users</option>
           {usersQuery.data?.map((u) => (
             <option key={u.id} value={u.id}>
@@ -107,21 +137,39 @@ export function AuditLogs() {
             </option>
           ))}
         </Select>
-        <Input
-          aria-label="Date from"
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="w-40"
+        <DateRangePicker
+          idPrefix="audit-date"
+          fromValue={dateFrom}
+          toValue={dateTo}
+          onChange={(from, to) => urlFilters.setFilters({ dateFrom: from, dateTo: to })}
         />
-        <Input
-          aria-label="Date to"
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="w-40"
-        />
+        {urlFilters.active.length > 0 && (
+          <Button variant="outline" size="sm" onClick={urlFilters.clearAll}>
+            Clear filters
+          </Button>
+        )}
       </div>
+
+      {visibleFilterChips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {visibleFilterChips.map((key) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-2.5 py-1 text-xs"
+            >
+              {FILTER_CHIP_LABEL[key]}: {chipDisplayValue[key] ?? urlFilters.values[key]}
+              <button
+                type="button"
+                onClick={() => urlFilters.setFilter(key, '')}
+                aria-label={`Remove ${FILTER_CHIP_LABEL[key]} filter`}
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
@@ -175,10 +223,10 @@ function AuditRow({
         </td>
         <td className="px-4 py-2">{entry.user_name ?? 'System'}</td>
         <td className="px-4 py-2">
-          <Badge>{entry.action}</Badge>
+          <Badge title={entry.action}>{humanizeActionCode(entry.action)}</Badge>
         </td>
         <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
-          {entry.entity_type} · {entry.entity_id.slice(0, 8)}
+          {humanizeKey(entry.entity_type)} · {entry.entity_id.slice(0, 8)}
         </td>
         <td className="px-4 py-2 font-mono text-xs text-[var(--muted-foreground)]">
           {entry.record_hash.slice(0, 12)}…

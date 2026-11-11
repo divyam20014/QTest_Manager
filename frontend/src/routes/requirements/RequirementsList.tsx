@@ -13,22 +13,36 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { useUrlFilters } from '@/lib/useUrlFilters'
+import { useNavigate } from 'react-router-dom'
 
 const PAGE_SIZE = 20
 
+// GAP-91 item 2: `GET /projects/{id}/requirements` only accepts
+// page/page_size today (no search param), so a server-side search filter
+// would need a backend change -- out of scope for this frontend rollout.
+// Only `page` is URL-persisted here (still a real win: survives refresh,
+// shareable). No bulk actions exist for requirements and the list is only
+// 3 columns, so neither a bulk-action bar nor a column-picker applies.
 export function RequirementsList() {
   const { projectId } = useParams<{ projectId: string }>()
   const { user } = useAuth()
   const canManage = isManagerOrAbove(user)
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
-  const [page, setPage] = useState(1)
+  const urlFilters = useUrlFilters({ page: '1' })
+  const page = Number(urlFilters.values.page) || 1
+  const setPage = (updater: (p: number) => number) =>
+    urlFilters.setFilter('page', String(Math.max(1, updater(page))))
   const { show: showToast } = useToast()
 
   const projectQuery = useQuery({
@@ -98,8 +112,23 @@ export function RequirementsList() {
             </tr>
           </thead>
           <tbody>
+            {requirementsQuery.isLoading && <TableSkeleton columns={3} />}
+            {requirementsQuery.isError && (
+              <tr>
+                <td colSpan={3} className="px-4">
+                  <ErrorState onRetry={() => requirementsQuery.refetch()} />
+                </td>
+              </tr>
+            )}
             {requirementsQuery.data?.items.map((r) => (
-              <tr key={r.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
+              <tr
+                key={r.id}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') navigate(`/requirements/${r.id}`)
+                }}
+                className="cursor-pointer border-t border-[var(--border)] outline-none hover:bg-[var(--muted)] focus-visible:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
+              >
                 <td className="px-4 py-2 font-medium">
                   <Link to={`/requirements/${r.id}`} className="underline-offset-2 hover:underline">
                     {r.title}
@@ -113,10 +142,10 @@ export function RequirementsList() {
                 </td>
               </tr>
             ))}
-            {requirementsQuery.data?.items.length === 0 && (
+            {!requirementsQuery.isLoading && !requirementsQuery.isError && requirementsQuery.data?.items.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No requirements yet.
+                <td colSpan={3} className="px-4">
+                  <EmptyState title="No requirements yet" description="Add a requirement to start tracking coverage against test cases." />
                 </td>
               </tr>
             )}

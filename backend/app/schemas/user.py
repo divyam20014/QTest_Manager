@@ -42,6 +42,10 @@ class UserOut(BaseModel):
     role_id: UUID
     is_active: bool
     created_at: datetime
+    # Pass C (deferred item #5, bug #20): most recent Session.last_seen_at
+    # across every session this user has ever had, or null if they've
+    # never logged in.
+    last_login_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

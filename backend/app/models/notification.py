@@ -20,11 +20,12 @@ class Notification(Base, TenantScopedMixin):
     __table_args__ = (
         CheckConstraint(
             "type in ('mention','test_case_assigned','defect_closed',"
-            "'review_requested','review_decided')",
+            "'review_requested','review_decided','run_case_assigned',"
+            "'test_run_completed','defect_sla_breach')",
             name="ck_notifications_type",
         ),
         CheckConstraint(
-            "entity_type in ('test_case','defect','execution_step')",
+            "entity_type in ('test_case','defect','execution_step','test_run')",
             name="ck_notifications_entity_type",
         ),
     )

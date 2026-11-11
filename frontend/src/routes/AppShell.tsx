@@ -156,6 +156,12 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-svh">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-[var(--background)] focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-[var(--foreground)] focus:shadow-lg focus:ring-2 focus:ring-[var(--ring)]"
+      >
+        Skip to main content
+      </a>
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 md:hidden"
@@ -284,7 +290,7 @@ export function AppShell() {
             <UserMenu name={user?.name} role={user?.role} onLogout={() => logoutMutation.mutate()} />
           </div>
         </header>
-        <main className="flex-1 bg-[var(--muted)]/40 p-4 md:p-6">
+        <main id="main-content" tabIndex={-1} className="flex-1 bg-[var(--muted)]/40 p-4 md:p-6">
           <Outlet />
         </main>
       </div>

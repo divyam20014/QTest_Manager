@@ -25,6 +25,7 @@ from app.schemas.execution import (
     TestRunUpdateRequest,
     Verdict,
 )
+from app.services import notification_service
 from app.services.project_service import is_assigned
 
 
@@ -375,6 +376,24 @@ def assign_run_case(
         entity_id=run_case.id,
         metadata={"assigned_to": str(assigned_to) if assigned_to else None},
     )
+
+    if assigned_to is not None:
+        case = db.execute(select(TestCase).where(TestCase.id == run_case.test_case_id)).scalar_one()
+        assignee = db.execute(select(User).where(User.id == assigned_to)).scalar_one_or_none()
+        if assignee is not None:
+            notification_service.notify(
+                db,
+                tenant_id,
+                actor_user_id,
+                assigned_to,
+                assignee.email,
+                "run_case_assigned",
+                "A test case execution was assigned to you",
+                f'"{case.title}" in run "{run.name}" was assigned to you to execute.',
+                "test_run",
+                run.id,
+            )
+
     db.commit()
     return run_case
 
@@ -804,5 +823,21 @@ def finish_test_run(db: Session, tenant_id: UUID, actor_user_id: UUID, run_id: U
         entity_type="test_run",
         entity_id=run.id,
     )
+
+    owner = db.execute(select(User).where(User.id == run.executed_by)).scalar_one_or_none()
+    if owner is not None:
+        notification_service.notify(
+            db,
+            tenant_id,
+            actor_user_id,
+            run.executed_by,
+            owner.email,
+            "test_run_completed",
+            "A test run you own has finished",
+            f'Test run "{run.name}" is complete.',
+            "test_run",
+            run.id,
+        )
+
     db.commit()
     return run

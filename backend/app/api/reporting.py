@@ -171,7 +171,7 @@ def compliance_detail(
 ) -> dict:
     reporting_officer = db.execute(select(User).where(User.id == ctx.user_id)).scalar_one()
     report = reporting_service.get_compliance_report(
-        db, ctx.tenant_id, reporting_officer, period_from, period_to
+        db, ctx.tenant_id, reporting_officer, ctx.role_code, ctx.user_id, period_from, period_to
     )
     return envelope(report.model_dump(mode="json"))
 
@@ -185,7 +185,7 @@ def compliance_export(
 ) -> PlainTextResponse:
     reporting_officer = db.execute(select(User).where(User.id == ctx.user_id)).scalar_one()
     report = reporting_service.get_compliance_report(
-        db, ctx.tenant_id, reporting_officer, period_from, period_to
+        db, ctx.tenant_id, reporting_officer, ctx.role_code, ctx.user_id, period_from, period_to
     )
     csv_text = reporting_service.compliance_report_to_csv(report)
     return PlainTextResponse(

@@ -19,6 +19,7 @@ import {
 import { listTestCases } from '@/api/testCases'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
+import { humanizeKey } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -171,7 +172,7 @@ export function TestRunDetail() {
               <tr key={rc.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
                 <td className="px-4 py-2 font-medium">{rc.title}</td>
                 <td className="px-4 py-2">
-                  <Badge tone={CASE_STATUS_TONE[rc.status]}>{rc.status.replace('_', ' ')}</Badge>
+                  <Badge tone={CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</Badge>
                 </td>
                 <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
                   {rc.passed_count + rc.failed_count + rc.ignored_count}/{rc.step_count} steps

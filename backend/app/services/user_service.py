@@ -26,6 +26,9 @@ def to_out(db: Session, user: User) -> UserOut:
     role_row = db.execute(
         select(Role.code, Role.name).where(Role.id == user.role_id)
     ).one()
+    last_login_at = db.execute(
+        select(func.max(SessionModel.last_seen_at)).where(SessionModel.user_id == user.id)
+    ).scalar_one_or_none()
     return UserOut(
         id=user.id,
         email=user.email,
@@ -34,6 +37,7 @@ def to_out(db: Session, user: User) -> UserOut:
         role_id=user.role_id,
         is_active=user.is_active,
         created_at=user.created_at,
+        last_login_at=last_login_at,
     )
 
 

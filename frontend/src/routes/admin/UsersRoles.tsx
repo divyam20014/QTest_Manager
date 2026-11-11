@@ -21,8 +21,17 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
+import { useUrlFilters } from '@/lib/useUrlFilters'
 
 const INVITE_ROLES: RoleCode[] = ['admin', 'manager', 'tester']
+
+// GAP-91 item 2: this list has no bulk-action backing endpoint (role
+// change/activate/deactivate/reset-password are all single-user actions
+// today) and only 6 fixed columns, so no bulk-action bar or column-picker
+// is added here -- noted rather than forced. Sort IS added (Name/Last
+// Login), since that's a genuine, cheap usability win on a list that can
+// grow past what fits on one screen.
+type SortKey = 'name' | 'last_login_at'
 
 export function UsersRoles() {
   const { user: currentUser } = useAuth()
@@ -32,9 +41,48 @@ export function UsersRoles() {
   const [resetTarget, setResetTarget] = useState<User | null>(null)
   const { show: showToast } = useToast()
 
+  const filterDefaults = { search: '', role: '', status: '', sort: 'name' }
+  const urlFilters = useUrlFilters(filterDefaults)
+  const search = urlFilters.values.search
+  const roleFilter = urlFilters.values.role
+  const statusFilter = urlFilters.values.status as '' | 'active' | 'inactive'
+  const sort = urlFilters.values.sort
+  const sortKey = sort.replace(/^-/, '') as SortKey
+  const sortDesc = sort.startsWith('-')
+
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
   const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: listRoles })
   const activeRoles = (rolesQuery.data ?? []).filter((r) => r.is_active)
+
+  // Client-side filtering -- the user list is tenant-scoped and small
+  // enough (no pagination exists on this endpoint) that a server round
+  // trip per keystroke isn't warranted.
+  const filteredUsers = (usersQuery.data ?? [])
+    .filter((u) => {
+      if (search && !`${u.name} ${u.email}`.toLowerCase().includes(search.toLowerCase())) return false
+      if (roleFilter && u.role_id !== roleFilter) return false
+      if (statusFilter === 'active' && !u.is_active) return false
+      if (statusFilter === 'inactive' && u.is_active) return false
+      return true
+    })
+    .sort((a, b) => {
+      const av = sortKey === 'last_login_at' ? a.last_login_at ?? '' : a.name
+      const bv = sortKey === 'last_login_at' ? b.last_login_at ?? '' : b.name
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return sortDesc ? -cmp : cmp
+    })
+
+  function toggleSort(key: SortKey) {
+    const next = sortKey !== key ? key : sortDesc ? key : `-${key}`
+    urlFilters.setFilter('sort', next)
+  }
+
+  const FILTER_CHIP_LABEL: Record<string, string> = { search: 'Search', role: 'Role', status: 'Status' }
+  const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
+  const chipDisplayValue: Record<string, string> = {
+    role: activeRoles.find((r) => r.id === roleFilter)?.name ?? roleFilter,
+    status: statusFilter === 'active' ? 'Active' : statusFilter === 'inactive' ? 'Deactivated' : '',
+  }
 
   const roleMutation = useMutation({
     mutationFn: ({ id, roleId }: { id: string; roleId: string }) =>
@@ -78,19 +126,102 @@ export function UsersRoles() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Search by name or email…"
+          value={search}
+          onChange={(e) => urlFilters.setFilter('search', e.target.value)}
+          className="w-56"
+          aria-label="Search users"
+        />
+        <Select
+          aria-label="Filter by role"
+          value={roleFilter}
+          onChange={(e) => urlFilters.setFilter('role', e.target.value)}
+          className="w-40"
+        >
+          <option value="">All roles</option>
+          {activeRoles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Filter by status"
+          value={statusFilter}
+          onChange={(e) => urlFilters.setFilter('status', e.target.value)}
+          className="w-36"
+        >
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Deactivated</option>
+        </Select>
+        {urlFilters.active.length > 0 && (
+          <Button variant="outline" size="sm" onClick={urlFilters.clearAll}>
+            Clear filters
+          </Button>
+        )}
+      </div>
+
+      {visibleFilterChips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {visibleFilterChips.map((key) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-2.5 py-1 text-xs"
+            >
+              {FILTER_CHIP_LABEL[key]}: {chipDisplayValue[key] ?? urlFilters.values[key]}
+              <button
+                type="button"
+                onClick={() => urlFilters.setFilter(key, '')}
+                aria-label={`Remove ${FILTER_CHIP_LABEL[key]} filter`}
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
           <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>
-              <th className="px-4 py-2 font-medium">Name</th>
+              <th className="px-4 py-2 font-medium">
+                <button
+                  type="button"
+                  onClick={() => toggleSort('name')}
+                  className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+                >
+                  Name {sortKey === 'name' && (sortDesc ? '↓' : '↑')}
+                </button>
+              </th>
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Role</th>
               <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">
+                <button
+                  type="button"
+                  onClick={() => toggleSort('last_login_at')}
+                  className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+                >
+                  Last Login {sortKey === 'last_login_at' && (sortDesc ? '↓' : '↑')}
+                </button>
+              </th>
               <th className="px-4 py-2 font-medium"></th>
             </tr>
           </thead>
           <tbody>
-            {usersQuery.data?.map((u) => (
+            {filteredUsers.length === 0 && usersQuery.data && usersQuery.data.length > 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-[var(--muted-foreground)]">
+                  No users match your filters.
+                </td>
+              </tr>
+            )}
+            {filteredUsers.map((u) => (
               <UserRow
                 key={u.id}
                 user={u}
@@ -156,6 +287,9 @@ function UserRow({
       </td>
       <td className="px-4 py-2">
         <Badge tone={user.is_active ? 'positive' : 'neutral'}>{user.is_active ? 'Active' : 'Deactivated'}</Badge>
+      </td>
+      <td className="px-4 py-2 text-[var(--muted-foreground)]">
+        {user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : 'Never'}
       </td>
       <td className="px-4 py-2 text-right">
         <div className="flex justify-end gap-2">

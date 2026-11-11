@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, Copy, Trash2 } from 'lucide-react'
+import { useEffect } from 'react'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -62,7 +63,24 @@ export function TestCaseForm({
   users?: { id: string; name: string }[]
   modules?: { id: string; name: string; parent_id: string | null }[]
 }) {
-  const form = useForm<TestCaseFormValues>({ resolver: zodResolver(schema), defaultValues })
+  const form = useForm<TestCaseFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues,
+    mode: 'onBlur',
+  })
+
+  // Bug #11: no unsaved-changes warning previously existed -- a user could
+  // lose a half-filled form by navigating away or closing the tab with no
+  // prompt at all.
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (form.formState.isDirty) {
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [form.formState.isDirty])
   const { fields, append, remove, insert, move } = useFieldArray({
     control: form.control,
     name: 'steps',
@@ -71,6 +89,23 @@ export function TestCaseForm({
     queryKey: ['field-options', 'test_case_priority'],
     queryFn: () => listFieldOptions('test_case_priority'),
   })
+
+  // Bug #11's "Priority defaults to Low" report: the caller's hardcoded
+  // 'Medium' default silently didn't match the select's rendered options
+  // whenever a tenant's configured priority codes didn't include that
+  // exact string -- the browser then just visually shows its first
+  // <option> (often the lowest-severity one by convention) while the form
+  // state stayed on the now-orphaned value. Once real options load, snap
+  // to the middle one if the current value isn't actually selectable.
+  const priorityOptions = prioritiesQuery.data ?? []
+  useEffect(() => {
+    if (priorityOptions.length === 0) return
+    const current = form.getValues('priority')
+    if (priorityOptions.some((p) => p.code === current)) return
+    const middle = priorityOptions[Math.floor((priorityOptions.length - 1) / 2)]
+    form.setValue('priority', middle.code, { shouldValidate: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priorityOptions])
 
   return (
     <form
@@ -90,7 +125,9 @@ export function TestCaseForm({
       )}
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="title">Title</Label>
+        <Label htmlFor="title">
+          Title <span className="text-[var(--destructive)]">*</span>
+        </Label>
         <Input id="title" {...form.register('title')} />
         {form.formState.errors.title && (
           <p className="text-xs text-[var(--destructive)]">{form.formState.errors.title.message}</p>
@@ -148,7 +185,9 @@ export function TestCaseForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="priority">Priority</Label>
+          <Label htmlFor="priority">
+            Priority <span className="text-[var(--destructive)]">*</span>
+          </Label>
           <Select id="priority" {...form.register('priority')}>
             {(prioritiesQuery.data ?? []).map((p) => (
               <option key={p.code} value={p.code}>
@@ -171,7 +210,9 @@ export function TestCaseForm({
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label>Steps</Label>
+        <Label>
+          Steps <span className="text-[var(--destructive)]">*</span>
+        </Label>
         {fields.map((field, index) => (
           <div
             key={field.id}
@@ -181,6 +222,7 @@ export function TestCaseForm({
             <div className="flex flex-1 flex-col gap-1.5">
               <Input
                 placeholder="Action"
+                aria-label={`Step ${index + 1} action`}
                 {...form.register(`steps.${index}.action` as const)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -189,7 +231,11 @@ export function TestCaseForm({
                   }
                 }}
               />
-              <Input placeholder="Expected outcome" {...form.register(`steps.${index}.expected` as const)} />
+              <Input
+                placeholder="Expected outcome"
+                aria-label={`Step ${index + 1} expected outcome`}
+                {...form.register(`steps.${index}.expected` as const)}
+              />
             </div>
             <div className="flex flex-col gap-0.5">
               <Button

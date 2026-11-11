@@ -21,6 +21,7 @@ from app.schemas.reporting import (
     AggregateReport,
     AggregateRow,
     ComplianceDefectRow,
+    CompliancePeriodComparison,
     ComplianceProjectSection,
     ComplianceReport,
     ComplianceTestCaseRow,
@@ -147,7 +148,11 @@ def get_dashboard_summary(
         test_cases=TestCaseSummary(
             total=tc_total, approved_count=approved_count, approved_ratio=approved_ratio
         ),
-        test_runs=TestRunSummary(active=active_runs, step_pass_percentage=step_pass_percentage),
+        test_runs=TestRunSummary(
+            active=active_runs,
+            step_pass_percentage=step_pass_percentage,
+            step_sample_size=step_total,
+        ),
         defects=DefectBacklogSummary(
             open_by_severity=open_by_severity,
             critical_count=open_by_severity.get("Critical", 0),
@@ -833,9 +838,13 @@ def get_compliance_report(
     db: Session,
     tenant_id: UUID,
     reporting_officer: User,
+    role_code: str,
+    user_id: UUID,
     period_from: datetime | None = None,
     period_to: datetime | None = None,
 ) -> ComplianceReport:
+    from app.services.requirement_service import get_coverage_report
+
     tenant = db.execute(select(Tenant).where(Tenant.id == tenant_id)).scalar_one()
     projects = list(db.execute(select(Project).where(Project.tenant_id == tenant_id)).scalars())
 
@@ -858,6 +867,9 @@ def get_compliance_report(
             defect_query = defect_query.where(Defect.created_at <= period_to)
         defects = list(db.execute(defect_query).scalars())
         open_defects = [d for d in defects if d.status != "Closed"]
+
+        coverage = get_coverage_report(db, tenant_id, role_code, user_id, project.id)
+        aging = get_defect_aging_summary(db, tenant_id, role_code, user_id, project.id)
 
         sections.append(
             ComplianceProjectSection(
@@ -882,8 +894,14 @@ def get_compliance_report(
                     )
                     for d in defects
                 ],
+                requirement_total=coverage.total_requirements,
+                requirement_covered=coverage.covered_requirements,
+                requirement_coverage_percentage=coverage.coverage_percentage,
+                defect_aging=aging,
             )
         )
+
+    trend = _compliance_period_trend(db, tenant_id, period_from, period_to)
 
     return ComplianceReport(
         tenant_name=tenant.name,
@@ -893,6 +911,64 @@ def get_compliance_report(
         period_from=period_from,
         period_to=period_to,
         projects=sections,
+        trend=trend,
+    )
+
+
+def _compliance_period_trend(
+    db: Session,
+    tenant_id: UUID,
+    period_from: datetime | None,
+    period_to: datetime | None,
+) -> CompliancePeriodComparison | None:
+    """Cheap this-period-vs-prior-period comparison: the prior window is the
+    same length immediately before period_from. No trend if no period was
+    specified -- there is no meaningful "prior" to an all-time report."""
+    if period_from is None or period_to is None:
+        return None
+    window = period_to - period_from
+    if window.total_seconds() <= 0:
+        return None
+    prior_from = period_from - window
+    prior_to = period_from
+
+    def _count(model: type[TestCase] | type[Defect], gte: datetime, lt: datetime) -> int:
+        return db.execute(
+            select(func.count())
+            .select_from(model)
+            .join(Project, Project.id == model.project_id)
+            .where(
+                Project.tenant_id == tenant_id,
+                model.created_at >= gte,
+                model.created_at < lt,
+            )
+        ).scalar_one()
+
+    def _count_defects_closed(gte: datetime, lt: datetime) -> int:
+        # Defect has no updated_at column -- the audit log (already
+        # hash-chained, already the source of truth for every defect history
+        # view elsewhere in this app) is the only reliable record of *when*
+        # a status transition happened, not just its current status.
+        return db.execute(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(
+                AuditLog.tenant_id == tenant_id,
+                AuditLog.entity_type == "defect",
+                AuditLog.action == "defect.status_changed",
+                AuditLog.event_metadata["to"].astext == "Closed",
+                AuditLog.created_at >= gte,
+                AuditLog.created_at < lt,
+            )
+        ).scalar_one()
+
+    return CompliancePeriodComparison(
+        test_cases_created_current=_count(TestCase, period_from, period_to),
+        test_cases_created_prior=_count(TestCase, prior_from, prior_to),
+        defects_opened_current=_count(Defect, period_from, period_to),
+        defects_opened_prior=_count(Defect, prior_from, prior_to),
+        defects_closed_current=_count_defects_closed(period_from, period_to),
+        defects_closed_prior=_count_defects_closed(prior_from, prior_to),
     )
 
 
@@ -923,6 +999,10 @@ def compliance_report_to_csv(report: ComplianceReport) -> str:
             "Ready for Review",
             "Open Defects",
             "Critical Defects",
+            "Requirements Covered",
+            "Requirement Coverage %",
+            "Defects Open",
+            "Defects SLA-Breached",
         ]
     )
     for section in report.projects:
@@ -936,10 +1016,45 @@ def compliance_report_to_csv(report: ComplianceReport) -> str:
                 section.ready_for_review_test_cases,
                 section.open_defects,
                 section.critical_defects,
+                f"{section.requirement_covered}/{section.requirement_total}",
+                section.requirement_coverage_percentage,
+                section.defect_aging.total_open,
+                section.defect_aging.total_breached,
+            ]
+        )
+
+    if report.trend is not None:
+        writer.writerow([])
+        writer.writerow(["Period-over-Period Trend", "Current Period", "Prior Period"])
+        writer.writerow(
+            [
+                "Test Cases Created",
+                report.trend.test_cases_created_current,
+                report.trend.test_cases_created_prior,
+            ]
+        )
+        writer.writerow(
+            [
+                "Defects Opened",
+                report.trend.defects_opened_current,
+                report.trend.defects_opened_prior,
+            ]
+        )
+        writer.writerow(
+            [
+                "Defects Closed",
+                report.trend.defects_closed_current,
+                report.trend.defects_closed_prior,
             ]
         )
 
     for section in report.projects:
+        writer.writerow([])
+        writer.writerow([f"{section.name} -- Defect Aging by Severity"])
+        writer.writerow(["Severity", "Open", "SLA-Breached"])
+        for bucket in section.defect_aging.buckets:
+            writer.writerow([bucket.severity, bucket.open_count, bucket.breached_count])
+
         writer.writerow([])
         writer.writerow([f"{section.name} -- Test Cases"])
         writer.writerow(["ID", "Title", "Status", "Priority"])

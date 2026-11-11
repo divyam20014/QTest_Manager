@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
@@ -9,25 +9,53 @@ import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Dialog } from '@/components/ui/dialog'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
+import { useUrlFilters } from '@/lib/useUrlFilters'
 import { DefectImportDialog } from './DefectImportDialog'
 import { STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
+
+const DEFECT_FILTER_CHIP_LABEL: Record<string, string> = {
+  projectId: 'Project',
+  status: 'Status',
+  severity: 'Severity',
+  reportedBy: 'Reported By',
+  createdFrom: 'From',
+  createdTo: 'To',
+}
 
 export function DefectsList() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [projectId, setProjectId] = useState('')
-  const [status, setStatus] = useState<DefectStatus | ''>('')
-  const [severity, setSeverity] = useState<Severity | ''>('')
-  const [reportedBy, setReportedBy] = useState('')
-  const [createdFrom, setCreatedFrom] = useState('')
-  const [createdTo, setCreatedTo] = useState('')
+  // Bug #13 / Pass C deferred item #3: filters persist in the URL now,
+  // including making the Dashboard's `?severity=Critical` deep link
+  // actually pre-filter on landing (it previously went nowhere).
+  const filterDefaults = useMemo(
+    () => ({
+      projectId: '',
+      status: '',
+      severity: '',
+      reportedBy: '',
+      createdFrom: '',
+      createdTo: '',
+    }),
+    [],
+  )
+  const urlFilters = useUrlFilters(filterDefaults)
+  const projectId = urlFilters.values.projectId
+  const status = urlFilters.values.status as DefectStatus | ''
+  const severity = urlFilters.values.severity as Severity | ''
+  const reportedBy = urlFilters.values.reportedBy
+  const createdFrom = urlFilters.values.createdFrom
+  const createdTo = urlFilters.values.createdTo
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
 
@@ -74,7 +102,7 @@ export function DefectsList() {
         <Select
           aria-label="Filter by project"
           value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
+          onChange={(e) => urlFilters.setFilter('projectId', e.target.value)}
           className="w-56"
         >
           <option value="">All Projects</option>
@@ -87,7 +115,7 @@ export function DefectsList() {
         <Select
           aria-label="Filter by status"
           value={status}
-          onChange={(e) => setStatus(e.target.value as DefectStatus | '')}
+          onChange={(e) => urlFilters.setFilter('status', e.target.value)}
           className="w-40"
         >
           <option value="">All Statuses</option>
@@ -100,7 +128,7 @@ export function DefectsList() {
         <Select
           aria-label="Filter by severity"
           value={severity}
-          onChange={(e) => setSeverity(e.target.value as Severity | '')}
+          onChange={(e) => urlFilters.setFilter('severity', e.target.value)}
           className="w-40"
         >
           <option value="">All Severities</option>
@@ -113,7 +141,7 @@ export function DefectsList() {
         <Select
           aria-label="Filter by reporter"
           value={reportedBy}
-          onChange={(e) => setReportedBy(e.target.value)}
+          onChange={(e) => urlFilters.setFilter('reportedBy', e.target.value)}
           className="w-44"
         >
           <option value="">All Reporters</option>
@@ -123,31 +151,42 @@ export function DefectsList() {
             </option>
           ))}
         </Select>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="defect-created-from" className="text-xs text-[var(--muted-foreground)]">
-            Reported From
-          </Label>
-          <Input
-            id="defect-created-from"
-            type="date"
-            value={createdFrom}
-            onChange={(e) => setCreatedFrom(e.target.value)}
-            className="w-36"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="defect-created-to" className="text-xs text-[var(--muted-foreground)]">
-            Reported To
-          </Label>
-          <Input
-            id="defect-created-to"
-            type="date"
-            value={createdTo}
-            onChange={(e) => setCreatedTo(e.target.value)}
-            className="w-36"
-          />
-        </div>
+        <DateRangePicker
+          idPrefix="defect-reported"
+          fromValue={createdFrom}
+          toValue={createdTo}
+          onChange={(from, to) => {
+            urlFilters.setFilter('createdFrom', from)
+            urlFilters.setFilter('createdTo', to)
+          }}
+        />
+        {urlFilters.active.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={urlFilters.clearAll}>
+            Clear filters
+          </Button>
+        )}
       </div>
+
+      {urlFilters.active.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {urlFilters.active.map((key) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-2.5 py-1 text-xs"
+            >
+              {DEFECT_FILTER_CHIP_LABEL[key]}: {urlFilters.values[key]}
+              <button
+                type="button"
+                onClick={() => urlFilters.setFilter(key, '')}
+                aria-label={`Remove ${DEFECT_FILTER_CHIP_LABEL[key]} filter`}
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
@@ -164,10 +203,25 @@ export function DefectsList() {
             </tr>
           </thead>
           <tbody>
-            {defectsQuery.data?.length === 0 && (
+            {defectsQuery.isLoading && <TableSkeleton columns={8} />}
+            {defectsQuery.isError && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No defects found.
+                <td colSpan={8} className="px-4">
+                  <ErrorState onRetry={() => defectsQuery.refetch()} />
+                </td>
+              </tr>
+            )}
+            {!defectsQuery.isLoading && !defectsQuery.isError && defectsQuery.data?.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-4">
+                  <EmptyState
+                    title={status || severity || reportedBy || createdFrom || createdTo ? 'No defects match your filters' : 'No defects yet'}
+                    description={
+                      status || severity || reportedBy || createdFrom || createdTo
+                        ? 'Try clearing a filter to see more results.'
+                        : 'Defects reported from a failed test step, or created directly, will show up here.'
+                    }
+                  />
                 </td>
               </tr>
             )}

@@ -30,8 +30,10 @@ import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Select } from '@/components/ui/select'
+import { ChartSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { pivotAggregateRows } from './aggregate'
@@ -222,19 +224,14 @@ export function Reporting() {
                 </option>
               ))}
             </Select>
-            <Input
-              aria-label="Date from"
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-40"
-            />
-            <Input
-              aria-label="Date to"
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-40"
+            <DateRangePicker
+              idPrefix="reporting-date"
+              fromValue={dateFrom}
+              toValue={dateTo}
+              onChange={(from, to) => {
+                setDateFrom(from)
+                setDateTo(to)
+              }}
             />
           </div>
         </CardContent>
@@ -245,6 +242,14 @@ export function Reporting() {
           <CardTitle>Project &amp; Test Case Distribution by Domain</CardTitle>
         </CardHeader>
         <CardContent>
+          {domainQuery.isLoading ? (
+            <div className="h-72"><ChartSkeleton /></div>
+          ) : domainQuery.isError ? (
+            <ErrorState onRetry={() => domainQuery.refetch()} />
+          ) : (domainQuery.data ?? []).length === 0 ? (
+            <EmptyState title="No domain data yet" description="Create a project with a domain to see this breakdown." />
+          ) : (
+          <>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={domainQuery.data ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -288,6 +293,8 @@ export function Reporting() {
               </div>
             ))}
           </div>
+          </>
+          )}
         </CardContent>
       </Card>
 
@@ -296,8 +303,12 @@ export function Reporting() {
           <CardTitle>Execution Trends (last 30 days)</CardTitle>
         </CardHeader>
         <CardContent>
-          {(trendQuery.data?.points.length ?? 0) === 0 ? (
-            <p className="text-sm text-[var(--muted-foreground)]">No execution activity in this period yet.</p>
+          {trendQuery.isLoading ? (
+            <div className="h-72"><ChartSkeleton /></div>
+          ) : trendQuery.isError ? (
+            <ErrorState onRetry={() => trendQuery.refetch()} />
+          ) : (trendQuery.data?.points.length ?? 0) === 0 ? (
+            <EmptyState title="No execution activity in this period" description="Try widening the date range, or run a test to generate data." />
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -340,8 +351,12 @@ export function Reporting() {
           <CardTitle>Defect Trend (last 30 days)</CardTitle>
         </CardHeader>
         <CardContent>
-          {(defectTrendQuery.data?.points.length ?? 0) === 0 ? (
-            <p className="text-sm text-[var(--muted-foreground)]">No defect activity in this period yet.</p>
+          {defectTrendQuery.isLoading ? (
+            <div className="h-72"><ChartSkeleton /></div>
+          ) : defectTrendQuery.isError ? (
+            <ErrorState onRetry={() => defectTrendQuery.refetch()} />
+          ) : (defectTrendQuery.data?.points.length ?? 0) === 0 ? (
+            <EmptyState title="No defect activity in this period" description="Try widening the date range, or report a defect to generate data." />
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -383,8 +398,19 @@ export function Reporting() {
           <CardTitle>Defect Aging &amp; SLA</CardTitle>
         </CardHeader>
         <CardContent>
-          {!defectAgingQuery.data || defectAgingQuery.data.total_open === 0 ? (
-            <p className="text-sm text-[var(--muted-foreground)]">No open defects right now.</p>
+          {defectAgingQuery.isLoading ? (
+            <div className="flex flex-col gap-2">
+              <div className="h-4 w-40 animate-pulse rounded-md bg-[var(--muted)]" />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-16 animate-pulse rounded-md bg-[var(--muted)]" />
+                ))}
+              </div>
+            </div>
+          ) : defectAgingQuery.isError ? (
+            <ErrorState onRetry={() => defectAgingQuery.refetch()} />
+          ) : !defectAgingQuery.data || defectAgingQuery.data.total_open === 0 ? (
+            <EmptyState title="No open defects right now" description="Everything reported so far has been resolved." />
           ) : (
             <>
               <p className="mb-3 text-sm">
@@ -475,8 +501,12 @@ export function Reporting() {
             <p className="mb-4 text-xs text-[var(--muted-foreground)]">{ASSIGNEE_HINTS[metric]}</p>
           )}
 
-          {aggregateData.length === 0 ? (
-            <p className="text-sm text-[var(--muted-foreground)]">No data for this combination yet.</p>
+          {aggregateQuery.isLoading ? (
+            <div className="h-80"><ChartSkeleton /></div>
+          ) : aggregateQuery.isError ? (
+            <ErrorState onRetry={() => aggregateQuery.refetch()} />
+          ) : aggregateData.length === 0 ? (
+            <EmptyState title="No data for this combination" description="Try a different metric, group-by, or widen the date range." />
           ) : chartType === 'bar' ? (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">

@@ -1,5 +1,6 @@
 import type { HistoryEntry } from '@/api/history'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { humanizeActionCode } from '@/lib/labels'
 
 // Per-entity activity timeline (PV-9.3): a read-only view over the
 // hash-chained audit log, filtered to one entity. Shared across Test Case,
@@ -26,7 +27,9 @@ export function ActivityTimelineCard({
           )}
           {entries?.map((entry) => (
             <li key={entry.id} className="border-b border-[var(--border)] pb-2 last:border-0">
-              <p className="font-medium">{actionLabels[entry.action] ?? entry.action}</p>
+              <p className="font-medium">
+                {actionLabels[entry.action] ?? humanizeActionCode(entry.action)}
+              </p>
               <p className="text-xs text-[var(--muted-foreground)]">
                 {entry.user_name ?? 'System'} · {new Date(entry.created_at).toLocaleString()}
                 {renderDetail?.(entry)}

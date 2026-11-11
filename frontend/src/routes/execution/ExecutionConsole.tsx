@@ -18,6 +18,9 @@ import { CommentsPanel } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ErrorState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
+import { humanizeKey } from '@/lib/labels'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { DefectQuickCreateDialog, type FailedStepContext } from './DefectQuickCreateDialog'
@@ -164,7 +167,19 @@ export function ExecutionConsole() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep?.id, failedStepContext, runLocked, verdictMutation.isPending])
 
-  if (stepsQuery.isLoading) return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+  if (stepsQuery.isLoading) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <Skeleton className="h-6 w-64" />
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 w-full" />
+        ))}
+      </div>
+    )
+  }
+  if (stepsQuery.isError) {
+    return <ErrorState onRetry={() => stepsQuery.refetch()} />
+  }
 
   const answeredCount = steps.filter((s) => s.verdict !== null).length
   const progressPercent = steps.length ? Math.round((answeredCount / steps.length) * 100) : 0
@@ -195,7 +210,7 @@ export function ExecutionConsole() {
               <span className="truncate">{c.title}</span>
               <span className="flex items-center justify-between gap-2">
                 <Badge tone={RUN_CASE_STATUS_TONE[c.status]} className="text-[10px]">
-                  {c.status.replace(/_/g, ' ')}
+                  {humanizeKey(c.status)}
                 </Badge>
                 <span className="text-[10px] text-[var(--muted-foreground)]">
                   {c.passed_count}/{c.step_count}

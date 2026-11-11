@@ -35,7 +35,7 @@ export interface AggregateReportFilters {
 export interface DashboardSummary {
   projects: { total: number; active: number; by_status: Record<string, number> }
   test_cases: { total: number; approved_count: number; approved_ratio: number }
-  test_runs: { active: number; step_pass_percentage: number }
+  test_runs: { active: number; step_pass_percentage: number; step_sample_size: number }
   defects: { open_by_severity: Record<string, number>; critical_count: number }
 }
 
@@ -103,6 +103,18 @@ export interface ComplianceDefectRow {
   status: string
 }
 
+export interface DefectAgingSeverityBucket {
+  severity: string
+  open_count: number
+  breached_count: number
+}
+
+export interface DefectAgingSummary {
+  buckets: DefectAgingSeverityBucket[]
+  total_open: number
+  total_breached: number
+}
+
 export interface ComplianceProjectSection {
   project_id: string
   name: string
@@ -115,6 +127,19 @@ export interface ComplianceProjectSection {
   critical_defects: number
   test_cases: ComplianceTestCaseRow[]
   defects: ComplianceDefectRow[]
+  requirement_total: number
+  requirement_covered: number
+  requirement_coverage_percentage: number
+  defect_aging: DefectAgingSummary
+}
+
+export interface CompliancePeriodComparison {
+  test_cases_created_current: number
+  test_cases_created_prior: number
+  defects_opened_current: number
+  defects_opened_prior: number
+  defects_closed_current: number
+  defects_closed_prior: number
 }
 
 export interface ComplianceReport {
@@ -125,6 +150,7 @@ export interface ComplianceReport {
   period_from: string | null
   period_to: string | null
   projects: ComplianceProjectSection[]
+  trend: CompliancePeriodComparison | null
 }
 
 export interface CompliancePeriod {

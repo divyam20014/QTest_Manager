@@ -14,6 +14,7 @@ from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project
+from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
@@ -66,6 +67,62 @@ def compute_aging(defect: Defect) -> tuple[int, bool]:
     age_days = (end - defect.created_at).days
     threshold = SLA_DAYS_BY_SEVERITY.get(defect.severity, 10)
     return age_days, age_days > threshold
+
+
+_TERMINAL_STATUSES = {"Closed"}
+
+
+def sweep_sla_breaches(db: Session) -> int:
+    """Pass C (deferred item #4, bug #19): `sla_breached` is computed
+    lazily at read-time from `created_at` -- there is no mutation event to
+    hook a notification onto, since a defect crosses into breach purely by
+    time passing, not by anyone editing it. Run periodically by the worker
+    (app.worker) rather than at request time. `sla_breach_notified_at`
+    guards against re-notifying the same breach on every poll. Returns the
+    number of notifications sent, for the worker's own logging."""
+    notified = 0
+    tenant_ids = db.execute(
+        select(Tenant.id).where(Tenant.status == "approved")
+    ).scalars().all()
+    for tenant_id in tenant_ids:
+        set_tenant_context(db, str(tenant_id))
+        candidates = db.execute(
+            select(Defect).where(
+                Defect.tenant_id == tenant_id,
+                Defect.status.notin_(_TERMINAL_STATUSES),
+                Defect.sla_breach_notified_at.is_(None),
+            )
+        ).scalars().all()
+        for defect in candidates:
+            _, breached = compute_aging(defect)
+            if not breached:
+                continue
+            recipients = {defect.reported_by}
+            if defect.assigned_to is not None:
+                recipients.add(defect.assigned_to)
+            for recipient_id in recipients:
+                user = db.execute(
+                    select(User).where(User.id == recipient_id)
+                ).scalar_one_or_none()
+                if user is None:
+                    continue
+                notification_service.notify(
+                    db,
+                    tenant_id,
+                    None,
+                    recipient_id,
+                    user.email,
+                    "defect_sla_breach",
+                    "A defect has breached its SLA",
+                    f'"{defect.title}" has exceeded its SLA budget for {defect.severity} severity.',
+                    "defect",
+                    defect.id,
+                )
+                notified += 1
+            defect.sla_breach_notified_at = datetime.now(UTC)
+        if candidates:
+            db.commit()
+    return notified
 
 
 def _get_project_or_404(db: Session, tenant_id: UUID, project_id: UUID) -> Project:

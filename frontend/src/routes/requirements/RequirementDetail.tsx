@@ -15,6 +15,7 @@ import {
 } from '@/api/requirements'
 import { listTestCases } from '@/api/testCases'
 import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
+import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -194,6 +195,11 @@ export function RequirementDetail() {
       </Card>
 
       <CustomFieldsCard ownerType="requirement" ownerId={req.id} />
+      <AttachmentsCard
+        ownerType="requirement"
+        ownerId={req.id}
+        title="Documents (BRD / FRD / TRD)"
+      />
       <ActivityTimelineCard entries={historyQuery.data} actionLabels={REQUIREMENT_HISTORY_ACTION_LABEL} />
 
       <EditRequirementDialog

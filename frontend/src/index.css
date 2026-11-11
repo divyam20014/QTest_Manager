@@ -133,3 +133,38 @@ body {
 #root {
   min-height: 100svh;
 }
+
+/* Pass B UI/UX overhaul: shared, subtle entrance keyframes -- CSS-driven
+   (not JS-timed) specifically so nothing delays interactivity or makes a
+   test race against an in-flight transition; elements are fully
+   interactive the instant they mount, they just also fade/scale in. */
+@keyframes qth-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Transform-only variant, deliberately with NO opacity channel -- used
+   anywhere an automated accessibility scan (or a real user) might land
+   mid-animation. A ramping opacity briefly composites text against the
+   page background at less than full alpha, which axe-core correctly
+   flags as a contrast failure even though the final, settled state is
+   fine -- found via a real Playwright accessibility-spec failure on the
+   dashboard's staggered KPI cards during this pass, not anticipated
+   up front. */
+@keyframes qth-slide-in {
+  from { transform: translateY(4px); }
+  to { transform: translateY(0); }
+}
+@keyframes qth-scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+/* GAP-91 item 1 (Drawer panel): transform-only, same reasoning as
+   qth-slide-in above -- the panel's own text must never be scanned/seen
+   mid-fade. */
+@keyframes qth-drawer-in {
+  from { transform: translateX(16px); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qth-animate-in { animation: none !important; }
+}
