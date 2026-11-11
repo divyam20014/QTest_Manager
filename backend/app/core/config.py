@@ -54,7 +54,10 @@ class Settings(BaseSettings):
     # unencrypted (same fail-loud convention as smtp_host).
     ai_credential_encryption_key: str = ""
     gemini_api_base_url: str = "https://generativelanguage.googleapis.com"
-    gemini_model: str = "gemini-2.0-flash"
+    # Google retired gemini-2.0-flash; its own 404 error names
+    # gemini-3.8-flash as the replacement. Override via GEMINI_MODEL if
+    # Google retires this one too, without a code change.
+    gemini_model: str = "gemini-3.8-flash"
     ai_request_timeout_seconds: float = 30.0
     ai_max_cases_per_request: int = 5
 
