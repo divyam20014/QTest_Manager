@@ -70,6 +70,9 @@ export interface RunCaseContext {
   assignee_id: string | null
   assignee_name: string | null
   status: RunCaseStatus
+  data_row_id: string | null
+  data_row_name: string | null
+  data_row_values: Record<string, unknown> | null
 }
 
 export interface TestRunCreateRequest {
@@ -99,10 +102,17 @@ export function updateTestRun(runId: string, req: TestRunUpdateRequest): Promise
   return apiFetch<TestRun>(`/test-runs/${runId}`, { method: 'PATCH', body: JSON.stringify(req) })
 }
 
-export function addTestRunCases(runId: string, testCaseIds: string[]): Promise<TestRun> {
+export function addTestRunCases(
+  runId: string,
+  testCaseIds: string[],
+  dataRowIds?: Record<string, string[]>,
+): Promise<TestRun> {
   return apiFetch<TestRun>(`/test-runs/${runId}/cases`, {
     method: 'POST',
-    body: JSON.stringify({ test_case_ids: testCaseIds }),
+    body: JSON.stringify({
+      test_case_ids: testCaseIds,
+      data_row_ids: dataRowIds ?? {},
+    }),
   })
 }
 

@@ -174,6 +174,12 @@ export function Login() {
         </CardContent>
       </Card>
       <p className="mt-4 text-center text-xs text-[var(--muted-foreground)]">
+        New here?{' '}
+        <a href="/signup" className="underline hover:text-[var(--foreground)]">
+          Start a free trial
+        </a>
+      </p>
+      <p className="mt-2 text-center text-xs text-[var(--muted-foreground)]">
         <a href="/platform-admin" className="hover:text-[var(--foreground)]">
           Platform Administrator sign-in
         </a>

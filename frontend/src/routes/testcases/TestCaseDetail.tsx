@@ -23,10 +23,12 @@ import {
 } from '@/api/testCases'
 import { listUsers } from '@/api/users'
 import { listModules } from '@/api/modules'
+import { listSharedSteps } from '@/api/sharedSteps'
 import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
+import { TestDataSetsCard } from '@/components/TestDataSetsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -68,6 +70,11 @@ export function TestCaseDetail() {
   const modulesQuery = useQuery({
     queryKey: ['test-modules', caseQuery.data?.project_id],
     queryFn: () => listModules(caseQuery.data!.project_id),
+    enabled: !!caseQuery.data?.project_id,
+  })
+  const sharedStepsQuery = useQuery({
+    queryKey: ['shared-steps', caseQuery.data?.project_id],
+    queryFn: () => listSharedSteps(caseQuery.data!.project_id),
     enabled: !!caseQuery.data?.project_id,
   })
   const historyQuery = useQuery({
@@ -303,6 +310,7 @@ export function TestCaseDetail() {
       </div>
 
       <LinkedDefectsCard testCaseId={testCase.id} />
+      <TestDataSetsCard testCaseId={testCase.id} />
       <CustomFieldsCard ownerType="test_case" ownerId={testCase.id} />
       <AttachmentsCard ownerType="test_case" ownerId={testCase.id} />
       <CommentsCard ownerType="test_case" ownerId={testCase.id} />
@@ -318,6 +326,7 @@ export function TestCaseDetail() {
           serverError={updateError}
           users={usersQuery.data ?? []}
           modules={modulesQuery.data ?? []}
+          sharedSteps={sharedStepsQuery.data ?? []}
           onSubmit={(values) => updateMutation.mutate(values)}
         />
       </Drawer>

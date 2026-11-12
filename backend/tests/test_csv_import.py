@@ -1,4 +1,5 @@
 import io
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -514,3 +515,201 @@ def test_concurrent_imports_do_not_corrupt_data(client: TestClient, platform_adm
         f"/api/v1/projects/{project['id']}/test-cases", params={"page_size": 100}
     ).json()["data"]
     assert listing["total"] == 50
+
+
+# ---------------------------------------------------------------------------
+# Pass 3, item 1: export now carries derived execution fields as extra,
+# informational-only columns.
+# ---------------------------------------------------------------------------
+
+
+def test_export_includes_derived_execution_columns(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project = _setup_admin_and_project(client, platform_admin, "Export Derived Fields Project")
+    csv_text = HEADER + "\n" + _row("Never Executed Case", "Export Derived Fields Project")
+    _upload_csv(client, csv_text)
+
+    export_response = client.get(f"/api/v1/projects/{project['id']}/test-cases/export.csv")
+    assert export_response.status_code == 200
+    header_line = export_response.text.splitlines()[0]
+    assert "Actual Result" in header_line
+    assert "Executed By" in header_line
+    assert "Execution Date" in header_line
+
+
+# ---------------------------------------------------------------------------
+# Pass 3, item 2: arbitrary-CSV column detection + mapped import.
+# ---------------------------------------------------------------------------
+
+
+def _detect_columns(client: TestClient, csv_text: str, preset: str | None = None) -> dict:
+    files = {"file": ("export.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")}
+    params = {"preset": preset} if preset else {}
+    response = client.post("/api/v1/test-cases/import/detect-columns", files=files, params=params)
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_detect_columns_returns_headers_and_samples(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _setup_admin_and_project(client, platform_admin, "Detect Columns Project")
+    csv_text = (
+        "Case Title,Section,Priority,Desc\n"
+        '"My Weird Case","Claims","High","Some description"\n'
+    )
+    result = _detect_columns(client, csv_text)
+    names = [c["name"] for c in result["columns"]]
+    assert names == ["Case Title", "Section", "Priority", "Desc"]
+    assert result["columns"][0]["sample_values"] == ["My Weird Case"]
+    assert "Title" in result["required_fields"]
+    assert result["suggested_mapping"] == {}  # no preset requested
+
+
+def test_mapped_import_with_arbitrary_headers(client: TestClient, platform_admin: dict) -> None:
+    _, project = _setup_admin_and_project(client, platform_admin, "Mapped Import Project")
+    csv_text = (
+        "Case Title,Section,Prio,Desc,Step Text\n"
+        '"Mapped Case One","Claims","High","A description here",'
+        '"Do the thing|It works"\n'
+    )
+    files = {"file": ("arbitrary.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")}
+    mapping = {
+        "Title": "Case Title",
+        "Module": "Section",
+        "Project Name": "__literal__",  # intentionally wrong to prove validation below
+        "Priority": "Prio",
+        "Description": "Desc",
+        "Steps": "Step Text",
+    }
+    # First prove an unknown source column is rejected clearly, not silently ignored.
+    bad_response = client.post(
+        "/api/v1/test-cases/import/mapped",
+        files=files,
+        data={"mapping": json.dumps(mapping)},
+    )
+    assert bad_response.status_code == 422, bad_response.text
+    assert "__literal__" in bad_response.text
+
+    # Project Name must resolve to a real project, so rebuild with a
+    # dedicated column that actually contains the project name.
+    csv_text3 = (
+        "Case Title,Section,Project Column,Prio,Desc,Step Text\n"
+        f'"Mapped Case One","Claims","{project["name"]}","High","A description here",'
+        '"Do the thing|It works"\n'
+    )
+    mapping = {
+        "Title": "Case Title",
+        "Module": "Section",
+        "Project Name": "Project Column",
+        "Priority": "Prio",
+        "Description": "Desc",
+        "Steps": "Step Text",
+    }
+    files = {"file": ("arbitrary.csv", io.BytesIO(csv_text3.encode("utf-8")), "text/csv")}
+    response = client.post(
+        "/api/v1/test-cases/import/mapped",
+        files=files,
+        data={"mapping": json.dumps(mapping)},
+    )
+    assert response.status_code == 200, response.text
+    report = response.json()["data"]
+    assert report["created_count"] == 1
+    assert report["error_count"] == 0
+
+    listing = client.get(f"/api/v1/projects/{project['id']}/test-cases").json()["data"]["items"]
+    assert any(c["title"] == "Mapped Case One" for c in listing)
+
+
+def test_mapped_import_rejects_missing_required_field(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _setup_admin_and_project(client, platform_admin, "Mapped Import Required Project")
+    csv_text = "Case Title,Section\n" '"Incomplete Case","Claims"\n'
+    files = {"file": ("arbitrary.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")}
+    mapping = {"Title": "Case Title", "Module": "Section"}  # missing Project Name/Priority/etc.
+    response = client.post(
+        "/api/v1/test-cases/import/mapped",
+        files=files,
+        data={"mapping": json.dumps(mapping)},
+    )
+    assert response.status_code == 422, response.text
+    assert "Project Name" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Pass 3, item 3: TestRail/Zephyr/Jira presets -- representative synthetic
+# CSVs based on each tool's documented column conventions, NOT verified
+# against a real export from any of them.
+# ---------------------------------------------------------------------------
+
+
+def test_testrail_preset_prefills_mapping(client: TestClient, platform_admin: dict) -> None:
+    _setup_admin_and_project(client, platform_admin, "TestRail Preset Project")
+    # Representative of a typical TestRail case export, not a verified real one.
+    csv_text = (
+        "Title,Section,Priority,Preconditions,Steps,Expected Result,References\n"
+        '"Verify login with valid credentials","Authentication","High",'
+        '"User has a valid account","Open login page; enter credentials; submit",'
+        '"User is logged in","C123"\n'
+    )
+    result = _detect_columns(client, csv_text, preset="testrail")
+    mapping = result["suggested_mapping"]
+    assert mapping["Title"] == "Title"
+    assert mapping["Module"] == "Section"
+    assert mapping["Priority"] == "Priority"
+    assert mapping["Description"] == "Preconditions"
+    # Steps column exists in this file; preset should find *some* best-effort match.
+    assert mapping.get("Steps") in ("Steps", "Expected Result")
+    # Project Name has no plausible TestRail column in this sample -- left
+    # unmapped for the user to fill in manually, not guessed incorrectly.
+    assert "Project Name" not in mapping
+
+
+def test_zephyr_preset_prefills_mapping(client: TestClient, platform_admin: dict) -> None:
+    _setup_admin_and_project(client, platform_admin, "Zephyr Preset Project")
+    # Representative of a typical Zephyr Scale export, not a verified real one.
+    csv_text = (
+        "Key,Name,Folder,Priority,Status,Objective,Precondition,Test Script\n"
+        '"QT-T1","Verify claim submission","Claims","Medium","Active",'
+        '"Ensure a claim can be submitted","Policy must be active",'
+        '"Step 1: submit claim"\n'
+    )
+    result = _detect_columns(client, csv_text, preset="zephyr")
+    mapping = result["suggested_mapping"]
+    assert mapping["Title"] == "Name"
+    assert mapping["Module"] == "Folder"
+    assert mapping["Priority"] == "Priority"
+    assert mapping["Status"] == "Status"
+    assert mapping["Prerequisite"] == "Precondition"
+    assert mapping["Steps"] == "Test Script"
+
+
+def test_jira_preset_prefills_mapping(client: TestClient, platform_admin: dict) -> None:
+    _setup_admin_and_project(client, platform_admin, "Jira Preset Project")
+    # Representative of a typical Jira/Xray test issue export, not a verified real one.
+    csv_text = (
+        "Issue Key,Summary,Priority,Status,Description,Component/s,Action\n"
+        '"QA-42","Verify policy renewal","High","Open",'
+        '"Covers the renewal workflow","Policy Admin","Submit renewal"\n'
+    )
+    result = _detect_columns(client, csv_text, preset="jira")
+    mapping = result["suggested_mapping"]
+    assert mapping["Title"] == "Summary"
+    assert mapping["Module"] == "Component/s"
+    assert mapping["Description"] == "Description"
+    assert mapping["Steps"] == "Action"
+    assert mapping["Scenario Id"] == "Issue Key"
+
+
+def test_unknown_preset_rejected(client: TestClient, platform_admin: dict) -> None:
+    _setup_admin_and_project(client, platform_admin, "Unknown Preset Project")
+    csv_text = "Title,Priority\n" '"Case","High"\n'
+    files = {"file": ("x.csv", io.BytesIO(csv_text.encode("utf-8")), "text/csv")}
+    response = client.post(
+        "/api/v1/test-cases/import/detect-columns",
+        files=files,
+        params={"preset": "some_unknown_tool"},
+    )
+    assert response.status_code == 422, response.text

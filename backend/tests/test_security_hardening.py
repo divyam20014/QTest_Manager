@@ -224,6 +224,12 @@ _PRE_SESSION_ROUTES = {
     # the invite token itself (unguessable, hashed at rest) is the
     # credential, the same trust model a password-reset link uses.
     ("POST", "/api/v1/users/invite/{token}/accept"),
+    # Pass 2 / ADR-064: self-service signup is deliberately public and
+    # unauthenticated -- THIS is the thing that creates the session's
+    # tenant, there's no session to require yet. Rate-limited tighter
+    # than login (see app/api/auth.py::signup) precisely because it's a
+    # new, real attack surface, not because it's less sensitive.
+    ("POST", "/api/v1/auth/signup"),
 }
 
 

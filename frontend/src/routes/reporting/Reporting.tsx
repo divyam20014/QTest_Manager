@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -22,6 +23,7 @@ import {
   fetchDefectTrend,
   fetchDomainDistribution,
   fetchExecutionTrend,
+  complianceExportPdfUrl,
   complianceExportUrl,
   type GroupBy,
   type Metric,
@@ -85,6 +87,18 @@ export function Reporting() {
   const [priority, setPriority] = useState('')
   const [status, setStatus] = useState('')
   const isDark = prefersDark()
+
+  // Pass 4 (ADR-065): a deep link from Project Detail's "Release Readiness"
+  // button (`?project=<id>`) should actually pre-select this project, not
+  // just land on the page and make the user pick it again from the
+  // dropdown -- the same one-directional-read pattern used elsewhere
+  // (Pass C follow-up's ProjectsList/TestRunsOverview fix).
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const fromUrl = searchParams.get('project')
+    if (fromUrl) setProjectId(fromUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const projectsQuery = useQuery({ queryKey: ['projects', 'all'], queryFn: () => listProjects({ page_size: 100 }) })
   const usersQuery = useQuery({ queryKey: ['users', 'all'], queryFn: listUsers })
@@ -158,6 +172,13 @@ export function Reporting() {
               className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
             >
               Download Compliance CSV
+            </a>
+            <a
+              href={complianceExportPdfUrl(exportPeriod)}
+              download
+              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+            >
+              Download Compliance PDF
             </a>
           </div>
         )}

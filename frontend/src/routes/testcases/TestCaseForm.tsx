@@ -1,11 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, Copy, Trash2 } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import { listFieldOptions } from '@/api/fieldCustomization'
+import type { SharedStep } from '@/api/sharedSteps'
 import type { TestCaseCreateRequest } from '@/api/testCases'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +55,7 @@ export function TestCaseForm({
   serverError,
   users = [],
   modules = [],
+  sharedSteps = [],
 }: {
   defaultValues: TestCaseFormValues
   onSubmit: (values: TestCaseCreateRequest) => void
@@ -62,7 +64,9 @@ export function TestCaseForm({
   serverError?: string | null
   users?: { id: string; name: string }[]
   modules?: { id: string; name: string; parent_id: string | null }[]
+  sharedSteps?: SharedStep[]
 }) {
+  const [libraryPick, setLibraryPick] = useState('')
   const form = useForm<TestCaseFormValues>({
     resolver: zodResolver(schema),
     defaultValues,
@@ -286,9 +290,43 @@ export function TestCaseForm({
         {form.formState.errors.steps?.message && (
           <p className="text-xs text-[var(--destructive)]">{form.formState.errors.steps.message}</p>
         )}
-        <Button type="button" variant="outline" size="sm" onClick={() => append({ action: '', expected: '' })}>
-          Add Step
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => append({ action: '', expected: '' })}>
+            Add Step
+          </Button>
+          {sharedSteps.length > 0 && (
+            <>
+              <Select
+                aria-label="Insert from shared step library"
+                className="max-w-[16rem]"
+                value={libraryPick}
+                onChange={(e) => setLibraryPick(e.target.value)}
+              >
+                <option value="">Insert from library…</option>
+                {sharedSteps.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!libraryPick}
+                onClick={() => {
+                  const picked = sharedSteps.find((s) => s.id === libraryPick)
+                  if (!picked) return
+                  // Copy, not a live link -- see SharedStepsDialog's note.
+                  append({ action: picked.action, expected: picked.expected })
+                  setLibraryPick('')
+                }}
+              >
+                Insert
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}

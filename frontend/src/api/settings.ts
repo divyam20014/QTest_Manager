@@ -79,3 +79,40 @@ export interface Subscription {
 export function getSubscription(): Promise<Subscription> {
   return apiFetch<Subscription>('/settings/subscription')
 }
+
+// Pass 2 (ADR-064): self-serve plan browsing/switching -- schema + UI only,
+// no payment gateway. Switching takes effect immediately; no checkout.
+export function listAvailablePlans(): Promise<Plan[]> {
+  return apiFetch<Plan[]>('/settings/subscription/plans')
+}
+
+export interface SubscriptionUsage {
+  seat_count: number
+  seat_limit: number | null
+  storage_used_mb: number
+  storage_limit_mb: number | null
+  ai_requests_this_period: number
+  ai_monthly_request_limit: number | null
+}
+
+export function getSubscriptionUsage(): Promise<SubscriptionUsage> {
+  return apiFetch<SubscriptionUsage>('/settings/subscription/usage')
+}
+
+export function switchPlan(planCode: string): Promise<Subscription> {
+  return apiFetch<Subscription>('/settings/subscription/switch-plan', {
+    method: 'POST',
+    body: JSON.stringify({ plan_code: planCode }),
+  })
+}
+
+export interface SubscriptionHistoryEntry {
+  id: string
+  action: string
+  created_at: string
+  metadata: Record<string, unknown> | null
+}
+
+export function getSubscriptionHistory(): Promise<SubscriptionHistoryEntry[]> {
+  return apiFetch<SubscriptionHistoryEntry[]>('/settings/subscription/history')
+}

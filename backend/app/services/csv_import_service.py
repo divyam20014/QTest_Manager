@@ -14,9 +14,15 @@ from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
-from app.schemas.csv_import import ImportReport, ImportRowResult
+from app.schemas.csv_import import (
+    ColumnDetectionResult,
+    DetectedColumn,
+    ImportReport,
+    ImportRowResult,
+)
 from app.services import field_option_service
 from app.services.project_service import is_assigned
+from app.services.test_case_service import _last_execution
 
 settings = get_settings()
 
@@ -106,12 +112,178 @@ def import_test_cases(
     if reader.fieldnames is None or list(reader.fieldnames) != EXPECTED_HEADERS:
         raise ValidationAppError(
             f"CSV headers must be exactly: {', '.join(EXPECTED_HEADERS)}. "
-            f"Download /test-cases/import/template.csv for a valid example."
+            f"Download /test-cases/import/template.csv for a valid example, or use "
+            f"/test-cases/import/detect-columns for a flexible, mapped import instead."
+        )
+    rows = list(reader)
+    return _import_test_case_rows(db, tenant_id, role_code, actor_user_id, rows)
+
+
+# ---------------------------------------------------------------------------
+# Pass 3: flexible, mapped import -- lets a user import ANY CSV (including
+# one shaped like a TestRail/Zephyr/Jira export) by mapping its own columns
+# onto QTestHub's canonical field set, rather than requiring the exact
+# EXPECTED_HEADERS. Reuses _import_test_case_rows for every bit of
+# validation/duplicate-detection/bulk-insert logic below -- only the header
+# step differs.
+# ---------------------------------------------------------------------------
+
+#: Canonical target fields a column can be mapped onto. Keys double as the
+#: row dict keys _import_test_case_rows already expects (EXPECTED_HEADERS),
+#: so a mapped row is simply "the same row dict, assembled differently."
+TARGET_FIELDS = list(EXPECTED_HEADERS)
+REQUIRED_TARGET_FIELDS = ["Title", "Module", "Project Name", "Priority", "Description", "Steps"]
+
+# Best-effort, NOT verified against a real export from any of these tools --
+# no real TestRail/Zephyr/Jira account or export file was available to test
+# against. Built from each tool's publicly documented/commonly-known CSV
+# column conventions. A user should always review the suggested mapping
+# before confirming, especially for Steps (see the caveat below).
+PRESET_CANDIDATE_COLUMNS: dict[str, dict[str, list[str]]] = {
+    "testrail": {
+        "Title": ["title", "case title", "name"],
+        "Module": ["section", "section hierarchy", "suite"],
+        "Sub Module": ["subsection"],
+        "Project Name": ["project"],
+        "Priority": ["priority"],
+        "Status": ["status", "state"],
+        "Description": ["preconditions", "description"],
+        "Scenario Id": ["references", "case id"],
+        "Scenario Description": ["objective"],
+        "Prerequisite": ["preconditions"],
+        "Test Data": ["test data"],
+        "Assignee Email": ["assignee", "assignedto"],
+        # TestRail typically exports one Step/Expected Result pair per row,
+        # not a combined cell -- mapping either column directly into our
+        # single "Steps" field is a best-effort approximation, not a real
+        # multi-step reconstruction. Flagged in the UI, not silently assumed.
+        "Steps": ["steps", "expected result"],
+    },
+    "zephyr": {
+        "Title": ["name", "test case name"],
+        "Module": ["folder", "component"],
+        "Project Name": ["project", "project key"],
+        "Priority": ["priority"],
+        "Status": ["status"],
+        "Description": ["objective", "description"],
+        "Scenario Id": ["key", "issue key", "test case key"],
+        "Scenario Description": ["objective"],
+        "Prerequisite": ["precondition", "preconditions"],
+        "Test Data": ["test data"],
+        "Assignee Email": ["owner", "assignee"],
+        "Steps": ["test script", "step", "steps"],
+    },
+    "jira": {
+        "Title": ["summary"],
+        "Module": ["component/s", "components"],
+        "Project Name": ["project", "project key"],
+        "Priority": ["priority"],
+        "Status": ["status"],
+        "Description": ["description"],
+        "Scenario Id": ["issue key", "key"],
+        "Prerequisite": ["precondition", "preconditions"],
+        "Test Data": ["data"],
+        "Assignee Email": ["assignee"],
+        "Steps": ["action", "manual test steps", "steps"],
+    },
+}
+
+
+def _normalize_column_name(name: str) -> str:
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+def detect_columns(csv_text: str, preset: str | None = None) -> ColumnDetectionResult:
+    """Pass 3, item 2: parses only the header row + a few sample rows of an
+    arbitrary CSV so the caller can offer a mapping UI, without committing
+    to any schema assumption yet."""
+    reader = csv.DictReader(io.StringIO(csv_text))
+    fieldnames = list(reader.fieldnames or [])
+    if not fieldnames:
+        raise ValidationAppError("CSV has no header row.")
+
+    sample_rows: list[dict] = []
+    for i, row in enumerate(reader):
+        if i >= 3:
+            break
+        sample_rows.append(row)
+
+    columns = [
+        DetectedColumn(
+            name=name,
+            sample_values=[(r.get(name) or "")[:80] for r in sample_rows],
+        )
+        for name in fieldnames
+    ]
+
+    suggested: dict[str, str] = {}
+    if preset:
+        candidates = PRESET_CANDIDATE_COLUMNS.get(preset.lower())
+        if candidates is None:
+            raise ValidationAppError(
+                f"Unknown preset '{preset}'; must be one of {sorted(PRESET_CANDIDATE_COLUMNS)}."
+            )
+        normalized_columns = {_normalize_column_name(name): name for name in fieldnames}
+        for target, candidate_names in candidates.items():
+            for candidate in candidate_names:
+                match = normalized_columns.get(_normalize_column_name(candidate))
+                if match is not None:
+                    suggested[target] = match
+                    break
+
+    return ColumnDetectionResult(
+        columns=columns,
+        suggested_mapping=suggested,
+        target_fields=TARGET_FIELDS,
+        required_fields=REQUIRED_TARGET_FIELDS,
+    )
+
+
+def import_test_cases_mapped(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    csv_text: str,
+    column_mapping: dict[str, str],
+) -> ImportReport:
+    """Pass 3, item 2: import using a user-confirmed column_mapping
+    (target field -> source column name) instead of requiring exact
+    EXPECTED_HEADERS. Every other validation/duplicate/insert rule is
+    identical to the fixed-header path (_import_test_case_rows)."""
+    missing_required = [f for f in REQUIRED_TARGET_FIELDS if f not in column_mapping]
+    if missing_required:
+        raise ValidationAppError(
+            f"These required fields must be mapped to a column: {', '.join(missing_required)}."
         )
 
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if reader.fieldnames is None:
+        raise ValidationAppError("CSV has no header row.")
+    source_columns = set(reader.fieldnames)
+    unknown_sources = set(column_mapping.values()) - source_columns
+    if unknown_sources:
+        raise ValidationAppError(
+            f"Mapped column(s) not found in this file: {', '.join(sorted(unknown_sources))}."
+        )
+
+    raw_rows = list(reader)
+    canonical_rows = [
+        {target: raw.get(source, "") for target, source in column_mapping.items()}
+        for raw in raw_rows
+    ]
+    return _import_test_case_rows(db, tenant_id, role_code, actor_user_id, canonical_rows)
+
+
+def _import_test_case_rows(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    rows: list[dict],
+) -> ImportReport:
     # Materialized up front (not streamed row-by-row) so the row-count cap
     # can be enforced before any validation or DB writes happen.
-    rows = list(reader)
     if len(rows) > settings.csv_import_max_rows:
         raise ValidationAppError(
             f"CSV has {len(rows)} rows, exceeding the {settings.csv_import_max_rows}-row "
@@ -433,9 +605,16 @@ def export_test_cases_csv(
         ).scalars()
     }
 
+    # Pass 3, item 1: Actual_Result/Executed_By/Execution_Date are informational
+    # only on export (reflecting real execution history) -- they are never
+    # accepted back on import (see _import_test_case_rows/import_test_cases_mapped,
+    # neither reads these column names), so an export->reimport round trip
+    # correctly drops them rather than trying to "restore" derived data.
+    export_headers = [*EXPECTED_HEADERS, "Actual Result", "Executed By", "Execution Date"]
+
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(EXPECTED_HEADERS)
+    writer.writerow(export_headers)
 
     for case in cases:
         version = db.execute(
@@ -461,6 +640,10 @@ def export_test_cases_csv(
                     parent = modules_by_id.get(module.parent_id)
                     module_name = parent.name if parent is not None else ""
 
+        last_result, last_executed_by_name, last_execution_date = _last_execution(
+            db, tenant_id, case.id
+        )
+
         writer.writerow(
             [
                 case.title,
@@ -476,6 +659,9 @@ def export_test_cases_csv(
                 version.test_data or "",
                 assignee_email,
                 steps_cell,
+                last_result or "",
+                last_executed_by_name or "",
+                last_execution_date.isoformat() if last_execution_date else "",
             ]
         )
 

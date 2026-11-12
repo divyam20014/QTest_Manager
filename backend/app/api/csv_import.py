@@ -1,6 +1,7 @@
+import json
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -95,6 +96,50 @@ def get_import_job(
 ) -> dict:
     job = job_service.get_job(db, ctx.tenant_id, job_id)
     return envelope(job.model_dump(mode="json"))
+
+
+@router.post("/test-cases/import/detect-columns")
+@limiter.limit("20/minute")
+async def detect_test_case_columns(
+    request: Request,
+    file: UploadFile,
+    preset: str | None = None,
+    ctx: SessionContext = Depends(require_permission("testcase.bulk_import_export")),
+) -> dict:
+    """Pass 3, item 2/3: step 1 of the flexible mapped-import flow -- parses
+    only the header + a few sample rows of ANY CSV and, if `preset` names a
+    known tool (testrail/zephyr/jira), pre-fills a best-effort suggested
+    mapping. Nothing is written to the database by this endpoint."""
+    csv_text = await _read_and_validate_csv(file)
+    result = csv_import_service.detect_columns(csv_text, preset=preset)
+    return envelope(result.model_dump(mode="json"))
+
+
+@router.post("/test-cases/import/mapped")
+@limiter.limit("10/minute")
+async def import_test_cases_mapped(
+    request: Request,
+    file: UploadFile,
+    mapping: str = Form(...),
+    ctx: SessionContext = Depends(require_permission("testcase.bulk_import_export")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Pass 3, item 2: step 2 -- import using the user-confirmed column
+    mapping from the detect-columns step. `mapping` is a JSON object string:
+    {"Title": "Case Title", "Module": "Section", ...}."""
+    csv_text = await _read_and_validate_csv(file)
+    try:
+        column_mapping = json.loads(mapping)
+    except json.JSONDecodeError as exc:
+        raise ValidationAppError("mapping must be a JSON object string") from exc
+    if not isinstance(column_mapping, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in column_mapping.items()
+    ):
+        raise ValidationAppError("mapping must be a JSON object of string -> string")
+    report = csv_import_service.import_test_cases_mapped(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, csv_text, column_mapping
+    )
+    return envelope(report.model_dump(mode="json"))
 
 
 @router.get("/projects/{project_id}/test-cases/export.csv")

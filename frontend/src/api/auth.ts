@@ -62,3 +62,22 @@ export function logout(): Promise<{ logged_out: boolean }> {
 export function fetchMe(): Promise<MeResponse> {
   return apiFetch<MeResponse>('/auth/me')
 }
+
+// Pass 2 (ADR-064): self-service signup. The new admin still goes through
+// the ordinary login+MFA flow afterward -- this endpoint only creates the
+// tenant/admin/sample project, it never issues a session itself.
+export interface SignupRequest {
+  tenant_name: string
+  admin_name: string
+  admin_email: string
+  admin_password: string
+}
+
+export interface SignupResponse {
+  tenant: { id: string; name: string }
+  admin_user_id: string
+}
+
+export function signup(req: SignupRequest): Promise<SignupResponse> {
+  return apiFetch<SignupResponse>('/auth/signup', { method: 'POST', body: JSON.stringify(req) })
+}

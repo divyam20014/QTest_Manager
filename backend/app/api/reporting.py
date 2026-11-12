@@ -2,12 +2,13 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, require_permission
 from app.core.db import get_db
+from app.core.pdf_report import render_compliance_report_pdf
 from app.core.responses import envelope
 from app.models.identity import User
 from app.schemas.reporting import GroupBy, Metric
@@ -192,4 +193,25 @@ def compliance_export(
         csv_text,
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="compliance_summary.csv"'},
+    )
+
+
+@router.get("/reports/compliance-detail/pdf")
+def compliance_detail_pdf(
+    period_from: datetime | None = Query(default=None),
+    period_to: datetime | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.compliance_export")),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Pass 4 (ADR-065): additive to the existing browser-print view, not a
+    replacement -- a real downloadable file for scheduled/emailed delivery."""
+    reporting_officer = db.execute(select(User).where(User.id == ctx.user_id)).scalar_one()
+    report = reporting_service.get_compliance_report(
+        db, ctx.tenant_id, reporting_officer, ctx.role_code, ctx.user_id, period_from, period_to
+    )
+    pdf_bytes = render_compliance_report_pdf(report)
+    return Response(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="compliance_report.pdf"'},
     )

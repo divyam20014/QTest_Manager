@@ -16,6 +16,13 @@ import {
   type CustomFieldType,
   type FieldKey,
 } from '@/api/fieldCustomization'
+import {
+  createReportSchedule,
+  deleteReportSchedule,
+  listReportSchedules,
+  updateReportSchedule,
+  type ReportCadence,
+} from '@/api/reportSchedules'
 import { createScimToken, listScimTokens, revokeScimToken } from '@/api/scim'
 import { createServiceToken, listServiceTokens, revokeServiceToken } from '@/api/serviceTokens'
 import { ApiError } from '@/api/client'
@@ -24,6 +31,10 @@ import {
   getLogoUrl,
   getSettings,
   getSubscription,
+  getSubscriptionHistory,
+  getSubscriptionUsage,
+  listAvailablePlans,
+  switchPlan,
   updateBranding,
   updateSettings,
   uploadLogo,
@@ -38,6 +49,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { humanizeActionCode } from '@/lib/labels'
 import { useToast } from '@/lib/toast'
 
 // Phase 1 (AI/SaaS vision roadmap): the tenant self-service settings
@@ -126,6 +138,7 @@ export function Settings() {
                 <AISettingsCard />
                 <SubscriptionCard />
                 <ExportCard />
+                <ScheduledReportsCard />
               </div>
             ),
           },
@@ -453,10 +466,58 @@ const SUBSCRIPTION_STATUS_TONE = {
   canceled: 'critical',
 } as const
 
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number | null }) {
+  const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex justify-between text-xs text-[var(--muted-foreground)]">
+        <span>{label}</span>
+        <span>
+          {used}
+          {limit !== null ? ` / ${limit}` : ' (unlimited)'}
+        </span>
+      </div>
+      {limit !== null && (
+        <div className="h-1.5 w-full rounded-full bg-[var(--muted)]">
+          <div
+            className="h-1.5 rounded-full bg-[var(--primary)]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Pass 2 (ADR-064): self-serve plan browsing/switching, schema + UI only --
+// no payment gateway. Switching changes Subscription.plan_id immediately;
+// there is no checkout, so the UI must say that plainly rather than imply
+// a real billing transaction occurred.
 function SubscriptionCard() {
+  const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
   const subscriptionQuery = useQuery({ queryKey: ['subscription'], queryFn: getSubscription })
+  const plansQuery = useQuery({ queryKey: ['subscription-plans'], queryFn: listAvailablePlans })
+  const usageQuery = useQuery({ queryKey: ['subscription-usage'], queryFn: getSubscriptionUsage })
+  const historyQuery = useQuery({
+    queryKey: ['subscription-history'],
+    queryFn: getSubscriptionHistory,
+  })
   const forbidden =
     subscriptionQuery.error instanceof ApiError && subscriptionQuery.error.code === 'forbidden'
+
+  const switchMutation = useMutation({
+    mutationFn: (planCode: string) => switchPlan(planCode),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['subscription'], data)
+      queryClient.invalidateQueries({ queryKey: ['subscription-usage'] })
+      queryClient.invalidateQueries({ queryKey: ['subscription-history'] })
+      showToast('success', `Switched to the ${data.plan.name} plan`)
+    },
+    onError: (err) => {
+      if (err instanceof ApiError) showToast('error', err.message)
+    },
+  })
 
   if (forbidden) return null
 
@@ -469,27 +530,96 @@ function SubscriptionCard() {
         {subscriptionQuery.isLoading || !subscriptionQuery.data ? (
           <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
         ) : (
-          <div className="flex max-w-sm flex-col gap-2 text-sm">
+          <div className="flex flex-col gap-5 text-sm">
             <div className="flex items-center gap-2">
               <span className="font-medium">{subscriptionQuery.data.plan.name}</span>
               <Badge tone={SUBSCRIPTION_STATUS_TONE[subscriptionQuery.data.status]}>
                 {subscriptionQuery.data.status}
               </Badge>
             </div>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Seats: {subscriptionQuery.data.seat_count}
-              {subscriptionQuery.data.plan.seat_limit !== null &&
-                ` / ${subscriptionQuery.data.plan.seat_limit}`}
-            </p>
-            {subscriptionQuery.data.current_period_end && (
-              <p className="text-xs text-[var(--muted-foreground)]">
-                Current period ends{' '}
-                {new Date(subscriptionQuery.data.current_period_end).toLocaleDateString()}
-              </p>
+
+            {usageQuery.data && (
+              <div className="flex max-w-sm flex-col gap-3">
+                <UsageBar
+                  label="Seats"
+                  used={usageQuery.data.seat_count}
+                  limit={usageQuery.data.seat_limit}
+                />
+                <UsageBar
+                  label="Storage (MB)"
+                  used={usageQuery.data.storage_used_mb}
+                  limit={usageQuery.data.storage_limit_mb}
+                />
+                <UsageBar
+                  label="AI requests this month"
+                  used={usageQuery.data.ai_requests_this_period}
+                  limit={usageQuery.data.ai_monthly_request_limit}
+                />
+              </div>
             )}
-            <p className="text-xs text-[var(--muted-foreground)]">
-              To change your plan, contact your QTestHub account representative.
-            </p>
+
+            <div>
+              <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">
+                Available plans
+              </p>
+              <p className="mb-2 text-xs text-[var(--muted-foreground)]">
+                No payment required — plan changes take effect immediately.
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {plansQuery.data?.map((plan) => {
+                  const isCurrent = plan.code === subscriptionQuery.data?.plan.code
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`flex flex-col gap-2 rounded-lg border p-3 ${
+                        isCurrent
+                          ? 'border-[var(--primary)] bg-[var(--muted)]'
+                          : 'border-[var(--border)]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{plan.name}</span>
+                        {isCurrent && <Badge tone="positive">Current</Badge>}
+                      </div>
+                      <ul className="flex flex-col gap-0.5 text-xs text-[var(--muted-foreground)]">
+                        <li>Seats: {plan.seat_limit ?? 'Unlimited'}</li>
+                        <li>Storage: {plan.storage_limit_mb ?? 'Unlimited'} MB</li>
+                        <li>AI requests/mo: {plan.ai_monthly_request_limit ?? 'Unlimited'}</li>
+                      </ul>
+                      {!isCurrent && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={switchMutation.isPending}
+                          onClick={() => switchMutation.mutate(plan.code)}
+                        >
+                          Switch to this plan
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {historyQuery.data && historyQuery.data.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">
+                  Plan change history
+                </p>
+                <ul className="flex flex-col gap-1 text-xs text-[var(--muted-foreground)]">
+                  {historyQuery.data.map((entry) => (
+                    <li key={entry.id}>
+                      {new Date(entry.created_at).toLocaleString()} —{' '}
+                      {humanizeActionCode(entry.action)}
+                      {entry.metadata?.to_plan_code
+                        ? ` → ${String(entry.metadata.to_plan_code)}`
+                        : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -562,8 +692,10 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
         />
         <p className="text-xs text-[var(--muted-foreground)]">
           Leave empty for no restriction. <strong>Caution:</strong> if you set this, make sure your
-          own current network is included — there is no backdoor recovery path except via your
-          platform administrator.
+          own current network is included. If you do lock yourself out, your platform
+          administrator can restore access by clearing this tenant's allowlist from the Platform
+          Administration console — this is the one recovery path, so know who your platform admin
+          is before saving.
         </p>
       </div>
       {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
@@ -1119,6 +1251,144 @@ function ExportCard() {
               )}
             </div>
           )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// Pass 4 (ADR-065): recurring compliance-report email delivery, built on
+// the existing DB-backed worker's periodic-sweep pattern -- no new
+// scheduler infra.
+function ScheduledReportsCard() {
+  const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
+  const [cadence, setCadence] = useState<ReportCadence>('weekly')
+  const [emails, setEmails] = useState('')
+
+  const schedulesQuery = useQuery({ queryKey: ['report-schedules'], queryFn: listReportSchedules })
+  const forbidden = schedulesQuery.error instanceof ApiError && schedulesQuery.error.code === 'forbidden'
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createReportSchedule({
+        cadence,
+        recipient_emails: emails.split(',').map((e) => e.trim()).filter(Boolean),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['report-schedules'] })
+      setEmails('')
+      showToast('success', 'Scheduled report created')
+    },
+    onError: () => showToast('error', 'Could not create the scheduled report — check the email addresses'),
+  })
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      updateReportSchedule(id, { enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['report-schedules'] })
+      showToast('success', 'Schedule updated')
+    },
+    onError: () => showToast('error', 'Could not update the schedule'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteReportSchedule(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['report-schedules'] })
+      showToast('success', 'Schedule deleted')
+    },
+    onError: () => showToast('error', 'Could not delete the schedule'),
+  })
+
+  if (forbidden) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Scheduled Reports</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-4 text-sm">
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Automatically emails the compliance report (as a PDF) to the recipients below, on the
+            cadence you choose.
+          </p>
+
+          <div className="flex flex-col gap-2">
+            {schedulesQuery.data?.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between rounded-md border border-[var(--border)] p-2"
+              >
+                <div className="flex flex-col">
+                  <span className="font-medium capitalize">{s.cadence}</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">
+                    {s.recipient_emails.join(', ')}
+                  </span>
+                  {s.last_run_at && (
+                    <span className="text-xs text-[var(--muted-foreground)]">
+                      Last sent {new Date(s.last_run_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge tone={s.enabled ? 'positive' : 'neutral'}>
+                    {s.enabled ? 'Enabled' : 'Paused'}
+                  </Badge>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => toggleMutation.mutate({ id: s.id, enabled: !s.enabled })}
+                  >
+                    {s.enabled ? 'Pause' : 'Resume'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => deleteMutation.mutate(s.id)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {schedulesQuery.data?.length === 0 && (
+              <p className="text-xs text-[var(--muted-foreground)]">No scheduled reports yet.</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
+            <Label htmlFor="schedule-cadence">Cadence</Label>
+            <select
+              id="schedule-cadence"
+              className="rounded-md border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
+              value={cadence}
+              onChange={(e) => setCadence(e.target.value as ReportCadence)}
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <Label htmlFor="schedule-emails">Recipients (comma-separated)</Label>
+            <Input
+              id="schedule-emails"
+              value={emails}
+              onChange={(e) => setEmails(e.target.value)}
+              placeholder="qa-lead@example.com, manager@example.com"
+            />
+            <Button
+              type="button"
+              size="sm"
+              disabled={createMutation.isPending || emails.trim() === ''}
+              onClick={() => createMutation.mutate()}
+            >
+              {createMutation.isPending ? 'Creating…' : 'Add Schedule'}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

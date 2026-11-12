@@ -5,6 +5,7 @@ import { AcceptInvite } from '@/routes/AcceptInvite'
 import { AppShell } from '@/routes/AppShell'
 import { Dashboard } from '@/routes/Dashboard'
 import { Login } from '@/routes/Login'
+import { Signup } from '@/routes/Signup'
 import { NotFound } from '@/routes/NotFound'
 import { PlatformAdmin } from '@/routes/PlatformAdmin'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
@@ -36,6 +37,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
       <Route path="/accept-invite/:token" element={<AcceptInvite />} />
       <Route path="/platform-admin" element={<PlatformAdmin />} />
       <Route element={<ProtectedRoute />}>

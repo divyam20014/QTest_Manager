@@ -14,9 +14,32 @@ from app.core.rate_limit import limiter
 from app.core.responses import envelope
 from app.models.identity import User
 from app.schemas.auth import LoginRequest, MeResponse, MfaVerifyRequest
-from app.services import auth_service
+from app.schemas.platform import TenantCreateRequest, TenantCreateResponse, TenantOut
+from app.services import auth_service, platform_service, sample_data_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+# Pass 2 / ADR-064: self-service tenant signup (item 1 of the
+# onboarding/billing pass). Previously, tenant creation was
+# platform-admin-only (ADR-008) -- this adds a genuine self-service path
+# alongside it, not a replacement. A new, unauthenticated, state-changing
+# public endpoint is a real attack surface: rate-limited tighter than
+# login (it creates real resources, not just a login attempt), and the
+# resulting admin still goes through the ordinary login+MFA flow -- MFA
+# is a fundamental security control here, not onboarding friction to
+# bypass for a smoother signup funnel.
+@router.post("/signup")
+@limiter.limit("5/hour")
+def signup(req: TenantCreateRequest, request: Request, db: Session = Depends(get_db)) -> dict:
+    tenant, admin = platform_service.create_tenant_with_admin(db, req, platform_admin_id=None)
+    sample_data_service.seed_sample_project(db, tenant.id, admin.id)
+    db.commit()
+    return envelope(
+        TenantCreateResponse(
+            tenant=TenantOut.model_validate(tenant), admin_user_id=admin.id
+        ).model_dump(mode="json")
+    )
 
 
 @router.post("/login")

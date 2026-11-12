@@ -25,18 +25,23 @@ from app.api import (
     notifications,
     platform,
     projects,
+    report_schedule,
     reporting,
     requirements,
     roles,
     scim,
     search,
     service_tokens,
+    shared_steps,
     sso,
     templates,
     test_assets,
     test_cases,
     test_data,
+    test_data_sets,
     test_modules,
+    test_plans,
+    test_suites,
     users,
 )
 from app.api import (
@@ -192,6 +197,11 @@ app.include_router(test_data.router, prefix="/api/v1")
 app.include_router(service_tokens.router, prefix="/api/v1")
 app.include_router(roles.router, prefix="/api/v1")
 app.include_router(ci.router, prefix="/api/v1")
+app.include_router(report_schedule.router, prefix="/api/v1")
+app.include_router(shared_steps.router, prefix="/api/v1")
+app.include_router(test_data_sets.router, prefix="/api/v1")
+app.include_router(test_suites.router, prefix="/api/v1")
+app.include_router(test_plans.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

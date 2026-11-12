@@ -35,3 +35,43 @@ export function importDefects(file: File): Promise<ImportReport> {
 }
 
 export const defectTemplateDownloadUrl = `${API_BASE_URL}/defects/import/template.csv`
+
+// Pass 3: flexible, mapped import -- any CSV, any column names, mapped by
+// the user (with optional TestRail/Zephyr/Jira presets pre-filling the
+// mapping as a best-effort starting point, never auto-applied silently).
+export interface DetectedColumn {
+  name: string
+  sample_values: string[]
+}
+
+export interface ColumnDetectionResult {
+  columns: DetectedColumn[]
+  suggested_mapping: Record<string, string>
+  target_fields: string[]
+  required_fields: string[]
+}
+
+export type ImportPreset = 'testrail' | 'zephyr' | 'jira'
+
+export function detectTestCaseColumns(
+  file: File,
+  preset?: ImportPreset,
+): Promise<ColumnDetectionResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const params = preset ? `?preset=${preset}` : ''
+  return apiFetch<ColumnDetectionResult>(`/test-cases/import/detect-columns${params}`, {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+export function importTestCasesMapped(
+  file: File,
+  mapping: Record<string, string>,
+): Promise<ImportReport> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('mapping', JSON.stringify(mapping))
+  return apiFetch<ImportReport>('/test-cases/import/mapped', { method: 'POST', body: formData })
+}

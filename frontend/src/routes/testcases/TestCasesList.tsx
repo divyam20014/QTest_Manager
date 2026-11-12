@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '@/api/client'
 import { exportUrl } from '@/api/csvImport'
 import { createModule, deleteModule, listModules } from '@/api/modules'
+import { listSharedSteps } from '@/api/sharedSteps'
 import { getProject } from '@/api/projects'
 import {
   assignModule,
@@ -26,6 +27,7 @@ import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
 import { useUrlFilters } from '@/lib/useUrlFilters'
 import { ImportDialog } from './ImportDialog'
+import { SharedStepsDialog } from './SharedStepsDialog'
 import { TemplatesDialog } from './TemplatesDialog'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { STATUS_DISPLAY, priorityTone } from './statusDisplay'
@@ -62,6 +64,7 @@ export function TestCasesList() {
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [sharedStepsOpen, setSharedStepsOpen] = useState(false)
   const [modulesOpen, setModulesOpen] = useState(false)
   const [newModuleName, setNewModuleName] = useState('')
   const queryClient = useQueryClient()
@@ -118,6 +121,11 @@ export function TestCasesList() {
   const modulesQuery = useQuery({
     queryKey: ['test-modules', projectId],
     queryFn: () => listModules(projectId!),
+    enabled: !!projectId,
+  })
+  const sharedStepsQuery = useQuery({
+    queryKey: ['shared-steps', projectId],
+    queryFn: () => listSharedSteps(projectId!),
     enabled: !!projectId,
   })
   const testCasesQuery = useQuery({
@@ -230,6 +238,9 @@ export function TestCasesList() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setTemplatesOpen(true)}>
             Templates
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setSharedStepsOpen(true)}>
+            Shared Steps
           </Button>
           <Button onClick={() => setCreateOpen(true)}>New Test Case</Button>
         </div>
@@ -486,12 +497,18 @@ export function TestCasesList() {
           serverError={createError}
           users={usersQuery.data ?? []}
           modules={modulesQuery.data ?? []}
+          sharedSteps={sharedStepsQuery.data ?? []}
           onSubmit={(values) => createMutation.mutate(values)}
         />
       </Drawer>
 
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} projectId={projectId!} />
       <TemplatesDialog open={templatesOpen} onClose={() => setTemplatesOpen(false)} projectId={projectId!} />
+      <SharedStepsDialog
+        open={sharedStepsOpen}
+        onClose={() => setSharedStepsOpen(false)}
+        projectId={projectId!}
+      />
 
       <Dialog open={modulesOpen} onClose={() => setModulesOpen(false)} title="Manage Modules">
         <div className="flex flex-col gap-3 text-sm">

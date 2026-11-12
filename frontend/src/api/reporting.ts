@@ -290,3 +290,13 @@ export function complianceExportUrl(period: CompliancePeriod = {}): string {
   const query = params.toString()
   return `${API_BASE_URL}/reports/compliance-export${query ? `?${query}` : ''}`
 }
+
+// Pass 4 (ADR-065): additive to the CSV export and the browser-print view,
+// a real server-generated PDF file for sharing/archiving.
+export function complianceExportPdfUrl(period: CompliancePeriod = {}): string {
+  const params = new URLSearchParams()
+  if (period.periodFrom) params.set('period_from', period.periodFrom)
+  if (period.periodTo) params.set('period_to', period.periodTo)
+  const query = params.toString()
+  return `${API_BASE_URL}/reports/compliance-detail/pdf${query ? `?${query}` : ''}`
+}

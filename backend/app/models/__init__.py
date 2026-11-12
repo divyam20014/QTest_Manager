@@ -22,9 +22,11 @@ from app.models.identity import (
 )
 from app.models.notification import Notification
 from app.models.project import Project, ProjectMember
+from app.models.report_schedule import ReportSchedule
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
 from app.models.scim_token import ScimToken
 from app.models.service_token import ServiceToken
+from app.models.shared_step import SharedStep
 from app.models.sso_config import SsoConfig
 from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
@@ -35,7 +37,10 @@ from app.models.test_case import (
     TestCaseVersion,
     TestCaseVersionStep,
 )
+from app.models.test_data_set import TestDataSet, TestDataSetRow
 from app.models.test_module import TestModule
+from app.models.test_plan import TestPlan, TestPlanRun
+from app.models.test_suite import TestSuite, TestSuiteCase
 from app.models.user_invite import UserInvite
 
 __all__ = [
@@ -75,6 +80,7 @@ __all__ = [
     "Build",
     "Release",
     "TestModule",
+    "SharedStep",
     "SsoConfig",
     "ScimToken",
     "ServiceToken",
@@ -82,4 +88,11 @@ __all__ = [
     "StatusLabel",
     "CustomFieldDefinition",
     "CustomFieldValue",
+    "ReportSchedule",
+    "TestDataSet",
+    "TestDataSetRow",
+    "TestSuite",
+    "TestSuiteCase",
+    "TestPlan",
+    "TestPlanRun",
 ]

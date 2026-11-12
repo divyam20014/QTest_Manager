@@ -1,19 +1,23 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
-from app.core.errors import NotFoundError, ValidationAppError
+from app.core.errors import ConflictError, NotFoundError, ValidationAppError
+from app.models.ai_usage import AIUsageLog
+from app.models.identity import User
 from app.models.subscription import Plan, Subscription
+from app.models.test_case import Attachment
 from app.schemas.subscription import (
     PlanCreateRequest,
     PlanOut,
     PlanUpdateRequest,
     SubscriptionAssignRequest,
     SubscriptionOut,
+    SubscriptionUsageOut,
 )
 
 
@@ -142,6 +146,121 @@ def assign_subscription(
         entity_type="subscription",
         entity_id=subscription.id,
         metadata={"plan_code": req.plan_code, "status": req.status, "seat_count": req.seat_count},
+    )
+    db.commit()
+    return _to_out(db, subscription)
+
+
+def list_plans_for_tenant(db: Session) -> list[PlanOut]:
+    """Tenant-facing plan catalog (Pass 2: self-serve plan browsing). Same
+    underlying table as the platform-admin `list_plans` -- active plans
+    only, since an inactive plan shouldn't be self-selectable."""
+    plans = db.execute(
+        select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.name)
+    ).scalars()
+    return [PlanOut.model_validate(p) for p in plans]
+
+
+def get_usage(db: Session, tenant_id: UUID) -> SubscriptionUsageOut:
+    """Reuses the exact same counts `plan_limits` enforces against, so the
+    usage dashboard can never show a different number than what's actually
+    being checked at the real enforcement points."""
+    set_tenant_context(db, str(tenant_id))
+    subscription = db.execute(
+        select(Subscription).where(Subscription.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if subscription is None:
+        raise NotFoundError("No subscription found for this organization")
+    plan = db.execute(select(Plan).where(Plan.id == subscription.plan_id)).scalar_one()
+
+    seat_count = db.execute(
+        select(func.count(User.id)).where(User.tenant_id == tenant_id, User.is_active.is_(True))
+    ).scalar_one()
+    storage_bytes = db.execute(
+        select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
+            Attachment.tenant_id == tenant_id
+        )
+    ).scalar_one()
+    now = datetime.now(UTC)
+    period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    ai_requests_this_period = db.execute(
+        select(func.count(AIUsageLog.id)).where(
+            AIUsageLog.tenant_id == tenant_id, AIUsageLog.created_at >= period_start
+        )
+    ).scalar_one()
+
+    return SubscriptionUsageOut(
+        seat_count=seat_count,
+        seat_limit=plan.seat_limit,
+        storage_used_mb=round(storage_bytes / (1024 * 1024), 2),
+        storage_limit_mb=plan.storage_limit_mb,
+        ai_requests_this_period=ai_requests_this_period,
+        ai_monthly_request_limit=plan.ai_monthly_request_limit,
+    )
+
+
+def switch_plan(db: Session, tenant_id: UUID, user_id: UUID, plan_code: str) -> SubscriptionOut:
+    """Tenant-admin self-serve plan switch (Pass 2). Schema/UI only -- no
+    payment is collected, consistent with ADR-053's original scope
+    decision; this changes `Subscription.plan_id` directly and takes
+    effect immediately.
+
+    Downgrade-below-current-usage decision: BLOCK the switch (409) rather
+    than allow it and silently start rejecting new seats afterward --
+    a tenant admin choosing a plan should get an immediate, actionable
+    error ("deactivate N users first"), not a switch that appears to
+    succeed and then mysteriously breaks seat creation later.
+    """
+    set_tenant_context(db, str(tenant_id))
+    subscription = db.execute(
+        select(Subscription).where(Subscription.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if subscription is None:
+        raise NotFoundError("No subscription found for this organization")
+
+    new_plan = db.execute(
+        select(Plan).where(Plan.code == plan_code, Plan.is_active.is_(True))
+    ).scalar_one_or_none()
+    if new_plan is None:
+        raise ValidationAppError(f"Unknown or inactive plan code: {plan_code}")
+
+    old_plan = db.execute(select(Plan).where(Plan.id == subscription.plan_id)).scalar_one()
+
+    if new_plan.seat_limit is not None:
+        active_seats = db.execute(
+            select(func.count(User.id)).where(
+                User.tenant_id == tenant_id, User.is_active.is_(True)
+            )
+        ).scalar_one()
+        if active_seats > new_plan.seat_limit:
+            raise ConflictError(
+                f"'{new_plan.name}' allows at most {new_plan.seat_limit} active user(s), "
+                f"but this organization currently has {active_seats}. Deactivate users "
+                "before switching to this plan."
+            )
+    if new_plan.storage_limit_mb is not None:
+        used_bytes = db.execute(
+            select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
+                Attachment.tenant_id == tenant_id
+            )
+        ).scalar_one()
+        if used_bytes > new_plan.storage_limit_mb * 1024 * 1024:
+            raise ConflictError(
+                f"'{new_plan.name}' allows at most {new_plan.storage_limit_mb}MB of attachment "
+                "storage, which this organization already exceeds. Free up storage before "
+                "switching to this plan."
+            )
+
+    subscription.plan_id = new_plan.id
+    db.flush()
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        action="subscription.plan_switched",
+        entity_type="subscription",
+        entity_id=subscription.id,
+        metadata={"from_plan_code": old_plan.code, "to_plan_code": new_plan.code},
     )
     db.commit()
     return _to_out(db, subscription)

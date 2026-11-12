@@ -24,11 +24,11 @@ os.environ["ATTACHMENTS_DIR"] = str(Path(__file__).resolve().parent / "_tmp_atta
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
+from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 
 from alembic import command  # noqa: E402
-from alembic.config import Config  # noqa: E402
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 ADMIN_DSN = "postgresql://qtesthub:qtesthub@localhost:5432/postgres"

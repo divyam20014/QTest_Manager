@@ -12,6 +12,7 @@ from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
+from app.models.test_data_set import TestDataSetRow
 from app.schemas.execution import (
     ExecutionStepOut,
     RunCaseContextOut,
@@ -158,13 +159,18 @@ def _validate_bundlable_cases(
 
 
 def _bundle_case_into_run(
-    db: Session, tenant_id: UUID, run_id: UUID, case: TestCase
+    db: Session,
+    tenant_id: UUID,
+    run_id: UUID,
+    case: TestCase,
+    test_data_row_id: UUID | None = None,
 ) -> TestRunCase:
     run_case = TestRunCase(
         tenant_id=tenant_id,
         test_run_id=run_id,
         test_case_id=case.id,
         test_case_version_id=case.current_version_id,
+        test_data_row_id=test_data_row_id,
         status="pending",
     )
     db.add(run_case)
@@ -279,18 +285,47 @@ def add_test_run_cases(
     if run.finished_at is not None:
         raise ConflictError("Cannot add test cases to a finished test run")
 
+    # Pass 5 item 2: duplicates are now checked per (test_case_id,
+    # test_data_row_id) pair, not just per test_case_id -- the same case
+    # can legitimately appear more than once in a run if each appearance
+    # is driven by a different data row.
     already_bundled = set(
         db.execute(
-            select(TestRunCase.test_case_id).where(TestRunCase.test_run_id == run.id)
-        ).scalars()
+            select(TestRunCase.test_case_id, TestRunCase.test_data_row_id).where(
+                TestRunCase.test_run_id == run.id
+            )
+        ).all()
     )
-    duplicate_ids = [str(i) for i in req.test_case_ids if i in already_bundled]
-    if duplicate_ids:
-        raise ConflictError(f"Test case(s) already in this run: {', '.join(duplicate_ids)}")
 
     cases = _validate_bundlable_cases(db, tenant_id, run.project_id, req.test_case_ids)
-    for case in cases:
-        _bundle_case_into_run(db, tenant_id, run.id, case)
+    cases_by_id = {c.id: c for c in cases}
+
+    to_bundle: list[tuple[TestCase, UUID | None]] = []
+    duplicates: list[str] = []
+    for case_id in req.test_case_ids:
+        selected = req.data_row_ids.get(case_id)
+        row_ids: list[UUID | None] = list(selected) if selected else [None]
+        for row_id in row_ids:
+            if (case_id, row_id) in already_bundled:
+                duplicates.append(f"{case_id}" + (f" (row {row_id})" if row_id else ""))
+                continue
+            to_bundle.append((cases_by_id[case_id], row_id))
+
+    if duplicates:
+        raise ConflictError(f"Test case(s) already in this run: {', '.join(duplicates)}")
+
+    if any(row_id is not None for _, row_id in to_bundle):
+        valid_row_ids = {
+            r for r, in db.execute(
+                select(TestDataSetRow.id).where(TestDataSetRow.tenant_id == tenant_id)
+            )
+        }
+        bad_rows = [str(r) for _, r in to_bundle if r is not None and r not in valid_row_ids]
+        if bad_rows:
+            raise ValidationAppError(f"Unknown data row id(s): {', '.join(bad_rows)}")
+
+    for case, row_id in to_bundle:
+        _bundle_case_into_run(db, tenant_id, run.id, case, test_data_row_id=row_id)
 
     record_audit_event(
         db,
@@ -299,7 +334,7 @@ def add_test_run_cases(
         action="testrun.cases_added",
         entity_type="test_run",
         entity_id=run.id,
-        metadata={"added_count": len(cases)},
+        metadata={"added_count": len(to_bundle)},
     )
     db.commit()
     return run
@@ -601,6 +636,16 @@ def get_run_case_context(
             select(User.name).where(User.id == run_case.assigned_to)
         ).scalar_one_or_none()
 
+    data_row_name = None
+    data_row_values = None
+    if run_case.test_data_row_id is not None:
+        row = db.execute(
+            select(TestDataSetRow).where(TestDataSetRow.id == run_case.test_data_row_id)
+        ).scalar_one_or_none()
+        if row is not None:
+            data_row_name = row.name
+            data_row_values = row.data
+
     return RunCaseContextOut(
         run_id=run.id,
         run_name=run.name,
@@ -615,6 +660,9 @@ def get_run_case_context(
         assignee_id=run_case.assigned_to,
         assignee_name=assignee_name,
         status=cast(RunCaseStatus, run_case.status),
+        data_row_id=run_case.test_data_row_id,
+        data_row_name=data_row_name,
+        data_row_values=data_row_values,
     )
 
 

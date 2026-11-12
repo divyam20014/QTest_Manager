@@ -303,6 +303,21 @@ export function ExecutionConsole() {
                 </div>
                 <InfoRow label="Version" value={`v${context.version_number}`} />
                 <InfoRow label="Assignee" value={context.assignee_name ?? 'Unassigned'} />
+                {context.data_row_id && (
+                  <div className="rounded-md border border-[var(--border)] bg-[var(--muted)] p-2">
+                    <p className="mb-1 font-medium text-[var(--foreground)]">
+                      Data row: {context.data_row_name}
+                    </p>
+                    <ul className="flex flex-col gap-0.5">
+                      {Object.entries(context.data_row_values ?? {}).map(([key, value]) => (
+                        <li key={key} className="flex justify-between gap-2">
+                          <span className="text-[var(--muted-foreground)]">{key}</span>
+                          <span className="font-mono">{String(value)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {context.run_paused && (
                   <div className="pt-1">
                     <Badge tone="warning">Run Paused</Badge>

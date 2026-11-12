@@ -57,3 +57,22 @@ class SubscriptionAssignRequest(BaseModel):
     status: SubscriptionStatus = "active"
     seat_count: int = Field(default=1, ge=1)
     current_period_end: datetime | None = None
+
+
+class SwitchPlanRequest(BaseModel):
+    """Tenant-admin self-serve plan switch (Pass 2 / ADR-064). No payment
+    is collected -- see subscription_service.switch_plan."""
+
+    plan_code: str = Field(min_length=1)
+
+
+class SubscriptionUsageOut(BaseModel):
+    """Mirrors exactly what `plan_limits` enforces, so this can never show
+    a different number than what's actually checked (Pass 2 / ADR-064)."""
+
+    seat_count: int
+    seat_limit: int | None
+    storage_used_mb: float
+    storage_limit_mb: int | None
+    ai_requests_this_period: int
+    ai_monthly_request_limit: int | None

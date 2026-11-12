@@ -22,6 +22,12 @@ class TestRunUpdateRequest(BaseModel):
 
 class TestRunCaseAddRequest(BaseModel):
     test_case_ids: list[UUID] = Field(min_length=1)
+    # Pass 5 item 2 (parameterized execution): for a test case id that has
+    # an associated TestDataSet, list which row ids to bundle -- one
+    # TestRunCase per selected row. A test case id with no entry here (or
+    # an empty list) bundles once, unparameterized, exactly as before --
+    # fully backward compatible with every existing caller.
+    data_row_ids: dict[UUID, list[UUID]] = Field(default_factory=dict)
 
 
 class TestRunCaseAssignRequest(BaseModel):
@@ -105,3 +111,9 @@ class RunCaseContextOut(BaseModel):
     assignee_id: UUID | None
     assignee_name: str | None
     status: RunCaseStatus
+    # Pass 5 item 2: when this run case was bundled from a specific
+    # TestDataSetRow, the row's name + raw key/value parameters, so the
+    # executor knows which data to use.
+    data_row_id: UUID | None = None
+    data_row_name: str | None = None
+    data_row_values: dict | None = None

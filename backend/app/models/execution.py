@@ -42,7 +42,18 @@ class TestRunCase(Base, TenantScopedMixin):
 
     __tablename__ = "test_run_cases"
     __table_args__ = (
-        UniqueConstraint("test_run_id", "test_case_id", name="uq_test_run_cases_run_case"),
+        # Pass 5 item 2: the old (test_run_id, test_case_id) unique pair is
+        # widened to include test_data_row_id. Postgres treats NULL as
+        # distinct in a unique constraint, so an un-parameterized case
+        # (test_data_row_id IS NULL) still can't be bundled twice -- the
+        # original invariant holds exactly as before -- while a
+        # parameterized case can have one TestRunCase per selected data row.
+        UniqueConstraint(
+            "test_run_id",
+            "test_case_id",
+            "test_data_row_id",
+            name="uq_test_run_cases_run_case_row",
+        ),
         CheckConstraint(
             "status in ('pending','in_progress','passed','failed','blocked','ignored')",
             name="ck_test_run_cases_status",
@@ -57,6 +68,9 @@ class TestRunCase(Base, TenantScopedMixin):
     )
     test_case_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("test_case_versions.id"), nullable=False
+    )
+    test_data_row_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("test_data_set_rows.id"), nullable=True
     )
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="pending", server_default="pending"
