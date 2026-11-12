@@ -9,13 +9,21 @@ from app.core.auth import (
     parse_session_cookie,
     set_session_cookie,
 )
-from app.core.db import get_db
+from app.core.db import get_db, get_identify_db
+from app.core.logging import logger
 from app.core.rate_limit import limiter
 from app.core.responses import envelope
 from app.models.identity import User
-from app.schemas.auth import LoginRequest, MeResponse, MfaVerifyRequest
+from app.schemas.auth import (
+    IdentifyRequest,
+    IdentifyResponse,
+    LoginRequest,
+    MeResponse,
+    MfaVerifyRequest,
+    TenantMatchOut,
+)
 from app.schemas.platform import TenantCreateRequest, TenantCreateResponse, TenantOut
-from app.services import auth_service, platform_service, sample_data_service
+from app.services import auth_service, identify_service, platform_service, sample_data_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -38,6 +46,37 @@ def signup(req: TenantCreateRequest, request: Request, db: Session = Depends(get
     return envelope(
         TenantCreateResponse(
             tenant=TenantOut.model_validate(tenant), admin_user_id=admin.id
+        ).model_dump(mode="json")
+    )
+
+
+# ADR-067: tenant-less login, step 0. Previously the login form required a
+# raw tenant_id UUID up front (ADR-017: email is only unique per-tenant, so
+# the users table -- RLS-scoped -- can't be queried without it). This lets
+# the user type only their email first; the frontend then either
+# auto-continues (single match) or shows an org picker (multiple matches)
+# before the existing, unchanged POST /auth/login. Tighter-than-login rate
+# limit: this is unauthenticated and enumeration-adjacent, called on every
+# login attempt rather than only on invalid ones.
+#
+# Not audit-logged: audit_logs.tenant_id is NOT NULL (TenantScopedMixin),
+# and this endpoint runs by definition before any tenant is known -- there
+# is no tenant row to attribute the event to. A security-relevant log line
+# (below) covers the same need without forcing a schema change.
+@router.post("/identify")
+@limiter.limit("8/minute")
+def identify(
+    req: IdentifyRequest, request: Request, db: Session = Depends(get_identify_db)
+) -> dict:
+    matches = identify_service.resolve_tenants_for_email(db, req.email)
+    if not matches:
+        logger.info("security_event=identify_no_match email=%s", req.email)
+    return envelope(
+        IdentifyResponse(
+            matches=[
+                TenantMatchOut(tenant_id=tenant_id, tenant_name=tenant_name)
+                for tenant_id, tenant_name in matches
+            ]
         ).model_dump(mode="json")
     )
 

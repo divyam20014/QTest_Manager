@@ -3,6 +3,22 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
 
+class IdentifyRequest(BaseModel):
+    email: EmailStr
+
+
+class TenantMatchOut(BaseModel):
+    tenant_id: UUID
+    tenant_name: str
+
+
+class IdentifyResponse(BaseModel):
+    # Always a 200 with a (possibly empty) list -- never a 404/distinct
+    # error for "no match" (ADR-067), so the UI/network layer can't be
+    # used to enumerate which emails exist.
+    matches: list[TenantMatchOut] = []
+
+
 class LoginRequest(BaseModel):
     # ADR-017: email is only unique per tenant, so the tenant must be known
     # before the users table (tenant-RLS'd) can even be queried.

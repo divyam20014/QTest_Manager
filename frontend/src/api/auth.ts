@@ -33,6 +33,26 @@ export function isAdmin(user: MeResponse | null): boolean {
   return user.role === 'admin' || hasPermission(user, 'tenant.settings.manage')
 }
 
+// ADR-067: tenant-less login, step 0 -- resolves which tenant(s) an email
+// belongs to before the password/tenant_id is known. Always 200 with a
+// (possibly empty) `matches` list, never a distinct "not found" error, so
+// the UI can't be used to enumerate registered emails.
+export interface TenantMatch {
+  tenant_id: string
+  tenant_name: string
+}
+
+export interface IdentifyResponse {
+  matches: TenantMatch[]
+}
+
+export function identify(email: string): Promise<IdentifyResponse> {
+  return apiFetch<IdentifyResponse>('/auth/identify', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
 export interface LoginRequest {
   tenant_id: string
   email: string

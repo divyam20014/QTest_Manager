@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 
-import { login, verifyMfa } from '@/api/auth'
+import { identify, login, verifyMfa } from '@/api/auth'
 import { API_BASE_URL, ApiError } from '@/api/client'
 import { getSsoStatus } from '@/api/sso'
 import { Button } from '@/components/ui/button'
@@ -14,35 +14,115 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/auth'
 
-const credentialsSchema = z.object({
-  tenant_id: z.string().uuid('Enter a valid tenant id (UUID)'),
-  email: z.string().email(),
-  password: z.string().min(1, 'Password is required'),
-})
-type CredentialsForm = z.infer<typeof credentialsSchema>
+// ADR-067: tenant-less login. "remember last tenant" is keyed per-email
+// (lowercased) in a single JSON blob rather than one localStorage key per
+// email -- different emails can belong to different tenants on a shared
+// device, but scanning/managing many discrete keys buys nothing a single
+// parsed object doesn't already give.
+const REMEMBERED_TENANTS_KEY = 'qth_remembered_tenants'
+
+interface RememberedTenant {
+  tenantId: string
+  tenantName: string
+}
+
+function readRememberedTenant(email: string): RememberedTenant | null {
+  try {
+    const raw = localStorage.getItem(REMEMBERED_TENANTS_KEY)
+    if (!raw) return null
+    const all = JSON.parse(raw) as Record<string, RememberedTenant>
+    return all[email.toLowerCase()] ?? null
+  } catch {
+    return null
+  }
+}
+
+function rememberTenant(email: string, tenant: RememberedTenant): void {
+  try {
+    const raw = localStorage.getItem(REMEMBERED_TENANTS_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, RememberedTenant>) : {}
+    all[email.toLowerCase()] = tenant
+    localStorage.setItem(REMEMBERED_TENANTS_KEY, JSON.stringify(all))
+  } catch {
+    // localStorage unavailable (private window, blocked site data, etc.) --
+    // this is a pure UX convenience, never required for login to work.
+  }
+}
+
+function forgetRememberedTenant(email: string): void {
+  try {
+    const raw = localStorage.getItem(REMEMBERED_TENANTS_KEY)
+    if (!raw) return
+    const all = JSON.parse(raw) as Record<string, RememberedTenant>
+    delete all[email.toLowerCase()]
+    localStorage.setItem(REMEMBERED_TENANTS_KEY, JSON.stringify(all))
+  } catch {
+    // Same as above -- best-effort only.
+  }
+}
+
+const emailSchema = z.object({ email: z.string().email() })
+type EmailForm = z.infer<typeof emailSchema>
+
+const passwordSchema = z.object({ password: z.string().min(1, 'Password is required') })
+type PasswordForm = z.infer<typeof passwordSchema>
 
 const codeSchema = z.object({ code: z.string().length(6, 'Enter the 6-digit code') })
 type CodeForm = z.infer<typeof codeSchema>
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Generic on purpose (ADR-067/ADR-017): must never read differently than a
+// wrong-password response, so the UI layer can't be used to enumerate
+// registered emails any more than the network layer already can't.
+const GENERIC_IDENTIFY_ERROR = 'Invalid email or password'
+
+type Step = 'email' | 'org-picker' | 'password' | 'mfa'
 
 export function Login() {
-  const [step, setStep] = useState<'credentials' | 'mfa'>('credentials')
+  const [step, setStep] = useState<Step>('email')
+  const [email, setEmail] = useState('')
+  const [tenantMatches, setTenantMatches] = useState<{ tenant_id: string; tenant_name: string }[]>([])
+  const [resolvedTenant, setResolvedTenant] = useState<RememberedTenant | null>(null)
+  const [identifyError, setIdentifyError] = useState<string | null>(null)
   const [debugCode, setDebugCode] = useState<string | null>(null)
   const navigate = useNavigate()
   const { refresh } = useAuth()
 
-  const credentialsForm = useForm<CredentialsForm>({ resolver: zodResolver(credentialsSchema) })
+  const emailForm = useForm<EmailForm>({ resolver: zodResolver(emailSchema) })
+  const passwordForm = useForm<PasswordForm>({ resolver: zodResolver(passwordSchema) })
   const codeForm = useForm<CodeForm>({ resolver: zodResolver(codeSchema) })
-  const tenantIdValue = credentialsForm.watch('tenant_id')
+
+  const identifyMutation = useMutation({
+    mutationFn: identify,
+    onSuccess: (data, submittedEmail) => {
+      if (data.matches.length === 0) {
+        setIdentifyError(GENERIC_IDENTIFY_ERROR)
+        return
+      }
+      setIdentifyError(null)
+      if (data.matches.length === 1) {
+        const match = data.matches[0]
+        const tenant = { tenantId: match.tenant_id, tenantName: match.tenant_name }
+        setResolvedTenant(tenant)
+        rememberTenant(submittedEmail, tenant)
+        setStep('password')
+      } else {
+        setTenantMatches(data.matches)
+        setStep('org-picker')
+      }
+    },
+    onError: () => {
+      // Network/server error -- same generic copy, never a distinct message.
+      setIdentifyError(GENERIC_IDENTIFY_ERROR)
+    },
+  })
 
   const ssoStatusMutation = useMutation({
     mutationFn: (tenantId: string) => getSsoStatus(tenantId),
     onSuccess: (status, tenantId) => {
       if (status.enabled) {
-        // Tier 4 / ADR-054: a real browser redirect, not an API fetch --
-        // the OIDC authorization-code flow needs the user's own browser
-        // to visit the identity provider.
+        // Tier 4 / ADR-054: a real browser redirect, not an API fetch -- the
+        // OIDC authorization-code flow needs the user's own browser to visit
+        // the identity provider.
         window.location.href = `${API_BASE_URL}/auth/sso/${tenantId}/login`
       }
     },
@@ -68,6 +148,39 @@ export function Login() {
     },
   })
 
+  function submitEmail(values: EmailForm) {
+    setEmail(values.email)
+    const remembered = readRememberedTenant(values.email)
+    if (remembered) {
+      setResolvedTenant(remembered)
+      setIdentifyError(null)
+      setStep('password')
+      return
+    }
+    identifyMutation.mutate(values.email)
+  }
+
+  function pickTenant(match: { tenant_id: string; tenant_name: string }) {
+    const tenant = { tenantId: match.tenant_id, tenantName: match.tenant_name }
+    setResolvedTenant(tenant)
+    rememberTenant(email, tenant)
+    setStep('password')
+  }
+
+  function switchOrganization() {
+    forgetRememberedTenant(email)
+    setResolvedTenant(null)
+    setIdentifyError(null)
+    passwordForm.reset({ password: '' })
+    identifyMutation.mutate(email)
+  }
+
+  function backToEmail() {
+    setStep('email')
+    setIdentifyError(null)
+    passwordForm.reset({ password: '' })
+  }
+
   const credentialsError =
     loginMutation.error instanceof ApiError ? loginMutation.error.message : null
   const codeError = verifyMutation.error instanceof ApiError ? verifyMutation.error.message : null
@@ -78,58 +191,111 @@ export function Login() {
         <CardHeader>
           <CardTitle className="text-base text-[var(--foreground)]">QTestHub</CardTitle>
           <p className="text-sm text-[var(--muted-foreground)]">
-            {step === 'credentials' ? 'Sign in to your organization' : 'Enter your verification code'}
+            {step === 'email' && 'Sign in to your organization'}
+            {step === 'org-picker' && 'Choose your organization'}
+            {step === 'password' && 'Enter your password'}
+            {step === 'mfa' && 'Enter your verification code'}
           </p>
         </CardHeader>
         <CardContent>
-          {step === 'credentials' ? (
+          {step === 'email' && (
             <form
               className="flex flex-col gap-4"
-              onSubmit={credentialsForm.handleSubmit((values) => loginMutation.mutate(values))}
+              onSubmit={emailForm.handleSubmit(submitEmail)}
             >
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="tenant_id">Tenant ID</Label>
-                <Input id="tenant_id" {...credentialsForm.register('tenant_id')} />
-                {credentialsForm.formState.errors.tenant_id && (
-                  <p className="text-xs text-[var(--destructive)]">
-                    {credentialsForm.formState.errors.tenant_id.message}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" {...credentialsForm.register('email')} />
-                {credentialsForm.formState.errors.email && (
+                <Input id="email" type="email" autoFocus {...emailForm.register('email')} />
+                {emailForm.formState.errors.email && (
                   <p className="text-xs text-[var(--destructive)]">
-                    {credentialsForm.formState.errors.email.message}
+                    {emailForm.formState.errors.email.message}
                   </p>
                 )}
               </div>
+              {identifyError && <p className="text-xs text-[var(--destructive)]">{identifyError}</p>}
+              <Button type="submit" disabled={identifyMutation.isPending}>
+                {identifyMutation.isPending ? 'Checking…' : 'Continue'}
+              </Button>
+            </form>
+          )}
+
+          {step === 'org-picker' && (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {email} is used in more than one organization. Choose which one to sign in to.
+              </p>
+              {tenantMatches.map((match) => (
+                <Button
+                  key={match.tenant_id}
+                  type="button"
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => pickTenant(match)}
+                >
+                  {match.tenant_name}
+                </Button>
+              ))}
+              <Button type="button" variant="ghost" onClick={backToEmail}>
+                Back
+              </Button>
+            </div>
+          )}
+
+          {step === 'password' && resolvedTenant && (
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={passwordForm.handleSubmit((values) =>
+                loginMutation.mutate({
+                  tenant_id: resolvedTenant.tenantId,
+                  email,
+                  password: values.password,
+                })
+              )}
+            >
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Signing in to <span className="font-medium">{resolvedTenant.tenantName}</span> as{' '}
+                {email}.{' '}
+                <button
+                  type="button"
+                  className="underline hover:text-[var(--foreground)]"
+                  onClick={switchOrganization}
+                >
+                  Not you? Switch organization
+                </button>
+              </p>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" {...credentialsForm.register('password')} />
+                <Input
+                  id="password"
+                  type="password"
+                  autoFocus
+                  {...passwordForm.register('password')}
+                />
               </div>
               {credentialsError && <p className="text-xs text-[var(--destructive)]">{credentialsError}</p>}
               <Button type="submit" disabled={loginMutation.isPending}>
                 {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
               </Button>
-              {UUID_PATTERN.test(tenantIdValue ?? '') && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={ssoStatusMutation.isPending}
-                  onClick={() => ssoStatusMutation.mutate(tenantIdValue)}
-                >
-                  Sign in with SSO
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={ssoStatusMutation.isPending}
+                onClick={() => ssoStatusMutation.mutate(resolvedTenant.tenantId)}
+              >
+                Sign in with SSO
+              </Button>
               {ssoStatusMutation.isSuccess && !ssoStatusMutation.data.enabled && (
                 <p className="text-xs text-[var(--muted-foreground)]">
                   SSO is not configured for this organization.
                 </p>
               )}
+              <Button type="button" variant="ghost" onClick={backToEmail}>
+                Back
+              </Button>
             </form>
-          ) : (
+          )}
+
+          {step === 'mfa' && (
             <form
               className="flex flex-col gap-4"
               onSubmit={codeForm.handleSubmit((values) => verifyMutation.mutate(values.code))}
@@ -164,7 +330,7 @@ export function Login() {
                 variant="ghost"
                 onClick={() => {
                   codeForm.reset({ code: '' })
-                  setStep('credentials')
+                  setStep('email')
                 }}
               >
                 Back

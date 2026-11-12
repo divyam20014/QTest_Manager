@@ -12,6 +12,11 @@ os.environ["DATABASE_URL"] = (
 os.environ["MIGRATION_DATABASE_URL"] = (
     f"postgresql+psycopg://qtesthub:qtesthub@localhost:5432/{TEST_DB_NAME}"
 )
+# ADR-067: tenant-less login's identity-resolution lookup (BYPASSRLS,
+# SELECT-only role created by the f1a2b3c4d5e6 migration).
+os.environ["IDENTIFY_DATABASE_URL"] = (
+    f"postgresql+psycopg://qtesthub_identify:qtesthub_identify@localhost:5432/{TEST_DB_NAME}"
+)
 os.environ["MFA_DELIVERY_MODE"] = "simulated"
 # Fixed test-only Fernet key for AI Test Case Generator credential
 # encryption (ADR-045) -- never used outside this test run.

@@ -28,6 +28,14 @@ services:
       DATABASE_URL: postgresql+psycopg://qtesthub_app:${APP_DB_PASSWORD:-qtesthub_app}@db:5432/${POSTGRES_DB:-qtesthub}
       MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-qtesthub}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-qtesthub}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-qtesthub_app}
+      # ADR-067: tenant-less login's identity-resolution lookup (POST
+      # /auth/identify) needs a connection that bypasses RLS (SELECT-only,
+      # on users/tenants) to find a user's tenant(s) by email before any
+      # tenant_id is known. IDENTIFY_DB_PASSWORD must match what was set
+      # when migrations last ran (see
+      # alembic/versions/f1a2b3c4d5e6_add_identify_role_for_tenantless_login.py).
+      IDENTIFY_DATABASE_URL: postgresql+psycopg://qtesthub_identify:${IDENTIFY_DB_PASSWORD:-qtesthub_identify}@db:5432/${POSTGRES_DB:-qtesthub}
+      IDENTIFY_DB_PASSWORD: ${IDENTIFY_DB_PASSWORD:-qtesthub_identify}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MFA_DELIVERY_MODE: ${MFA_DELIVERY_MODE:-simulated}

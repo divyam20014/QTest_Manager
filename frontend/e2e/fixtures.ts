@@ -53,20 +53,27 @@ export async function bootstrapTenant(
   return { tenantId: body.data.tenant.id, adminEmail, adminPassword }
 }
 
+/** ADR-067: tenant-less login -- email first (resolved server-side via
+ * POST /auth/identify; each e2e-seeded email is unique to exactly one
+ * tenant, so this always auto-advances straight to the password step,
+ * never the multi-tenant org picker), then password, then MFA. `tenantId`
+ * is accepted for signature compatibility with existing call sites but is
+ * no longer typed anywhere in the UI. */
 export async function loginViaUi(
   page: Page,
-  tenantId: string,
+  _tenantId: string,
   email: string,
   password: string,
 ): Promise<void> {
   await page.goto('/')
   await page.waitForSelector('text=Sign in to your organization')
-  await page.fill('#tenant_id', tenantId)
   await page.fill('#email', email)
+  await page.click('button[type="submit"]:has-text("Continue")')
+  await page.waitForSelector('#password')
   await page.fill('#password', password)
-  // Tier 4 / ADR-054: a valid-looking tenant id also renders a separate
-  // "Sign in with SSO" button -- scoped to the submit button specifically
-  // so this doesn't hit a strict-mode ambiguity between the two.
+  // Tier 4 / ADR-054: this step also renders a separate "Sign in with SSO"
+  // button -- scoped to the submit button specifically so this doesn't hit
+  // a strict-mode ambiguity between the two.
   await page.click('button[type="submit"]:has-text("Sign in")')
   await page.waitForSelector('text=Enter your verification code')
   const bodyText = await page.textContent('body')

@@ -220,6 +220,11 @@ _PUBLIC_OR_SEPARATE_AUTH_PREFIXES = (
 _PRE_SESSION_ROUTES = {
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/mfa/verify"),
+    # ADR-067: tenant-less login's identity-resolution step runs by
+    # definition before any tenant/session is known, same reasoning as
+    # login/signup below -- deliberately public, always 200 with a
+    # (possibly empty) match list, never 401/404.
+    ("POST", "/api/v1/auth/identify"),
     # Tier 1 / ADR-053: deliberately public, like login/mfa-verify above --
     # the invite token itself (unguessable, hashed at rest) is the
     # credential, the same trust model a password-reset link uses.

@@ -16,6 +16,19 @@ class Settings(BaseSettings):
     # and cannot alter schema). Falls back to database_url for local dev.
     migration_database_url: str | None = None
 
+    # ADR-067: a second, narrowly-scoped runtime connection for tenant-less
+    # login's identity-resolution lookup (POST /auth/identify). The
+    # `users` table is RLS-scoped with FORCE ROW LEVEL SECURITY, so the
+    # ordinary app role (bound by `database_url`) cannot look up a user by
+    # email alone before any tenant is known -- this role is granted
+    # BYPASSRLS, but SELECT-only on `users`/`tenants`, nothing else, and is
+    # used by a dedicated engine reserved exclusively for that one lookup
+    # (see app/core/db.py's identify_engine). Never used for anything
+    # authenticated or state-changing.
+    identify_database_url: str = (
+        "postgresql+psycopg://qtesthub_identify:qtesthub_identify@localhost:5432/qtesthub"
+    )
+
     session_cookie_name: str = "qth_session"
     session_ttl_minutes: int = 30
     session_absolute_ttl_hours: int = 12
@@ -130,6 +143,9 @@ class Settings(BaseSettings):
 
 
 _DEV_DATABASE_URL = "postgresql+psycopg://qtesthub:qtesthub@localhost:5432/qtesthub"
+_DEV_IDENTIFY_DATABASE_URL = (
+    "postgresql+psycopg://qtesthub_identify:qtesthub_identify@localhost:5432/qtesthub"
+)
 _DEV_CORS_ORIGINS = ["http://localhost:5173"]
 
 
@@ -167,6 +183,14 @@ def validate_for_production(settings: Settings) -> None:
         problems.append(
             "DATABASE_URL is still the insecure local-dev default "
             "(qtesthub:qtesthub@localhost) -- set a real DATABASE_URL."
+        )
+
+    if settings.identify_database_url == _DEV_IDENTIFY_DATABASE_URL:
+        problems.append(
+            "IDENTIFY_DATABASE_URL is still the insecure local-dev default "
+            "(qtesthub_identify:qtesthub_identify@localhost) -- this role has "
+            "BYPASSRLS, so a weak/default password here is a real credential "
+            "exposure -- set a real IDENTIFY_DATABASE_URL."
         )
 
     if not settings.cors_allow_origins or settings.cors_allow_origins == _DEV_CORS_ORIGINS:
