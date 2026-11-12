@@ -8,16 +8,42 @@ export interface PlatformCredentials {
   password: string
 }
 
+export type TenantStatus = 'pending' | 'approved' | 'suspended' | 'inactive'
+
 export interface Tenant {
   id: string
   name: string
-  status: 'pending' | 'approved' | 'suspended'
+  status: TenantStatus
   default_currency_code: string
   default_timezone: string
   // Tier 4 / ADR-054: data residency readiness metadata only (PV-11.6) --
   // no per-region deployment topology exists yet.
   data_region: string
   created_at: string
+}
+
+export interface TenantListResponse {
+  items: Tenant[]
+  total: number
+}
+
+export interface TenantListParams {
+  search?: string
+  status?: TenantStatus | ''
+  page?: number
+  page_size?: number
+}
+
+export interface PlatformAdminAccount {
+  id: string
+  email: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface PlatformAdminListResponse {
+  items: PlatformAdminAccount[]
+  total: number
 }
 
 export interface TenantCreateRequest {
@@ -49,8 +75,20 @@ async function platformFetch<T>(
   return body.data as T
 }
 
-export function listTenants(credentials: PlatformCredentials): Promise<Tenant[]> {
-  return platformFetch<Tenant[]>('/platform/tenants', credentials)
+export function listTenants(
+  credentials: PlatformCredentials,
+  params: TenantListParams = {},
+): Promise<TenantListResponse> {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  if (params.status) query.set('status', params.status)
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  const qs = query.toString()
+  return platformFetch<TenantListResponse>(
+    `/platform/tenants${qs ? `?${qs}` : ''}`,
+    credentials,
+  )
 }
 
 export function createTenant(
@@ -125,5 +163,43 @@ export function assignTenantSubscription(
   return platformFetch<Subscription>(`/platform/tenants/${tenantId}/subscription`, credentials, {
     method: 'PUT',
     body: JSON.stringify(req),
+  })
+}
+
+// Platform Admin UI/UX pass: self-management, closing the gap where the
+// only way to provision/deactivate a platform admin was the out-of-band
+// CLI script.
+export function listPlatformAdmins(
+  credentials: PlatformCredentials,
+  params: { page?: number; page_size?: number } = {},
+): Promise<PlatformAdminListResponse> {
+  const query = new URLSearchParams()
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  const qs = query.toString()
+  return platformFetch<PlatformAdminListResponse>(
+    `/platform/admins${qs ? `?${qs}` : ''}`,
+    credentials,
+  )
+}
+
+export function createPlatformAdmin(
+  credentials: PlatformCredentials,
+  req: { email: string; password: string },
+): Promise<PlatformAdminAccount> {
+  return platformFetch<PlatformAdminAccount>('/platform/admins', credentials, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+export function updatePlatformAdminActive(
+  credentials: PlatformCredentials,
+  adminId: string,
+  isActive: boolean,
+): Promise<PlatformAdminAccount> {
+  return platformFetch<PlatformAdminAccount>(`/platform/admins/${adminId}`, credentials, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active: isActive }),
   })
 }

@@ -11,7 +11,9 @@ from app.models.mixins import UUIDPKMixin
 class Tenant(Base, UUIDPKMixin):
     __tablename__ = "tenants"
     __table_args__ = (
-        CheckConstraint("status in ('pending','approved','suspended')", name="ck_tenants_status"),
+        CheckConstraint(
+            "status in ('pending','approved','suspended','inactive')", name="ck_tenants_status"
+        ),
     )
 
     name: Mapped[str] = mapped_column(String, nullable=False)

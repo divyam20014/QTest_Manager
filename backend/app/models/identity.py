@@ -33,6 +33,11 @@ class PlatformAdmin(Base, UUIDPKMixin):
         SmallInteger, nullable=False, default=0, server_default="0"
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Platform Admin UI/UX pass: closes the gap where the only way to
+    # deactivate a platform admin was the out-of-band seed script.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa.text("true")
+    )
 
 
 class Role(Base, UUIDPKMixin):

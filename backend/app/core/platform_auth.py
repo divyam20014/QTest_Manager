@@ -66,6 +66,13 @@ def require_platform_admin(
             )
             raise UnauthorizedError("Account temporarily locked due to repeated failed logins")
 
+    if admin is not None and not admin.is_active:
+        logger.warning(
+            "security_event=platform_admin_login_blocked reason=inactive email=%s",
+            credentials.username,
+        )
+        raise UnauthorizedError("This platform admin account has been deactivated")
+
     if admin is None or not verify_password(credentials.password, admin.password_hash):
         if admin is not None:
             admin.failed_login_count += 1

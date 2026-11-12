@@ -12,8 +12,8 @@ import argparse
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.core.security import hash_password
 from app.models.identity import PlatformAdmin
+from app.services.platform_service import upsert_platform_admin
 
 
 def main() -> None:
@@ -23,16 +23,20 @@ def main() -> None:
     args = parser.parse_args()
 
     with SessionLocal() as db:
+        # Platform Admin UI/UX pass: shared with POST /platform/admins via
+        # platform_service.upsert_platform_admin, so this script and the API
+        # path can never drift apart. Also reactivates a deactivated admin,
+        # same as before this change (an existing row's password was always
+        # unconditionally overwritable here).
         existing = db.execute(
             select(PlatformAdmin).where(PlatformAdmin.email == args.email)
         ).scalar_one_or_none()
-        if existing is not None:
-            existing.password_hash = hash_password(args.password)
+        existed = existing is not None
+        upsert_platform_admin(db, args.email, args.password)
+        if existed:
             print(f"Updated existing platform admin: {args.email}")
         else:
-            db.add(PlatformAdmin(email=args.email, password_hash=hash_password(args.password)))
             print(f"Created platform admin: {args.email}")
-        db.commit()
 
 
 if __name__ == "__main__":

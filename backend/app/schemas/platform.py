@@ -28,6 +28,11 @@ class TenantOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TenantListResponse(BaseModel):
+    items: list[TenantOut]
+    total: int
+
+
 class TenantDataRegionUpdateRequest(BaseModel):
     data_region: str = Field(min_length=1)
 
@@ -38,4 +43,27 @@ class TenantCreateResponse(BaseModel):
 
 
 class TenantStatusUpdateRequest(BaseModel):
-    status: str = Field(pattern="^(pending|approved|suspended)$")
+    status: str = Field(pattern="^(pending|approved|suspended|inactive)$")
+
+
+class PlatformAdminOut(BaseModel):
+    id: UUID
+    email: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PlatformAdminListResponse(BaseModel):
+    items: list[PlatformAdminOut]
+    total: int
+
+
+class PlatformAdminCreateRequest(BaseModel):
+    email: EmailStr
+    password: StrongPassword
+
+
+class PlatformAdminUpdateRequest(BaseModel):
+    is_active: bool

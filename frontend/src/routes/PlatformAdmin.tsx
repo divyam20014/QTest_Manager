@@ -1,16 +1,22 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Ban, CheckCircle2, Clock, PauseCircle, ShieldCheck, ShieldOff } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
 import {
   assignTenantSubscription,
+  createPlatformAdmin,
   createTenant,
   listPlans,
+  listPlatformAdmins,
   listTenants,
+  updatePlatformAdminActive,
   updateTenantDataRegion,
   updateTenantStatus,
+  type PlatformAdminAccount,
   type PlatformCredentials,
   type Tenant,
+  type TenantStatus,
 } from '@/api/platformAdmin'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,18 +25,20 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Tabs } from '@/components/ui/tabs'
 import { useToast } from '@/lib/toast'
 
-// Platform Administration manages tenant lifecycle (create/approve/suspend)
-// and is intentionally separate from the tenant app's own auth/RBAC
-// (ADR-008): a different identity (platform_admins), HTTP Basic, never a
-// session cookie. This screen is not linked from the main app shell/nav --
-// reachable only via its own URL, matching that separation.
+// Platform Administration manages tenant lifecycle (create/approve/suspend/
+// deactivate) and platform admin accounts, deliberately separate from the
+// tenant app's own auth/RBAC (ADR-008): a different identity
+// (platform_admins), HTTP Basic, never a session cookie. This screen is not
+// linked from the main app shell/nav -- reachable only via its own URL,
+// matching that separation.
 export function PlatformAdmin() {
   const [credentials, setCredentials] = useState<PlatformCredentials | null>(null)
 
   return credentials ? (
-    <TenantConsole credentials={credentials} onSignOut={() => setCredentials(null)} />
+    <AdminConsole credentials={credentials} onSignOut={() => setCredentials(null)} />
   ) : (
     <SignInForm onSignedIn={setCredentials} />
   )
@@ -71,6 +79,7 @@ function SignInForm({ onSignedIn }: { onSignedIn: (c: PlatformCredentials) => vo
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -80,9 +89,14 @@ function SignInForm({ onSignedIn }: { onSignedIn: (c: PlatformCredentials) => vo
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
               />
             </div>
-            {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
+            {error && (
+              <p role="alert" className="text-xs text-[var(--destructive)]">
+                {error}
+              </p>
+            )}
             <Button type="submit" disabled={verifyMutation.isPending}>
               {verifyMutation.isPending ? 'Signing in…' : 'Sign in'}
             </Button>
@@ -93,34 +107,142 @@ function SignInForm({ onSignedIn }: { onSignedIn: (c: PlatformCredentials) => vo
   )
 }
 
-const STATUS_TONE: Record<Tenant['status'], 'positive' | 'neutral' | 'critical'> = {
+const STATUS_TONE: Record<TenantStatus, 'positive' | 'neutral' | 'critical' | 'warning'> = {
   approved: 'positive',
   pending: 'neutral',
   suspended: 'critical',
+  inactive: 'warning',
 }
 
-function TenantConsole({
+const STATUS_ICON: Record<TenantStatus, typeof CheckCircle2> = {
+  approved: CheckCircle2,
+  pending: Clock,
+  suspended: Ban,
+  inactive: PauseCircle,
+}
+
+function StatusBadge({ status }: { status: TenantStatus }) {
+  const Icon = STATUS_ICON[status]
+  return (
+    <Badge tone={STATUS_TONE[status]} className="gap-1">
+      <Icon aria-hidden="true" className="h-3 w-3" />
+      {status}
+    </Badge>
+  )
+}
+
+function AdminConsole({
   credentials,
   onSignOut,
 }: {
   credentials: PlatformCredentials
   onSignOut: () => void
 }) {
+  return (
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold">Platform Administration</h1>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Signed in as {credentials.email}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onSignOut}>
+          Sign out
+        </Button>
+      </div>
+
+      <Tabs
+        defaultKey="tenants"
+        items={[
+          { key: 'tenants', label: 'Tenants', content: <TenantsPanel credentials={credentials} /> },
+          {
+            key: 'admins',
+            label: 'Platform Admins',
+            content: <PlatformAdminsPanel credentials={credentials} />,
+          },
+        ]}
+      />
+    </div>
+  )
+}
+
+// A tiny reusable confirmation dialog built on the shared Dialog (focus
+// trap / Escape / return-focus already handled there) -- this app has no
+// standalone ConfirmDialog component yet, so this stays local rather than
+// introducing a new shared one for a single screen's use.
+function ConfirmActionDialog({
+  open,
+  title,
+  description,
+  confirmLabel,
+  destructive,
+  pending,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean
+  title: string
+  description: string
+  confirmLabel: string
+  destructive?: boolean
+  pending: boolean
+  onConfirm: () => void
+  onClose: () => void
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} title={title}>
+      <div className="flex flex-col gap-4 text-sm">
+        <p className="text-[var(--muted-foreground)]">{description}</p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant={destructive ? 'destructive' : 'default'}
+            disabled={pending}
+            onClick={onConfirm}
+          >
+            {pending ? 'Working…' : confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+const PAGE_SIZE = 25
+const REGION_OPTIONS = ['us', 'eu', 'apac']
+
+function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [planTarget, setPlanTarget] = useState<Tenant | null>(null)
+  const [confirmTarget, setConfirmTarget] = useState<{ tenant: Tenant; status: TenantStatus } | null>(
+    null,
+  )
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<TenantStatus | ''>('')
+  const [page, setPage] = useState(1)
   const { show: showToast } = useToast()
+
   const tenantsQuery = useQuery({
-    queryKey: ['platform-tenants'],
-    queryFn: () => listTenants(credentials),
+    queryKey: ['platform-tenants', search, statusFilter, page],
+    queryFn: () =>
+      listTenants(credentials, { search, status: statusFilter, page, page_size: PAGE_SIZE }),
   })
 
+  const total = tenantsQuery.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: Tenant['status'] }) =>
+    mutationFn: ({ id, status }: { id: string; status: TenantStatus }) =>
       updateTenantStatus(credentials, id, status),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
       showToast('success', `Tenant ${vars.status}`)
+      setConfirmTarget(null)
     },
     onError: () => showToast('error', 'Could not update that tenant’s status'),
   })
@@ -137,23 +259,56 @@ function TenantConsole({
     onError: () => showToast('error', 'Could not update the data region'),
   })
 
+  function requestStatusChange(tenant: Tenant, status: TenantStatus) {
+    // Approve is a reversible, low-risk transition; suspend/inactive are
+    // the ones that immediately log every signed-in user at that tenant
+    // out, so those are the ones that get a confirmation step.
+    if (status === 'suspended' || status === 'inactive') {
+      setConfirmTarget({ tenant, status })
+    } else {
+      statusMutation.mutate({ id: tenant.id, status })
+    }
+  }
+
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Platform Administration</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Signed in as {credentials.email}
-          </p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tenant-search">Search</Label>
+            <Input
+              id="tenant-search"
+              className="w-56"
+              placeholder="Name or tenant ID…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setPage(1)
+              }}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tenant-status-filter">Status</Label>
+            <Select
+              id="tenant-status-filter"
+              className="w-36"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as TenantStatus | '')
+                setPage(1)
+              }}
+            >
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="suspended">Suspended</option>
+              <option value="inactive">Inactive</option>
+            </Select>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            New Tenant
-          </Button>
-          <Button variant="outline" size="sm" onClick={onSignOut}>
-            Sign out
-          </Button>
-        </div>
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          New Tenant
+        </Button>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
@@ -168,31 +323,48 @@ function TenantConsole({
             </tr>
           </thead>
           <tbody>
-            {tenantsQuery.data?.map((t) => (
+            {tenantsQuery.isLoading && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                  Loading tenants…
+                </td>
+              </tr>
+            )}
+            {!tenantsQuery.isLoading && total === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                  No tenants match your search.
+                </td>
+              </tr>
+            )}
+            {tenantsQuery.data?.items.map((t) => (
               <tr key={t.id} className="border-t border-[var(--border)]">
                 <td className="px-4 py-2">
                   <div className="font-medium">{t.name}</div>
                   <div className="font-mono text-xs text-[var(--muted-foreground)]">{t.id}</div>
                 </td>
                 <td className="px-4 py-2">
-                  <Badge tone={STATUS_TONE[t.status]}>{t.status}</Badge>
+                  <StatusBadge status={t.status} />
                 </td>
                 <td className="px-4 py-2">
-                  <select
-                    className="rounded border border-[var(--border)] bg-transparent px-1.5 py-0.5 text-xs"
+                  <Select
+                    aria-label={`Data region for ${t.name}`}
+                    className="h-7 w-24 px-2 py-0.5 text-xs"
                     value={t.data_region}
                     disabled={dataRegionMutation.isPending}
                     onChange={(e) =>
                       dataRegionMutation.mutate({ id: t.id, dataRegion: e.target.value })
                     }
                   >
-                    {['us', 'eu', 'apac'].includes(t.data_region) ? null : (
+                    {REGION_OPTIONS.includes(t.data_region) ? null : (
                       <option value={t.data_region}>{t.data_region}</option>
                     )}
-                    <option value="us">us</option>
-                    <option value="eu">eu</option>
-                    <option value="apac">apac</option>
-                  </select>
+                    {REGION_OPTIONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </Select>
                 </td>
                 <td className="px-4 py-2 text-[var(--muted-foreground)]">
                   {new Date(t.created_at).toLocaleDateString()}
@@ -206,16 +378,25 @@ function TenantConsole({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => statusMutation.mutate({ id: t.id, status: 'approved' })}
+                        onClick={() => requestStatusChange(t, 'approved')}
                       >
                         Approve
                       </Button>
                     )}
-                    {t.status !== 'suspended' && (
+                    {t.status !== 'inactive' && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => statusMutation.mutate({ id: t.id, status: 'suspended' })}
+                        onClick={() => requestStatusChange(t, 'inactive')}
+                      >
+                        Deactivate
+                      </Button>
+                    )}
+                    {t.status !== 'suspended' && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => requestStatusChange(t, 'suspended')}
                       >
                         Suspend
                       </Button>
@@ -228,12 +409,49 @@ function TenantConsole({
         </table>
       </div>
 
+      {total > 0 && (
+        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+          <span>
+            Page {page} of {totalPages} ({total} tenant{total === 1 ? '' : 's'})
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       <NewTenantDialog
         credentials={credentials}
         open={createOpen}
         onClose={() => setCreateOpen(false)}
       />
       <PlanDialog credentials={credentials} tenant={planTarget} onClose={() => setPlanTarget(null)} />
+      {confirmTarget && (
+        <ConfirmActionDialog
+          open={!!confirmTarget}
+          title={`${confirmTarget.status === 'suspended' ? 'Suspend' : 'Deactivate'} ${confirmTarget.tenant.name}?`}
+          description={
+            confirmTarget.status === 'suspended'
+              ? `Every user at ${confirmTarget.tenant.name} will be immediately logged out and blocked from signing in again until this tenant is re-approved. Use this for a compliance or abuse hold.`
+              : `Every user at ${confirmTarget.tenant.name} will be immediately logged out and blocked from signing in again until this tenant is re-approved. Use this for routine offboarding (e.g. non-payment), not a compliance hold.`
+          }
+          confirmLabel={confirmTarget.status === 'suspended' ? 'Suspend tenant' : 'Deactivate tenant'}
+          destructive
+          pending={statusMutation.isPending}
+          onConfirm={() => statusMutation.mutate({ id: confirmTarget.tenant.id, status: confirmTarget.status })}
+          onClose={() => setConfirmTarget(null)}
+        />
+      )}
     </div>
   )
 }
@@ -335,6 +553,8 @@ function PlanDialog({
   )
 }
 
+const PASSWORD_HINT = 'At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.'
+
 function NewTenantDialog({
   credentials,
   open,
@@ -378,62 +598,302 @@ function NewTenantDialog({
 
   return (
     <Dialog open={open} onClose={onClose} title="New Tenant">
-      <div className="flex flex-col gap-3 text-sm">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="tenant-name">Tenant Name</Label>
-          <Input id="tenant-name" value={tenantName} onChange={(e) => setTenantName(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="admin-name">First Admin — Name</Label>
-          <Input id="admin-name" value={adminName} onChange={(e) => setAdminName(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="admin-email">First Admin — Email</Label>
-          <Input
-            id="admin-email"
-            type="email"
-            value={adminEmail}
-            onChange={(e) => setAdminEmail(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="admin-password">First Admin — Temporary Password</Label>
-          <Input
-            id="admin-password"
-            type="password"
-            value={adminPassword}
-            onChange={(e) => setAdminPassword(e.target.value)}
-          />
-          <p className="text-xs text-[var(--muted-foreground)]">
-            At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.
+      <form
+        className="flex flex-col gap-5 text-sm"
+        onSubmit={(e) => {
+          e.preventDefault()
+          createMutation.mutate()
+        }}
+      >
+        <fieldset className="flex flex-col gap-3">
+          <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            Organization
+          </legend>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tenant-name">Tenant Name</Label>
+            <Input
+              id="tenant-name"
+              required
+              minLength={3}
+              value={tenantName}
+              onChange={(e) => setTenantName(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="data-region">Data Region</Label>
+            <Select
+              id="data-region"
+              value={dataRegion}
+              onChange={(e) => setDataRegion(e.target.value)}
+            >
+              {REGION_OPTIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Readiness metadata only — no per-region deployment exists yet.
+            </p>
+          </div>
+        </fieldset>
+
+        <fieldset className="flex flex-col gap-3 border-t border-[var(--border)] pt-4">
+          <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            First Admin Account
+          </legend>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="admin-name">Name</Label>
+            <Input
+              id="admin-name"
+              required
+              value={adminName}
+              onChange={(e) => setAdminName(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="admin-email">Email</Label>
+            <Input
+              id="admin-email"
+              type="email"
+              required
+              value={adminEmail}
+              onChange={(e) => setAdminEmail(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="admin-password">Temporary Password</Label>
+            <Input
+              id="admin-password"
+              type="password"
+              required
+              aria-describedby="admin-password-hint"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+            />
+            <p id="admin-password-hint" className="text-xs text-[var(--muted-foreground)]">
+              {PASSWORD_HINT}
+            </p>
+          </div>
+        </fieldset>
+
+        {serverError && (
+          <p role="alert" className="text-xs text-[var(--destructive)]">
+            {serverError}
           </p>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="data-region">Data Region</Label>
-          <select
-            id="data-region"
-            className="rounded border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
-            value={dataRegion}
-            onChange={(e) => setDataRegion(e.target.value)}
-          >
-            <option value="us">us</option>
-            <option value="eu">eu</option>
-            <option value="apac">apac</option>
-          </select>
-          <p className="text-xs text-[var(--muted-foreground)]">
-            Readiness metadata only — no per-region deployment exists yet.
-          </p>
-        </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        )}
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>
+          <Button type="submit" size="sm" disabled={createMutation.isPending}>
             {createMutation.isPending ? 'Creating…' : 'Create Tenant'}
           </Button>
         </div>
+      </form>
+    </Dialog>
+  )
+}
+
+function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials }) {
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [confirmTarget, setConfirmTarget] = useState<PlatformAdminAccount | null>(null)
+  const { show: showToast } = useToast()
+
+  const adminsQuery = useQuery({
+    queryKey: ['platform-admins'],
+    queryFn: () => listPlatformAdmins(credentials),
+  })
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      updatePlatformAdminActive(credentials, id, isActive),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['platform-admins'] })
+      showToast('success', vars.isActive ? 'Admin reactivated' : 'Admin deactivated')
+      setConfirmTarget(null)
+    },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not update that admin'),
+  })
+
+  const isSelf = (admin: PlatformAdminAccount) =>
+    admin.email.toLowerCase() === credentials.email.toLowerCase()
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Accounts that can sign in to Platform Administration.
+        </p>
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          New Admin
+        </Button>
       </div>
+
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
+            <tr>
+              <th className="px-4 py-2 font-medium">Email</th>
+              <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">Created</th>
+              <th className="px-4 py-2 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {adminsQuery.isLoading && (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                  Loading admins…
+                </td>
+              </tr>
+            )}
+            {adminsQuery.data?.items.map((a) => (
+              <tr key={a.id} className="border-t border-[var(--border)]">
+                <td className="px-4 py-2">
+                  <div className="font-medium">{a.email}</div>
+                  {isSelf(a) && (
+                    <div className="text-xs text-[var(--muted-foreground)]">You</div>
+                  )}
+                </td>
+                <td className="px-4 py-2">
+                  <Badge tone={a.is_active ? 'positive' : 'warning'} className="gap-1">
+                    {a.is_active ? (
+                      <ShieldCheck aria-hidden="true" className="h-3 w-3" />
+                    ) : (
+                      <ShieldOff aria-hidden="true" className="h-3 w-3" />
+                    )}
+                    {a.is_active ? 'active' : 'inactive'}
+                  </Badge>
+                </td>
+                <td className="px-4 py-2 text-[var(--muted-foreground)]">
+                  {new Date(a.created_at).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-2 text-right">
+                  {a.is_active ? (
+                    <span title={isSelf(a) ? 'You cannot deactivate your own account' : undefined}>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={isSelf(a)}
+                        onClick={() => setConfirmTarget(a)}
+                      >
+                        Deactivate
+                      </Button>
+                    </span>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleMutation.mutate({ id: a.id, isActive: true })}
+                    >
+                      Reactivate
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <NewAdminDialog
+        credentials={credentials}
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
+      {confirmTarget && (
+        <ConfirmActionDialog
+          open={!!confirmTarget}
+          title={`Deactivate ${confirmTarget.email}?`}
+          description="This admin will no longer be able to sign in to Platform Administration until reactivated."
+          confirmLabel="Deactivate admin"
+          destructive
+          pending={toggleMutation.isPending}
+          onConfirm={() => toggleMutation.mutate({ id: confirmTarget.id, isActive: false })}
+          onClose={() => setConfirmTarget(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function NewAdminDialog({
+  credentials,
+  open,
+  onClose,
+}: {
+  credentials: PlatformCredentials
+  open: boolean
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const { show: showToast } = useToast()
+
+  const createMutation = useMutation({
+    mutationFn: () => createPlatformAdmin(credentials, { email, password }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-admins'] })
+      setEmail('')
+      setPassword('')
+      onClose()
+      showToast('success', 'Platform admin created')
+    },
+  })
+
+  const serverError = createMutation.error instanceof ApiError ? createMutation.error.message : null
+
+  return (
+    <Dialog open={open} onClose={onClose} title="New Platform Admin">
+      <form
+        className="flex flex-col gap-3 text-sm"
+        onSubmit={(e) => {
+          e.preventDefault()
+          createMutation.mutate()
+        }}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-admin-email">Email</Label>
+          <Input
+            id="new-admin-email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-admin-password">Password</Label>
+          <Input
+            id="new-admin-password"
+            type="password"
+            required
+            aria-describedby="new-admin-password-hint"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <p id="new-admin-password-hint" className="text-xs text-[var(--muted-foreground)]">
+            {PASSWORD_HINT}
+          </p>
+        </div>
+        {serverError && (
+          <p role="alert" className="text-xs text-[var(--destructive)]">
+            {serverError}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={createMutation.isPending}>
+            {createMutation.isPending ? 'Creating…' : 'Create Admin'}
+          </Button>
+        </div>
+      </form>
     </Dialog>
   )
 }

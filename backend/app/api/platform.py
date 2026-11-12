@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -8,9 +8,14 @@ from app.core.platform_auth import require_platform_admin
 from app.core.responses import envelope
 from app.models.identity import PlatformAdmin
 from app.schemas.platform import (
+    PlatformAdminCreateRequest,
+    PlatformAdminListResponse,
+    PlatformAdminOut,
+    PlatformAdminUpdateRequest,
     TenantCreateRequest,
     TenantCreateResponse,
     TenantDataRegionUpdateRequest,
+    TenantListResponse,
     TenantOut,
     TenantStatusUpdateRequest,
 )
@@ -40,11 +45,18 @@ def create_tenant(
 
 @router.get("/tenants")
 def list_tenants(
+    search: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=platform_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
     db: Session = Depends(get_db),
     admin: PlatformAdmin = Depends(require_platform_admin),
 ) -> dict:
-    tenants = platform_service.list_tenants(db)
-    return envelope([TenantOut.model_validate(t).model_dump() for t in tenants])
+    tenants, total = platform_service.list_tenants(
+        db, search=search, status=status, page=page, page_size=page_size
+    )
+    items = [TenantOut.model_validate(t) for t in tenants]
+    return envelope(TenantListResponse(items=items, total=total).model_dump(mode="json"))
 
 
 @router.patch("/tenants/{tenant_id}/status")
@@ -131,3 +143,38 @@ def assign_tenant_subscription(
 ) -> dict:
     sub = subscription_service.assign_subscription(db, tenant_id, req, admin.id)
     return envelope(sub.model_dump(mode="json"))
+
+
+# Platform Admin UI/UX pass: closes the gap where the only way to
+# provision/deactivate a platform admin was the out-of-band CLI script.
+@router.get("/admins")
+def list_platform_admins(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=platform_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    admins, total = platform_service.list_platform_admins(db, page=page, page_size=page_size)
+    items = [PlatformAdminOut.model_validate(a) for a in admins]
+    return envelope(PlatformAdminListResponse(items=items, total=total).model_dump(mode="json"))
+
+
+@router.post("/admins")
+def create_platform_admin(
+    req: PlatformAdminCreateRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    created = platform_service.create_platform_admin(db, req, admin.id)
+    return envelope(PlatformAdminOut.model_validate(created).model_dump(mode="json"))
+
+
+@router.patch("/admins/{admin_id}")
+def update_platform_admin(
+    admin_id: UUID,
+    req: PlatformAdminUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    updated = platform_service.update_platform_admin_active(db, admin_id, req.is_active, admin.id)
+    return envelope(PlatformAdminOut.model_validate(updated).model_dump(mode="json"))

@@ -27,6 +27,7 @@ _GENERIC_LOGIN_ERROR = "Invalid tenant, email, or password"
 _TENANT_STATUS_MESSAGES = {
     "pending": "This organization's account is still pending approval.",
     "suspended": "This organization's account has been suspended. Contact your administrator.",
+    "inactive": "This organization's account has been deactivated. Contact your administrator.",
 }
 
 
