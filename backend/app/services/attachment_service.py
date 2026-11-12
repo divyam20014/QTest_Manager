@@ -105,6 +105,21 @@ def _storage_key(tenant_id: UUID, owner_type: str, owner_id: UUID, stored_name: 
     return f"{tenant_id}/{owner_type}/{owner_id}/{stored_name}"
 
 
+def _safe_stored_name(filename: str | None) -> str:
+    """Sanitizes a client-supplied filename before it is ever used to build
+    a storage key/path. ``Path(...).name`` strips directory components and
+    leading slashes (defeats ``../../etc/...``-style traversal); stripping
+    any residual ``..`` and NUL bytes is defense in depth for edge cases
+    (e.g. a filename that is literally ``".."``). The UUID prefix already
+    added by the caller is the actual uniqueness guarantee -- this function
+    only has to guarantee the result can never escape the owner's directory
+    or contain a path separator."""
+    name = Path(filename or "upload").name.replace("\x00", "")
+    name = name.replace("..", "")
+    name = name.lstrip("/\\")
+    return name or "upload"
+
+
 def list_attachments(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, owner_type: str, owner_id: UUID
 ) -> list[AttachmentOut]:
@@ -157,7 +172,7 @@ def upload_attachment(
         )
 
     checksum = hashlib.sha256(contents).hexdigest()
-    stored_name = f"{uuid.uuid4()}_{file.filename or 'upload'}"
+    stored_name = f"{uuid.uuid4()}_{_safe_stored_name(file.filename)}"
     storage_key = _storage_key(tenant_id, owner_type, owner_id, stored_name)
     storage_reference = get_storage_backend().save(storage_key, contents)
 
@@ -204,6 +219,35 @@ def read_attachment_bytes(attachment: Attachment) -> bytes:
     """Backend-agnostic read, for routes that can't rely on FileResponse
     streaming directly off local disk (e.g. the S3 backend)."""
     return get_storage_backend().read(attachment.storage_path)
+
+
+def delete_attachments_for_owner(
+    db: Session, tenant_id: UUID, owner_type: str, owner_id: UUID
+) -> None:
+    """Call from every hard-delete path for an attachment-capable owner
+    (test_case, requirement, ...) before/alongside deleting the parent row.
+    Without this, Attachment rows become orphaned (owner_type/owner_id is a
+    polymorphic reference with no FK to enforce cleanup) and the underlying
+    files/S3 objects leak forever, since nothing else ever reclaims them."""
+    set_tenant_context(db, str(tenant_id))
+    rows = (
+        db.execute(
+            select(Attachment).where(
+                Attachment.tenant_id == tenant_id,
+                Attachment.owner_type == owner_type,
+                Attachment.owner_id == owner_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    storage_references = [row.storage_path for row in rows]
+    for row in rows:
+        db.delete(row)
+    db.flush()
+    backend = get_storage_backend()
+    for reference in storage_references:
+        backend.delete(reference)
 
 
 def delete_attachment(

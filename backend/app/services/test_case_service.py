@@ -844,6 +844,11 @@ def delete_test_case(
     db.query(TestCaseVersion).filter(TestCaseVersion.test_case_id == case.id).delete(
         synchronize_session=False
     )
+    # Local import: attachment_service -> owner_access -> test_case_service
+    # would be circular at module load time otherwise.
+    from app.services import attachment_service
+
+    attachment_service.delete_attachments_for_owner(db, tenant_id, "test_case", case.id)
     db.delete(case)
 
     record_audit_event(

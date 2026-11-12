@@ -323,6 +323,11 @@ def delete_requirement(
     db.query(RequirementVersion).filter(
         RequirementVersion.requirement_id == requirement.id
     ).delete()
+    # Local import: attachment_service -> owner_access -> requirement_service
+    # would be circular at module load time otherwise.
+    from app.services import attachment_service
+
+    attachment_service.delete_attachments_for_owner(db, tenant_id, "requirement", requirement.id)
     db.delete(requirement)
     db.commit()
 

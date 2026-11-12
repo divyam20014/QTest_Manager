@@ -498,3 +498,114 @@ def test_attachment_content_sniffing_rejects_mismatched_payload(
         files={"file": ("fake.pdf", png_bytes, "application/pdf")},
     )
     assert mismatched.status_code == 422, mismatched.text
+
+
+# ---------------------------------------------------------------------------
+# 7. Attachment filename path traversal (fixed)
+# ---------------------------------------------------------------------------
+
+
+def test_attachment_upload_sanitizes_traversal_filename(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """A crafted filename like '../../../../tmp/evil.txt' must never be able
+    to write a file outside settings.attachments_dir. Before the fix,
+    attachment_service.upload_attachment() embedded file.filename verbatim
+    into the on-disk storage key, so pathlib's `/` join against a filename
+    containing '..' segments escaped the attachments directory entirely."""
+    import os
+
+    bootstrap = _bootstrap_tenant(client, platform_admin, "Traversal Co", "admin@traversal.com")
+    tenant_id = bootstrap["tenant"]["id"]
+    _login_and_verify(client, tenant_id, "admin@traversal.com", "AdminPassw0rd!")
+    project = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "Traversal Project",
+            "domain": "Motor",
+            "priority": "High",
+            "manager_name": "Manager",
+            "start_date": "2026-01-01",
+            "end_date": "2026-12-31",
+            "budget": "1000",
+            "region": "NA",
+        },
+    ).json()["data"]
+    case = client.post(
+        f"/api/v1/projects/{project['id']}/test-cases",
+        json={
+            "title": "Traversal Case",
+            "priority": "High",
+            "steps": [{"action": "A", "expected": "B"}],
+        },
+    ).json()["data"]
+
+    attachments_root = os.path.realpath(settings.attachments_dir)
+    before_dirs = set(os.listdir(os.path.dirname(attachments_root)))
+
+    traversal_payload = b"These are real plain-text notes.\n"
+    response = client.post(
+        f"/api/v1/test-cases/{case['id']}/attachments",
+        files={"file": ("../../../../../../tmp/evil.txt", traversal_payload, "text/plain")},
+    )
+    # Either outcome is acceptable: rejected outright, or accepted but
+    # safely contained. What matters is nothing escapes attachments_dir.
+    if response.status_code == 200:
+        attachment_id = response.json()["data"]["id"]
+        download = client.get(f"/api/v1/attachments/{attachment_id}/download")
+        assert download.status_code == 200
+    else:
+        assert response.status_code in (400, 422), response.text
+
+    # No new sibling directory/file was created next to attachments_dir
+    # (i.e. nothing escaped upward via the '../../..' segments).
+    after_dirs = set(os.listdir(os.path.dirname(attachments_root)))
+    assert after_dirs == before_dirs, (
+        "A file or directory appeared outside attachments_dir after a "
+        f"traversal-filename upload: {after_dirs - before_dirs}"
+    )
+
+
+def test_attachment_deleted_with_parent_test_case(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """Deleting a test case must also delete its attachments (DB rows + the
+    underlying file) rather than orphaning them -- previously, delete_test_case
+    never touched the Attachment table at all."""
+    bootstrap = _bootstrap_tenant(client, platform_admin, "OrphanCleanup Co", "admin@orphan.com")
+    tenant_id = bootstrap["tenant"]["id"]
+    _login_and_verify(client, tenant_id, "admin@orphan.com", "AdminPassw0rd!")
+    project = client.post(
+        "/api/v1/projects",
+        json={
+            "name": "Orphan Project",
+            "domain": "Motor",
+            "priority": "High",
+            "manager_name": "Manager",
+            "start_date": "2026-01-01",
+            "end_date": "2026-12-31",
+            "budget": "1000",
+            "region": "NA",
+        },
+    ).json()["data"]
+    case = client.post(
+        f"/api/v1/projects/{project['id']}/test-cases",
+        json={
+            "title": "Orphan Case",
+            "priority": "High",
+            "steps": [{"action": "A", "expected": "B"}],
+        },
+    ).json()["data"]
+
+    upload = client.post(
+        f"/api/v1/test-cases/{case['id']}/attachments",
+        files={"file": ("notes.txt", b"Evidence to be orphaned.\n", "text/plain")},
+    )
+    assert upload.status_code == 200, upload.text
+    attachment_id = upload.json()["data"]["id"]
+
+    delete_response = client.delete(f"/api/v1/test-cases/{case['id']}")
+    assert delete_response.status_code in (200, 204), delete_response.text
+
+    download_after_delete = client.get(f"/api/v1/attachments/{attachment_id}/download")
+    assert download_after_delete.status_code == 404, download_after_delete.text
