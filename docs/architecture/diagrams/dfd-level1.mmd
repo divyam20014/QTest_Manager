@@ -1,0 +1,76 @@
+%% QTestHub — Data Flow Diagram, Level 1 (Application-level processes & stores)
+flowchart TB
+    TenantUser(["Tenant User"])
+    PlatformAdmin(["Platform Admin"])
+    CISystemEnt(["CI/CD System"])
+    IdPEnt(["Identity Provider"])
+
+    P1["1.0 Authentication &\nSession Management\napp/api/auth.py, sso.py"]
+    P2["2.0 RBAC & Permission\nEnforcement\napp/core/auth.py, roles.py"]
+    P3["3.0 Project & Portfolio\nManagement\napp/api/projects.py"]
+    P4["4.0 Test Case Authoring &\nVersioning\napp/api/test_cases.py"]
+    P5["5.0 Test Execution\nEngine\napp/api/execution.py"]
+    P6["6.0 Defect\nManagement\napp/api/defects.py"]
+    P7["7.0 Reporting &\nAnalytics\napp/api/reporting.py"]
+    P8["8.0 AI Assistant\nServices\napp/api/ai.py"]
+    P9["9.0 CI/CD Result\nIngestion\napp/api/ci.py"]
+    P10["10.0 Audit Logging\napp/services/audit_service.py"]
+    P11["11.0 Background Job\nProcessing\napp/worker.py"]
+
+    DS1[("D1 users / sessions /\nroles / permissions")]
+    DS2[("D2 projects /\ntest_modules")]
+    DS3[("D3 test_cases /\ntest_case_versions / steps")]
+    DS4[("D4 test_runs /\ntest_run_cases / execution_steps")]
+    DS5[("D5 defects /\ndefect_links")]
+    DS6[("D6 audit_logs\n(hash-chained, insert-only)")]
+    DS7[("D7 background_jobs")]
+    DS8[("D8 attachments\n(disk/S3)")]
+
+    TenantUser --> P1
+    IdPEnt --> P1
+    P1 --> DS1
+    P1 --> P2
+    P2 --> DS1
+
+    PlatformAdmin --> P3
+    TenantUser --> P3
+    P3 --> DS2
+    P2 -.authorizes.-> P3
+
+    TenantUser --> P4
+    P4 --> DS3
+    P4 --> DS2
+    P2 -.authorizes.-> P4
+
+    TenantUser --> P5
+    P5 --> DS4
+    P5 --> DS3
+    P2 -.authorizes.-> P5
+    CISystemEnt --> P9
+    P9 --> P5
+
+    TenantUser --> P6
+    P5 -- "Fail verdict triggers\nquick-create" --> P6
+    P6 --> DS5
+
+    TenantUser --> P7
+    DS3 --> P7
+    DS4 --> P7
+    DS5 --> P7
+    P7 -- "scheduled PDF" --> P11
+
+    TenantUser --> P8
+    DS3 --> P8
+    P8 -- "token usage" --> DS1
+
+    P3 --> P10
+    P4 --> P10
+    P5 --> P10
+    P6 --> P10
+    P1 --> P10
+    P10 --> DS6
+
+    P11 --> DS7
+    P11 --> P9
+    P11 --> P7
+    P11 --> DS8

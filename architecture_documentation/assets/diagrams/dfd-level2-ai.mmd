@@ -1,0 +1,49 @@
+%% QTestHub — DFD Level 2: AI Assistant Services module detail
+%% Source: backend/app/api/ai.py, backend/app/services/ai_service.py, backend/app/core/ai/
+flowchart TB
+    User(["Tenant User"])
+
+    P8_1["8.1 Generate Test Cases\nfrom Requirement\ngenerate_test_cases_for_requirement()"]
+    P8_2["8.2 AI Review\nof Test Case\nreview_test_case()"]
+    P8_3["8.3 Analyze Requirement\nChange Impact\nanalyze_requirement_change()"]
+    P8_4["8.4 QA Assistant\nConversational Query\nanswer_assistant_question()"]
+    P8_5["8.5 Defect Root-Cause\nSuggestion\n(part of AI Defect Assistant)"]
+    P8_6["8.6 Usage Metering &\nLimit Enforcement"]
+
+    DS_Tenant[("tenants.ai_enabled /\nai_api_key_encrypted (Fernet)")]
+    DS_Reqs[("requirements /\nrequirement_versions")]
+    DS_Cases[("test_cases /\ntest_case_versions")]
+    DS_Defects[("defects")]
+    DS_Usage[("ai_usage_logs")]
+    Gemini(["Gemini API\n(external)"])
+
+    User --> P8_1
+    DS_Reqs --> P8_1
+    DS_Tenant --> P8_1
+    P8_1 --> Gemini
+    Gemini --> P8_1
+    P8_1 --> DS_Cases
+    P8_1 --> P8_6
+
+    User --> P8_2
+    DS_Cases --> P8_2
+    P8_2 --> Gemini
+    P8_2 --> P8_6
+
+    User --> P8_3
+    DS_Reqs --> P8_3
+    P8_3 --> Gemini
+    P8_3 --> P8_6
+
+    User --> P8_4
+    DS_Cases --> P8_4
+    DS_Defects --> P8_4
+    P8_4 --> Gemini
+    P8_4 --> P8_6
+
+    DS_Defects --> P8_5
+    P8_5 --> Gemini
+    P8_5 --> P8_6
+
+    P8_6 --> DS_Usage
+    DS_Tenant -. "ai_monthly_request_limit\n(Plan)" .-> P8_6

@@ -1,0 +1,27 @@
+%% QTestHub — Data Flow Diagram, Level 0 (Context)
+flowchart LR
+    TenantUser(["Tenant User\n(Admin/Manager/Tester/Custom Role)"])
+    PlatformAdmin(["Platform Administrator"])
+    CISystemEnt(["CI/CD Pipeline"])
+    IdPEnt(["Tenant Identity Provider"])
+    EmailRecipients(["Report Email Recipients"])
+    GeminiEnt(["Gemini AI Provider"])
+
+    QTestHub{{"QTestHub\nTest Management Platform"}}
+
+    TenantUser -- "Login, test authoring, execution,\ndefect triage, reporting" --> QTestHub
+    QTestHub -- "Dashboards, test/defect data,\nnotifications, reports" --> TenantUser
+
+    PlatformAdmin -- "Tenant provisioning,\napprove/suspend" --> QTestHub
+    QTestHub -- "Tenant status, audit trail" --> PlatformAdmin
+
+    CISystemEnt -- "Automated test result webhooks\n(bearer service token)" --> QTestHub
+    QTestHub -- "Accept/reject outcomes" --> CISystemEnt
+
+    IdPEnt -- "OIDC identity assertion" --> QTestHub
+    QTestHub -- "Authorization redirect" --> IdPEnt
+
+    QTestHub -- "Scheduled compliance report (PDF)" --> EmailRecipients
+
+    QTestHub -- "Test-case generation / review /\nassistant query prompts" --> GeminiEnt
+    GeminiEnt -- "Generated content" --> QTestHub

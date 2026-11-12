@@ -1,0 +1,45 @@
+%% Sequence: Test Case Creation, Versioning & Approval Workflow
+%% Source: backend/app/api/test_cases.py, backend/app/services/test_case_service.py
+sequenceDiagram
+    actor Author as Test Case Author
+    actor Reviewer as Reviewer (reviewer_id or testcase.approve holder)
+    participant API as FastAPI (test_cases.py)
+    participant SVC as test_case_service
+    participant DB as PostgreSQL
+
+    Author->>API: POST /projects/{id}/test-cases {title, priority, steps[]}
+    API->>SVC: create_test_case(...)
+    SVC->>DB: INSERT test_cases (status='draft')
+    SVC->>DB: INSERT test_case_versions (version_number=1)
+    SVC->>DB: INSERT test_case_version_steps
+    SVC->>DB: UPDATE test_cases SET current_version_id
+    SVC->>DB: INSERT audit_logs (action=test_case.created)
+    SVC-->>API: TestCaseOut
+    API-->>Author: 201 Created
+
+    Author->>API: PATCH /test-cases/{id} {status: 'ready_for_review', reviewer_id?}
+    API->>SVC: update_test_case(...) -> forks new version if content changed
+    SVC->>DB: INSERT test_case_versions (version_number+1) [if edited]
+    SVC->>DB: UPDATE test_cases SET status='ready_for_review'
+    SVC->>DB: INSERT notifications (type=review_requested, recipient=reviewer)
+    SVC-->>API: TestCaseOut
+
+    Reviewer->>API: POST /test-cases/{id}/approve
+    API->>API: require_permission(testcase.approve) OR ctx.user_id == reviewer_id
+    API->>SVC: approve_test_case(...)
+    SVC->>DB: UPDATE test_case_versions SET approved_by, approved_at
+    SVC->>DB: UPDATE test_cases SET status='approved'
+    SVC->>DB: INSERT notifications (type=review_decided)
+    SVC->>DB: INSERT audit_logs (action=test_case.approved)
+    SVC-->>API: TestCaseOut
+    API-->>Reviewer: 200 OK
+
+    alt Reviewer requests changes instead
+        Reviewer->>API: POST /test-cases/{id}/request-changes {comment}
+        API->>SVC: request_changes(...)
+        SVC->>DB: UPDATE test_cases SET status='draft'
+        SVC->>DB: INSERT notifications (type=review_decided)
+        SVC-->>API: TestCaseOut
+    end
+
+    Note over SVC,DB: Immutable snapshot model (ADR-001/003):<br/>TestCaseVersion rows are never updated once created.<br/>Every content edit after 'approved' forks a new version.

@@ -1,0 +1,43 @@
+%% Sequence: AI QA Assistant query & AI Defect Assistant root-cause suggestion
+%% Source: backend/app/api/ai.py, backend/app/services/ai_service.py,
+%%         backend/app/core/ai/gemini_provider.py, backend/app/core/crypto.py
+sequenceDiagram
+    actor U as Tenant User
+    participant FE as React SPA
+    participant API as FastAPI (ai.py)
+    participant SVC as ai_service
+    participant Crypto as app/core/crypto.py (Fernet)
+    participant Provider as gemini_provider.py
+    participant DB as PostgreSQL
+    participant Gemini as Gemini API
+
+    U->>FE: Ask QA Assistant a question
+    FE->>API: POST /ai/assistant/query {question}
+    API->>API: slowapi rate limit (20/min)
+    API->>SVC: answer_assistant_question(tenant_id, role_code, user_id, question)
+    SVC->>DB: SELECT tenants.ai_enabled, ai_api_key_encrypted WHERE id=tenant_id
+    alt AI not enabled for tenant
+        SVC-->>API: AppError (ai_not_configured)
+        API-->>FE: error envelope
+    else AI enabled
+        SVC->>Crypto: decrypt(ai_api_key_encrypted)
+        Crypto-->>SVC: plaintext API key (never logged/returned)
+        SVC->>DB: gather relevant context (test cases, defects, requirements\nscoped to tenant + role-visible projects)
+        SVC->>Provider: generate(prompt, api_key, model=settings.gemini_model)
+        Provider->>Gemini: POST /v1beta/models/{model}:generateContent
+        alt Gemini error (e.g. 404 deprecated model, timeout)
+            Gemini-->>Provider: error response
+            Provider-->>SVC: AppError (ai_provider_error)
+            SVC->>DB: INSERT ai_usage_logs (success=false)
+            SVC-->>API: error envelope
+        else success
+            Gemini-->>Provider: generated content + token counts
+            Provider-->>SVC: AssistantAnswer
+            SVC->>DB: INSERT ai_usage_logs (success=true, prompt/completion/total_tokens)
+            SVC-->>API: AssistantAnswer
+            API-->>FE: 200 {answer, token_usage}
+        end
+    end
+    FE->>U: Render conversational answer
+
+    Note over SVC,Gemini: AI Defect Assistant root-cause suggestion follows<br/>the identical decrypt -> prompt -> generate -> meter<br/>pattern, scoped to one defect's context instead of<br/>a free-form question (same ai_service.py module).

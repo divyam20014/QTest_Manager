@@ -1,0 +1,35 @@
+%% Flowchart: Authentication (credentials or SSO branch) + MFA
+flowchart TD
+    Start(["User visits Login page"]) --> Choice{"Sign in with SSO?\n(only shown if tenant_id is a valid UUID)"}
+    Choice -- "No" --> Creds["Enter tenant_id, email, password"]
+    Choice -- "Yes" --> CheckSSO["GET /auth/sso/{tenant_id}/status"]
+    CheckSSO --> SSOEnabled{"SSO enabled\nfor tenant?"}
+    SSOEnabled -- "No" --> ShowMsg["Show: SSO not configured"] --> Creds
+    SSOEnabled -- "Yes" --> Redirect["Redirect to IdP\nauthorization endpoint"]
+    Redirect --> IdPAuth["User authenticates at IdP"]
+    IdPAuth --> Callback["IdP redirects back with code+state"]
+    Callback --> ValidateState{"state cookie\nmatches?"}
+    ValidateState -- "No" --> Reject1(["401: Invalid/expired SSO attempt"])
+    ValidateState -- "Yes" --> Exchange["Exchange code for tokens;\nprovision user if first login\n(role = tenant default, never admin)"]
+    Exchange --> SSOSession["Create session\n(mfa_verified=true - IdP already authenticated)"]
+    SSOSession --> Dashboard(["Redirect to Dashboard"])
+
+    Creds --> Submit["POST /auth/login"]
+    Submit --> RateLimit{"Rate limit OK?\n(10/min per IP)"}
+    RateLimit -- "No" --> Reject2(["429 Too Many Attempts"])
+    RateLimit -- "Yes" --> TenantStatus{"Tenant status\n== approved?"}
+    TenantStatus -- "No" --> Reject3(["403 Forbidden"])
+    TenantStatus -- "Yes" --> CredCheck{"Email + password\nvalid?"}
+    CredCheck -- "No" --> Reject4(["401 Invalid credentials\n(generic message, no enumeration)"])
+    CredCheck -- "Yes" --> CreateSession["Create session\n(mfa_verified=false);\ncreate MFA challenge"]
+    CreateSession --> DeliveryMode{"MFA_DELIVERY_MODE"}
+    DeliveryMode -- "simulated" --> ReturnCode["Return debug_code in response body"]
+    DeliveryMode -- "real" --> EmailCode["Email code via SMTP\n(fails loudly if SMTP unset)"]
+    ReturnCode --> EnterCode["User enters 6-digit code"]
+    EmailCode --> EnterCode
+    EnterCode --> VerifySubmit["POST /auth/mfa/verify"]
+    VerifySubmit --> LockCheck["SELECT mfa_challenges FOR UPDATE\n(row lock prevents concurrent-attempt race)"]
+    LockCheck --> CodeValid{"Code correct AND\nnot expired AND\nattempt_count < limit?"}
+    CodeValid -- "No" --> IncrementAttempt["Increment attempt_count"] --> Reject5(["401 Unauthorized"])
+    CodeValid -- "Yes" --> MarkVerified["Set mfa_verified=true"]
+    MarkVerified --> Dashboard

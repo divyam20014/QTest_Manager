@@ -1,0 +1,42 @@
+%% Sequence: CI/CD Webhook Result Ingestion (M2M auth plane)
+%% Source: backend/app/api/ci.py, backend/app/core/service_token_auth.py,
+%%         backend/app/services/service_token_service.py, execution_service.py
+sequenceDiagram
+    actor Admin as Tenant Admin
+    participant API as FastAPI (service_tokens.py)
+    participant SVC as service_token_service
+    participant DB as PostgreSQL
+    participant CI as CI/CD Pipeline
+    participant CIAPI as FastAPI (ci.py)
+    participant ExecSVC as execution_service
+
+    Admin->>API: POST /service-tokens {name, scope: 'ci_results'}
+    API->>SVC: create_token(...)
+    SVC->>SVC: generate random secret
+    SVC->>DB: INSERT service_tokens (token_hash = argon2(secret))
+    SVC-->>API: plaintext secret (shown once)
+    API-->>Admin: token name + secret
+
+    Note over CI: CI pipeline stores secret, posts results<br/>at end of automated test run
+
+    CI->>CIAPI: POST /ci/{tenant_id}/webhooks/test-results<br/>Authorization: Bearer <secret><br/>{results: [{test_run_case_id, status}, ...]}
+    CIAPI->>CIAPI: slowapi rate limit (30/min)
+    CIAPI->>SVC: authenticate(tenant_id, bearer_secret, scope='ci_results')
+    SVC->>DB: SELECT service_tokens WHERE tenant_id, revoked_at IS NULL
+    SVC->>SVC: argon2 verify hash
+    alt token invalid / revoked / wrong scope
+        SVC-->>CIAPI: 401 Unauthorized
+    else token valid
+        SVC->>DB: UPDATE service_tokens SET last_used_at=now()
+        SVC-->>CIAPI: ServiceToken
+        loop for each result row
+            CIAPI->>ExecSVC: record_ci_result(tenant_id, test_run_case_id, status, token.id)
+            ExecSVC->>DB: set_tenant_context(db, tenant_id) [re-asserted per row]
+            ExecSVC->>DB: UPDATE test_run_cases / execution_steps
+            ExecSVC->>DB: INSERT audit_logs (service_token_id=token.id)
+            alt row fails (unknown id, finished run)
+                ExecSVC-->>CIAPI: AppError (per-row, does not abort batch)
+            end
+        end
+        CIAPI-->>CI: 200 {accepted_count, rejected_count, outcomes[]}
+    end

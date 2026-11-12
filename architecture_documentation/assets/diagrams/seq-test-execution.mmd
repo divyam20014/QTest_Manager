@@ -1,0 +1,56 @@
+%% Sequence: Test Run Creation & Step-by-Step Execution
+%% Source: backend/app/api/execution.py, backend/app/services/execution_service.py,
+%%         frontend/src/routes/execution/ExecutionConsole.tsx
+sequenceDiagram
+    actor Mgr as Manager
+    actor Tester as Assigned Tester
+    participant API as FastAPI (execution.py)
+    participant SVC as execution_service
+    participant DB as PostgreSQL
+
+    Mgr->>API: POST /projects/{id}/test-runs {name, run_type, test_case_ids[]}
+    API->>SVC: create_test_run(...)
+    SVC->>DB: SELECT test_cases WHERE status='approved' (only approved cases runnable)
+    SVC->>DB: INSERT test_runs
+    loop for each approved test case (x each data row, if parameterized)
+        SVC->>DB: INSERT test_run_cases (pinned to current_version_id)
+    end
+    SVC->>DB: INSERT audit_logs (action=test_run.created)
+    SVC-->>API: TestRunOut
+    API-->>Mgr: 201 Created
+
+    Mgr->>API: PATCH /test-run-cases/{id}/assign {assigned_to}
+    API->>SVC: assign_run_case(...)
+    SVC->>DB: UPDATE test_run_cases SET assigned_to
+    SVC->>DB: INSERT notifications (type=run_case_assigned)
+    SVC-->>API: 200 OK
+
+    Tester->>API: GET /test-run-cases/{id}/context
+    API-->>Tester: run name, project, case title, priority, version, assignee
+
+    Tester->>API: POST /execution-steps/{id}/open
+    API->>SVC: open_step(...)
+    Note over SVC: Strict access control: only test_run_cases.assigned_to<br/>== ctx.user_id may act on this step (confirmed design decision)
+    SVC->>DB: UPDATE execution_steps SET opened_at=now()
+    SVC-->>API: ExecutionStepOut
+    API-->>Tester: step opened, live elapsed timer starts (frontend)
+
+    Tester->>API: POST /execution-steps/{id}/verdict {verdict: 'fail'}
+    API->>SVC: record_verdict(...)
+    SVC->>DB: SELECT test_run_cases ... FOR UPDATE (row lock, GAP-49 fix)
+    SVC->>DB: UPDATE execution_steps SET verdict, closed_at, duration_ms
+    SVC->>SVC: _recompute_run_case_status() (re-read all step verdicts)
+    SVC->>DB: UPDATE test_run_cases SET status
+    SVC->>DB: INSERT audit_logs (action=execution_step.verdict_recorded)
+    SVC-->>API: ExecutionStepOut
+    API-->>Tester: verdict recorded
+
+    alt verdict == 'fail'
+        Tester->>API: POST /defects (DefectQuickCreateDialog, prefilled context)
+        Note over Tester,API: Expected Result defaults from the<br/>originating step's own `expected` text
+        API-->>Tester: Defect created, linked via test_case_version_step_id
+    end
+
+    opt Run case fully verdicted
+        SVC->>DB: INSERT notifications (type=test_run_completed) [if last case]
+    end

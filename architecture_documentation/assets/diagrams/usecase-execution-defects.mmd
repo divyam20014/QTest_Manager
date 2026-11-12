@@ -1,0 +1,37 @@
+%% Use Case Diagram — Test Execution & Defect Module Detail
+flowchart LR
+    subgraph Actors
+        MG(["Manager"])
+        TS(["Tester (assigned-only, strict)"])
+        CI(["CI/CD System (service token)"])
+    end
+
+    subgraph UseCases
+        UC1(["Create Test Run\n(from Project / Suite / ad hoc)"])
+        UC2(["Add Parameterized Data Rows\n(Test Data Set)"])
+        UC3(["Assign Run Cases to Testers"])
+        UC4(["Pause / Resume Run"])
+        UC5(["Open Execution Step"])
+        UC6(["Record Pass/Fail/Ignore Verdict"])
+        UC7(["Re-run / Re-verdict a Step"])
+        UC8(["Quick-Create Defect from Failed Step"])
+        UC9(["Link to Existing Defect"])
+        UC10(["View Linked Defects on\nTest Case / Test Run"])
+        UC11(["Ingest CI Test Results (bulk)"])
+        UC12(["View Execution Context\n(run/project/case/version/assignee)"])
+    end
+
+    MG --> UC1
+    MG --> UC2
+    MG --> UC3
+    MG --> UC4
+    TS --> UC5
+    TS --> UC6
+    TS --> UC7
+    TS --> UC12
+    UC6 -.extend.-> UC8
+    UC8 -.alternative.-> UC9
+    MG --> UC10
+    TS --> UC10
+    CI --> UC11
+    UC11 -.include.-> UC6

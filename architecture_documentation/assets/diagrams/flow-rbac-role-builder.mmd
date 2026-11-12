@@ -1,0 +1,30 @@
+%% Flowchart: Role & Permission Management (Role Builder, ADR-059/060)
+flowchart TD
+    Start(["Tenant Admin opens /admin/roles"]) --> ListRoles["List roles:\n3 fixed system roles (Admin/Manager/Tester)\n+ this tenant's custom roles"]
+    ListRoles --> Action{"Action"}
+    Action -- "Create custom role" --> NameRole["Name the role"]
+    NameRole --> SelectPerms["Select subset of real,\nenforced permission codes\n(from `permissions` table)"]
+    SelectPerms --> SaveRole["POST /roles\n(tenant_id = ctx.tenant_id, is_system=false)"]
+    SaveRole --> StoreRole["INSERT roles (code=NULL, tenant-scoped)\nINSERT role_permissions"]
+    StoreRole --> Assignable(["Role assignable to this tenant's users only"])
+
+    Action -- "Edit custom role" --> EditPerms["Modify permission set"]
+    EditPerms --> SavePerms["PATCH /roles/{id}"]
+    SavePerms --> UpdatePerms["UPDATE role_permissions"]
+
+    Action -- "Assign role to user" --> AssignUser["PATCH /users/{id} {role_id}"]
+    AssignUser --> UserRoleSet["users.role_id updated"]
+    UserRoleSet --> NextLogin["On next request, SessionContext\nrecomputed from new role_id"]
+
+    NextLogin --> IsSystem{"Role.code\nin (admin, manager, tester)?"}
+    IsSystem -- "Yes" --> UseCode["role_code = literal code\n(unchanged legacy behavior)"]
+    IsSystem -- "No (custom role)" --> ComputeTier{"Role holds\nproject.view.all\npermission?"}
+    ComputeTier -- "Yes" --> ManagerTier["role_code = 'manager'-equivalent\n(effective access tier, ADR-059)"]
+    ComputeTier -- "No" --> TesterTier["role_code = 'tester'-equivalent"]
+    UseCode --> Composed(["Composes with every existing\nrole_code-based permission check\nacross the codebase, unchanged"])
+    ManagerTier --> Composed
+    TesterTier --> Composed
+
+    Action -- "Delete custom role" --> DeleteCheck{"Any user still\nassigned this role?"}
+    DeleteCheck -- "Yes" --> Blocked(["409 Conflict: reassign users first"])
+    DeleteCheck -- "No" --> DeleteRole["DELETE roles row"]

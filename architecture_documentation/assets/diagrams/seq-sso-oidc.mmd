@@ -1,0 +1,41 @@
+%% Sequence: Tenant SSO (OIDC Authorization Code flow)
+%% Source: backend/app/api/sso.py, backend/app/services/sso_service.py, frontend/src/routes/Login.tsx
+sequenceDiagram
+    actor U as User (Browser)
+    participant FE as React SPA (Login.tsx)
+    participant API as FastAPI (sso.py)
+    participant SVC as sso_service
+    participant DB as PostgreSQL
+    participant IdP as Tenant Identity Provider
+
+    U->>FE: Enter tenant_id (UUID), click "Sign in with SSO"
+    FE->>API: GET /api/v1/auth/sso/{tenant_id}/status
+    API->>SVC: is_enabled(tenant_id)
+    SVC->>DB: SELECT sso_configs WHERE tenant_id
+    API-->>FE: {enabled: true/false}
+    alt SSO enabled
+        FE->>U: window.location.href = /auth/sso/{tenant_id}/login (full redirect)
+        U->>API: GET /api/v1/auth/sso/{tenant_id}/login
+        API->>SVC: get_config(tenant_id), build_authorization_url()
+        API->>API: generate random state, set httponly qth_sso_state cookie
+        API-->>U: 302 Redirect to IdP authorization_endpoint
+        U->>IdP: Authenticate (IdP's own login UI)
+        IdP-->>U: 302 Redirect to /auth/sso/{tenant_id}/callback?code&state
+        U->>API: GET /api/v1/auth/sso/{tenant_id}/callback?code&state
+        API->>API: validate state cookie == state param
+        API->>SVC: exchange_code_and_provision(tenant_id, code, redirect_uri)
+        SVC->>IdP: POST token_endpoint (exchange code for tokens)
+        IdP-->>SVC: id_token / access_token
+        SVC->>DB: SELECT users WHERE tenant_id, email (from id_token claims)
+        alt user does not exist
+            SVC->>DB: INSERT users (role = sso_configs.default_role_code, tester by default)
+        end
+        SVC->>DB: INSERT sessions (mfa_verified=true - IdP already authenticated)
+        SVC-->>API: session_row
+        API-->>U: Set-Cookie qth_session, 302 Redirect to '/', delete qth_sso_state
+        U->>FE: Load SPA at "/"
+        FE->>API: GET /api/v1/auth/me
+        API-->>FE: session context
+    else SSO not enabled
+        FE->>U: "SSO is not configured for this organization"
+    end

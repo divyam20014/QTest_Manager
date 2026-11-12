@@ -1,0 +1,48 @@
+%% QTestHub — DFD Level 2: Defect Management module detail
+%% Source: backend/app/api/defects.py, backend/app/services/defect_service.py
+flowchart TB
+    Reporter(["Reporter (any role with defect.create)"])
+    Assignee(["Assigned user (project member)"])
+    Triager(["Manager / Admin"])
+    WorkerProc(["Background Worker\n(SLA sweep)"])
+
+    P6_1["6.1 Create Defect\n(manual or Fail-verdict quick-create,\nor linked to existing)"]
+    P6_2["6.2 Update Status\n(forward-only sequence:\nNew->Open->Fixed->Verified->Closed)"]
+    P6_3["6.3 Reopen Defect\n(dedicated path, increments\nreopened_count)"]
+    P6_4["6.4 Assign / Triage\n(root_cause, environment,\nbuild/release linkage)"]
+    P6_5["6.5 SLA Breach Sweep\n(periodic, aging-based)"]
+    P6_6["6.6 Bulk Import / Export\nCSV"]
+
+    DS_Defects[("defects / defect_links")]
+    DS_Envs[("environments / builds / releases")]
+    DS_Notif[("notifications")]
+    DS_Audit[("audit_logs")]
+    DS_Comments[("comments / comment_mentions")]
+
+    Reporter --> P6_1
+    P6_1 --> DS_Defects
+    P6_1 --> DS_Audit
+
+    Triager --> P6_2
+    DS_Defects --> P6_2
+    P6_2 --> DS_Defects
+    P6_2 -- "on Closed" --> DS_Notif
+    P6_2 --> DS_Audit
+
+    Triager --> P6_3
+    P6_3 --> DS_Defects
+
+    Triager --> P6_4
+    DS_Envs --> P6_4
+    P6_4 --> DS_Defects
+
+    WorkerProc --> P6_5
+    DS_Defects --> P6_5
+    P6_5 --> DS_Notif
+    P6_5 --> DS_Defects
+
+    Reporter --> P6_6
+    P6_6 --> DS_Defects
+
+    Assignee --> DS_Comments
+    DS_Comments --> DS_Notif

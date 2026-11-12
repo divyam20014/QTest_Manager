@@ -1,0 +1,49 @@
+%% Sequence: Defect Creation and Status Lifecycle
+%% Source: backend/app/api/defects.py, backend/app/services/defect_service.py
+sequenceDiagram
+    actor Rep as Reporter
+    actor Tri as Triager (Manager/Admin)
+    participant API as FastAPI (defects.py)
+    participant SVC as defect_service
+    participant DB as PostgreSQL
+    participant Worker as Background Worker
+
+    Rep->>API: POST /defects {title, severity, priority, steps_to_reproduce, ...}
+    API->>API: require_permission(defect.create)
+    API->>SVC: create_defect(...)
+    SVC->>DB: INSERT defects (status='New')
+    SVC->>DB: INSERT audit_logs (action=defect.created)
+    SVC-->>API: DefectOut
+    API-->>Rep: 201 Created
+
+    Tri->>API: PATCH /defects/{id}/status {status: 'Open'}
+    API->>SVC: update_status(...)
+    Note over SVC: Forward-only sequence (ADR-026):<br/>New -> Open -> Fixed -> Verified -> Closed
+    SVC->>DB: UPDATE defects SET status='Open'
+    SVC->>DB: INSERT audit_logs
+
+    Tri->>API: PATCH /defects/{id} {assigned_to, root_cause, environment_id}
+    API->>SVC: update_defect(...)
+    SVC->>DB: UPDATE defects
+
+    Tri->>API: PATCH /defects/{id}/status {status: 'Closed', verification_confirmed: true}
+    API->>API: 422 if verification_confirmed != true
+    API->>SVC: update_status(..., status='Closed')
+    SVC->>DB: UPDATE defects SET status='Closed', closed_at=now()
+    SVC->>DB: INSERT notifications (type=defect_closed)
+    SVC->>DB: INSERT audit_logs
+
+    alt Defect reopened later
+        Tri->>API: POST /defects/{id}/reopen
+        API->>SVC: reopen_defect(...)
+        SVC->>DB: UPDATE defects SET status='Open', reopened_count+=1, last_reopened_at=now()
+    end
+
+    loop Every 5 minutes (worker poll)
+        Worker->>SVC: sweep_sla_breaches(db)
+        SVC->>DB: SELECT defects WHERE aging exceeds budget AND sla_breach_notified_at IS NULL
+        alt breach found
+            SVC->>DB: INSERT notifications (type=defect_sla_breach)
+            SVC->>DB: UPDATE defects SET sla_breach_notified_at=now()
+        end
+    end

@@ -1,0 +1,19 @@
+%% Flowchart: Error / Exception Handling Pattern
+%% Source: backend/app/core/errors.py, backend/app/main.py exception handlers
+flowchart TD
+    Handler(["Route handler / service call raises"]) --> ErrType{"Exception type"}
+    ErrType -- "AppError subclass\n(ValidationAppError, UnauthorizedError,\nForbiddenError, ConflictError, NotFoundError...)" --> AppErrHandler["app.exception_handler(AppError)"]
+    AppErrHandler --> Envelope1["JSONResponse {data: null,\nerror: {code, message}}\nstatus_code = exc.status_code"]
+
+    ErrType -- "RateLimitExceeded\n(slowapi)" --> RLHandler["app.exception_handler(RateLimitExceeded)"]
+    RLHandler --> LogWarn["logger.warning(security_event=rate_limited)"]
+    LogWarn --> Envelope2["JSONResponse 429\n{code: rate_limited}"]
+
+    ErrType -- "Any other unhandled\nException" --> GenericHandler["app.exception_handler(Exception)"]
+    GenericHandler --> LogFull["logger.exception(...)\n(full traceback, server-side only)"]
+    LogFull --> Envelope3["JSONResponse 500\n{code: internal_error,\nmessage: generic, never leaks detail}\n(SAAS-GAP-15 fix)"]
+
+    Envelope1 --> Client["Frontend ApiError\n(uniform handling, frontend/src/api/client.ts)"]
+    Envelope2 --> Client
+    Envelope3 --> Client
+    Client --> Toast["Toast notification\nrendered to user (app-wide rollout)"]

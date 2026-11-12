@@ -1,0 +1,48 @@
+%% Sequence: Login + MFA
+%% Source: backend/app/api/auth.py (login, verify_mfa), backend/app/services/auth_service.py,
+%%         backend/app/core/auth.py, frontend/src/routes/Login.tsx
+sequenceDiagram
+    actor U as User (Browser)
+    participant FE as React SPA (Login.tsx)
+    participant API as FastAPI (auth.py)
+    participant SVC as auth_service
+    participant DB as PostgreSQL
+
+    U->>FE: Enter tenant_id, email, password
+    FE->>API: POST /api/v1/auth/login
+    API->>API: slowapi rate limit check (10/min per IP)
+    API->>SVC: start_login(tenant_id, email, password, request)
+    SVC->>DB: SELECT tenants.status WHERE id=tenant_id
+    alt tenant not approved
+        SVC-->>API: 403 Forbidden (tenant suspended/pending)
+        API-->>FE: error envelope
+    else tenant approved
+        SVC->>DB: SELECT users WHERE tenant_id, email
+        alt invalid credentials
+            SVC-->>API: 401 Unauthorized (generic, no enumeration - ADR-017)
+        else valid credentials
+            SVC->>DB: INSERT sessions (mfa_verified=false)
+            SVC->>DB: INSERT mfa_challenges (code_hash, expires_at)
+            Note over SVC: MFA_DELIVERY_MODE=simulated:<br/>code returned in response.<br/>=real: emailed via SMTP (app/core/mfa.py)
+            SVC-->>API: session_row, debug_code (simulated only)
+            API-->>FE: Set-Cookie qth_session; {mfa_required:true, debug_code?}
+        end
+    end
+    FE->>U: Show MFA code entry screen
+    U->>FE: Enter 6-digit code
+    FE->>API: POST /api/v1/auth/mfa/verify {code}
+    API->>SVC: verify_mfa(session_id, code)
+    SVC->>DB: SELECT mfa_challenges ... FOR UPDATE
+    alt code incorrect / expired / attempt_count exceeded
+        SVC->>DB: increment attempt_count
+        SVC-->>API: 401 Unauthorized
+    else code correct
+        SVC->>DB: UPDATE sessions SET mfa_verified=true
+        SVC->>DB: UPDATE mfa_challenges SET verified_at=now()
+        SVC-->>API: session_row
+        API-->>FE: Set-Cookie qth_session (refreshed); {verified:true}
+    end
+    FE->>API: GET /api/v1/auth/me
+    API->>API: get_current_context (parse cookie, resolve SessionContext)
+    API-->>FE: user, tenant_id, role, permissions[]
+    FE->>U: Redirect to Dashboard

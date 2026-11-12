@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QTestHub — Architecture Documentation</title>
+<meta name="description" content="Interactive architecture documentation portal for QTestHub, generated from the actual repository source." />
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body>
+<div class="app-shell" id="appShell">
+
+  <header class="topnav">
+    <button class="icon-btn menu-toggle" id="menuToggle" title="Toggle navigation" aria-label="Toggle navigation">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
+    <div class="brand"><span class="dot"></span>QTestHub <small>Architecture Portal</small></div>
+
+    <div class="topnav-search">
+      <svg class="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="text" id="globalSearch" placeholder="Search components, tables, APIs, modules…" autocomplete="off" />
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <div class="topnav-actions">
+      <button class="icon-btn" id="btnFullscreen" title="Fullscreen diagram">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+      <button class="icon-btn hide-xs" id="btnExportSvg" title="Export current diagram as SVG">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      </button>
+      <button class="icon-btn hide-xs" id="btnExportPng" title="Export current diagram as PNG">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+      </button>
+      <button class="icon-btn hide-xs" id="btnPrint" title="Download full documentation (print / PDF)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+      </button>
+      <button class="icon-btn" id="btnTheme" title="Toggle dark / light theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="themeIconMoon"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="sidebar-scrim" id="sidebarScrim"></div>
+  <nav class="sidebar" id="sidebar"></nav>
+
+  <main class="main" id="mainViews"></main>
+
+</div>
+
+<script src="assets/js/mermaid.min.js"></script>
+<script src="assets/js/svg-pan-zoom.min.js"></script>
+<script src="assets/js/data.generated.js"></script>
+<script src="assets/js/content.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+%% Sequence: Scheduled / Emailed Compliance PDF Report
+%% Source: backend/app/api/report_schedule.py, backend/app/services/report_schedule_service.py,
+%%         backend/app/core/pdf_report.py, backend/app/worker.py
+sequenceDiagram
+    actor Admin as Tenant Admin
+    participant API as FastAPI (report_schedule.py)
+    participant DB as PostgreSQL
+    participant Worker as app/worker.py (poll loop)
+    participant SVC as report_schedule_service
+    participant PDF as app/core/pdf_report.py (reportlab)
+    participant SMTP as SMTP Server
+
+    Admin->>API: POST /report-schedules {cadence: 'weekly', recipient_emails[]}
+    API->>DB: INSERT report_schedules (enabled=true)
+    API-->>Admin: 201 Created
+
+    loop every 900s (worker tick)
+        Worker->>SVC: run_due_schedules(db)
+        SVC->>DB: SELECT report_schedules WHERE enabled\nAND due (cadence vs last_run_at)
+        loop for each due schedule, per tenant
+            SVC->>DB: set_tenant_context(db, schedule.tenant_id)
+            SVC->>DB: gather compliance report data\n(reuses reporting_service aggregation)
+            SVC->>PDF: render_compliance_pdf(report_data)
+            PDF-->>SVC: PDF bytes
+            SVC->>SMTP: send email (PDF attachment) to recipient_emails
+            SVC->>DB: UPDATE report_schedules SET last_run_at=now()
+        end
+    end
+
+    Note over SVC,PDF: reportlab chosen over weasyprint: pure-Python,\nno system pango/cairo/gdk-pixbuf dependency,\nno Dockerfile changes needed (Pass 4 decision).

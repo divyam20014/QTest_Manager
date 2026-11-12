@@ -1,0 +1,34 @@
+%% QTestHub — DFD Level 2: RBAC / Auth module detail
+%% Source: backend/app/core/auth.py, backend/app/api/roles.py, backend/app/services/role_service.py
+flowchart TB
+    User(["Any authenticated caller"])
+    Admin(["Tenant Admin"])
+
+    P2_1["2.1 Parse Session Cookie\nparse_session_cookie()"]
+    P2_2["2.2 Resolve Session\n(expiry, idle timeout,\nrevocation, MFA-verified check)"]
+    P2_3["2.3 Load Role & Permissions\n_load_role_and_permissions()"]
+    P2_4["2.4 Compute Effective\nAccess Tier (ADR-059)\n(system role code, or\nmanager/tester-equivalent\nfor custom roles)"]
+    P2_5["2.5 IP Allowlist\nEnforcement"]
+    P2_6["2.6 require_permission(code)\nDependency Check"]
+    P2_7["2.7 Role Builder\n(create/edit custom role +\npermission set)"]
+
+    DS_Sessions[("sessions")]
+    DS_Users[("users")]
+    DS_Roles[("roles / permissions /\nrole_permissions")]
+    DS_Tenants[("tenants.ip_allowlist")]
+
+    User --> P2_1
+    P2_1 --> P2_2
+    DS_Sessions --> P2_2
+    P2_2 -- "update last_seen_at" --> DS_Sessions
+    P2_2 --> P2_5
+    DS_Tenants --> P2_5
+    P2_5 --> P2_3
+    DS_Users --> P2_3
+    DS_Roles --> P2_3
+    P2_3 --> P2_4
+    P2_4 -- "SessionContext\n(role_code, display_role, permissions)" --> P2_6
+    P2_6 -- "403 ForbiddenError if missing" --> User
+
+    Admin --> P2_7
+    P2_7 --> DS_Roles

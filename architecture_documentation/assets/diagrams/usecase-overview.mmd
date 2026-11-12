@@ -1,0 +1,71 @@
+%% Use Case Diagram — QTestHub Overview (actors x major modules)
+%% Mermaid has no native UML use-case shape; rendered as a flowchart with
+%% actor/use-case conventions (stadium = use case, actor icon = role).
+flowchart LR
+    subgraph Actors
+        PA(["Platform Administrator"])
+        TA(["Tenant Admin"])
+        MG(["Manager / Full-Access Custom Role"])
+        TS(["Tester / Restricted Custom Role"])
+        CI(["External CI/CD System"])
+        IDP(["Tenant Identity Provider"])
+    end
+
+    subgraph UC_Platform["Platform Administration"]
+        UC1(["Provision Tenant"])
+        UC2(["Approve / Suspend Tenant"])
+        UC3(["View Cross-Tenant Audit"])
+    end
+
+    subgraph UC_Admin["Tenant Administration"]
+        UC4(["Manage Users & Invites"])
+        UC5(["Build Custom Roles & Permissions"])
+        UC6(["Configure SSO / SCIM"])
+        UC7(["Configure Branding / IP Allowlist"])
+        UC8(["Manage Field Customization\n(severity/priority/custom fields)"])
+        UC9(["Manage Service Tokens (CI/CD)"])
+        UC10(["Schedule Compliance Reports"])
+    end
+
+    subgraph UC_Project["Project & Test Management"]
+        UC11(["Manage Projects & Portfolio"])
+        UC12(["Author & Version Test Cases"])
+        UC13(["Review / Approve Test Cases"])
+        UC14(["Organize Modules / Shared Steps /\nSuites / Plans / Data Sets"])
+        UC15(["Manage Requirements & RTM"])
+    end
+
+    subgraph UC_Exec["Test Execution"]
+        UC16(["Create & Configure Test Runs"])
+        UC17(["Execute Assigned Test Steps"])
+        UC18(["Record Verdicts"])
+        UC19(["Ingest Automated CI Results"])
+    end
+
+    subgraph UC_Defect["Defect Management"]
+        UC20(["Report / Triage Defects"])
+        UC21(["Track Defect Lifecycle"])
+        UC22(["Get AI Root-Cause Suggestion"])
+    end
+
+    subgraph UC_Report["Reporting & AI"]
+        UC23(["View Dashboards & Analytics"])
+        UC24(["Export / Print Compliance Reports"])
+        UC25(["Query AI QA Assistant"])
+        UC26(["Generate Test Cases from\nRequirement via AI"])
+    end
+
+    PA --> UC1 & UC2 & UC3
+    TA --> UC4 & UC5 & UC6 & UC7 & UC8 & UC9 & UC10
+    TA --> UC11 & UC13 & UC20 & UC21 & UC23 & UC24
+    MG --> UC11 & UC13 & UC16 & UC20 & UC21 & UC23 & UC24
+    TS --> UC12 & UC17 & UC18 & UC20 & UC25
+    MG --> UC12 & UC14 & UC15 & UC22 & UC25 & UC26
+    CI --> UC19
+    IDP -.->|"authenticates"| TA
+    IDP -.->|"authenticates"| MG
+    IDP -.->|"authenticates"| TS
+
+    UC19 -.include.-> UC18
+    UC18 -.extend.-> UC20
+    UC13 -.include.-> UC12

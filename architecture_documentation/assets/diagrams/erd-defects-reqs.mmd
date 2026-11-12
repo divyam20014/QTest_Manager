@@ -1,0 +1,151 @@
+%% QTestHub — ERD: Defects, Requirements, Traceability, Collaboration
+%% Source: backend/app/models/{defect,requirement,comment,notification,test_asset}.py
+erDiagram
+    PROJECTS ||--o{ DEFECTS : "has"
+    TEST_CASES ||--o{ DEFECTS : "originates (nullable)"
+    TEST_CASE_VERSIONS ||--o{ DEFECTS : "pins version (nullable)"
+    TEST_RUNS ||--o{ DEFECTS : "found in (nullable)"
+    TEST_CASE_VERSION_STEPS ||--o{ DEFECTS : "failed step (nullable)"
+    TEST_MODULES ||--o{ DEFECTS : "groups (nullable)"
+    USERS ||--o{ DEFECTS : "reported_by"
+    USERS ||--o{ DEFECTS : "assigned_to (nullable, project members only)"
+    ENVIRONMENTS ||--o{ DEFECTS : "found in"
+    BUILDS ||--o{ DEFECTS : "found_in_build_id"
+    RELEASES ||--o{ DEFECTS : "fixed_in_release_id"
+    DEFECTS ||--o{ DEFECT_LINKS : "relates_to/duplicate_of/caused_by"
+
+    PROJECTS ||--o{ REQUIREMENTS : "has"
+    REQUIREMENTS ||--o{ REQUIREMENT_VERSIONS : "immutable snapshots"
+    REQUIREMENTS }o--|| REQUIREMENT_VERSIONS : "current_version_id"
+    REQUIREMENTS ||--o{ REQUIREMENT_TEST_CASE_LINKS : "traced by (RTM)"
+    TEST_CASES ||--o{ REQUIREMENT_TEST_CASE_LINKS : "covers"
+
+    PROJECTS ||--o{ BUILDS : "has"
+    PROJECTS ||--o{ RELEASES : "has"
+    PROJECTS ||--o{ TEST_PLANS : "has"
+    RELEASES ||--o{ TEST_PLANS : "optional release link"
+    TEST_PLANS ||--o{ TEST_PLAN_RUNS : "groups"
+    TEST_RUNS ||--o{ TEST_PLAN_RUNS : "belongs to plan"
+
+    PROJECTS ||--o{ TEST_SUITES : "has (flat, reusable selections)"
+    TEST_SUITES ||--o{ TEST_SUITE_CASES : "contains"
+    TEST_CASES ||--o{ TEST_SUITE_CASES : "referenced by"
+
+    TEST_CASES ||--o{ TEST_DATA_SETS : "parameterizes"
+    TEST_DATA_SETS ||--o{ TEST_DATA_SET_ROWS : "has rows"
+    TEST_DATA_SET_ROWS ||--o{ TEST_RUN_CASES : "drives execution of"
+
+    PROJECTS ||--o{ SHARED_STEPS : "has reusable step library"
+
+    USERS ||--o{ COMMENTS : "authors (polymorphic: test_case/defect/execution_step)"
+    COMMENTS ||--o{ COMMENT_MENTIONS : "mentions"
+    USERS ||--o{ COMMENT_MENTIONS : "mentioned"
+    USERS ||--o{ NOTIFICATIONS : "receives"
+    USERS ||--o{ ATTACHMENTS : "uploads (polymorphic owner)"
+
+    DEFECTS {
+        uuid id PK
+        uuid project_id FK
+        string title
+        string severity "tenant-configurable via FIELD_OPTIONS"
+        string priority "tenant-configurable via FIELD_OPTIONS"
+        string status "New/Open/Fixed/Verified/Closed, forward-only"
+        string root_cause "nullable, fixed taxonomy"
+        int reopened_count
+        datetime sla_breach_notified_at
+    }
+    DEFECT_LINKS {
+        uuid id PK
+        uuid defect_id FK
+        string linkable_type "execution_step/test_case/defect"
+        uuid linkable_id
+        string link_type "relates_to/duplicate_of/caused_by"
+    }
+    REQUIREMENTS {
+        uuid id PK
+        uuid project_id FK
+        string title
+        uuid current_version_id FK
+    }
+    REQUIREMENT_VERSIONS {
+        uuid id PK
+        uuid requirement_id FK
+        int version_number
+        string title
+        string description
+    }
+    REQUIREMENT_TEST_CASE_LINKS {
+        uuid requirement_id FK
+        uuid test_case_id FK
+        uuid linked_by FK
+    }
+    TEST_SUITES {
+        uuid id PK
+        uuid project_id FK
+        string name
+        string description
+    }
+    TEST_SUITE_CASES {
+        uuid test_suite_id FK
+        uuid test_case_id FK
+    }
+    TEST_PLANS {
+        uuid id PK
+        uuid project_id FK
+        uuid release_id FK "nullable"
+        string name
+    }
+    TEST_PLAN_RUNS {
+        uuid test_plan_id FK
+        uuid test_run_id FK
+    }
+    TEST_DATA_SETS {
+        uuid id PK
+        uuid test_case_id FK
+        string name
+    }
+    TEST_DATA_SET_ROWS {
+        uuid id PK
+        uuid test_data_set_id FK
+        string name
+        json data "free-form key-value"
+    }
+    SHARED_STEPS {
+        uuid id PK
+        uuid project_id FK
+        string name
+        string action
+        string expected
+        string category
+    }
+    COMMENTS {
+        uuid id PK
+        string owner_type "test_case/defect/execution_step"
+        uuid owner_id
+        string body
+        uuid author_id FK
+    }
+    NOTIFICATIONS {
+        uuid id PK
+        uuid recipient_id FK
+        string type "8 fixed trigger types"
+        string entity_type
+        uuid entity_id
+        datetime read_at
+    }
+    ENVIRONMENTS {
+        uuid id PK
+        string name
+    }
+    BUILDS {
+        uuid id PK
+        uuid project_id FK
+        string name
+        date built_at
+    }
+    RELEASES {
+        uuid id PK
+        uuid project_id FK
+        string name
+        date release_date
+    }

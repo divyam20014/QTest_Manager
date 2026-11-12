@@ -1,0 +1,19 @@
+%% Flowchart: Test Case Approval Workflow
+flowchart TD
+    Create(["Author creates test case"]) --> Draft["status = draft\n(version_number = 1)"]
+    Draft --> Edit{"Author edits\nsteps/title/description?"}
+    Edit -- "Yes" --> ForkVersion["Fork new TestCaseVersion\n(previous version stays immutable)"]
+    ForkVersion --> Draft
+    Edit -- "No" --> SubmitReview["Author sets status = ready_for_review\n(optionally names a specific reviewer_id)"]
+    SubmitReview --> NotifyReviewer["Notification: review_requested"]
+    NotifyReviewer --> ReviewerDecision{"Reviewer decision"}
+    ReviewerDecision -- "Approve\n(testcase.approve OR\nis named reviewer_id)" --> Approved["status = approved\nTestCaseVersion.approved_by/at set"]
+    ReviewerDecision -- "Request Changes" --> BackToDraft["status = draft\n(comment attached)"]
+    BackToDraft --> NotifyAuthor["Notification: review_decided"] --> Edit
+    Approved --> NotifyAuthor2["Notification: review_decided"]
+    Approved --> Runnable["Only approved versions may be\nbundled into a Test Run"]
+    Approved --> PostApprovalEdit{"Further edit\nafter approval?"}
+    PostApprovalEdit -- "Yes" --> ForkVersion
+    PostApprovalEdit -- "No" --> Deprecate{"Admin/Manager\ndeprecates case?"}
+    Deprecate -- "Yes" --> Terminal(["status = deprecated\n(terminal, testcase.deprecate permission)"])
+    Deprecate -- "No" --> Runnable

@@ -1,0 +1,56 @@
+%% QTestHub — DFD Level 2: Test Execution module detail
+%% Source: backend/app/api/execution.py, backend/app/services/execution_service.py
+flowchart TB
+    Tester(["Tester / assigned user"])
+    Manager(["Manager / Admin"])
+    CI(["CI system"])
+
+    P5_1["5.1 Create Run\n(from Project, Suite, or ad hoc)\nexecution_service.create_test_run /\ncreate_run_from_suite"]
+    P5_2["5.2 Assign Run Cases\nPATCH /test-run-cases/{id}/assign"]
+    P5_3["5.3 Open Step\n(record opened_at, enforce\nStrict assignee-only access)"]
+    P5_4["5.4 Record Verdict\n(pass/fail/ignore,\nrow-locked rollup recompute)"]
+    P5_5["5.5 Pause / Resume Run\n(Admin/Manager only)"]
+    P5_6["5.6 Recompute Run Case\nStatus Rollup"]
+    P5_7["5.7 CI Result Ingestion\nrecord_ci_result()"]
+
+    DS_Cases[("test_cases /\ntest_case_versions / steps")]
+    DS_Suites[("test_suites /\ntest_suite_cases")]
+    DS_DataSets[("test_data_sets /\ntest_data_set_rows")]
+    DS_Runs[("test_runs /\ntest_run_cases")]
+    DS_Steps[("execution_steps")]
+    DS_Defects[("defects (quick-create\non Fail verdict)")]
+    DS_Notif[("notifications")]
+    DS_Audit[("audit_logs")]
+
+    Manager --> P5_1
+    DS_Cases --> P5_1
+    DS_Suites -. "optional source" .-> P5_1
+    DS_DataSets -. "optional parameterization,\none TestRunCase per selected row" .-> P5_1
+    P5_1 --> DS_Runs
+
+    Manager --> P5_2
+    P5_2 --> DS_Runs
+    P5_2 --> DS_Notif
+
+    Tester --> P5_3
+    DS_Runs --> P5_3
+    P5_3 --> DS_Steps
+
+    Tester --> P5_4
+    DS_Steps --> P5_4
+    P5_4 --> DS_Steps
+    P5_4 --> P5_6
+    P5_4 -- "on Fail" --> DS_Defects
+    P5_6 --> DS_Runs
+    P5_6 -- "run_case completed" --> DS_Notif
+
+    Manager --> P5_5
+    P5_5 --> DS_Runs
+
+    CI --> P5_7
+    P5_7 --> DS_Steps
+    P5_7 --> P5_6
+
+    P5_1 --> DS_Audit
+    P5_4 --> DS_Audit
+    P5_5 --> DS_Audit

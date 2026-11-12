@@ -1,0 +1,36 @@
+%% Sequence: CSV Bulk Import (flexible field-mapping flow)
+%% Source: backend/app/api/csv_import.py, backend/app/services/csv_import_service.py
+sequenceDiagram
+    actor U as Tenant User
+    participant FE as React SPA (ImportDialog.tsx)
+    participant API as FastAPI (csv_import.py)
+    participant SVC as csv_import_service
+    participant DB as PostgreSQL
+
+    U->>FE: Select CSV file, optionally choose a tool preset\n(TestRail/Zephyr/Jira)
+    FE->>API: POST /test-cases/import/detect-columns?preset=testrail (file)
+    API->>API: validate extension/.csv, size <= csv_import_max_bytes, UTF-8 decode
+    API->>SVC: detect_columns(csv_text, preset)
+    SVC->>SVC: parse header + sample rows,\nfuzzy-match to a suggested column mapping
+    SVC-->>API: {headers, sample_rows, suggested_mapping}
+    API-->>FE: 200 OK (nothing written to DB yet)
+    FE->>U: Show mapping confirmation UI (editable)
+
+    U->>FE: Confirm/adjust mapping, submit
+    FE->>API: POST /test-cases/import/mapped (file, mapping JSON)
+    API->>API: require_permission(testcase.bulk_import_export)
+    API->>SVC: import_test_cases_mapped(tenant_id, role_code, user_id, csv_text, mapping)
+    SVC->>SVC: materialize all rows up front,\nreject whole file if rows > csv_import_max_rows (2000)
+    SVC->>DB: preload existing (project_id, title_lower) pairs
+    loop for each row
+        SVC->>SVC: validate required fields, detect in-batch duplicate title
+        alt row invalid or duplicate
+            SVC->>SVC: record row error (does not abort batch)
+        else row valid
+            SVC->>DB: INSERT test_cases, test_case_versions, steps
+        end
+    end
+    SVC->>DB: INSERT audit_logs (action=test_case.bulk_imported)
+    SVC-->>API: ImportReport {created_count, errors[]}
+    API-->>FE: 200 OK
+    FE->>U: Show results, "Download Error Report (CSV)" if any errors

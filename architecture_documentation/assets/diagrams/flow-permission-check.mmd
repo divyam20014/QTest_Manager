@@ -1,0 +1,26 @@
+%% Flowchart: RBAC Permission-Check Decision Flow (per-request)
+flowchart TD
+    Req(["Incoming authenticated request"]) --> ParseCookie["parse_session_cookie(request)"]
+    ParseCookie --> CookieValid{"Cookie present\nand valid UUID?"}
+    CookieValid -- "No" --> U401(["401 Unauthorized"])
+    CookieValid -- "Yes" --> LookupSession["SELECT sessions WHERE id"]
+    LookupSession --> SessionExists{"Session exists,\nnot revoked,\nnot expired?"}
+    SessionExists -- "No" --> U401
+    SessionExists -- "Yes" --> MfaCheck{"mfa_verified\n== true?"}
+    MfaCheck -- "No" --> U401b(["401: MFA verification required"])
+    MfaCheck -- "Yes" --> IdleCheck{"last_seen_at within\nsession_ttl_minutes?"}
+    IdleCheck -- "No" --> RevokeIdle["Revoke session"] --> U401c(["401: Session expired (idle)"])
+    IdleCheck -- "Yes" --> TouchSession["Update last_seen_at=now()"]
+    TouchSession --> TenantStatusCheck{"Tenant.status\n== approved?"}
+    TenantStatusCheck -- "No" --> F403a(["403: Tenant suspended"])
+    TenantStatusCheck -- "Yes" --> IPCheck{"tenants.ip_allowlist set?"}
+    IPCheck -- "No" --> LoadRole["Load role + permissions\n(_load_role_and_permissions)"]
+    IPCheck -- "Yes" --> IPMatch{"Caller IP in\nany allowlisted CIDR?"}
+    IPMatch -- "No" --> F403b(["403: Network not on allowlist"])
+    IPMatch -- "Yes" --> LoadRole
+    LoadRole --> ComputeCtx["Compute SessionContext\n(role_code, display_role, permissions set)"]
+    ComputeCtx --> RouteNeedsPerm{"Route uses\nrequire_permission(code)?"}
+    RouteNeedsPerm -- "No" --> Proceed(["Handler executes\n(any authenticated user)"])
+    RouteNeedsPerm -- "Yes" --> HasPerm{"code in\nctx.permissions?"}
+    HasPerm -- "No" --> F403c(["403: Missing permission"])
+    HasPerm -- "Yes" --> Proceed

@@ -1,0 +1,186 @@
+%% QTestHub — ERD: Platform, Auth Planes, SaaS/Billing, AI, Background Jobs
+%% Source: backend/app/models/{identity,tenant,sso_config,scim_token,service_token,
+%%          subscription,ai_usage,background_job,report_schedule,user_invite,
+%%          field_customization,idempotency}.py
+erDiagram
+    PLATFORM_ADMINS ||--o{ AUDIT_LOGS : "attributed actions (platform_admin_id)"
+    USERS ||--o{ AUDIT_LOGS : "attributed actions (user_id)"
+    SERVICE_TOKENS ||--o{ AUDIT_LOGS : "attributed actions (service_token_id)"
+    TENANTS ||--o{ AUDIT_LOGS : "scoped to"
+
+    TENANTS ||--o| SUBSCRIPTIONS : "has one"
+    PLANS ||--o{ SUBSCRIPTIONS : "assigned"
+
+    TENANTS ||--o{ USER_INVITES : "invites"
+    ROLES ||--o{ USER_INVITES : "pre-assigns role"
+
+    TENANTS ||--o{ FIELD_OPTIONS : "configures severity/priority labels"
+    TENANTS ||--o{ STATUS_LABELS : "configures status display overrides"
+    TENANTS ||--o{ CUSTOM_FIELD_DEFINITIONS : "defines extra fields"
+    CUSTOM_FIELD_DEFINITIONS ||--o{ CUSTOM_FIELD_VALUES : "has values (polymorphic owner)"
+
+    TENANTS ||--o{ AI_USAGE_LOGS : "meters AI calls"
+    USERS ||--o{ AI_USAGE_LOGS : "triggers"
+    REQUIREMENTS ||--o{ AI_USAGE_LOGS : "optionally for"
+
+    TENANTS ||--o{ BACKGROUND_JOBS : "queues (RLS-exempt, worker scans all tenants)"
+    USERS ||--o{ BACKGROUND_JOBS : "created_by"
+
+    TENANTS ||--o{ REPORT_SCHEDULES : "configures"
+    USERS ||--o{ REPORT_SCHEDULES : "created_by"
+
+    TENANTS ||--o{ IDEMPOTENCY_KEYS : "scoped to"
+    USERS ||--o{ IDEMPOTENCY_KEYS : "scoped to"
+
+    PLATFORM_ADMINS {
+        uuid id PK
+        citext email UK
+        string password_hash
+        smallint failed_login_count
+        datetime locked_until
+    }
+    TENANTS {
+        uuid id PK
+        string name
+        string status "pending/approved/suspended"
+        bool ai_enabled
+        string ai_provider "gemini"
+        string ai_api_key_encrypted "Fernet ciphertext"
+        string brand_display_name
+        string brand_primary_color
+        string brand_logo_ref
+        array ip_allowlist "CIDR strings, nullable"
+        string data_region
+    }
+    ROLES {
+        uuid id PK
+        string code "nullable, system roles only"
+        uuid tenant_id "nullable, NOT FK (ADR-059)"
+        bool is_system
+    }
+    AUDIT_LOGS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid user_id FK "nullable, one of 3 actor planes"
+        uuid platform_admin_id FK "nullable"
+        uuid service_token_id FK "nullable"
+        string action
+        string entity_type
+        uuid entity_id
+        jsonb event_metadata
+        string prev_hash
+        string record_hash
+    }
+    SSO_CONFIGS {
+        uuid id PK
+        uuid tenant_id FK UK
+        bool enabled
+        string issuer
+        string client_id
+        string client_secret_encrypted
+        string default_role_code
+    }
+    SCIM_TOKENS {
+        uuid id PK
+        uuid tenant_id FK
+        string token_hash
+        datetime revoked_at
+    }
+    SERVICE_TOKENS {
+        uuid id PK
+        uuid tenant_id FK
+        string name
+        string token_hash
+        string scope "ci_results"
+        datetime revoked_at
+    }
+    PLANS {
+        uuid id PK
+        string code UK
+        int seat_limit "nullable=unlimited"
+        int storage_limit_mb
+        int ai_monthly_request_limit
+    }
+    SUBSCRIPTIONS {
+        uuid id PK
+        uuid tenant_id FK UK
+        uuid plan_id FK
+        string status "trialing/active/past_due/canceled"
+        int seat_count
+        datetime current_period_end
+    }
+    USER_INVITES {
+        uuid id PK
+        uuid tenant_id FK
+        citext email
+        uuid role_id FK
+        string token_hash
+        datetime expires_at
+        datetime accepted_at
+    }
+    FIELD_OPTIONS {
+        uuid id PK
+        uuid tenant_id FK
+        string field_key "defect_severity/test_case_priority/defect_priority"
+        string code
+        string label
+        string color
+    }
+    STATUS_LABELS {
+        uuid id PK
+        uuid tenant_id FK
+        string entity_type "test_case/defect"
+        string status_code
+        string label
+    }
+    CUSTOM_FIELD_DEFINITIONS {
+        uuid id PK
+        uuid tenant_id FK
+        string entity_type "test_case/defect/requirement"
+        string field_key
+        string field_type "text/number/boolean/date/select/multi_select"
+        json options
+        bool required
+    }
+    CUSTOM_FIELD_VALUES {
+        uuid id PK
+        uuid field_definition_id FK
+        string owner_type
+        uuid owner_id
+        json value
+    }
+    AI_USAGE_LOGS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid user_id FK
+        string provider
+        string action
+        int total_tokens
+        bool success
+    }
+    BACKGROUND_JOBS {
+        uuid id PK
+        uuid tenant_id FK
+        string job_type
+        jsonb payload
+        string status "queued/running/succeeded/failed"
+        smallint attempts
+        jsonb result
+    }
+    REPORT_SCHEDULES {
+        uuid id PK
+        uuid tenant_id FK
+        string report_type "compliance"
+        string cadence "daily/weekly/monthly"
+        array recipient_emails
+        bool enabled
+        datetime last_run_at
+    }
+    IDEMPOTENCY_KEYS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid user_id FK
+        string scope
+        string key
+        uuid entity_id
+    }

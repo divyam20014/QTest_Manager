@@ -1,0 +1,139 @@
+%% QTestHub — Entity Relationship Diagram (Core: Identity, Project, Test Authoring, Execution)
+%% Source: backend/app/models/{mixins,tenant,identity,project,test_module,test_case,execution}.py
+erDiagram
+    TENANTS ||--o{ USERS : "has"
+    TENANTS ||--o{ PROJECTS : "owns"
+    TENANTS ||--o| SUBSCRIPTIONS : "has one"
+    TENANTS ||--o| SSO_CONFIGS : "has one"
+    TENANTS ||--o{ SERVICE_TOKENS : "issues"
+    TENANTS ||--o{ SCIM_TOKENS : "issues"
+
+    ROLES ||--o{ ROLE_PERMISSIONS : "grants"
+    PERMISSIONS ||--o{ ROLE_PERMISSIONS : "granted via"
+    ROLES ||--o{ USERS : "assigned to"
+    USERS ||--o{ SESSIONS : "authenticates"
+    USERS ||--o{ MFA_CHALLENGES : "verifies via"
+
+    PROJECTS ||--o{ PROJECT_MEMBERS : "has members"
+    USERS ||--o{ PROJECT_MEMBERS : "is member of"
+    PROJECTS ||--o{ TEST_MODULES : "organizes via"
+    TEST_MODULES ||--o{ TEST_MODULES : "nests (parent_id)"
+    PROJECTS ||--o{ TEST_CASES : "contains"
+    TEST_MODULES ||--o{ TEST_CASES : "groups"
+
+    TEST_CASES ||--o{ TEST_CASE_VERSIONS : "has immutable snapshots"
+    TEST_CASE_VERSIONS ||--o{ TEST_CASE_VERSION_STEPS : "has steps"
+    TEST_CASES }o--|| TEST_CASE_VERSIONS : "current_version_id"
+
+    PROJECTS ||--o{ TEST_RUNS : "has"
+    TEST_RUNS ||--o{ TEST_RUN_CASES : "bundles"
+    TEST_CASES ||--o{ TEST_RUN_CASES : "executed as"
+    TEST_CASE_VERSIONS ||--o{ TEST_RUN_CASES : "pinned to"
+    TEST_RUN_CASES ||--o{ EXECUTION_STEPS : "records verdicts"
+    TEST_CASE_VERSION_STEPS ||--o{ EXECUTION_STEPS : "verdict for"
+
+    USERS {
+        uuid id PK
+        uuid tenant_id FK
+        citext email
+        string name
+        uuid role_id FK
+        string password_hash
+        bool is_active
+        datetime pseudonymized_at
+    }
+    ROLES {
+        uuid id PK
+        string code "nullable, unique, system roles only"
+        string name
+        uuid tenant_id "nullable, NOT an FK (ADR-059)"
+        bool is_system
+        bool is_active
+    }
+    PERMISSIONS {
+        uuid id PK
+        string code UK
+        string description
+    }
+    ROLE_PERMISSIONS {
+        uuid role_id PK_FK
+        uuid permission_id PK_FK
+    }
+    PROJECTS {
+        uuid id PK
+        uuid tenant_id FK
+        string name
+        string domain "Motor/Health/Travel/Life/Property"
+        string status
+        string priority
+        uuid manager_user_id FK "nullable"
+        uuid owner_id FK
+        date start_date
+        date end_date
+        numeric budget
+        int version "optimistic concurrency"
+    }
+    TEST_MODULES {
+        uuid id PK
+        uuid project_id FK
+        uuid parent_id FK "self-referential"
+        string name
+    }
+    TEST_CASES {
+        uuid id PK
+        uuid project_id FK
+        uuid module_id FK "nullable"
+        string title
+        string priority
+        string status "draft/ready_for_review/approved/deprecated"
+        uuid assignee_id FK "nullable"
+        uuid reviewer_id FK "nullable"
+        uuid current_version_id FK
+    }
+    TEST_CASE_VERSIONS {
+        uuid id PK
+        uuid test_case_id FK
+        int version_number
+        string title
+        string description
+        string scenario_id
+        string prerequisite
+        string test_data
+        uuid approved_by FK "nullable"
+        datetime approved_at
+    }
+    TEST_CASE_VERSION_STEPS {
+        uuid id PK
+        uuid test_case_version_id FK
+        int step_number
+        string action
+        string expected
+    }
+    TEST_RUNS {
+        uuid id PK
+        uuid project_id FK
+        string name
+        string run_type "Regression/Sanity/Smoke"
+        uuid executed_by FK
+        datetime finished_at
+        datetime paused_at
+    }
+    TEST_RUN_CASES {
+        uuid id PK
+        uuid test_run_id FK
+        uuid test_case_id FK
+        uuid test_case_version_id FK
+        uuid test_data_row_id FK "nullable, parameterization"
+        string status "pending/in_progress/passed/failed/blocked/ignored"
+        uuid assigned_to FK "nullable"
+    }
+    EXECUTION_STEPS {
+        uuid id PK
+        uuid test_run_case_id FK
+        uuid test_case_version_step_id FK
+        string verdict "pass/fail/ignore, nullable"
+        datetime opened_at
+        datetime closed_at
+        int duration_ms
+        uuid executed_by FK
+    }

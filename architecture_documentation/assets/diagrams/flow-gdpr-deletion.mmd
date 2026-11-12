@@ -1,0 +1,15 @@
+%% Flowchart: GDPR/DPDP Data Deletion (pseudonymization today; physical erasure gated)
+%% Source: backend/app/models/identity.py (users.pseudonymized_at), docs/KNOWN_GAPS.md GAP-03
+flowchart TD
+    Request(["Admin requests deletion of a user\n(data-subject erasure request)"]) --> Mechanism{"Mechanism available today"}
+    Mechanism --> Pseudo["Pseudonymization\n(users.pseudonymized_at set)"]
+    Pseudo --> ScrubPII["Scrub direct PII fields\n(name, email replaced with\nopaque placeholders)"]
+    ScrubPII --> PreserveAudit["audit_logs rows referencing\nthis user_id are preserved unchanged\n(hash-chain integrity, ADR-006)"]
+    PreserveAudit --> Done(["User can no longer log in or be\nidentified from new data,\nbut historical audit continuity is kept"])
+
+    Mechanism --> PhysicalErasure{"True physical row deletion?"}
+    PhysicalErasure -- "Not implemented" --> Blocked["GAP-03: requires per-jurisdiction\nretention-period rules not specified\nin BRD"]
+    Blocked --> SignOff(["Requires explicit legal/compliance\nsign-off per tenant jurisdiction\nbefore being exposed"])
+
+    classDef notbuilt fill:#fee,stroke:#c00,stroke-dasharray: 4 2;
+    class PhysicalErasure,Blocked,SignOff notbuilt;
