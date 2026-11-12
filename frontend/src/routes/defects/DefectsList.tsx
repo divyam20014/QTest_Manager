@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { createDefect, listDefects, type DefectStatus, type Priority, type Severity } from '@/api/defects'
@@ -17,11 +17,27 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
+import { ResizableTh } from '@/components/table/ResizableTh'
+import { useRowContextMenu, type RowContextMenuItem } from '@/components/table/RowContextMenu'
+import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
+import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useUrlFilters } from '@/lib/useUrlFilters'
 import { DefectImportDialog } from './DefectImportDialog'
 import { STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
+
+const DEFECT_COLUMNS: TableColumnDef[] = [
+  { key: 'title', label: 'Title', alwaysVisible: true, defaultWidth: 280 },
+  { key: 'project', label: 'Project', defaultWidth: 140 },
+  { key: 'severity', label: 'Severity', defaultWidth: 110 },
+  { key: 'priority', label: 'Priority', defaultWidth: 100 },
+  { key: 'status', label: 'Status', alwaysVisible: true, defaultWidth: 130 },
+  { key: 'sla', label: 'SLA', defaultWidth: 100 },
+  { key: 'reportedBy', label: 'Reported By', defaultWidth: 140 },
+  { key: 'reported', label: 'Reported', defaultWidth: 110 },
+]
 
 const DEFECT_FILTER_CHIP_LABEL: Record<string, string> = {
   projectId: 'Project',
@@ -35,6 +51,10 @@ const DEFECT_FILTER_CHIP_LABEL: Record<string, string> = {
 export function DefectsList() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const columnPrefs = useColumnPrefs('defects-list', DEFECT_COLUMNS)
+  const savedFilters = useSavedFilters<Record<string, string>>('defects-list')
+  const rowMenu = useRowContextMenu()
   // Bug #13 / Pass C deferred item #3: filters persist in the URL now,
   // including making the Dashboard's `?severity=Critical` deep link
   // actually pre-filter on landing (it previously went nowhere).
@@ -58,6 +78,25 @@ export function DefectsList() {
   const createdTo = urlFilters.values.createdTo
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [actionParams, setActionParams] = useSearchParams()
+
+  // Phase 2: the command palette's "Create Defect" quick action
+  // navigates here with ?action=create -- reuses this existing create
+  // dialog rather than inventing a new creation flow.
+  useEffect(() => {
+    if (actionParams.get('action') === 'create') {
+      setCreateOpen(true)
+      setActionParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('action')
+          return next
+        },
+        { replace: true },
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionParams])
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all-for-filter'],
@@ -165,6 +204,21 @@ export function DefectsList() {
             Clear filters
           </Button>
         )}
+        <div className="ml-auto flex items-end gap-2 pb-0.5">
+          <SavedFiltersMenu
+            current={urlFilters.values}
+            saved={savedFilters.saved}
+            onSave={savedFilters.save}
+            onApply={(f) => urlFilters.setFilters(f)}
+            onRemove={savedFilters.remove}
+          />
+          <ColumnVisibilityMenu
+            columns={DEFECT_COLUMNS}
+            isVisible={columnPrefs.isVisible}
+            toggleVisible={columnPrefs.toggleVisible}
+            showAll={columnPrefs.showAll}
+          />
+        </div>
       </div>
 
       {urlFilters.active.length > 0 && (
@@ -190,16 +244,44 @@ export function DefectsList() {
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
+          <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>
-              <th className="px-4 py-2 font-medium">Title</th>
-              <th className="px-4 py-2 font-medium">Project</th>
-              <th className="px-4 py-2 font-medium">Severity</th>
-              <th className="px-4 py-2 font-medium">Priority</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">SLA</th>
-              <th className="px-4 py-2 font-medium">Reported By</th>
-              <th className="px-4 py-2 font-medium">Reported</th>
+              <ResizableTh width={columnPrefs.width('title')} onResize={(w) => columnPrefs.setWidth('title', w)}>
+                Title
+              </ResizableTh>
+              {columnPrefs.isVisible('project') && (
+                <ResizableTh width={columnPrefs.width('project')} onResize={(w) => columnPrefs.setWidth('project', w)}>
+                  Project
+                </ResizableTh>
+              )}
+              {columnPrefs.isVisible('severity') && (
+                <ResizableTh width={columnPrefs.width('severity')} onResize={(w) => columnPrefs.setWidth('severity', w)}>
+                  Severity
+                </ResizableTh>
+              )}
+              {columnPrefs.isVisible('priority') && (
+                <ResizableTh width={columnPrefs.width('priority')} onResize={(w) => columnPrefs.setWidth('priority', w)}>
+                  Priority
+                </ResizableTh>
+              )}
+              <ResizableTh width={columnPrefs.width('status')} onResize={(w) => columnPrefs.setWidth('status', w)}>
+                Status
+              </ResizableTh>
+              {columnPrefs.isVisible('sla') && (
+                <ResizableTh width={columnPrefs.width('sla')} onResize={(w) => columnPrefs.setWidth('sla', w)}>
+                  SLA
+                </ResizableTh>
+              )}
+              {columnPrefs.isVisible('reportedBy') && (
+                <ResizableTh width={columnPrefs.width('reportedBy')} onResize={(w) => columnPrefs.setWidth('reportedBy', w)}>
+                  Reported By
+                </ResizableTh>
+              )}
+              {columnPrefs.isVisible('reported') && (
+                <ResizableTh width={columnPrefs.width('reported')} onResize={(w) => columnPrefs.setWidth('reported', w)}>
+                  Reported
+                </ResizableTh>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -225,40 +307,75 @@ export function DefectsList() {
                 </td>
               </tr>
             )}
-            {defectsQuery.data?.map((d) => (
-              <tr key={d.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
-                <td className="px-4 py-2">
-                  <Link to={`/defects/${d.id}`} className="font-medium underline-offset-2 hover:underline">
-                    {d.title}
-                  </Link>
-                  {d.step_number !== null && (
-                    <span className="ml-2 text-xs text-[var(--muted-foreground)]">step {d.step_number}</span>
+            {defectsQuery.data?.map((d) => {
+              const contextItems: RowContextMenuItem[] = [
+                { label: 'Open', onSelect: () => navigate(`/defects/${d.id}`) },
+                {
+                  label: 'Copy defect ID',
+                  onSelect: () => {
+                    void navigator.clipboard?.writeText(d.id)
+                  },
+                },
+              ]
+              return (
+                <tr
+                  key={d.id}
+                  className="border-t border-[var(--border)] hover:bg-[var(--muted)]"
+                  onContextMenu={(e) => rowMenu.openAt(e, contextItems)}
+                >
+                  <td className="px-4 py-2" style={{ maxWidth: columnPrefs.width('title') }}>
+                    <Link
+                      to={`/defects/${d.id}`}
+                      className="block truncate font-medium underline-offset-2 hover:underline"
+                    >
+                      {d.title}
+                    </Link>
+                    {d.step_number !== null && (
+                      <span className="ml-2 text-xs text-[var(--muted-foreground)]">step {d.step_number}</span>
+                    )}
+                  </td>
+                  {columnPrefs.isVisible('project') && (
+                    <td className="truncate px-4 py-2" style={{ maxWidth: columnPrefs.width('project') }}>
+                      {d.project_name}
+                    </td>
                   )}
-                </td>
-                <td className="px-4 py-2">{d.project_name}</td>
-                <td className="px-4 py-2">
-                  <Badge tone={severityTone(d.severity)}>{d.severity}</Badge>
-                </td>
-                <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">{d.priority}</td>
-                <td className="px-4 py-2">
-                  <Badge tone={STATUS_TONE[d.status]}>{d.status_label}</Badge>
-                </td>
-                <td className="px-4 py-2">
-                  {d.sla_breached ? (
-                    <Badge tone="critical">Breached</Badge>
-                  ) : (
-                    <span className="text-xs text-[var(--muted-foreground)]">{d.age_days}d</span>
+                  {columnPrefs.isVisible('severity') && (
+                    <td className="px-4 py-2">
+                      <Badge tone={severityTone(d.severity)}>{d.severity}</Badge>
+                    </td>
                   )}
-                </td>
-                <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">{d.reported_by_name ?? 'Unknown'}</td>
-                <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
-                  {new Date(d.created_at).toLocaleDateString()}
-                </td>
-              </tr>
-            ))}
+                  {columnPrefs.isVisible('priority') && (
+                    <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">{d.priority}</td>
+                  )}
+                  <td className="px-4 py-2">
+                    <Badge tone={STATUS_TONE[d.status]}>{d.status_label}</Badge>
+                  </td>
+                  {columnPrefs.isVisible('sla') && (
+                    <td className="px-4 py-2">
+                      {d.sla_breached ? (
+                        <Badge tone="critical">Breached</Badge>
+                      ) : (
+                        <span className="text-xs text-[var(--muted-foreground)]">{d.age_days}d</span>
+                      )}
+                    </td>
+                  )}
+                  {columnPrefs.isVisible('reportedBy') && (
+                    <td className="truncate px-4 py-2 text-xs text-[var(--muted-foreground)]" style={{ maxWidth: columnPrefs.width('reportedBy') }}>
+                      {d.reported_by_name ?? 'Unknown'}
+                    </td>
+                  )}
+                  {columnPrefs.isVisible('reported') && (
+                    <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
+                      {new Date(d.created_at).toLocaleDateString()}
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
+      {rowMenu.menu}
 
       <NewDefectDialog
         open={createOpen}

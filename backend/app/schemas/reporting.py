@@ -231,3 +231,28 @@ class FlakyTestEntry(BaseModel):
 class FlakyTestReport(BaseModel):
     project_id: UUID
     tests: list[FlakyTestEntry]
+
+
+class TraceabilityMatrixEntry(BaseModel):
+    """Per-row 'coverage' here means execution coverage -- the percentage of
+    THIS requirement's linked test cases that have been executed at least
+    once -- a different question from RequirementCoverageReport's binary
+    "does this requirement have any linked test case at all." Both are
+    reported (see TraceabilityMatrixReport.overall_requirement_coverage_percentage
+    for the latter), since they answer different questions a QA manager asks."""
+
+    requirement_id: UUID
+    requirement_title: str
+    linked_test_case_count: int
+    passed_count: int
+    failed_count: int
+    blocked_count: int
+    not_executed_count: int
+    coverage_percentage: float
+
+
+class TraceabilityMatrixReport(BaseModel):
+    project_id: UUID
+    total_requirements: int
+    overall_requirement_coverage_percentage: float
+    entries: list[TraceabilityMatrixEntry]

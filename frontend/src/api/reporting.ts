@@ -275,6 +275,32 @@ export function fetchFlakyTests(projectId: string): Promise<FlakyTestReport> {
   return apiFetch<FlakyTestReport>(`/reports/flaky-tests?project_id=${projectId}`)
 }
 
+export interface TraceabilityMatrixEntry {
+  requirement_id: string
+  requirement_title: string
+  linked_test_case_count: number
+  passed_count: number
+  failed_count: number
+  blocked_count: number
+  not_executed_count: number
+  coverage_percentage: number
+}
+
+export interface TraceabilityMatrixReport {
+  project_id: string
+  total_requirements: number
+  overall_requirement_coverage_percentage: number
+  entries: TraceabilityMatrixEntry[]
+}
+
+export function fetchTraceabilityMatrix(projectId: string): Promise<TraceabilityMatrixReport> {
+  return apiFetch<TraceabilityMatrixReport>(`/reports/traceability-matrix?project_id=${projectId}`)
+}
+
+export function traceabilityMatrixExportUrl(projectId: string): string {
+  return `${API_BASE_URL}/reports/traceability-matrix/export?project_id=${projectId}`
+}
+
 export function fetchComplianceDetail(period: CompliancePeriod = {}): Promise<ComplianceReport> {
   const params = new URLSearchParams()
   if (period.periodFrom) params.set('period_from', period.periodFrom)

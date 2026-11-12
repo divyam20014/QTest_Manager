@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import { defectTemplateDownloadUrl, importDefects, type ImportReport } from '@/api/csvImport'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CsvDropZone } from '@/components/ui/csv-drop-zone'
 import { Dialog } from '@/components/ui/dialog'
 import { useToast } from '@/lib/toast'
 
@@ -32,7 +33,7 @@ function downloadErrorReport(report: ImportReport) {
 export function DefectImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [file, setFile] = useState<File | null>(null)
   const [report, setReport] = useState<ImportReport | null>(null)
 
   const importMutation = useMutation({
@@ -55,8 +56,8 @@ export function DefectImportDialog({ open, onClose }: { open: boolean; onClose: 
 
   function handleClose() {
     setReport(null)
+    setFile(null)
     importMutation.reset()
-    if (fileInputRef.current) fileInputRef.current.value = ''
     onClose()
   }
 
@@ -80,19 +81,28 @@ export function DefectImportDialog({ open, onClose }: { open: boolean; onClose: 
           .
         </p>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) importMutation.mutate(file)
-          }}
-          className="text-sm"
-        />
+        {!report && (
+          <CsvDropZone
+            file={file}
+            onSelect={setFile}
+            disabled={importMutation.isPending}
+            helpText="CSV files only"
+          />
+        )}
 
-        {importMutation.isPending && <p className="text-[var(--muted-foreground)]">Importing…</p>}
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+
+        {!report && (
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              disabled={!file || importMutation.isPending}
+              onClick={() => file && importMutation.mutate(file)}
+            >
+              {importMutation.isPending ? 'Importing…' : 'Import'}
+            </Button>
+          </div>
+        )}
 
         {report && (
           <div className="flex flex-col gap-2 rounded-md border border-[var(--border)] p-3">

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +22,7 @@ from app.schemas.auth import (
     LoginRequest,
     MeResponse,
     MfaVerifyRequest,
+    SessionOut,
     TenantMatchOut,
 )
 from app.schemas.platform import TenantCreateRequest, TenantCreateResponse, TenantOut
@@ -131,3 +134,37 @@ def me(ctx: SessionContext = Depends(get_current_context), db: Session = Depends
             permissions=sorted(ctx.permissions),
         ).model_dump()
     )
+
+
+# Phase 4: self-service session management -- a user's own active sessions
+# only (never another user's; that would be a separate admin-facing
+# feature), so no permission check beyond "is logged in" is needed.
+@router.get("/sessions")
+def list_sessions(
+    ctx: SessionContext = Depends(get_current_context), db: Session = Depends(get_db)
+) -> dict:
+    sessions = auth_service.list_sessions(db, ctx.tenant_id, ctx.user_id)
+    return envelope(
+        {
+            "sessions": [
+                SessionOut(
+                    id=s.id,
+                    created_at=s.created_at,
+                    expires_at=s.expires_at,
+                    last_seen_at=s.last_seen_at,
+                    is_current=s.id == ctx.session_id,
+                ).model_dump()
+                for s in sessions
+            ]
+        }
+    )
+
+
+@router.delete("/sessions/{session_id}")
+def revoke_session(
+    session_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    auth_service.revoke_session(db, ctx.tenant_id, ctx.user_id, session_id, ctx.session_id)
+    return envelope({"revoked": True})

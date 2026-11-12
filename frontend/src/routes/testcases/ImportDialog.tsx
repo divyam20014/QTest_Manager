@@ -13,6 +13,7 @@ import {
 import { ApiError } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { CsvDropZone } from '@/components/ui/csv-drop-zone'
 import { Dialog } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
 
@@ -118,12 +119,7 @@ function MappedImportFlow({
             ))}
           </Select>
         </div>
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="text-sm"
-        />
+        <CsvDropZone file={file} onSelect={setFile} disabled={detectMutation.isPending} />
         {detectError && <p className="text-xs text-[var(--destructive)]">{detectError}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onCancel}>
@@ -215,6 +211,7 @@ export function ImportDialog({
   const queryClient = useQueryClient()
   const [report, setReport] = useState<ImportReport | null>(null)
   const [mode, setMode] = useState<'standard' | 'flexible'>('standard')
+  const [file, setFile] = useState<File | null>(null)
 
   const importMutation = useMutation({
     mutationFn: (file: File) => importTestCases(file),
@@ -227,6 +224,7 @@ export function ImportDialog({
   function handleClose() {
     setReport(null)
     setMode('standard')
+    setFile(null)
     importMutation.reset()
     onClose()
   }
@@ -271,19 +269,8 @@ export function ImportDialog({
               .
             </p>
 
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) importMutation.mutate(file)
-              }}
-              className="text-sm"
-            />
+            <CsvDropZone file={file} onSelect={setFile} disabled={importMutation.isPending} />
 
-            {importMutation.isPending && (
-              <p className="text-[var(--muted-foreground)]">Importing…</p>
-            )}
             {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
           </>
         )}
@@ -292,6 +279,15 @@ export function ImportDialog({
           <Button variant="outline" size="sm" onClick={handleClose}>
             Close
           </Button>
+          {!report && mode === 'standard' && (
+            <Button
+              size="sm"
+              disabled={!file || importMutation.isPending}
+              onClick={() => file && importMutation.mutate(file)}
+            >
+              {importMutation.isPending ? 'Importing…' : 'Import'}
+            </Button>
+          )}
         </div>
       </div>
     </Dialog>

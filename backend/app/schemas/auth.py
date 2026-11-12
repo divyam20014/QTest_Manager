@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
@@ -47,3 +48,11 @@ class MeResponse(BaseModel):
     # real permissions. Exposing the actual permission set lets those
     # checks test capability instead of a hardcoded role name.
     permissions: list[str] = []
+
+
+class SessionOut(BaseModel):
+    id: UUID
+    created_at: datetime
+    expires_at: datetime
+    last_seen_at: datetime
+    is_current: bool

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Check, PlayCircle, Plus, X } from 'lucide-react'
+import { AlertTriangle, Check, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   CartesianGrid,
@@ -19,7 +19,6 @@ import {
 import { fetchActivityStream, fetchAggregateReport, fetchDashboardSummary, fetchExecutionTrend } from '@/api/reporting'
 import { listDefects, type Severity } from '@/api/defects'
 import { Badge } from '@/components/ui/badge'
-import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { ChartSkeleton, Skeleton } from '@/components/ui/skeleton'
@@ -244,17 +243,11 @@ export function Dashboard() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold">Dashboard</h1>
-        {/* CTA above the fold: the single most common next action, always
-            reachable without scrolling -- not a marketing banner, a real
-            shortcut to the thing most users are here to do next. */}
-        <div className="flex gap-2">
-          <Link to="/test-cases" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-            <Plus className="size-4" />New Test Case
-          </Link>
-          <Link to="/test-runs" className={buttonVariants({ size: 'sm' })}>
-            <PlayCircle className="size-4" />Create Test Run
-          </Link>
+        <div>
+          <h1 className="text-lg font-semibold">Dashboard</h1>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Current testing status and project health at a glance.
+          </p>
         </div>
       </div>
 

@@ -13,6 +13,7 @@ from app.models.defect import Defect
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
+from app.models.requirement import Requirement, RequirementTestCaseLink
 from app.models.tenant import Tenant
 from app.models.test_asset import Release
 from app.models.test_case import TestCase
@@ -44,6 +45,8 @@ from app.schemas.reporting import (
     ReopenSummary,
     TestCaseSummary,
     TestRunSummary,
+    TraceabilityMatrixEntry,
+    TraceabilityMatrixReport,
     WorkloadEntry,
     WorkloadSummary,
 )
@@ -832,6 +835,142 @@ def get_flaky_tests(
 
     entries.sort(key=lambda e: e.flip_rate, reverse=True)
     return FlakyTestReport(project_id=project_id, tests=entries[:limit])
+
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def get_traceability_matrix(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> TraceabilityMatrixReport:
+    """Phase 3 RTM: per-requirement pass/fail/blocked/not-executed breakdown,
+    not just the linked-test-case COUNT that RequirementCoverageReport gives.
+    'Latest status per test case' is picked the same way get_flaky_tests
+    already orders executions -- by recency -- here across (run creation,
+    started_at, completed_at) since a case's run can still be in progress
+    (no completed_at yet) and should still count as the most recent attempt
+    if its run is the newest one touching that case."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    if accessible is not None and project_id not in accessible:
+        raise ForbiddenError("Project not accessible")
+    _get_project_or_404(db, tenant_id, project_id)
+
+    requirements = list(
+        db.execute(
+            select(Requirement)
+            .where(Requirement.tenant_id == tenant_id, Requirement.project_id == project_id)
+            .order_by(Requirement.created_at)
+        ).scalars()
+    )
+
+    overall_coverage = requirement_service.get_coverage_report(
+        db, tenant_id, role_code, user_id, project_id
+    )
+
+    if not requirements:
+        return TraceabilityMatrixReport(
+            project_id=project_id,
+            total_requirements=0,
+            overall_requirement_coverage_percentage=overall_coverage.coverage_percentage,
+            entries=[],
+        )
+
+    requirement_ids = [r.id for r in requirements]
+    links = db.execute(
+        select(RequirementTestCaseLink.requirement_id, RequirementTestCaseLink.test_case_id).where(
+            RequirementTestCaseLink.requirement_id.in_(requirement_ids)
+        )
+    ).all()
+    req_to_cases: dict[UUID, list[UUID]] = {}
+    all_case_ids: set[UUID] = set()
+    for req_id, case_id in links:
+        req_to_cases.setdefault(req_id, []).append(case_id)
+        all_case_ids.add(case_id)
+
+    latest_status: dict[UUID, str] = {}
+    if all_case_ids:
+        rows = db.execute(
+            select(
+                TestRunCase.test_case_id,
+                TestRunCase.status,
+                TestRun.created_at,
+                TestRunCase.started_at,
+                TestRunCase.completed_at,
+                TestRunCase.id,
+            )
+            .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+            .where(TestRun.project_id == project_id, TestRunCase.test_case_id.in_(all_case_ids))
+        ).all()
+        ordered = sorted(
+            rows,
+            key=lambda r: (r[2], r[3] or _EPOCH, r[4] or _EPOCH, r[5]),
+        )
+        for test_case_id, status, *_rest in ordered:
+            latest_status[test_case_id] = status  # last write wins == most recent
+
+    entries = []
+    for req in requirements:
+        case_ids = req_to_cases.get(req.id, [])
+        total = len(case_ids)
+        passed = failed = blocked = 0
+        for cid in case_ids:
+            status = latest_status.get(cid)
+            if status == "passed":
+                passed += 1
+            elif status == "failed":
+                failed += 1
+            elif status == "blocked":
+                blocked += 1
+        not_executed = total - passed - failed - blocked
+        coverage_pct = round(((passed + failed + blocked) / total) * 100, 1) if total else 0.0
+        entries.append(
+            TraceabilityMatrixEntry(
+                requirement_id=req.id,
+                requirement_title=req.title,
+                linked_test_case_count=total,
+                passed_count=passed,
+                failed_count=failed,
+                blocked_count=blocked,
+                not_executed_count=not_executed,
+                coverage_percentage=coverage_pct,
+            )
+        )
+
+    return TraceabilityMatrixReport(
+        project_id=project_id,
+        total_requirements=len(requirements),
+        overall_requirement_coverage_percentage=overall_coverage.coverage_percentage,
+        entries=entries,
+    )
+
+
+def traceability_matrix_to_csv(report: TraceabilityMatrixReport) -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "Requirement",
+            "Linked Test Cases",
+            "Passed",
+            "Failed",
+            "Blocked",
+            "Not Executed",
+            "Coverage %",
+        ]
+    )
+    for e in report.entries:
+        writer.writerow(
+            [
+                e.requirement_title,
+                e.linked_test_case_count,
+                e.passed_count,
+                e.failed_count,
+                e.blocked_count,
+                e.not_executed_count,
+                e.coverage_percentage,
+            ]
+        )
+    return buf.getvalue()
 
 
 def get_compliance_report(

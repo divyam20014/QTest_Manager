@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -60,7 +60,7 @@ export function ProjectsList() {
   // Pass C (deferred item #3): the Dashboard's "Active Projects" KPI
   // links here with `?status=Active` -- read once on mount so that deep
   // link actually pre-filters instead of silently landing unfiltered.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [domain, setDomain] = useState<Domain | ''>('')
   const [status, setStatus] = useState<ProjectStatus | ''>(
@@ -69,6 +69,24 @@ export function ProjectsList() {
   const [priority, setPriority] = useState<Priority | ''>('')
   const [sort, setSort] = useState('name')
   const [page, setPage] = useState(1)
+
+  // Phase 2: the command palette's "Create Project" quick action
+  // navigates here with ?action=create -- reuses this existing create
+  // dialog rather than inventing a new creation flow.
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      setCreateOpen(true)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('action')
+          return next
+        },
+        { replace: true },
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const projectsQuery = useQuery({
     queryKey: ['projects', { search, domain, status, priority, sort, page }],

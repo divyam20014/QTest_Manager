@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchOwnHistory } from '@/api/audit'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SessionsCard } from '@/components/SessionsCard'
 import { useAuth } from '@/lib/auth'
 
 export function MyAccount() {
@@ -34,6 +35,8 @@ export function MyAccount() {
           </dl>
         </CardContent>
       </Card>
+
+      <SessionsCard />
 
       <Card>
         <CardHeader>

@@ -9,7 +9,7 @@ from app.core.audit import record_audit_event
 from app.core.auth import _enforce_ip_allowlist
 from app.core.config import get_settings
 from app.core.db import set_tenant_context
-from app.core.errors import ForbiddenError, UnauthorizedError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError
 from app.core.logging import logger
 from app.core.mfa import generate_otp_code, send_mfa_code
 from app.core.security import hash_password, verify_password
@@ -202,5 +202,63 @@ def logout(db: Session, session_id: UUID) -> None:
         action="auth.logout",
         entity_type="user",
         entity_id=session_row.user_id,
+    )
+    db.commit()
+
+
+def list_sessions(db: Session, tenant_id: UUID, user_id: UUID) -> list[SessionModel]:
+    """Phase 4 / self-service session management: a user's own active
+    sessions only -- never another user's (that would be an admin-facing
+    feature, deliberately out of scope here)."""
+    now = datetime.now(UTC)
+    return list(
+        db.execute(
+            select(SessionModel)
+            .where(
+                SessionModel.tenant_id == tenant_id,
+                SessionModel.user_id == user_id,
+                SessionModel.revoked_at.is_(None),
+                SessionModel.expires_at > now,
+            )
+            .order_by(SessionModel.last_seen_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+
+
+def revoke_session(
+    db: Session, tenant_id: UUID, user_id: UUID, session_id: UUID, current_session_id: UUID
+) -> None:
+    """Revokes one of the caller's own sessions. Mirrors the
+    platform-admin self-deactivation guard (platform_service.py): revoking
+    the session you're using right now via this endpoint is blocked --
+    use the existing Logout action for that instead, so this endpoint is
+    unambiguously "sign that *other* device out", not a confusing second
+    way to log yourself out."""
+    if session_id == current_session_id:
+        raise ConflictError("Use Logout to end your current session, not Revoke")
+
+    session_row = db.execute(
+        select(SessionModel).where(
+            SessionModel.id == session_id,
+            SessionModel.tenant_id == tenant_id,
+            SessionModel.user_id == user_id,
+        )
+    ).scalar_one_or_none()
+    if session_row is None:
+        raise NotFoundError("Session not found")
+
+    if session_row.revoked_at is not None:
+        return  # already revoked -- idempotent, no duplicate audit entry
+
+    session_row.revoked_at = datetime.now(UTC)
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        action="auth.session_revoked",
+        entity_type="session",
+        entity_id=session_row.id,
     )
     db.commit()

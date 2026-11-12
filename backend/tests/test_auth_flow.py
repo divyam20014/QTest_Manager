@@ -247,3 +247,80 @@ def test_manager_can_list_users_but_tester_cannot(client: TestClient, platform_a
     _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
     tester_list = tester_client.get("/api/v1/users")
     assert tester_list.status_code == 403
+
+
+def test_list_sessions_shows_current_and_others(client: TestClient, platform_admin: dict) -> None:
+    bootstrap = _bootstrap_tenant(client, platform_admin)
+    tenant_id = bootstrap["tenant"]["id"]
+    _login_and_verify(client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+
+    # A second login as the same user opens a second, independent session.
+    other_client = TestClient(client.app)
+    _login_and_verify(other_client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+
+    sessions = client.get("/api/v1/auth/sessions").json()["data"]["sessions"]
+    assert len(sessions) == 2
+    assert sum(1 for s in sessions if s["is_current"]) == 1
+
+
+def test_revoke_other_session_logs_it_out(client: TestClient, platform_admin: dict) -> None:
+    bootstrap = _bootstrap_tenant(client, platform_admin)
+    tenant_id = bootstrap["tenant"]["id"]
+    _login_and_verify(client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+
+    other_client = TestClient(client.app)
+    _login_and_verify(other_client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+
+    sessions = client.get("/api/v1/auth/sessions").json()["data"]["sessions"]
+    other_session_id = next(s["id"] for s in sessions if not s["is_current"])
+
+    revoke_response = client.delete(f"/api/v1/auth/sessions/{other_session_id}")
+    assert revoke_response.status_code == 200, revoke_response.text
+
+    # The now-revoked session can no longer make authenticated requests.
+    stale_response = other_client.get("/api/v1/auth/me")
+    assert stale_response.status_code == 401
+
+    remaining = client.get("/api/v1/auth/sessions").json()["data"]["sessions"]
+    assert len(remaining) == 1
+    assert remaining[0]["is_current"] is True
+
+
+def test_cannot_revoke_own_current_session_via_endpoint(
+    client: TestClient, platform_admin: dict
+) -> None:
+    bootstrap = _bootstrap_tenant(client, platform_admin)
+    tenant_id = bootstrap["tenant"]["id"]
+    _login_and_verify(client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+
+    current_session_id = client.cookies.get("qth_session")
+    response = client.delete(f"/api/v1/auth/sessions/{current_session_id}")
+    assert response.status_code == 409
+
+    # Logout still works as the documented alternative.
+    assert client.post("/api/v1/auth/logout").status_code == 200
+
+
+def test_cannot_revoke_another_users_session(client: TestClient, platform_admin: dict) -> None:
+    bootstrap = _bootstrap_tenant(client, platform_admin)
+    tenant_id = bootstrap["tenant"]["id"]
+    _login_and_verify(client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
+
+    client.post(
+        "/api/v1/users",
+        json={
+            "email": "tester@horizon.com",
+            "name": "Tester One",
+            "role": "tester",
+            "password": "TesterPassw0rd!",
+        },
+    )
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+    tester_session_id = tester_client.cookies.get("qth_session")
+
+    response = client.delete(f"/api/v1/auth/sessions/{tester_session_id}")
+    assert response.status_code == 404
+
+    # The tester's own session is still valid.
+    assert tester_client.get("/api/v1/auth/me").status_code == 200

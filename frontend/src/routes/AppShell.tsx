@@ -7,6 +7,7 @@ import {
   FileStack,
   LayoutDashboard,
   Layers,
+  KeyRound,
   Menu,
   MonitorPlay,
   PanelLeftClose,
@@ -17,13 +18,14 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { type ComponentType, type CSSProperties, useState } from 'react'
+import { type ComponentType, type CSSProperties, useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
 import { getBranding, getLogoUrl } from '@/api/settings'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { Breadcrumbs } from '@/components/Breadcrumbs'
+import { CommandPalette } from '@/components/CommandPalette'
 import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -54,12 +56,14 @@ interface NavSection {
   items: NavItem[]
 }
 
+export type { NavItem, NavSection }
+
 // Information architecture per the product's enterprise-QA-platform
 // redesign brief: grouped sections (Workspace / Test Management /
 // Analytics / Administration) rather than a flat list. Administration
 // items are filtered to Admin-only below (audit.view/user.manage are both
 // Admin-only permissions), matching the prior flat nav's gating.
-const NAV_SECTIONS: NavSection[] = [
+export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Workspace',
     items: [
@@ -87,7 +91,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Administration',
     items: [
       { to: '/admin/users', label: 'Users & Roles', icon: Users, adminOnly: true },
-      { to: '/admin/roles', label: 'Roles & Permissions', icon: Users, adminOnly: true },
+      { to: '/admin/roles', label: 'Roles & Permissions', icon: KeyRound, adminOnly: true },
       { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText, adminOnly: true },
       {
         to: '/admin/environments',
@@ -134,6 +138,21 @@ export function AppShell() {
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useCollapsedPreference()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // Phase 2: Ctrl+K / Cmd+K opens the command palette from anywhere in
+  // the authenticated shell -- the single global hotkey listener lives
+  // here since AppShell wraps every authenticated route via <Outlet />.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
   // Tier 4 / ADR-054: tenant branding (PV-11.4). Any authenticated user
   // can read it (the shell needs it for everyone, not just admins).
   const brandingQuery = useQuery({ queryKey: ['branding'], queryFn: getBranding })
@@ -172,7 +191,7 @@ export function AppShell() {
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] transition-transform duration-200 md:static md:z-auto md:translate-x-0 md:transition-[width] md:duration-200',
+          'fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] transition-transform duration-200 motion-reduce:transition-none md:static md:z-auto md:translate-x-0 md:transition-[width] md:duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
           collapsed ? 'md:w-16' : 'md:w-60',
         )}
@@ -284,6 +303,16 @@ export function AppShell() {
           </div>
           <div className="flex shrink-0 items-center gap-2 text-sm">
             <GlobalSearch />
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="hidden items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] lg:flex"
+            >
+              <span>Jump to…</span>
+              <kbd className="rounded border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px]">
+                Ctrl K
+              </kbd>
+            </button>
             <AIAssistantPanel />
             <ThemeToggle />
             <NotificationBell />
@@ -294,6 +323,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   )
 }

@@ -163,6 +163,35 @@ def flaky_tests(
     return envelope(report.model_dump(mode="json"))
 
 
+@router.get("/reports/traceability-matrix")
+def traceability_matrix(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_traceability_matrix(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/traceability-matrix/export")
+def traceability_matrix_export(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> PlainTextResponse:
+    report = reporting_service.get_traceability_matrix(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    csv_text = reporting_service.traceability_matrix_to_csv(report)
+    return PlainTextResponse(
+        csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="traceability_matrix.csv"'},
+    )
+
+
 @router.get("/reports/compliance-detail")
 def compliance_detail(
     period_from: datetime | None = Query(default=None),

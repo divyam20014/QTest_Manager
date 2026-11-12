@@ -101,3 +101,21 @@ export interface SignupResponse {
 export function signup(req: SignupRequest): Promise<SignupResponse> {
   return apiFetch<SignupResponse>('/auth/signup', { method: 'POST', body: JSON.stringify(req) })
 }
+
+// Phase 4: self-service session management -- the caller's own active
+// sessions only.
+export interface SessionInfo {
+  id: string
+  created_at: string
+  expires_at: string
+  last_seen_at: string
+  is_current: boolean
+}
+
+export function fetchSessions(): Promise<{ sessions: SessionInfo[] }> {
+  return apiFetch<{ sessions: SessionInfo[] }>('/auth/sessions')
+}
+
+export function revokeSession(sessionId: string): Promise<{ revoked: boolean }> {
+  return apiFetch<{ revoked: boolean }>(`/auth/sessions/${sessionId}`, { method: 'DELETE' })
+}

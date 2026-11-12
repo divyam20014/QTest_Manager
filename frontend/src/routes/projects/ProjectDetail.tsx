@@ -138,6 +138,12 @@ export function ProjectDetail() {
           <Link to={`/projects/${project.id}/requirements`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Requirements
           </Link>
+          <Link
+            to={`/projects/${project.id}/traceability-matrix`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            Traceability Matrix
+          </Link>
           <Link to={`/projects/${project.id}/test-cases`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Test Cases
           </Link>

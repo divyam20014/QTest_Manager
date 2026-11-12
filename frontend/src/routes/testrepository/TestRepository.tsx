@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { listProjects, type Project } from '@/api/projects'
@@ -25,9 +25,23 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
+import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
+import { ResizableTh } from '@/components/table/ResizableTh'
+import { useRowContextMenu, type RowContextMenuItem } from '@/components/table/RowContextMenu'
+import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
+import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
 import { TestCaseForm, type TestCaseFormValues } from '@/routes/testcases/TestCaseForm'
 import { useToast } from '@/lib/toast'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
+
+const REPO_COLUMNS: TableColumnDef[] = [
+  { key: 'title', label: 'Title', alwaysVisible: true, defaultWidth: 280 },
+  { key: 'project', label: 'Project', defaultWidth: 160 },
+  { key: 'status', label: 'Status', alwaysVisible: true, defaultWidth: 140 },
+  { key: 'priority', label: 'Priority', defaultWidth: 110 },
+  { key: 'assignee', label: 'Assignee', defaultWidth: 140 },
+  { key: 'steps', label: 'Steps', defaultWidth: 80 },
+]
 
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
@@ -71,11 +85,12 @@ async function runNextAction(tc: TestCase): Promise<void> {
 // tenant's realistic project/case counts.
 export function TestRepository() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   // Pass C (deferred item #3): the Dashboard's test-case KPIs link here
   // with `?status=approved` -- read once on mount so that deep link
   // actually pre-filters instead of silently landing unfiltered.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [status, setStatus] = useState<TestCaseStatus | ''>(
     (searchParams.get('status') as TestCaseStatus | null) ?? '',
   )
@@ -91,6 +106,43 @@ export function TestRepository() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createProjectId, setCreateProjectId] = useState('')
   const { show: showToast } = useToast()
+
+  // Phase 2: the command palette's "Create Test Case" quick action
+  // navigates here with ?action=create -- reuses this existing create
+  // drawer rather than inventing a new creation flow.
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      setCreateProjectId(projectId)
+      setCreateOpen(true)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('action')
+          return next
+        },
+        { replace: true },
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+  const columnPrefs = useColumnPrefs('test-repository', REPO_COLUMNS)
+  const savedFilters = useSavedFilters<Record<string, string>>('test-repository')
+  const rowMenu = useRowContextMenu()
+
+  const currentFilters = {
+    search,
+    status,
+    priority,
+    projectId,
+    showDeprecated: showDeprecated ? 'true' : 'false',
+  }
+  function applyFilters(f: Record<string, string>) {
+    setSearch(f.search ?? '')
+    setStatus((f.status as TestCaseStatus | '') ?? '')
+    setPriority((f.priority as Priority | '') ?? '')
+    setProjectId(f.projectId ?? '')
+    setShowDeprecated(f.showDeprecated === 'true')
+  }
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all'],
@@ -294,6 +346,21 @@ export function TestRepository() {
           />
           Show deprecated
         </label>
+        <div className="ml-auto flex items-end gap-2 pb-0.5">
+          <SavedFiltersMenu
+            current={currentFilters}
+            saved={savedFilters.saved}
+            onSave={savedFilters.save}
+            onApply={applyFilters}
+            onRemove={savedFilters.remove}
+          />
+          <ColumnVisibilityMenu
+            columns={REPO_COLUMNS}
+            isVisible={columnPrefs.isVisible}
+            toggleVisible={columnPrefs.toggleVisible}
+            showAll={columnPrefs.showAll}
+          />
+        </div>
       </div>
 
       {selected.size > 0 && (
@@ -314,7 +381,7 @@ export function TestRepository() {
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)]">
         <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
+          <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>
               <th className="w-10 px-4 py-2">
                 <input
@@ -324,12 +391,32 @@ export function TestRepository() {
                   onChange={toggleAll}
                 />
               </th>
-              <th className="px-4 py-2 font-medium">Title</th>
-              <th className="px-4 py-2 font-medium">Project</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Priority</th>
-              <th className="px-4 py-2 font-medium">Assignee</th>
-              <th className="px-4 py-2 font-medium">Steps</th>
+              <ResizableTh width={columnPrefs.width('title')} onResize={(w) => columnPrefs.setWidth('title', w)}>
+                Title
+              </ResizableTh>
+              {columnPrefs.isVisible('project') && (
+                <ResizableTh width={columnPrefs.width('project')} onResize={(w) => columnPrefs.setWidth('project', w)}>
+                  Project
+                </ResizableTh>
+              )}
+              <ResizableTh width={columnPrefs.width('status')} onResize={(w) => columnPrefs.setWidth('status', w)}>
+                Status
+              </ResizableTh>
+              {columnPrefs.isVisible('priority') && (
+                <ResizableTh width={columnPrefs.width('priority')} onResize={(w) => columnPrefs.setWidth('priority', w)}>
+                  Priority
+                </ResizableTh>
+              )}
+              {columnPrefs.isVisible('assignee') && (
+                <ResizableTh width={columnPrefs.width('assignee')} onResize={(w) => columnPrefs.setWidth('assignee', w)}>
+                  Assignee
+                </ResizableTh>
+              )}
+              {columnPrefs.isVisible('steps') && (
+                <ResizableTh width={columnPrefs.width('steps')} onResize={(w) => columnPrefs.setWidth('steps', w)}>
+                  Steps
+                </ResizableTh>
+              )}
               <th className="px-4 py-2 font-medium"></th>
             </tr>
           </thead>
@@ -346,8 +433,21 @@ export function TestRepository() {
             {isLoading && <TableSkeleton columns={7} />}
             {rows.map(({ project, case: tc }) => {
               const nextAction = NEXT_ACTION[tc.status]
+              const contextItems: RowContextMenuItem[] = [
+                { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
+                ...(nextAction
+                  ? [{ label: nextAction.label, onSelect: () => inlineActionMutation.mutate(tc) }]
+                  : []),
+                ...(tc.status === 'draft'
+                  ? [{ label: 'Delete', destructive: true, onSelect: () => deleteMutation.mutate(tc.id) }]
+                  : []),
+              ]
               return (
-                <tr key={tc.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
+                <tr
+                  key={tc.id}
+                  className="border-t border-[var(--border)] hover:bg-[var(--muted)]"
+                  onContextMenu={(e) => rowMenu.openAt(e, contextItems)}
+                >
                   <td className="px-4 py-2">
                     <input
                       type="checkbox"
@@ -356,29 +456,38 @@ export function TestRepository() {
                       onChange={() => toggleRow(tc.id)}
                     />
                   </td>
-                  <td className="px-4 py-2">
-                    <Link to={`/test-cases/${tc.id}`} className="font-medium underline-offset-2 hover:underline">
+                  <td className="px-4 py-2" style={{ maxWidth: columnPrefs.width('title') }}>
+                    <Link
+                      to={`/test-cases/${tc.id}`}
+                      className="block truncate font-medium underline-offset-2 hover:underline"
+                    >
                       {tc.title}
                     </Link>
                   </td>
-                  <td className="px-4 py-2">
-                    <Link
-                      to={`/projects/${project.id}/test-cases`}
-                      className="text-[var(--muted-foreground)] hover:underline"
-                    >
-                      {project.name}
-                    </Link>
-                  </td>
+                  {columnPrefs.isVisible('project') && (
+                    <td className="px-4 py-2" style={{ maxWidth: columnPrefs.width('project') }}>
+                      <Link
+                        to={`/projects/${project.id}/test-cases`}
+                        className="block truncate text-[var(--muted-foreground)] hover:underline"
+                      >
+                        {project.name}
+                      </Link>
+                    </td>
+                  )}
                   <td className="px-4 py-2">
                     <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>
                   </td>
-                  <td className="px-4 py-2">
-                    <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>
-                  </td>
-                  <td className="px-4 py-2 text-[var(--muted-foreground)]">
-                    {tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'}
-                  </td>
-                  <td className="px-4 py-2">{tc.steps.length}</td>
+                  {columnPrefs.isVisible('priority') && (
+                    <td className="px-4 py-2">
+                      <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>
+                    </td>
+                  )}
+                  {columnPrefs.isVisible('assignee') && (
+                    <td className="px-4 py-2 truncate text-[var(--muted-foreground)]" style={{ maxWidth: columnPrefs.width('assignee') }}>
+                      {tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'}
+                    </td>
+                  )}
+                  {columnPrefs.isVisible('steps') && <td className="px-4 py-2">{tc.steps.length}</td>}
                   <td className="px-4 py-2 text-right">
                     <div className="flex justify-end gap-1.5">
                       {nextAction && (
@@ -409,6 +518,7 @@ export function TestRepository() {
           </tbody>
         </table>
       </div>
+      {rowMenu.menu}
 
       {rows.length > 0 && (
         <p className="text-xs text-[var(--muted-foreground)]">

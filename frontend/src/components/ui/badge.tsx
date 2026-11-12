@@ -2,11 +2,15 @@ import type { HTMLAttributes } from 'react'
 
 import { cn } from '@/lib/utils'
 
+// Derived from the shared --status-* tokens (index.css) so every status
+// indicator in the app -- badges, toasts, empty states -- draws from one
+// palette instead of badges hardcoding their own emerald/amber/red shades
+// that drift from the rest of the app's dark-mode-aware status colors.
 const TONE_CLASSES = {
-  neutral: 'bg-[var(--muted)] text-[var(--muted-foreground)]',
-  positive: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
-  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-  critical: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300',
+  neutral: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral)]',
+  positive: 'bg-[var(--status-good-bg)] text-[var(--status-good)]',
+  warning: 'bg-[var(--status-warning-bg)] text-[var(--status-warning)]',
+  critical: 'bg-[var(--status-serious-bg)] text-[var(--status-serious)]',
 } as const
 
 export function Badge({

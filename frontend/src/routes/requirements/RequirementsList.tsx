@@ -99,12 +99,18 @@ export function RequirementsList() {
           <Badge tone={coverageQuery.data.coverage_percentage === 100 ? 'positive' : 'neutral'}>
             {coverageQuery.data.coverage_percentage}%
           </Badge>
+          <Link
+            to={`/projects/${projectId}/traceability-matrix`}
+            className="ml-auto text-sm underline-offset-2 hover:underline"
+          >
+            View full Traceability Matrix →
+          </Link>
         </div>
       )}
 
       <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
         <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
+          <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
             <tr>
               <th className="px-4 py-2 font-medium">Title</th>
               <th className="px-4 py-2 font-medium">Version</th>
