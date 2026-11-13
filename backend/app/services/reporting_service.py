@@ -14,9 +14,14 @@ from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink
+from app.models.shared_step import SharedStep
 from app.models.tenant import Tenant
-from app.models.test_asset import Release
+from app.models.test_asset import Build, Release
 from app.models.test_case import TestCase
+from app.models.test_data_set import TestDataSet
+from app.models.test_module import TestModule
+from app.models.test_plan import TestPlan
+from app.models.test_suite import TestSuite
 from app.schemas.reporting import (
     ActivityEntry,
     AggregateReport,
@@ -236,26 +241,188 @@ def get_domain_distribution(
     return entries
 
 
+ACTIVITY_FEED_LIMIT = 10
+# A tester's feed is filtered in Python after fetching a generous candidate
+# window (below), since resolving "which project does this entity belong
+# to" varies by entity_type and isn't worth a single giant UNION query at
+# this feed's scale. Admin/manager-tier viewers skip this window entirely
+# and query LIMIT 10 directly (see role_code branch below), so this cost is
+# only paid for the tier that actually needs it.
+_ACTIVITY_FEED_CANDIDATE_WINDOW = 200
+
+# Entity types with a direct `project_id` column, keyed by their
+# AuditLog.entity_type string. Typed `Any` rather than `type[DeclarativeBase]`
+# since mypy can't otherwise see each concrete model's own `id`/`project_id`/
+# `tenant_id` columns through a shared base-class signature.
+_DIRECT_PROJECT_MODELS: dict[str, Any] = {
+    "test_case": TestCase,
+    "defect": Defect,
+    "test_run": TestRun,
+    "requirement": Requirement,
+    "test_module": TestModule,
+    "test_suite": TestSuite,
+    "test_plan": TestPlan,
+    "shared_step": SharedStep,
+    "build": Build,
+    "release": Release,
+}
+
+# Entity types that are tenant-wide/administrative and never belong to a
+# project at all (hidden from tester-tier viewers entirely, per the user's
+# confirmed decision; still visible to admin/manager-tier viewers, same as
+# every other tenant-wide report in this app). "user" covers both genuine
+# account-security actions (auth.login_attempted/mfa_verified/logout/
+# sso_login -- already excluded for every role below by their "auth."
+# action prefix, before this set is even consulted) and legitimate
+# administrative actions on that same entity_type (user.created/updated/
+# password_reset/gdpr_erased) -- only the latter reach this bucket, since
+# the former never survive the action-prefix filter.
+_NO_PROJECT_ENTITY_TYPES = frozenset(
+    {
+        "tenant",
+        "subscription",
+        "custom_field_definition",
+        "user_invite",
+        "role",
+        "scim_token",
+        "service_token",
+        "status_label",
+        "field_option",
+        "test_case_import_batch",
+        "defect_import_batch",
+        "environment",
+        "user",
+        "session",
+    }
+)
+
+
+def _resolve_entity_project_ids(
+    db: Session, tenant_id: UUID, entries: list[tuple[str, UUID]]
+) -> dict[tuple[str, UUID], UUID | None]:
+    """Maps each (entity_type, entity_id) pair to its owning project id, or
+    None if that entity has no project (tenant-wide/administrative, or an
+    entity_type this function doesn't recognize -- treated the same, safe
+    default: not visible to a tester unless they're the actor)."""
+    result: dict[tuple[str, UUID], UUID | None] = {}
+    ids_by_type: dict[str, set[UUID]] = {}
+    for entity_type, entity_id in entries:
+        ids_by_type.setdefault(entity_type, set()).add(entity_id)
+
+    for entity_type, ids in ids_by_type.items():
+        if entity_type == "project":
+            for entity_id in ids:
+                result[(entity_type, entity_id)] = entity_id
+        elif entity_type in _DIRECT_PROJECT_MODELS:
+            model = _DIRECT_PROJECT_MODELS[entity_type]
+            rows = db.execute(
+                select(model.id, model.project_id).where(
+                    model.tenant_id == tenant_id, model.id.in_(ids)
+                )
+            ).all()
+            for entity_id, project_id in rows:
+                result[(entity_type, entity_id)] = project_id
+        elif entity_type == "test_run_case":
+            rows = db.execute(
+                select(TestRunCase.id, TestRun.project_id)
+                .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+                .where(TestRunCase.tenant_id == tenant_id, TestRunCase.id.in_(ids))
+            ).all()
+            for entity_id, project_id in rows:
+                result[(entity_type, entity_id)] = project_id
+        elif entity_type == "execution_step":
+            rows = db.execute(
+                select(ExecutionStep.id, TestRun.project_id)
+                .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
+                .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+                .where(ExecutionStep.tenant_id == tenant_id, ExecutionStep.id.in_(ids))
+            ).all()
+            for entity_id, project_id in rows:
+                result[(entity_type, entity_id)] = project_id
+        elif entity_type == "test_data_set":
+            rows = db.execute(
+                select(TestDataSet.id, TestCase.project_id)
+                .join(TestCase, TestCase.id == TestDataSet.test_case_id)
+                .where(TestDataSet.tenant_id == tenant_id, TestDataSet.id.in_(ids))
+            ).all()
+            for entity_id, project_id in rows:
+                result[(entity_type, entity_id)] = project_id
+        else:
+            # Includes _NO_PROJECT_ENTITY_TYPES and any unrecognized future
+            # entity_type -- both resolve to "no project," which a tester
+            # only sees if they were the actor (checked by the caller).
+            for entity_id in ids:
+                result[(entity_type, entity_id)] = None
+
+    return result
+
+
 def get_activity_stream(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID
 ) -> list[ActivityEntry]:
-    rows = db.execute(
+    base_query = (
         select(AuditLog, User.name)
         .outerjoin(User, User.id == AuditLog.user_id)
-        .where(AuditLog.tenant_id == tenant_id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(10)
-    ).all()
-    return [
-        ActivityEntry(
-            user_name=user_name,
-            action=log.action,
-            entity_type=log.entity_type,
-            entity_id=log.entity_id,
-            created_at=log.created_at,
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            # auth.* actions (login, MFA, logout, SSO login, session
+            # revocation) are account/session-security events, never
+            # "work activity" -- excluded for every role, not just
+            # narrowed by tier below. Every entity_type="session" row in
+            # this app is written exclusively as auth.session_revoked
+            # (see auth_service.py), so this one prefix check also
+            # fully covers that entity_type with no separate clause.
+            ~AuditLog.action.startswith("auth."),
         )
-        for log, user_name in rows
-    ]
+        .order_by(AuditLog.created_at.desc())
+    )
+
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    if accessible is None:
+        # Admin/manager-tier: tenant-wide visibility of work activity,
+        # same as every other report in this app -- the universal
+        # account-security exclusion above still applies.
+        rows = db.execute(base_query.limit(ACTIVITY_FEED_LIMIT)).all()
+        return [
+            ActivityEntry(
+                user_name=user_name,
+                action=log.action,
+                entity_type=log.entity_type,
+                entity_id=log.entity_id,
+                created_at=log.created_at,
+            )
+            for log, user_name in rows
+        ]
+
+    # Tester-tier: fetch a generous candidate window, then keep only rows
+    # the viewer themself performed, or whose entity belongs to a project
+    # they have access to. Tenant-wide administrative entity types (no
+    # project at all) are hidden unless the viewer was the actor.
+    candidates = db.execute(base_query.limit(_ACTIVITY_FEED_CANDIDATE_WINDOW)).all()
+    project_by_entity = _resolve_entity_project_ids(
+        db, tenant_id, [(log.entity_type, log.entity_id) for log, _ in candidates]
+    )
+
+    entries: list[ActivityEntry] = []
+    for log, user_name in candidates:
+        if len(entries) >= ACTIVITY_FEED_LIMIT:
+            break
+        if log.user_id == user_id:
+            visible = True
+        else:
+            entity_project_id = project_by_entity.get((log.entity_type, log.entity_id))
+            visible = entity_project_id is not None and entity_project_id in accessible
+        if visible:
+            entries.append(
+                ActivityEntry(
+                    user_name=user_name,
+                    action=log.action,
+                    entity_type=log.entity_type,
+                    entity_id=log.entity_id,
+                    created_at=log.created_at,
+                )
+            )
+    return entries
 
 
 def _resolve_user_names(db: Session, user_ids: set[UUID]) -> dict[UUID, str]:

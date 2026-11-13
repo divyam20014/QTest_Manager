@@ -136,6 +136,132 @@ def test_activity_stream_returns_recent_audit_events(
     assert any(entry["user_name"] == "Admin A" for entry in stream)
 
 
+def test_activity_stream_excludes_auth_events_for_every_role(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project = _full_scenario(client, platform_admin)
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project['id']}/members", json={"user_id": tester_id})
+
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+    # The login above itself generated auth.login_attempted/auth.mfa_verified
+    # for the tester, and _full_scenario's login generated the same for the
+    # admin -- both must be universally excluded, not just narrowed by role.
+
+    admin_stream = client.get("/api/v1/dashboard/activity-stream").json()["data"]
+    tester_stream = tester_client.get("/api/v1/dashboard/activity-stream").json()["data"]
+    for stream in (admin_stream, tester_stream):
+        actions = {entry["action"] for entry in stream}
+        entity_types = {entry["entity_type"] for entry in stream}
+        assert not any(a.startswith("auth.") for a in actions)
+        assert "session" not in entity_types
+
+
+def test_tester_activity_feed_restricted_to_own_and_accessible_projects(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project_a = _full_scenario(client, platform_admin)
+    project_b = _create_project(client, "Unrelated Health Claims", domain="Health")
+    case_b = _create_approved_case(client, project_b["id"], "Unrelated Case")
+
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project_a['id']}/members", json={"user_id": tester_id})
+    # Deliberately NOT added as a member of project_b.
+
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+
+    # Tester acts in their own accessible project (project_a's case was
+    # created by _full_scenario) -- generate a fresh, attributable action.
+    case_a_id = client.get(f"/api/v1/projects/{project_a['id']}/test-cases").json()["data"][
+        "items"
+    ][0]["id"]
+    comment_response = tester_client.post(
+        f"/api/v1/test-cases/{case_a_id}/comments", json={"body": "Looks good to me"}
+    )
+    assert comment_response.status_code == 200, comment_response.text
+
+    tester_stream = tester_client.get("/api/v1/dashboard/activity-stream").json()["data"]
+    tester_entity_ids = {entry["entity_id"] for entry in tester_stream}
+    assert case_a_id in tester_entity_ids
+    # The admin's action on project_b's case must not leak into the
+    # tester's feed -- they have no access to project_b at all.
+    assert case_b["id"] not in tester_entity_ids
+
+    # The admin (tenant-wide visibility) must still see both.
+    admin_stream = client.get("/api/v1/dashboard/activity-stream").json()["data"]
+    admin_entity_ids = {entry["entity_id"] for entry in admin_stream}
+    assert case_a_id in admin_entity_ids
+    assert case_b["id"] in admin_entity_ids
+
+
+def test_tester_sees_own_past_action_after_losing_project_access(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project_a = _full_scenario(client, platform_admin)
+    project_b = _create_project(client, "Temp Access Claims", domain="Health")
+    case_b = _create_approved_case(client, project_b["id"], "Temp Access Case")
+
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project_b['id']}/members", json={"user_id": tester_id})
+
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+    comment_response = tester_client.post(
+        f"/api/v1/test-cases/{case_b['id']}/comments", json={"body": "Reviewed while I had access"}
+    )
+    assert comment_response.status_code == 200, comment_response.text
+
+    # Now revoke the tester's membership on project_b entirely.
+    remove_response = client.delete(f"/api/v1/projects/{project_b['id']}/members/{tester_id}")
+    assert remove_response.status_code == 200, remove_response.text
+
+    tester_stream = tester_client.get("/api/v1/dashboard/activity-stream").json()["data"]
+    own_action = next(
+        (e for e in tester_stream if e["entity_id"] == case_b["id"]), None
+    )
+    assert own_action is not None, "tester should still see their own past action"
+    assert own_action["action"] == "comment.created"
+
+
+def test_tester_cannot_see_tenant_wide_administrative_activity(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project = _full_scenario(client, platform_admin)
+    tester_id = _create_user(
+        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
+    )
+    client.post(f"/api/v1/projects/{project['id']}/members", json={"user_id": tester_id})
+
+    # A tenant-wide administrative action with no project at all.
+    definition_response = client.post(
+        "/api/v1/custom-fields/definitions",
+        json={
+            "entity_type": "test_case",
+            "field_key": "regulatory_flag",
+            "label": "Regulatory Flag",
+            "field_type": "boolean",
+        },
+    )
+    assert definition_response.status_code == 200, definition_response.text
+
+    tester_client = TestClient(client.app)
+    _login_and_verify(tester_client, tenant_id, "tester@horizon.com", "TesterPassw0rd!")
+
+    tester_stream = tester_client.get("/api/v1/dashboard/activity-stream").json()["data"]
+    admin_stream = client.get("/api/v1/dashboard/activity-stream").json()["data"]
+
+    assert not any(e["entity_type"] == "custom_field_definition" for e in tester_stream)
+    assert any(e["entity_type"] == "custom_field_definition" for e in admin_stream)
+
+
 def test_aggregate_report_by_project_and_domain(client: TestClient, platform_admin: dict) -> None:
     _full_scenario(client, platform_admin)
 
