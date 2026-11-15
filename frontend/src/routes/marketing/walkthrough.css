@@ -1,0 +1,293 @@
+/* Guided walkthrough dialog. Loaded only with the lazy walkthrough chunk. The
+   dialog is rendered inside .qth-landing, so the marketing palette and the
+   reduced-motion rules in marketing.css already apply. */
+.qth-landing .lp-wt {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.qth-landing .lp-wt * { border-color: var(--lp-dark-border); }
+.qth-landing .lp-wt *:focus-visible { outline-color: var(--lp-electric); }
+
+.lp-wt-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 11, 22, 0.84);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: lp-wt-fade 200ms ease-out;
+}
+
+.lp-wt-panel {
+  --wt-h: min(calc(100dvh - 32px), 900px);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1280px;
+  height: var(--wt-h);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  color: var(--lp-on-dark);
+  background:
+    radial-gradient(60% 50% at 85% 0%, rgba(67, 56, 202, 0.3), transparent 70%),
+    radial-gradient(40% 40% at 0% 100%, rgba(59, 130, 246, 0.14), transparent 70%),
+    var(--lp-navy-900);
+  box-shadow: 0 40px 120px -20px rgba(0, 0, 0, 0.8);
+  outline: none;
+  animation: lp-wt-in 240ms cubic-bezier(.2, .7, .2, 1);
+}
+@media (max-width: 767px) {
+  .qth-landing .lp-wt { padding: 0; }
+  .lp-wt-panel { --wt-h: 100dvh; max-height: none; border: 0; border-radius: 0; }
+}
+/* The panel only takes focus so the dialog is announced; it is not a control. */
+.qth-landing .lp-wt .lp-wt-panel:focus-visible { outline: none; }
+
+/* ---------- header ---------- */
+.lp-wt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--lp-dark-border);
+}
+@media (min-width: 768px) { .lp-wt-head { padding: 16px 20px; align-items: center; } }
+.lp-wt-heading {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+@media (min-width: 768px) { .lp-wt-heading { font-size: 20px; } }
+.lp-wt-note {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.08);
+  color: #fde68a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.lp-wt-note svg { margin-top: 2px; }
+.lp-wt-head-actions { display: flex; flex-shrink: 0; gap: 8px; }
+.lp-wt-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 40px;
+  min-height: 40px;
+  padding-inline: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--lp-on-dark);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.lp-wt-icon-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
+.lp-wt-icon-label { display: none; }
+@media (min-width: 640px) {
+  .lp-wt-icon-btn { padding-inline: 14px; }
+  .lp-wt-icon-label { display: inline; }
+}
+
+/* ---------- body ---------- */
+.lp-wt-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+@media (min-width: 768px) { .lp-wt-body { padding: 20px; } }
+.lp-wt-grid { display: grid; gap: 20px; margin-block: auto; animation: lp-fade 260ms ease-out; }
+@media (min-width: 1024px) {
+  .lp-wt-grid { grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: center; }
+  .lp-wt-stage {
+    width: 100%;
+    max-width: calc((var(--wt-h) - 244px) * var(--ar));
+    margin-inline: auto;
+  }
+}
+.lp-wt-frame { margin: 0; }
+.lp-wt-shot { position: relative; line-height: 0; background: #0b1220; }
+.lp-wt-callouts { position: absolute; inset: 0; pointer-events: none; }
+
+.lp-wt-ring {
+  position: absolute;
+  border: 2px solid #a5b4fc;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28), 0 0 28px rgba(99, 102, 241, 0.55);
+  animation: lp-wt-ring-in 420ms cubic-bezier(.2, .7, .2, 1) backwards, lp-wt-pulse 2.4s ease-in-out infinite;
+}
+.lp-wt-ring b {
+  position: absolute;
+  top: -11px;
+  left: -11px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--lp-indigo-strong);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+@keyframes lp-wt-ring-in { from { opacity: 0; transform: scale(1.05); } }
+@keyframes lp-wt-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28), 0 0 28px rgba(99, 102, 241, 0.55); }
+  50% { box-shadow: 0 0 0 7px rgba(99, 102, 241, 0.12), 0 0 38px rgba(99, 102, 241, 0.72); }
+}
+@keyframes lp-wt-fade { from { opacity: 0; } }
+@keyframes lp-wt-in { from { opacity: 0; transform: translateY(12px) scale(0.985); } }
+
+/* ---------- caption ---------- */
+.lp-wt-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a5b4fc;
+}
+.lp-wt-title {
+  margin-top: 8px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.lp-wt-text { margin-top: 10px; font-size: 15px; color: var(--lp-on-dark-2); text-wrap: pretty; }
+.lp-wt-legend { display: grid; gap: 12px; margin-top: 18px; }
+.lp-wt-legend li { display: flex; gap: 10px; font-size: 14px; line-height: 1.45; color: var(--lp-on-dark); }
+.lp-wt-legend b {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--lp-indigo-strong);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+.lp-wt-scope {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--lp-dark-border);
+  font-size: 12px;
+  color: var(--lp-on-dark-3);
+}
+
+/* ---------- closing step ---------- */
+.lp-wt-end {
+  max-width: 640px;
+  margin: auto;
+  padding: 24px 0;
+  text-align: center;
+  animation: lp-fade 260ms ease-out;
+}
+.lp-wt-end-title {
+  margin-top: 12px;
+  font-size: clamp(24px, 3.2vw, 34px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: #fff;
+  text-wrap: balance;
+}
+.lp-wt-end .lp-wt-text { font-size: 16px; }
+.lp-wt-end-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+.lp-wt-replay {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding-inline: 14px;
+  border-radius: 10px;
+  color: var(--lp-on-dark-2);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lp-wt-replay:hover { color: #fff; }
+
+/* ---------- footer ---------- */
+.lp-wt-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--lp-dark-border);
+  background: rgba(7, 11, 22, 0.4);
+}
+@media (min-width: 768px) {
+  .lp-wt-foot { flex-direction: row; align-items: center; gap: 24px; padding: 14px 20px; }
+}
+.lp-wt-segs { display: flex; flex: 1; gap: 6px; }
+.lp-wt-segs li { flex: 1; min-width: 0; }
+.lp-wt-seg {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 24px;
+  cursor: pointer;
+}
+.lp-wt-seg::before,
+.lp-wt-seg i {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 10px;
+  height: 4px;
+  border-radius: 999px;
+}
+.lp-wt-seg::before { background: rgba(255, 255, 255, 0.18); }
+.lp-wt-seg:hover::before { background: rgba(255, 255, 255, 0.3); }
+.lp-wt-seg i {
+  background: #818cf8;
+  transform-origin: left center;
+}
+.lp-wt-seg[data-state="todo"] i { transform: scaleX(0); }
+.lp-wt-seg[data-state="done"] i { background: #6366f1; }
+.lp-wt-seg i[data-run="true"] { animation: lp-wt-fill var(--ms) linear backwards; }
+@keyframes lp-wt-fill { from { transform: scaleX(0); } }
+.qth-landing .lp-wt .lp-wt-seg:focus-visible { border-radius: 8px; outline-offset: 1px; }
+
+.lp-wt-nav { display: flex; gap: 8px; }
+.lp-wt-nav .lp-btn { flex: 1; }
+@media (min-width: 768px) { .lp-wt-nav .lp-btn { flex: none; min-width: 96px; } }
+.lp-wt-nav .lp-btn[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; transform: none; }
+.lp-wt-nav .lp-btn[aria-disabled="true"]:hover { transform: none; }

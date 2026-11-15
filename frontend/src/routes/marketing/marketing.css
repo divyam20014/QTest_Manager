@@ -40,7 +40,7 @@
 .qth-landing * {
   border-color: var(--lp-border);
 }
-.qth-landing :where(.lp-hero, .lp-dark, .lp-nav, .lp-mobile-menu, .lp-cta-panel) * {
+.qth-landing :where(.lp-hero, .lp-dark, .lp-nav, .lp-mobile-menu, .lp-cta-panel, .lp-sticky-cta) * {
   border-color: var(--lp-dark-border);
 }
 /* Light cards and dropdowns placed on dark surfaces keep light borders. */
@@ -53,7 +53,7 @@
   outline-offset: 3px;
   border-radius: 6px;
 }
-.qth-landing :where(.lp-hero, .lp-dark, .lp-nav, .lp-mobile-menu, .lp-cta-panel) *:focus-visible {
+.qth-landing :where(.lp-hero, .lp-dark, .lp-nav, .lp-mobile-menu, .lp-cta-panel, .lp-sticky-cta) *:focus-visible {
   outline-color: var(--lp-electric);
 }
 .qth-landing :where(.lp-hero, .lp-dark, .lp-nav) :where(.lp-card, .lp-dropdown) *:focus-visible {
@@ -180,6 +180,13 @@
   background: #fff;
 }
 .lp-btn-ghost:hover { border-color: var(--lp-indigo-strong); color: var(--lp-indigo-strong); }
+.lp-btn-pill { border-radius: 999px; min-height: 48px; padding-inline: 26px; }
+.lp-btn-light {
+  background: #fff;
+  color: var(--lp-navy-900);
+  box-shadow: 0 10px 30px -12px rgba(129, 140, 248, 0.9);
+}
+.lp-btn-light:hover { background: #e0e7ff; transform: translateY(-1px); }
 .lp-btn svg { transition: transform 160ms ease; }
 .lp-btn:hover svg.lp-arrow { transform: translateX(2px); }
 
@@ -305,6 +312,101 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* Home hero: centred copy over a product frame that runs off the bottom edge,
+   lit by a light bar and indigo/blue glows in the lower corners. */
+.lp-hero-home::before {
+  background:
+    radial-gradient(42% 48% at 0% 100%, rgba(67, 56, 202, 0.8), transparent 72%),
+    radial-gradient(42% 48% at 100% 100%, rgba(59, 130, 246, 0.62), transparent 72%),
+    radial-gradient(50% 32% at 50% 0%, rgba(67, 56, 202, 0.24), transparent 70%),
+    linear-gradient(180deg, #070b16 0%, var(--lp-navy-950) 55%, var(--lp-navy-900) 100%);
+}
+.lp-h1-home { font-size: clamp(38px, 4.7vw, 64px); }
+.lp-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--lp-dark-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  text-align: left;
+}
+.lp-metric-label { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--lp-on-dark); }
+.lp-metric-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.lp-metric-scope { font-size: 12px; line-height: 1.3; color: var(--lp-on-dark-3); }
+@media (min-width: 1280px) {
+  .lp-metric { flex-direction: row; align-items: center; gap: 14px; }
+  .lp-metric-value { flex-shrink: 0; }
+}
+
+.lp-stage { max-width: 1080px; margin-inline: auto; }
+.lp-tabs-dark {
+  border: 1px solid var(--lp-dark-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+.lp-tabs-dark .lp-tab { color: var(--lp-on-dark-2); }
+@media (max-width: 1023px) {
+  /* The row scrolls sideways here; the fade hints that there is more. */
+  .lp-tabs-dark {
+    mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+    padding-right: 36px;
+  }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .lp-tabs-dark .lp-tab { padding-inline: 10px; gap: 6px; }
+}
+.lp-tabs-dark .lp-tab:hover { color: #fff; background: rgba(255, 255, 255, 0.08); border-color: transparent; }
+.lp-tabs-dark .lp-tab[aria-selected="true"] { color: var(--lp-navy-900); background: #fff; border-color: #fff; }
+.lp-glowbar {
+  width: 92%;
+  height: 2px;
+  margin: 22px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #fff 14%, #fff 86%, transparent);
+  box-shadow:
+    0 0 14px 1px rgba(255, 255, 255, 0.8),
+    0 0 56px 10px rgba(129, 140, 248, 0.6),
+    0 0 130px 34px rgba(59, 130, 246, 0.32);
+}
+/* The frame's last few percent sit below the hero's clipped bottom edge. */
+.lp-stage-frame { margin-top: 22px; margin-bottom: -4%; }
+.lp-stage-frame .lp-frame { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.lp-stage-frame .lp-frame img { animation: lp-fade 260ms ease-out; }
+/* One aspect ratio for every tour screenshot, so switching tabs never moves the page. */
+.lp-frame-fixed img { aspect-ratio: 1440 / 900; object-fit: cover; object-position: top; }
+
+/* Mobile-only demo button that follows the reader once the hero's own
+   buttons have scrolled away. */
+.lp-sticky-cta {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 40;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(16, 24, 40, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--lp-dark-border);
+  transform: translateY(100%);
+  visibility: hidden;
+  transition: transform 220ms ease, visibility 0s linear 220ms;
+}
+.lp-sticky-cta[data-visible="true"] {
+  transform: none;
+  visibility: visible;
+  transition: transform 220ms ease;
+}
+.lp-sticky-cta .lp-btn { width: 100%; }
+
 /* ---------- product screenshots ---------- */
 .lp-frame {
   border-radius: 14px;
@@ -340,17 +442,6 @@
   border: 1px solid var(--lp-border);
 }
 .lp-frame img { display: block; width: 100%; height: auto; }
-
-.lp-float-card {
-  position: absolute;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid var(--lp-border);
-  box-shadow: 0 18px 40px -16px rgba(15, 23, 42, 0.45);
-  color: var(--lp-ink);
-  animation: lp-float 7s ease-in-out infinite;
-}
-@keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
 /* ---------- cards ---------- */
 .lp-card {
@@ -404,8 +495,10 @@
   white-space: nowrap;
 }
 .lp-status-available { color: #15803d; background: #dcfce7; border: 1px solid #bbf7d0; }
+.lp-status-partial { color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; }
 .lp-status-planned { color: #92400e; background: #fffbeb; border: 1px dashed #f59e0b; }
 .lp-dark .lp-status-available { color: #86efac; background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.32); }
+.lp-dark .lp-status-partial { color: #93c5fd; background: rgba(59, 130, 246, 0.12); border-color: rgba(96, 165, 250, 0.4); }
 .lp-dark .lp-status-planned { color: #fcd34d; background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.5); }
 
 /* ---------- product tour ---------- */
@@ -430,6 +523,15 @@
 }
 .lp-tab-panel-enter { animation: lp-fade 260ms ease-out; }
 @keyframes lp-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Holds the Quality Intelligence Center's place while its code loads. */
+.lp-qc-placeholder {
+  min-height: 720px;
+  border-radius: 24px;
+  background: var(--lp-navy-900);
+  opacity: 0.55;
+}
+@media (min-width: 1024px) { .lp-qc-placeholder { min-height: 1170px; } }
 
 /* ---------- lifecycle ---------- */
 .lp-step-num {

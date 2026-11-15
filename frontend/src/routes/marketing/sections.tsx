@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import {
   CAPABILITIES,
+  DIFFERENTIATORS,
   ENTERPRISE_POINTS,
   FAQ,
   INTELLIGENCE,
@@ -45,10 +46,54 @@ export function ProblemSection() {
   )
 }
 
-export function SolutionSection({ withLink = true }: { withLink?: boolean }) {
+/** Connect / Understand / Control, directly under the home hero. */
+export function PillarStrip() {
+  return (
+    <section className="border-b border-[var(--lp-border)] bg-white py-14 lg:py-16" aria-labelledby="lp-pillars-title">
+      <div className="lp-container">
+        <h2
+          id="lp-pillars-title"
+          className="lp-reveal mx-auto max-w-2xl text-center text-[clamp(20px,2.2vw,26px)] font-semibold leading-snug tracking-tight text-[var(--lp-ink)]"
+        >
+          Clarity and confidence for everyone responsible for quality.
+        </h2>
+        <ul className="mt-10 grid gap-8 md:grid-cols-3 md:gap-0 md:divide-x md:divide-[var(--lp-border)]">
+          {PILLARS.map(({ icon: Icon, verb, title, body }, i) => (
+            <li key={verb} className="lp-reveal flex gap-4 md:px-8 md:first:pl-0 md:last:pr-0" style={delay(i * 80)}>
+              <span className="lp-icon">
+                <Icon className="size-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h3 className="text-[20px] font-bold leading-tight tracking-tight text-[var(--lp-ink)]">{verb}</h3>
+                <p className="mt-0.5 text-[13px] font-semibold uppercase tracking-[0.06em] text-[var(--lp-indigo-strong)]">
+                  {title}
+                </p>
+                <p className="mt-2 text-[15px] leading-relaxed text-[var(--lp-ink-2)]">{body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  )
+}
+
+export function SolutionSection({
+  withLink = true,
+  withPillars = true,
+}: {
+  withLink?: boolean
+  withPillars?: boolean
+}) {
   return (
     <section className="lp-section lp-soft" aria-labelledby="lp-solution-title">
-      <div className="lp-container grid items-center gap-12 lg:grid-cols-[1.05fr_1fr] lg:gap-16">
+      <div
+        className={
+          withPillars
+            ? 'lp-container grid items-center gap-12 lg:grid-cols-[1.05fr_1fr] lg:gap-16'
+            : 'lp-container max-w-3xl text-center'
+        }
+      >
         <div className="lp-reveal">
           <p className="lp-eyebrow">The solution</p>
           <h2 id="lp-solution-title" className="lp-h2 mt-3">
@@ -74,19 +119,23 @@ export function SolutionSection({ withLink = true }: { withLink?: boolean }) {
             </Link>
           )}
         </div>
-        <ul className="grid gap-4">
-          {PILLARS.map(({ icon: Icon, title, body }, i) => (
-            <li key={title} className="lp-card lp-reveal flex gap-4 p-5" style={delay(i * 80)}>
-              <span className="lp-icon">
-                <Icon className="size-5" aria-hidden="true" />
-              </span>
-              <div>
-                <h3 className="text-[16px] font-semibold tracking-tight">{title}</h3>
-                <p className="mt-1 text-[14px] leading-relaxed text-[var(--lp-ink-3)]">{body}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {withPillars && (
+          <ul className="grid gap-4">
+            {PILLARS.map(({ icon: Icon, verb, title, body }, i) => (
+              <li key={verb} className="lp-card lp-reveal flex gap-4 p-5" style={delay(i * 80)}>
+                <span className="lp-icon">
+                  <Icon className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="text-[16px] font-semibold tracking-tight">
+                    {verb} <span className="font-medium text-[var(--lp-ink-3)]">· {title}</span>
+                  </h3>
+                  <p className="mt-1 text-[14px] leading-relaxed text-[var(--lp-ink-3)]">{body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   )
@@ -171,6 +220,21 @@ export function LifecycleSection({ soft = false }: { soft?: boolean }) {
   )
 }
 
+function QualityIntelligenceLinks() {
+  return (
+    <div className="lp-reveal mt-8 flex flex-wrap justify-center gap-x-8 gap-y-3 text-center">
+      <Link to="/quality-intelligence#center" className="lp-text-link">
+        See how it all connects
+        <ArrowRight className="size-4" aria-hidden="true" />
+      </Link>
+      <Link to="/quality-intelligence" className="lp-text-link">
+        Explore Quality Intelligence
+        <ArrowRight className="size-4" aria-hidden="true" />
+      </Link>
+    </div>
+  )
+}
+
 export function IntelligenceSection({ detailed = false }: { detailed?: boolean }) {
   return (
     <section className="lp-section lp-dark relative overflow-hidden" aria-labelledby="lp-intel-title">
@@ -203,14 +267,47 @@ export function IntelligenceSection({ detailed = false }: { detailed?: boolean }
         <p className="lp-reveal mt-8 text-center text-[13px] text-[var(--lp-on-dark-3)]">
           Capabilities marked &ldquo;Planned&rdquo; are on the product roadmap and are not available yet.
         </p>
-        {!detailed && (
-          <div className="lp-reveal mt-8 text-center">
-            <Link to="/quality-intelligence" className="lp-text-link">
-              Explore Quality Intelligence
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </div>
-        )}
+        {!detailed && <QualityIntelligenceLinks />}
+      </div>
+    </section>
+  )
+}
+
+/** The six home-page differentiators, each labelled with what exists today. */
+export function DifferentiatorsSection() {
+  return (
+    <section className="lp-section lp-dark relative overflow-hidden" aria-labelledby="lp-diff-title">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(67,56,202,0.35),transparent_70%)]"
+      />
+      <div className="lp-container relative">
+        <SectionHeader
+          id="lp-diff-title"
+          eyebrow="Quality intelligence"
+          title="Not Just More Modules. A Connected Quality Picture."
+          lead="Traditional test management records what has been tested. QTestHub connects that information so teams can see what needs attention, and says plainly which parts are available today."
+        />
+        <ul className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {DIFFERENTIATORS.map(({ icon: Icon, title, body, status, note }, i) => (
+            <li key={title} className="lp-card-dark lp-reveal flex flex-col p-6" style={delay((i % 3) * 80)}>
+              <div className="flex items-start justify-between gap-3">
+                <span className="lp-icon">
+                  <Icon className="size-5" aria-hidden="true" />
+                </span>
+                <AvailabilityBadge status={status} />
+              </div>
+              <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-white">{title}</h3>
+              <p className="mt-2 text-[14px] leading-relaxed text-[var(--lp-on-dark-2)]">{body}</p>
+              {note && <p className="mt-auto pt-4 text-[12px] font-medium text-[#a5b4fc]">{note}</p>}
+            </li>
+          ))}
+        </ul>
+        <p className="lp-reveal mx-auto mt-8 max-w-2xl text-center text-[13px] text-[var(--lp-on-dark-3)]">
+          &ldquo;Partly available&rdquo; means some of the capability exists today and the rest is planned.
+          &ldquo;Planned&rdquo; capabilities are on the roadmap and are not available yet.
+        </p>
+        <QualityIntelligenceLinks />
       </div>
     </section>
   )

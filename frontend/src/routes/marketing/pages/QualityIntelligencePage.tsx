@@ -1,6 +1,10 @@
+import { lazy, Suspense } from 'react'
+
 import { IntelligenceSection } from '../sections'
-import { CtaPanel, PageHero, ScreenshotFrame } from '../shared'
+import { CtaPanel, PageHero, ScreenshotFrame, SectionHeader } from '../shared'
 import { delay, usePageMeta } from '../utils'
+
+const QualityIntelligenceCenter = lazy(() => import('../QualityIntelligenceCenter'))
 
 export default function QualityIntelligencePage() {
   usePageMeta(
@@ -14,6 +18,22 @@ export default function QualityIntelligencePage() {
         title="Better Information. Better Decisions. Better Software Quality."
         lead="QTestHub's quality intelligence direction helps organizations make more informed decisions from connected testing information. Here is what is available today, and what is on the roadmap."
       />
+
+      <section id="center" className="lp-section lp-soft" aria-labelledby="lp-qc-title">
+        <div className="lp-container">
+          <SectionHeader
+            id="lp-qc-title"
+            eyebrow="Quality Intelligence Center"
+            title="See the Bigger Picture. Understand Your Software Quality."
+            lead="Requirements, test cases, execution, defects and release readiness are one connected picture in QTestHub. Select a part to see how information flows through it."
+          />
+          <div className="mt-12">
+            <Suspense fallback={<div className="lp-qc-placeholder" aria-hidden="true" />}>
+              <QualityIntelligenceCenter />
+            </Suspense>
+          </div>
+        </div>
+      </section>
 
       <section className="lp-section bg-white" aria-labelledby="lp-qi-evidence-title">
         <div className="lp-container grid items-center gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">

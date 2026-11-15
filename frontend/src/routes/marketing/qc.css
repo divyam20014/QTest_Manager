@@ -1,0 +1,262 @@
+/* Quality Intelligence Center. Scoped under .qth-landing like the rest of the
+   marketing site. The card carries .lp-dark, so the badge, eyebrow and border
+   rules for dark surfaces already apply. */
+.qth-landing .lp-qc {
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background:
+    radial-gradient(60% 50% at 50% 0%, rgba(67, 56, 202, 0.34), transparent 70%),
+    radial-gradient(40% 40% at 100% 100%, rgba(59, 130, 246, 0.14), transparent 70%),
+    var(--lp-navy-900);
+  box-shadow: 0 40px 80px -40px rgba(16, 24, 40, 0.65);
+  overflow: hidden;
+}
+@media (min-width: 768px) { .qth-landing .lp-qc { padding: 32px; } }
+
+.lp-qc-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  font-size: 14px;
+  color: var(--lp-on-dark-2);
+}
+.lp-qc-key { display: flex; gap: 18px; font-size: 13px; color: var(--lp-on-dark-3); }
+.lp-qc-key li { display: inline-flex; align-items: center; gap: 8px; }
+.lp-qc-key i { display: inline-block; width: 22px; height: 0; border-top: 2px solid #a5b4fc; }
+.lp-qc-key .lp-qc-key-dashed { border-top: 2px dashed #f59e0b; }
+
+/* ---------- map ---------- */
+/* Phones: the parts stack as a two-column grid; the connections are listed in
+   the detail panel. */
+.lp-qc-map {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+.lp-qc-svg { display: none; }
+@media (min-width: 768px) {
+  .lp-qc-map {
+    display: block;
+    position: relative;
+    max-width: 1000px;
+    margin: 28px auto 0;
+    aspect-ratio: 1000 / 500;
+  }
+  .lp-qc-svg {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+}
+
+.lp-qc-edge {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.7);
+  stroke-width: 1.75;
+  transition: stroke 200ms ease, opacity 200ms ease;
+}
+.lp-qc-edge[data-state="dim"] { opacity: 0.3; }
+.lp-qc-edge[data-state="active"] { stroke: #a5b4fc; stroke-width: 2.25; }
+.lp-qc-edge[data-state="active"]:not([data-planned="true"]) {
+  stroke-dasharray: 8 6;
+  animation: lp-qc-flow 1s linear infinite;
+}
+.lp-qc-edge[data-planned="true"] { stroke: #f59e0b; stroke-dasharray: 5 6; }
+.lp-qc-edge[data-planned="true"][data-state="active"] { stroke: #fbbf24; }
+@keyframes lp-qc-flow { to { stroke-dashoffset: -14; } }
+
+.lp-qc-elabel {
+  font-size: 14px;
+  font-weight: 600;
+  fill: #94a3b8;
+  transition: fill 200ms ease, opacity 200ms ease;
+}
+.lp-qc-elabel[data-state="active"] { fill: #e0e7ff; }
+.lp-qc-elabel[data-state="dim"] { opacity: 0.4; }
+.lp-qc-elabel[data-planned="true"] { fill: #fbbf24; font-style: italic; }
+/* The map is drawn smaller here, so its labels are set larger in map units. */
+@media (max-width: 1023px) { .lp-qc-elabel { font-size: 16px; } }
+
+.lp-qc-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
+  padding: 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+  color: #fff;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+.lp-qc-node:hover { border-color: rgba(165, 180, 252, 0.65); }
+.lp-qc-node[data-related="true"] { border-color: rgba(129, 140, 248, 0.6); }
+.lp-qc-node[aria-pressed="true"] {
+  border-color: #a5b4fc;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.4), rgba(99, 102, 241, 0.16));
+  box-shadow: 0 0 0 1px rgba(165, 180, 252, 0.7), 0 0 36px -4px rgba(99, 102, 241, 0.85);
+}
+.lp-qc-node[data-planned="true"] {
+  border-style: dashed;
+  border-color: rgba(245, 158, 11, 0.6);
+  background: rgba(245, 158, 11, 0.07);
+}
+.lp-qc-node[data-planned="true"][aria-pressed="true"] {
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.18);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.7), 0 0 36px -4px rgba(245, 158, 11, 0.6);
+}
+.qth-landing .lp-qc-node:focus-visible { border-radius: 14px; outline-offset: 3px; }
+
+.lp-qc-node-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+  flex-shrink: 0;
+}
+.lp-qc-node-icon svg { width: 58%; height: 58%; }
+.lp-qc-node[data-planned="true"] .lp-qc-node-icon { background: rgba(245, 158, 11, 0.16); color: #fcd34d; }
+.lp-qc-node-label { font-size: 14px; font-weight: 600; line-height: 1.2; }
+.lp-qc-node-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fcd34d;
+}
+
+@media (min-width: 768px) {
+  .lp-qc-node {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    width: 15%;
+    height: 18.8%;
+    min-height: 0;
+    padding: 4px;
+    gap: 3px;
+    transform: translate(-50%, -50%);
+  }
+  .lp-qc-node-icon { width: clamp(22px, 2.6vw, 32px); height: clamp(22px, 2.6vw, 32px); }
+  .lp-qc-node-label { font-size: clamp(11px, 1.35vw, 15px); }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .lp-qc-node-tag { display: none; }
+}
+
+/* ---------- detail ---------- */
+.lp-qc-detail {
+  display: grid;
+  gap: 24px;
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid var(--lp-dark-border);
+  animation: lp-fade 240ms ease-out;
+}
+@media (min-width: 1024px) {
+  .lp-qc-detail { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 40px; }
+}
+.lp-qc-detail-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.lp-qc-detail-note { margin-top: 6px; font-size: 13px; font-weight: 500; color: #a5b4fc; }
+.lp-qc-facts { display: grid; gap: 14px; margin-top: 16px; }
+.lp-qc-facts dt {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a5b4fc;
+}
+.lp-qc-facts dd { margin-top: 4px; font-size: 15px; color: var(--lp-on-dark-2); text-wrap: pretty; }
+.lp-qc-links-title {
+  margin-top: 22px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a5b4fc;
+}
+.lp-qc-links { display: grid; gap: 8px; margin-top: 10px; }
+.lp-qc-links li {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--lp-dark-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.lp-qc-dir { flex-shrink: 0; width: 16px; height: 16px; margin-top: 3px; color: #a5b4fc; }
+.lp-qc-link-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--lp-on-dark);
+}
+.lp-qc-link-head b { font-weight: 700; color: #fff; }
+.lp-qc-link-text { display: block; margin-top: 2px; font-size: 13px; line-height: 1.5; color: var(--lp-on-dark-3); }
+
+.lp-qc-crop {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: #1b2536;
+  box-shadow: 0 24px 50px -24px rgba(0, 0, 0, 0.7);
+}
+.lp-qc-crop img { display: block; max-width: none; height: auto; }
+.lp-qc-caption { margin-top: 10px; font-size: 12px; color: var(--lp-on-dark-3); }
+.lp-qc-roadmap {
+  padding: 22px;
+  border: 1px dashed rgba(245, 158, 11, 0.55);
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.06);
+  font-size: 15px;
+  color: #fde68a;
+}
+.lp-qc-roadmap-title { margin-bottom: 6px; font-weight: 700; color: #fcd34d; }
+
+.lp-qc-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.lp-qc-stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+  padding: 12px 14px;
+  border: 1px solid var(--lp-dark-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.lp-qc-stats dd {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.lp-qc-stats dt { margin-top: 2px; font-size: 12.5px; line-height: 1.35; color: var(--lp-on-dark-3); }

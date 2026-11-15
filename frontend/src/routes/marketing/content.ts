@@ -46,12 +46,6 @@ export interface IconItem {
   body: string
 }
 
-export const VALUE_PROPS = [
-  'Complete QA Lifecycle Management',
-  'Intelligent Quality Insights',
-  'Enterprise-Ready Governance',
-]
-
 export const PROBLEMS: IconItem[] = [
   {
     icon: Split,
@@ -80,10 +74,35 @@ export const PROBLEMS: IconItem[] = [
   },
 ]
 
-export const PILLARS: IconItem[] = [
-  { icon: Layers, title: 'Unified Quality', body: 'Bring the entire QA lifecycle together in one connected platform.' },
-  { icon: Cpu, title: 'Intelligent Quality', body: 'Turn testing information into actionable insights and decisions.' },
-  { icon: ShieldCheck, title: 'Enterprise Quality', body: 'Provide control, governance and visibility as organizations scale.' },
+/** The three brand pillars: Connect, Understand, Control. */
+export const PILLARS: Array<IconItem & { verb: string }> = [
+  {
+    icon: Layers,
+    verb: 'Connect',
+    title: 'Unified QA lifecycle',
+    body: 'Manage requirements, test cases, execution and defects in one connected platform.',
+  },
+  {
+    icon: Cpu,
+    verb: 'Understand',
+    title: 'Quality intelligence',
+    body: 'See coverage, trends and readiness signals that support informed release decisions.',
+  },
+  {
+    icon: ShieldCheck,
+    verb: 'Control',
+    title: 'Enterprise governance',
+    body: 'Keep roles, approvals and a verifiable audit trail consistent as teams scale.',
+  },
+]
+
+/** Hero metric chips. Values are read from the demo-organization screenshots
+ * (dashboard.jpg and readiness.jpg) so the chips never contradict the image. */
+export const HERO_METRICS = [
+  { label: 'Execution pass rate', value: 95, decimals: 0, suffix: '%', scope: 'Sample · all projects' },
+  { label: 'Open defects', value: 28, decimals: 0, suffix: '', scope: 'Sample · all projects' },
+  { label: 'Execution completion', value: 91.7, decimals: 1, suffix: '%', scope: 'Sample · one project' },
+  { label: 'Requirement coverage', value: 88.9, decimals: 1, suffix: '%', scope: 'Sample · one project' },
 ]
 
 export const CAPABILITIES: Array<IconItem & { anchor: string }> = [
@@ -146,7 +165,7 @@ export const LIFECYCLE = [
   { title: 'Improve', body: 'Use quality insights to make better testing and release decisions.' },
 ]
 
-export type Availability = 'available' | 'planned'
+export type Availability = 'available' | 'partial' | 'planned'
 
 export const INTELLIGENCE: Array<IconItem & { status: Availability; note?: string; detail: string }> = [
   {
@@ -193,6 +212,50 @@ export const INTELLIGENCE: Array<IconItem & { status: Availability; note?: strin
     body: 'Bring testing progress, defects and coverage information together to support release decisions.',
     detail:
       'Execution completion, pass rate, open defects by severity and requirement coverage in one view per project, plus workload and flaky-test signals.',
+    status: 'available',
+  },
+]
+
+/** Home-page differentiators. Every status was checked against the backend:
+ * traceability matrix + coverage report, the three AI endpoints, release
+ * readiness, workload + flaky-test reports, and the review workflow, audit
+ * hash chain and project-scoped roles. */
+export const DIFFERENTIATORS: Array<IconItem & { status: Availability; note?: string }> = [
+  {
+    icon: Network,
+    title: 'End-to-End Traceability Intelligence',
+    body: 'Link requirements to test cases and see linked, executed, passed and failed counts per requirement, with uncovered requirements flagged.',
+    status: 'available',
+  },
+  {
+    icon: Target,
+    title: 'Risk-Based Testing Intelligence',
+    body: 'Highlighting high-risk areas from requirement criticality, defect history, coverage and execution outcomes is on the roadmap.',
+    status: 'planned',
+  },
+  {
+    icon: Cpu,
+    title: 'AI-Assisted Testing',
+    body: 'Draft test cases from a requirement, get review suggestions on a test case, and analyze how a requirement change affects linked tests. Drafts always need human approval.',
+    status: 'available',
+    note: 'Enabled per organization',
+  },
+  {
+    icon: Rocket,
+    title: 'Release Readiness Intelligence',
+    body: 'Execution completion, pass rate, requirement coverage and open defects by severity in one view per project. It reports the evidence; the release decision stays with your team.',
+    status: 'available',
+  },
+  {
+    icon: TrendingUp,
+    title: 'QA Productivity Intelligence',
+    body: 'Workload per tester and tests whose results keep flipping are available today. Execution-efficiency and bottleneck analysis are planned.',
+    status: 'partial',
+  },
+  {
+    icon: ScrollText,
+    title: 'QA Governance and Audit Intelligence',
+    body: 'A review and approval workflow for test cases, a tamper-evident audit log, and roles that can be scoped to a single project.',
     status: 'available',
   },
 ]

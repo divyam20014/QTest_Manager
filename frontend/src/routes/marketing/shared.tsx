@@ -107,6 +107,7 @@ export function ScreenshotFrame({
         <span>{label}</span>
       </div>
       <img
+        key={src}
         src={src}
         alt={alt}
         width={width}
@@ -119,12 +120,14 @@ export function ScreenshotFrame({
   )
 }
 
+const AVAILABILITY_LABEL: Record<Availability, string> = {
+  available: 'Available',
+  partial: 'Partly available',
+  planned: 'Planned',
+}
+
 export function AvailabilityBadge({ status }: { status: Availability }) {
-  return (
-    <span className={`lp-status ${status === 'available' ? 'lp-status-available' : 'lp-status-planned'}`}>
-      {status === 'available' ? 'Available' : 'Planned'}
-    </span>
-  )
+  return <span className={`lp-status lp-status-${status}`}>{AVAILABILITY_LABEL[status]}</span>
 }
 
 export function CtaPanel({

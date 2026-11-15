@@ -1,94 +1,136 @@
-import { ArrowRight, CheckCircle2, Gauge, ShieldAlert } from 'lucide-react'
+import { ArrowRight, PlayCircle } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { VALUE_PROPS } from '../content'
-import { ProductTour } from '../ProductTour'
+import { HERO_METRICS } from '../content'
+import { HeroTour } from '../ProductTour'
 import {
   CapabilitiesSection,
+  DifferentiatorsSection,
   EnterpriseSection,
   FaqSection,
-  IntelligenceSection,
   LifecycleSection,
+  PillarStrip,
   ProblemSection,
   RolesSection,
   SolutionSection,
   WhySection,
 } from '../sections'
-import { CtaPanel, ScreenshotFrame } from '../shared'
-import { usePageMeta } from '../utils'
+import { CtaPanel } from '../shared'
+import { prefersReducedMotion, usePageMeta } from '../utils'
 import { PricingTiers } from './PricingPage'
 
-function HomeHero() {
-  return (
-    <section className="lp-hero" aria-labelledby="lp-hero-title">
-      <div className="lp-container grid items-center gap-14 pb-20 pt-16 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-10 lg:pb-28 lg:pt-24">
-        <div className="relative z-10 max-w-2xl">
-          <span className="lp-pill">
-            <span className="size-1.5 rounded-full bg-[#60a5fa]" aria-hidden="true" />
-            Enterprise Quality Engineering Platform
-          </span>
-          <h1 id="lp-hero-title" className="lp-h1 mt-6">
-            Quality Isn&rsquo;t Just Tested.
-            <br />
-            <span className="lp-gradient-text">It&rsquo;s Engineered.</span>
-          </h1>
-          <p className="lp-lead mt-6 max-w-xl">
-            Bring your entire quality engineering lifecycle together with QTestHub. Manage requirements, test
-            cases, test execution, defects and quality analytics through one unified platform designed to give your
-            teams complete visibility, control and confidence.
-          </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link to="/request-demo" className="lp-btn lp-btn-primary">
-              Request a Demo
-              <ArrowRight className="lp-arrow size-4" aria-hidden="true" />
-            </Link>
-            <Link to="/platform" className="lp-btn lp-btn-ghost-dark">
-              Explore the Platform
-            </Link>
-          </div>
-          <ul className="mt-10 grid gap-3 sm:grid-cols-3 sm:gap-4">
-            {VALUE_PROPS.map((prop) => (
-              <li key={prop} className="flex items-start gap-2 text-[14px] font-medium text-[var(--lp-on-dark)]">
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#60a5fa]" aria-hidden="true" />
-                {prop}
-              </li>
-            ))}
-          </ul>
-        </div>
+const loadWalkthrough = () => import('../TourWalkthrough')
+const TourWalkthrough = lazy(loadWalkthrough)
 
-        <div className="relative">
-          <div className="lg:w-[128%]">
-            <ScreenshotFrame
-              dark
-              eager
-              src="/marketing/dashboard.jpg"
-              width={1440}
-              height={900}
-              alt="QTestHub dashboard for a fictional insurance organization: 5 projects, 160 test cases, 28 open defects, a 95% execution pass rate gauge, test case status and a 30-day execution trend"
-            />
-          </div>
-          <div className="lp-float-card hidden w-56 p-4 sm:block lg:-left-10 lg:bottom-10 sm:-bottom-6 sm:left-4">
-            <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wider text-[var(--lp-ink-3)]">
-              <Gauge className="size-4 text-[var(--lp-success)]" aria-hidden="true" />
-              Execution pass rate
-            </div>
-            <p className="mt-1 text-[28px] font-bold tracking-tight">95%</p>
-            <p className="text-[12px] text-[var(--lp-ink-3)]">across all executed steps</p>
-          </div>
-          <div
-            className="lp-float-card hidden w-60 p-4 md:block md:-top-6 md:right-4 lg:right-auto lg:left-[62%]"
-            style={{ animationDelay: '1.5s' }}
+/** Counts up to `value` once, the first time it scrolls into view. Shows the
+ * final value straight away when motion is reduced or observers are missing. */
+function CountUp({ value, decimals, suffix }: { value: number; decimals: number; suffix: string }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [shown, setShown] = useState(() =>
+    prefersReducedMotion() || typeof IntersectionObserver === 'undefined' ? value : 0,
+  )
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el || prefersReducedMotion() || typeof IntersectionObserver === 'undefined') return
+    let frame = 0
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        observer.disconnect()
+        const start = performance.now()
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - start) / 1200)
+          setShown(value * (1 - Math.pow(1 - t, 3)))
+          if (t < 1) frame = requestAnimationFrame(tick)
+        }
+        frame = requestAnimationFrame(tick)
+      },
+      { threshold: 0.4 },
+    )
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [value])
+
+  return (
+    <>
+      <span ref={ref} aria-hidden="true">
+        {shown.toFixed(decimals)}
+        {suffix}
+      </span>
+      <span className="sr-only">
+        {value.toFixed(decimals)}
+        {suffix}
+      </span>
+    </>
+  )
+}
+
+function HomeHero() {
+  const [tourOpen, setTourOpen] = useState(false)
+  const closeTour = useCallback(() => setTourOpen(false), [])
+
+  return (
+    <section className="lp-hero lp-hero-home" aria-labelledby="lp-hero-title">
+      <div className="lp-container pt-12 text-center lg:pt-14">
+        <span className="lp-pill">
+          <span className="size-1.5 rounded-full bg-[#60a5fa]" aria-hidden="true" />
+          The Intelligence Behind Software Quality
+        </span>
+        <h1 id="lp-hero-title" className="lp-h1 lp-h1-home mx-auto mt-5 max-w-4xl">
+          Quality Isn&rsquo;t Just Tested.
+          <br />
+          <span className="lp-gradient-text">It&rsquo;s Engineered.</span>
+        </h1>
+        <p className="lp-lead mx-auto mt-5 max-w-2xl">
+          One connected platform to manage testing, understand quality risks, and make better release decisions.
+        </p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Link to="/request-demo" className="lp-btn lp-btn-pill lp-btn-light">
+            Request a Demo
+            <ArrowRight className="lp-arrow size-4" aria-hidden="true" />
+          </Link>
+          <button
+            type="button"
+            className="lp-btn lp-btn-pill lp-btn-primary"
+            aria-haspopup="dialog"
+            onClick={() => setTourOpen(true)}
+            onPointerEnter={loadWalkthrough}
+            onFocus={loadWalkthrough}
           >
-            <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wider text-[var(--lp-ink-3)]">
-              <ShieldAlert className="size-4 text-[var(--lp-danger)]" aria-hidden="true" />
-              Needs attention
-            </div>
-            <p className="mt-1 text-[15px] font-semibold">6 critical defects open</p>
-            <p className="text-[12px] text-[var(--lp-ink-3)]">28 open in total · SLA tracked</p>
-          </div>
-          <p className="mt-4 text-center text-[12px] text-[var(--lp-on-dark-3)] lg:w-[128%]">
-            Product screenshot · sample data from a fictional demo organization
-          </p>
+            <PlayCircle className="size-[18px]" aria-hidden="true" />
+            Explore QTestHub in 2 Minutes
+          </button>
+          <Link to="/#tour" className="lp-btn lp-btn-pill lp-btn-ghost-dark">
+            Explore the Platform
+          </Link>
+        </div>
+        {tourOpen && (
+          <Suspense fallback={null}>
+            <TourWalkthrough onClose={closeTour} />
+          </Suspense>
+        )}
+
+        <ul className="mx-auto mt-9 grid max-w-5xl grid-cols-2 gap-3 lg:grid-cols-4">
+          {HERO_METRICS.map((metric) => (
+            <li key={metric.label} className="lp-metric">
+              <p className="lp-metric-value">
+                <CountUp value={metric.value} decimals={metric.decimals} suffix={metric.suffix} />
+              </p>
+              <div>
+                <p className="lp-metric-label">{metric.label}</p>
+                <p className="lp-metric-scope">{metric.scope}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-9">
+          <HeroTour />
         </div>
       </div>
     </section>
@@ -123,12 +165,12 @@ export default function HomePage() {
   return (
     <>
       <HomeHero />
+      <PillarStrip />
       <ProblemSection />
-      <SolutionSection />
+      <SolutionSection withPillars={false} />
       <CapabilitiesSection />
-      <ProductTour />
-      <LifecycleSection />
-      <IntelligenceSection />
+      <LifecycleSection soft />
+      <DifferentiatorsSection />
       <RolesSection />
       <EnterpriseSection />
       <PricingTeaser />
