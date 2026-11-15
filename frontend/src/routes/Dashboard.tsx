@@ -19,11 +19,21 @@ import {
 import { fetchActivityStream, fetchAggregateReport, fetchDashboardSummary, fetchExecutionTrend } from '@/api/reporting'
 import { listDefects, type Severity } from '@/api/defects'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
+import { GaugeDial } from '@/components/ui/GaugeDial'
 import { ChartSkeleton, Skeleton } from '@/components/ui/skeleton'
+import { TactileButton } from '@/components/ui/TactileButton'
 import { humanizeActionCode } from '@/lib/labels'
 import { categoricalColor, prefersDark } from '@/routes/reporting/palette'
+
+// Tactile hover affordance for clickable dashboard tiles -- a lift via
+// transform rather than overriding EmbossedCard's own box-shadow token
+// (safer than fighting CSS specificity between the raised-elevation
+// utility class and a Tailwind hover:shadow override).
+const TILE_INTERACTIVE =
+  'transition-transform duration-150 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] rounded-xl'
 
 // Clicking a KPI, chart segment, or activity row should take you to the
 // filtered list it summarizes, not just display a number (UX review
@@ -99,17 +109,18 @@ function OnboardingChecklist({
     { label: 'Create a test run and execute it', done: hasExecuted, href: '/test-runs' },
   ]
   return (
-    <Card className="border-[var(--primary)]/40">
+    <EmbossedCard>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>Getting started</CardTitle>
-        <button
+        <TactileButton
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss getting-started checklist"
-          className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          size="sm"
+          className="h-7 w-7 px-0"
         >
           <X className="size-4" />
-        </button>
+        </TactileButton>
       </CardHeader>
       <CardContent>
         <ul className="flex flex-col gap-2 text-sm">
@@ -136,12 +147,13 @@ function OnboardingChecklist({
           ))}
         </ul>
       </CardContent>
-    </Card>
+    </EmbossedCard>
   )
 }
 
 export function Dashboard() {
   const isDark = prefersDark()
+  const [activePieIndex, setActivePieIndex] = useState<number | null>(null)
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     try {
       return localStorage.getItem(ONBOARDING_DISMISSED_KEY) === '1'
@@ -218,14 +230,6 @@ export function Dashboard() {
           href: '/test-runs?status=in_progress',
         },
         {
-          title: 'Execution Pass %',
-          value: formatPassRate(summary.test_runs.step_pass_percentage, summary.test_runs.step_sample_size),
-          detail:
-            summary.test_runs.step_sample_size < THIN_SAMPLE_THRESHOLD
-              ? 'small sample -- more executions will sharpen this'
-              : 'across all executed steps',
-        },
-        {
           title: 'Open Defects',
           value: Object.values(summary.defects.open_by_severity).reduce((a, b) => a + b, 0),
           detail: Object.entries(summary.defects.open_by_severity).map(([s, n]) => `${s}: ${n}`).join(', '),
@@ -272,7 +276,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {summaryQuery.isLoading &&
           Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i}>
+            <EmbossedCard key={i}>
               <CardHeader>
                 <Skeleton className="h-4 w-24" />
               </CardHeader>
@@ -280,19 +284,19 @@ export function Dashboard() {
                 <Skeleton className="h-7 w-14" />
                 <Skeleton className="mt-2 h-3 w-20" />
               </CardContent>
-            </Card>
+            </EmbossedCard>
           ))}
         {summaryQuery.isError && (
-          <Card className="sm:col-span-2 lg:col-span-4">
+          <EmbossedCard className="sm:col-span-2 lg:col-span-4">
             <CardContent>
               <ErrorState onRetry={() => summaryQuery.refetch()} />
             </CardContent>
-          </Card>
+          </EmbossedCard>
         )}
         {kpis.map((kpi, i) => {
           const card = (
-            <Card
-              className={`qth-animate-in h-full transition-shadow hover:shadow-md ${kpi.href ? 'cursor-pointer hover:border-[var(--primary)]' : ''}`}
+            <EmbossedCard
+              className={`qth-animate-in h-full ${kpi.href ? `cursor-pointer ${TILE_INTERACTIVE}` : ''}`}
               style={{ animation: `qth-slide-in 0.25s ease-out ${i * 30}ms backwards` }}
             >
               <CardHeader>
@@ -302,20 +306,49 @@ export function Dashboard() {
                 <p className="text-2xl font-semibold">{kpi.value}</p>
                 <p className="text-xs text-[var(--muted-foreground)]">{kpi.detail}</p>
               </CardContent>
-            </Card>
+            </EmbossedCard>
           )
           return kpi.href ? (
-            <Link key={kpi.title} to={kpi.href} className="block" aria-label={`View ${kpi.title}`}>
+            <Link
+              key={kpi.title}
+              to={kpi.href}
+              className={`block rounded-xl ${TILE_INTERACTIVE}`}
+              aria-label={`View ${kpi.title}`}
+            >
               {card}
             </Link>
           ) : (
             <div key={kpi.title}>{card}</div>
           )
         })}
+        {summary && (
+          <EmbossedCard
+            className="qth-animate-in h-full"
+            style={{ animation: `qth-slide-in 0.25s ease-out ${kpis.length * 30}ms backwards` }}
+          >
+            <CardHeader>
+              <CardTitle>Execution Pass %</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-1 pt-0">
+              <GaugeDial
+                value={summary.test_runs.step_pass_percentage * 100}
+                label="Execution pass rate"
+                valueLabel={formatPassRate(summary.test_runs.step_pass_percentage, summary.test_runs.step_sample_size)}
+              />
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {summary.test_runs.step_sample_size === 0
+                  ? 'No executed steps yet'
+                  : summary.test_runs.step_sample_size < THIN_SAMPLE_THRESHOLD
+                    ? 'small sample -- more executions will sharpen this'
+                    : 'across all executed steps'}
+              </p>
+            </CardContent>
+          </EmbossedCard>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1 transition-shadow hover:shadow-md">
+        <EmbossedCard className="lg:col-span-1">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="flex items-center gap-1.5">
               <AlertTriangle className="size-3.5 text-[var(--status-warning)]" />
@@ -356,9 +389,9 @@ export function Dashboard() {
               ))}
             </ul>
           </CardContent>
-        </Card>
+        </EmbossedCard>
 
-        <Card className="lg:col-span-1 transition-shadow hover:shadow-md">
+        <EmbossedCard className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Test Case Status</CardTitle>
           </CardHeader>
@@ -375,12 +408,29 @@ export function Dashboard() {
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
+                    <defs>
+                      {statusPieData.map((entry, i) => {
+                        const color = categoricalColor(i, isDark)
+                        return (
+                          // Radial highlight toward the top-left, matching the
+                          // app-wide emboss light-source convention -- gives
+                          // slices a domed look without introducing any hue
+                          // outside the validated categorical palette.
+                          <radialGradient key={entry.status} id={`pie-grad-${i}`} cx="35%" cy="30%" r="75%">
+                            <stop offset="0%" stopColor={color} stopOpacity={1} />
+                            <stop offset="100%" stopColor={color} stopOpacity={0.78} />
+                          </radialGradient>
+                        )
+                      })}
+                    </defs>
                     <Tooltip
                       contentStyle={{
-                        background: isDark ? '#1a1a19' : '#fcfcfb',
-                        border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                        borderRadius: 6,
+                        background: 'var(--tactile-surface-raised)',
+                        border: 'none',
+                        borderRadius: 10,
+                        boxShadow: 'var(--elevation-raised-sm)',
                         fontSize: 12,
+                        color: 'var(--foreground)',
                       }}
                       formatter={(value, name) => [`${value} test case${value === 1 ? '' : 's'}`, name]}
                     />
@@ -392,11 +442,24 @@ export function Dashboard() {
                       innerRadius={44}
                       outerRadius={78}
                       paddingAngle={2}
+                      cornerRadius={3}
+                      stroke="var(--tactile-surface)"
+                      strokeWidth={2}
                       isAnimationActive
                       animationDuration={500}
+                      onMouseEnter={(_, i) => setActivePieIndex(i)}
+                      onMouseLeave={() => setActivePieIndex(null)}
                     >
                       {statusPieData.map((entry, i) => (
-                        <Cell key={entry.status} fill={categoricalColor(i, isDark)} />
+                        <Cell
+                          key={entry.status}
+                          fill={`url(#pie-grad-${i})`}
+                          style={{
+                            filter:
+                              activePieIndex === i ? 'drop-shadow(0 4px 7px rgba(0, 0, 0, 0.35))' : undefined,
+                            transition: 'filter 150ms ease-out',
+                          }}
+                        />
                       ))}
                     </Pie>
                   </PieChart>
@@ -404,9 +467,9 @@ export function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </EmbossedCard>
 
-        <Card className="lg:col-span-1 transition-shadow hover:shadow-md">
+        <EmbossedCard className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Execution Trend (30 days)</CardTitle>
           </CardHeader>
@@ -438,11 +501,14 @@ export function Dashboard() {
                     />
                     <Tooltip
                       contentStyle={{
-                        background: isDark ? '#1a1a19' : '#fcfcfb',
-                        border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                        borderRadius: 6,
+                        background: 'var(--tactile-surface-raised)',
+                        border: 'none',
+                        borderRadius: 10,
+                        boxShadow: 'var(--elevation-raised-sm)',
                         fontSize: 12,
+                        color: 'var(--foreground)',
                       }}
+                      cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
                     />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Line
@@ -450,8 +516,9 @@ export function Dashboard() {
                       dataKey="pass_count"
                       name="Pass"
                       stroke={categoricalColor(2, isDark)}
-                      strokeWidth={2}
+                      strokeWidth={2.5}
                       dot={false}
+                      activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
                       isAnimationActive
                       animationDuration={500}
                     />
@@ -460,8 +527,9 @@ export function Dashboard() {
                       dataKey="fail_count"
                       name="Fail"
                       stroke={categoricalColor(7, isDark)}
-                      strokeWidth={2}
+                      strokeWidth={2.5}
                       dot={false}
+                      activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
                       isAnimationActive
                       animationDuration={500}
                     />
@@ -470,10 +538,10 @@ export function Dashboard() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </EmbossedCard>
       </div>
 
-      <Card className="transition-shadow hover:shadow-md">
+      <EmbossedCard>
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
         </CardHeader>
@@ -527,7 +595,7 @@ export function Dashboard() {
             })}
           </ul>
         </CardContent>
-      </Card>
+      </EmbossedCard>
     </div>
   )
 }

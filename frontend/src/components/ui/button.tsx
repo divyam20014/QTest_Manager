@@ -4,11 +4,23 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 export const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
+  [
+    'inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
+    // Dashboard redesign Phase 3: every button gets a visible focus-visible
+    // outline (there was none before -- relied on the browser default).
+    // Outline is a separate CSS property from box-shadow, so it never gets
+    // swallowed by the tactile default variant's own box-shadow below.
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]',
+  ].join(' '),
   {
     variants: {
       variant: {
-        default: 'bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90',
+        // Subtle lift + press-depth on the primary action only (reuses
+        // the Phase 1 tokens -- qth-raised-sm is the smallest elevation
+        // step, deliberately not the dramatic EmbossedCard/TactileButton
+        // treatment, so it reads as "this is the one real button" without
+        // adding noise to toolbars full of outline/ghost buttons).
+        default: 'qth-raised-sm qth-tactile-btn bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90',
         outline: 'border border-[var(--border)] bg-transparent hover:bg-[var(--muted)]',
         destructive: 'bg-[var(--destructive)] text-white hover:opacity-90',
         ghost: 'hover:bg-[var(--muted)]',

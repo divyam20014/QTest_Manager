@@ -28,9 +28,15 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
               aria-selected={isActive}
               tabIndex={isActive ? 0 : -1}
               onClick={() => setActive(item.key)}
-              className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+              // Dashboard redesign Phase 3: active tab gets a small raised
+              // chip (qth-raised-sm) instead of only a border-b-2, for
+              // tactile consistency; inactive tabs stay flat on purpose --
+              // this is a navigation strip inside otherwise-dense admin
+              // pages, not a hero widget. Also added a focus-visible
+              // outline -- there wasn't one before.
+              className={`shrink-0 rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] ${
                 isActive
-                  ? 'border-[var(--primary)] text-[var(--foreground)]'
+                  ? 'qth-raised-sm border-[var(--primary)] bg-[var(--tactile-surface-raised)] text-[var(--foreground)]'
                   : 'border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
               }`}
             >

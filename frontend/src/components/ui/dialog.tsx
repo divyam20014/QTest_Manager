@@ -100,7 +100,12 @@ export function Dialog({
           // real user on a short screen as much as for Playwright. Found
           // via a real E2E failure during this pass, not anticipated
           // up front.
-          'qth-animate-in relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-xl',
+          // Dashboard redesign Phase 3: raised tactile panel (no texture --
+          // that's reserved for Dashboard hero widgets, a dialog full of
+          // form fields is a different density) instead of the flat
+          // shadow-xl card, so overlays feel consistent with the rest of
+          // the tactile language.
+          'qth-animate-in qth-raised-lg relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-[var(--border)] bg-[var(--tactile-surface-raised)]',
           className,
         )}
         style={{ animation: 'qth-scale-in 0.16s ease-out' }}
@@ -158,7 +163,8 @@ export function Drawer({
       <div
         ref={panelRef}
         className={cn(
-          'qth-animate-in flex h-full w-full max-w-2xl flex-col border-l border-[var(--border)] bg-[var(--background)] shadow-xl',
+          // Dashboard redesign Phase 3: same raised tactile surface as Dialog.
+          'qth-animate-in qth-raised-lg flex h-full w-full max-w-2xl flex-col border-l border-[var(--border)] bg-[var(--tactile-surface-raised)]',
           className,
         )}
         style={{ animation: 'qth-drawer-in 0.2s ease-out' }}

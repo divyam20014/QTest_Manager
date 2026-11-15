@@ -63,9 +63,15 @@ export function AIAssistantPanel() {
 
   return (
     <>
-      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label="Ask AI"
+        onClick={() => setOpen(true)}
+      >
         <Bot className="size-4" />
-        Ask AI
+        <span className="hidden sm:inline">Ask AI</span>
       </Button>
       <Dialog open={open} onClose={() => setOpen(false)} title="AI Assistant" className="max-w-md">
         <div className="flex flex-col gap-3">

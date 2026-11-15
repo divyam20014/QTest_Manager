@@ -32,13 +32,14 @@ export function UserMenu({
         variant="ghost"
         size="sm"
         aria-expanded={open}
+        aria-label={name ? `${name} account menu` : 'Account menu'}
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2"
       >
         <span className="flex size-6 items-center justify-center rounded-full bg-[var(--muted)]">
           <UserIcon className="size-3.5" />
         </span>
-        <span className="text-[var(--muted-foreground)]">
+        <span className="hidden text-[var(--muted-foreground)] sm:inline">
           {name} · {role}
         </span>
       </Button>

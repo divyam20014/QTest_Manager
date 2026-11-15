@@ -1,6 +1,8 @@
 import { ChevronRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { cn } from '@/lib/utils'
+
 // Maps a static path segment to a readable label. Dynamic segments (ids)
 // fall back to a generic "Detail" crumb -- resolving them to the entity's
 // actual name would mean a lookup per route, not worth it for a shell-level
@@ -47,25 +49,36 @@ export function Breadcrumbs() {
   })
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm">
-      <Link to="/" className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
+      {/* Below `sm`, only the current page stays visible -- the full trail
+          was overflowing into the header's action icons on narrow viewports. */}
+      <Link
+        to="/"
+        className="hidden shrink-0 text-[var(--muted-foreground)] hover:text-[var(--foreground)] sm:inline"
+      >
         Dashboard
       </Link>
-      {crumbs.map((crumb, index) => (
-        <span key={crumb.path} className="flex items-center gap-1">
-          <ChevronRight className="size-3.5 text-[var(--muted-foreground)]" />
-          {index === crumbs.length - 1 ? (
-            <span className="font-medium text-[var(--foreground)]">{crumb.label}</span>
-          ) : (
-            <Link
-              to={crumb.path}
-              className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-            >
-              {crumb.label}
-            </Link>
-          )}
-        </span>
-      ))}
+      {crumbs.map((crumb, index) => {
+        const isLast = index === crumbs.length - 1
+        return (
+          <span
+            key={crumb.path}
+            className={cn('flex min-w-0 items-center gap-1', !isLast && 'hidden sm:flex')}
+          >
+            <ChevronRight className="hidden size-3.5 shrink-0 text-[var(--muted-foreground)] sm:block" />
+            {isLast ? (
+              <span className="truncate font-medium text-[var(--foreground)]">{crumb.label}</span>
+            ) : (
+              <Link
+                to={crumb.path}
+                className="truncate text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              >
+                {crumb.label}
+              </Link>
+            )}
+          </span>
+        )
+      })}
     </nav>
   )
 }

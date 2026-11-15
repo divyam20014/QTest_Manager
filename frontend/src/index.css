@@ -53,6 +53,33 @@
   --status-critical-bg: #f7e6f4;
   --status-neutral: #52525b;
   --status-neutral-bg: #f1f1f3;
+
+  /* Tactile/skeuomorphic design language (dashboard redesign Phase 1).
+     Light source is fixed top-left across every surface so raised and
+     pressed states read consistently wherever they're used. Separate
+     from --shadow (none existed before this) so this layer is additive,
+     not a replacement for the flat Card's shadow-sm. */
+  --tactile-surface: #eef0f3;
+  --tactile-surface-raised: #f7f8fa;
+  --tactile-highlight: rgba(255, 255, 255, 0.9);
+  --tactile-shadow-dark: rgba(163, 172, 185, 0.55);
+  --tactile-shadow-darker: rgba(140, 150, 165, 0.45);
+
+  /* Raised (emboss): light shadow top-left, dark shadow bottom-right. */
+  --elevation-raised-sm: -3px -3px 6px var(--tactile-highlight), 3px 3px 6px var(--tactile-shadow-dark);
+  --elevation-raised-md: -5px -5px 10px var(--tactile-highlight), 6px 6px 14px var(--tactile-shadow-dark);
+  --elevation-raised-lg: -7px -7px 16px var(--tactile-highlight), 10px 10px 22px var(--tactile-shadow-darker);
+
+  /* Pressed (deboss): shadows flip inward via inset. Used for the
+     :active press state and for "well" surfaces like dial tracks. */
+  --elevation-pressed-sm: inset 2px 2px 5px var(--tactile-shadow-dark), inset -2px -2px 5px var(--tactile-highlight);
+  --elevation-pressed-md: inset 3px 3px 8px var(--tactile-shadow-darker), inset -3px -3px 8px var(--tactile-highlight);
+
+  /* Subtle brushed-texture, inline SVG noise -- no external asset, kept
+     at low opacity via the alpha in the stroke color so body text laid
+     over it still passes WCAG AA. Reused via the .qth-texture utility
+     below rather than inlined per-component. */
+  --tactile-texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Theme toggle (Tier 3 UX polish): an explicit data-theme attribute on
@@ -88,6 +115,18 @@
     --status-critical-bg: #321830;
     --status-neutral: #a1a1aa;
     --status-neutral-bg: #232326;
+
+    /* Dark-mode tactile palette is its own considered variant (brushed
+       graphite/glass), not an inverted light palette -- a straight
+       invert would turn the highlight into a near-white glare that
+       looks like a flat UI mistake, not an intentional material. Both
+       shadow components darken, and the highlight becomes a faint cool
+       edge-light rather than a bright specular one. */
+    --tactile-surface: #1c1e24;
+    --tactile-surface-raised: #23262e;
+    --tactile-highlight: rgba(255, 255, 255, 0.06);
+    --tactile-shadow-dark: rgba(0, 0, 0, 0.65);
+    --tactile-shadow-darker: rgba(0, 0, 0, 0.8);
   }
 }
 
@@ -117,6 +156,12 @@
   --status-critical-bg: #321830;
   --status-neutral: #a1a1aa;
   --status-neutral-bg: #232326;
+
+  --tactile-surface: #1c1e24;
+  --tactile-surface-raised: #23262e;
+  --tactile-highlight: rgba(255, 255, 255, 0.06);
+  --tactile-shadow-dark: rgba(0, 0, 0, 0.65);
+  --tactile-shadow-darker: rgba(0, 0, 0, 0.8);
 }
 
 * {
@@ -168,3 +213,40 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .qth-animate-in { animation: none !important; }
 }
+
+/* Tactile/skeuomorphic utilities (dashboard redesign Phase 1). Kept as
+   plain CSS classes rather than Tailwind arbitrary-value repetition
+   since the box-shadow values are long and reused verbatim by multiple
+   components (EmbossedCard, TactileButton, GaugeDial track). */
+.qth-texture {
+  position: relative;
+}
+.qth-texture::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--tactile-texture);
+  pointer-events: none;
+}
+.qth-raised-sm { box-shadow: var(--elevation-raised-sm); }
+.qth-raised-md { box-shadow: var(--elevation-raised-md); }
+.qth-raised-lg { box-shadow: var(--elevation-raised-lg); }
+.qth-pressed-sm { box-shadow: var(--elevation-pressed-sm); }
+
+/* TactileButton's press state. Plain CSS :active rather than Tailwind's
+   active: variant because the pressed look needs to swap in the
+   qth-pressed-sm box-shadow, a custom class, which Tailwind's variant
+   prefixes don't apply to directly. */
+.qth-tactile-btn {
+  transition: box-shadow 150ms, transform 150ms;
+}
+.qth-tactile-btn:active {
+  box-shadow: var(--elevation-pressed-sm);
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .qth-tactile-btn { transition: none; }
+  .qth-tactile-btn:active { transform: none; }
+}
+.qth-pressed-md { box-shadow: var(--elevation-pressed-md); }

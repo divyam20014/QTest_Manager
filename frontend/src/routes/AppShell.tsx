@@ -319,7 +319,7 @@ export function AppShell() {
             <UserMenu name={user?.name} role={user?.role} onLogout={() => logoutMutation.mutate()} />
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} className="flex-1 bg-[var(--muted)]/40 p-4 md:p-6">
+        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 md:p-6">
           <Outlet />
         </main>
       </div>

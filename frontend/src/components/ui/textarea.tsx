@@ -7,9 +7,11 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
     <textarea
       ref={ref}
       className={cn(
-        'flex min-h-16 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm',
-        'placeholder:text-[var(--muted-foreground)] focus-visible:outline-none focus-visible:ring-1',
-        'focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50',
+        // Dashboard redesign Phase 3: same inset-well + outline-focus
+        // treatment as Input, for visual consistency between the two.
+        'qth-pressed-sm flex min-h-16 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm',
+        'placeholder:text-[var(--muted-foreground)] focus-visible:outline-2 focus-visible:outline-offset-1',
+        'focus-visible:outline-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
       {...props}
