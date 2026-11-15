@@ -6,7 +6,7 @@ import { defectTemplateDownloadUrl, importDefects, type ImportReport } from '@/a
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CsvDropZone } from '@/components/ui/csv-drop-zone'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { useToast } from '@/lib/toast'
 
 // Pass 2 (ADR-061): Defect bulk import, newly built -- mirrors
@@ -93,7 +93,7 @@ export function DefectImportDialog({ open, onClose }: { open: boolean; onClose: 
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
 
         {!report && (
-          <div className="flex justify-end">
+          <DialogFooter>
             <Button
               size="sm"
               disabled={!file || importMutation.isPending}
@@ -101,7 +101,7 @@ export function DefectImportDialog({ open, onClose }: { open: boolean; onClose: 
             >
               {importMutation.isPending ? 'Importing…' : 'Import'}
             </Button>
-          </div>
+          </DialogFooter>
         )}
 
         {report && (
@@ -128,11 +128,11 @@ export function DefectImportDialog({ open, onClose }: { open: boolean; onClose: 
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={handleClose}>
             Close
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/client'
 import type { RoleCode } from '@/api/auth'
-import { listRoles, type Role } from '@/api/roles'
+import { listRoles } from '@/api/roles'
 import {
   createUser,
   deactivateUser,
@@ -13,14 +13,17 @@ import {
   updateUser,
   type User,
 } from '@/api/users'
+import { FilterBar, FilterField } from '@/components/table/FilterBar'
+import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
+import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
 
 const INVITE_ROLES: RoleCode[] = ['admin', 'manager', 'tester']
@@ -49,6 +52,7 @@ export function UsersRoles() {
   const sort = urlFilters.values.sort
   const sortKey = sort.replace(/^-/, '') as SortKey
   const sortDesc = sort.startsWith('-')
+  const isMobile = useIsMobile()
 
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
   const rolesQuery = useQuery({ queryKey: ['roles'], queryFn: listRoles })
@@ -112,11 +116,90 @@ export function UsersRoles() {
     onError: () => showToast('error', 'Could not activate that user'),
   })
 
+  const columns: ResponsiveColumn<User>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      headerCell: (
+        <button
+          type="button"
+          onClick={() => toggleSort('name')}
+          className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+        >
+          Name {sortKey === 'name' && (sortDesc ? '↓' : '↑')}
+        </button>
+      ),
+      card: 'title',
+      tdClassName: 'font-medium',
+      cell: (u) => (
+        <>
+          {u.name} {u.id === currentUser?.user_id && <span className="text-xs text-[var(--muted-foreground)]">(you)</span>}
+        </>
+      ),
+      cardCell: (u) => (
+        <p className="break-words py-1 text-base font-medium leading-snug">
+          {u.name} {u.id === currentUser?.user_id && <span className="text-xs text-[var(--muted-foreground)]">(you)</span>}
+        </p>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      card: 'badge',
+      cell: (u) => <Badge tone={u.is_active ? 'positive' : 'neutral'}>{u.is_active ? 'Active' : 'Deactivated'}</Badge>,
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      cardFull: true,
+      cell: (u) => u.email,
+      cardCell: (u) => (
+        <span className="block min-w-0 [overflow-wrap:anywhere]" title={u.email}>
+          {u.email}
+        </span>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      cell: (u) => (
+        <Select
+          aria-label={`Role for ${u.name}`}
+          value={u.role_id}
+          disabled={u.id === currentUser?.user_id}
+          onChange={(e) => roleMutation.mutate({ id: u.id, roleId: e.target.value })}
+          className="w-40 max-md:w-full"
+        >
+          {activeRoles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </Select>
+      ),
+    },
+    {
+      key: 'last_login',
+      header: 'Last Login',
+      headerCell: (
+        <button
+          type="button"
+          onClick={() => toggleSort('last_login_at')}
+          className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
+        >
+          Last Login {sortKey === 'last_login_at' && (sortDesc ? '↓' : '↑')}
+        </button>
+      ),
+      tdClassName: 'text-[var(--muted-foreground)]',
+      cell: (u) => (u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : 'Never'),
+    },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">Users &amp; Roles</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => setInviteOpen(true)}>
             Invite User
           </Button>
@@ -126,43 +209,74 @@ export function UsersRoles() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Search by name or email…"
-          value={search}
-          onChange={(e) => urlFilters.setFilter('search', e.target.value)}
-          className="w-56"
-          aria-label="Search users"
-        />
-        <Select
-          aria-label="Filter by role"
-          value={roleFilter}
-          onChange={(e) => urlFilters.setFilter('role', e.target.value)}
-          className="w-40"
-        >
-          <option value="">All roles</option>
-          {activeRoles.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter by status"
-          value={statusFilter}
-          onChange={(e) => urlFilters.setFilter('status', e.target.value)}
-          className="w-36"
-        >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Deactivated</option>
-        </Select>
-        {urlFilters.active.length > 0 && (
+      <FilterBar
+        activeCount={(roleFilter ? 1 : 0) + (statusFilter ? 1 : 0)}
+        onClear={() => {
+          urlFilters.setFilter('role', '')
+          urlFilters.setFilter('status', '')
+        }}
+        desktopClear={false}
+        primary={
+          <Input
+            type="search"
+            inputMode="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            placeholder="Search by name or email…"
+            value={search}
+            onChange={(e) => urlFilters.setFilter('search', e.target.value)}
+            className="w-56 max-md:w-full"
+            aria-label="Search users"
+          />
+        }
+      >
+        <FilterField label="Role">
+          <Select
+            aria-label="Filter by role"
+            value={roleFilter}
+            onChange={(e) => urlFilters.setFilter('role', e.target.value)}
+            className="w-40"
+          >
+            <option value="">All roles</option>
+            {activeRoles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <FilterField label="Status">
+          <Select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(e) => urlFilters.setFilter('status', e.target.value)}
+            className="w-36"
+          >
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Deactivated</option>
+          </Select>
+        </FilterField>
+        {isMobile && (
+          <FilterField label="Sort by">
+            <Select
+              aria-label="Sort users"
+              value={sort}
+              onChange={(e) => urlFilters.setFilter('sort', e.target.value)}
+            >
+              <option value="name">Name (A-Z)</option>
+              <option value="-name">Name (Z-A)</option>
+              <option value="-last_login_at">Last login (newest)</option>
+              <option value="last_login_at">Last login (oldest)</option>
+            </Select>
+          </FilterField>
+        )}
+        {!isMobile && urlFilters.active.length > 0 && (
           <Button variant="outline" size="sm" onClick={urlFilters.clearAll}>
             Clear filters
           </Button>
         )}
-      </div>
+      </FilterBar>
 
       {visibleFilterChips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -176,7 +290,7 @@ export function UsersRoles() {
                 type="button"
                 onClick={() => urlFilters.setFilter(key, '')}
                 aria-label={`Remove ${FILTER_CHIP_LABEL[key]} filter`}
-                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] max-md:flex max-md:size-8 max-md:items-center max-md:justify-center"
               >
                 ×
               </button>
@@ -185,57 +299,37 @@ export function UsersRoles() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">
-                <button
-                  type="button"
-                  onClick={() => toggleSort('name')}
-                  className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
-                >
-                  Name {sortKey === 'name' && (sortDesc ? '↓' : '↑')}
-                </button>
-              </th>
-              <th className="px-4 py-2 font-medium">Email</th>
-              <th className="px-4 py-2 font-medium">Role</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">
-                <button
-                  type="button"
-                  onClick={() => toggleSort('last_login_at')}
-                  className="inline-flex items-center gap-1 hover:text-[var(--foreground)]"
-                >
-                  Last Login {sortKey === 'last_login_at' && (sortDesc ? '↓' : '↑')}
-                </button>
-              </th>
-              <th className="px-4 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers.length === 0 && usersQuery.data && usersQuery.data.length > 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-[var(--muted-foreground)]">
-                  No users match your filters.
-                </td>
-              </tr>
+      <ResponsiveTable
+        label="Users"
+        rows={filteredUsers}
+        rowKey={(u) => u.id}
+        columns={columns}
+        stateCellClassName="px-4"
+        state={
+          filteredUsers.length === 0 && usersQuery.data && usersQuery.data.length > 0 ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              No users match your filters.
+            </p>
+          ) : undefined
+        }
+        rowActions={(u) => (
+          <div className="flex flex-wrap justify-end gap-2 md:flex-nowrap">
+            <Button variant="outline" size="sm" onClick={() => setResetTarget(u)}>
+              Reset Password
+            </Button>
+            {u.is_active && u.id !== currentUser?.user_id && (
+              <Button variant="outline" size="sm" onClick={() => deactivateMutation.mutate(u.id)}>
+                Deactivate
+              </Button>
             )}
-            {filteredUsers.map((u) => (
-              <UserRow
-                key={u.id}
-                user={u}
-                roles={activeRoles}
-                isSelf={u.id === currentUser?.user_id}
-                onRoleChange={(roleId) => roleMutation.mutate({ id: u.id, roleId })}
-                onDeactivate={() => deactivateMutation.mutate(u.id)}
-                onActivate={() => activateMutation.mutate(u.id)}
-                onResetPassword={() => setResetTarget(u)}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+            {!u.is_active && (
+              <Button variant="outline" size="sm" onClick={() => activateMutation.mutate(u.id)}>
+                Activate
+              </Button>
+            )}
+          </div>
+        )}
+      />
 
       <NewUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       <InviteUserDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
@@ -244,71 +338,6 @@ export function UsersRoles() {
         onClose={() => setResetTarget(null)}
       />
     </div>
-  )
-}
-
-function UserRow({
-  user,
-  roles,
-  isSelf,
-  onRoleChange,
-  onDeactivate,
-  onActivate,
-  onResetPassword,
-}: {
-  user: User
-  roles: Role[]
-  isSelf: boolean
-  onRoleChange: (roleId: string) => void
-  onDeactivate: () => void
-  onActivate: () => void
-  onResetPassword: () => void
-}) {
-  return (
-    <tr className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
-      <td className="px-4 py-2 font-medium">
-        {user.name} {isSelf && <span className="text-xs text-[var(--muted-foreground)]">(you)</span>}
-      </td>
-      <td className="px-4 py-2">{user.email}</td>
-      <td className="px-4 py-2">
-        <Select
-          aria-label={`Role for ${user.name}`}
-          value={user.role_id}
-          disabled={isSelf}
-          onChange={(e) => onRoleChange(e.target.value)}
-          className="w-40"
-        >
-          {roles.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </Select>
-      </td>
-      <td className="px-4 py-2">
-        <Badge tone={user.is_active ? 'positive' : 'neutral'}>{user.is_active ? 'Active' : 'Deactivated'}</Badge>
-      </td>
-      <td className="px-4 py-2 text-[var(--muted-foreground)]">
-        {user.last_login_at ? new Date(user.last_login_at).toLocaleDateString() : 'Never'}
-      </td>
-      <td className="px-4 py-2 text-right">
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onResetPassword}>
-            Reset Password
-          </Button>
-          {user.is_active && !isSelf && (
-            <Button variant="outline" size="sm" onClick={onDeactivate}>
-              Deactivate
-            </Button>
-          )}
-          {!user.is_active && (
-            <Button variant="outline" size="sm" onClick={onActivate}>
-              Activate
-            </Button>
-          )}
-        </div>
-      </td>
-    </tr>
   )
 }
 
@@ -338,6 +367,7 @@ function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: ()
           <Input
             id="reset-password"
             type="password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -347,14 +377,14 @@ function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: ()
           </p>
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" disabled={resetMutation.isPending} onClick={() => resetMutation.mutate()}>
             {resetMutation.isPending ? 'Resetting…' : 'Reset Password'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -391,11 +421,11 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
       <div className="flex flex-col gap-3 text-sm">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="user-name">Name</Label>
-          <Input id="user-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id="user-name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="user-email">Email</Label>
-          <Input id="user-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input id="user-email" type="email" inputMode="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="user-role">Role</Label>
@@ -415,6 +445,7 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
           <Input
             id="user-password"
             type="password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -423,7 +454,7 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
           </p>
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
@@ -434,7 +465,7 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
           >
             {createMutation.isPending ? 'Creating…' : 'Create User'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -486,23 +517,25 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
               link with the invitee directly — it expires after a few days:
             </p>
             <p className="break-all rounded bg-[var(--muted)] p-2 font-mono text-xs">{sentLink}</p>
-            <div className="flex justify-end">
+            <DialogFooter>
               <Button size="sm" onClick={handleClose}>
                 Done
               </Button>
-            </div>
+            </DialogFooter>
           </>
         ) : (
           <>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="invite-name">Name</Label>
-              <Input id="invite-name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input id="invite-name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="invite-email">Email</Label>
               <Input
                 id="invite-email"
                 type="email"
+                inputMode="email"
+                autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -518,7 +551,7 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
               </Select>
             </div>
             {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-            <div className="flex justify-end gap-2">
+            <DialogFooter>
               <Button variant="outline" size="sm" onClick={handleClose}>
                 Cancel
               </Button>
@@ -529,7 +562,7 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
               >
                 {inviteMutation.isPending ? 'Sending…' : 'Send Invite'}
               </Button>
-            </div>
+            </DialogFooter>
           </>
         )}
       </div>

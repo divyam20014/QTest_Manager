@@ -43,7 +43,7 @@
   /* Status tokens, reserved for state (never reused as a categorical
      series color) -- backs badges/pills across runs, defects, test
      case status. */
-  --status-good: #0f8a5f;
+  --status-good: #0a7050;
   --status-good-bg: #e6f6ef;
   --status-warning: #b45309;
   --status-warning-bg: #fef3e2;

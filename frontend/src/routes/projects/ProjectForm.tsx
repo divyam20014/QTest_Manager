@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import type { ProjectCreateRequest } from '@/api/projects'
 import { Button } from '@/components/ui/button'
+import { DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -41,6 +42,7 @@ export function ProjectForm({
   isSubmitting,
   serverError,
   users = [],
+  inDialog = false,
 }: {
   defaultValues: ProjectFormValues
   onSubmit: (values: ProjectCreateRequest) => void
@@ -48,6 +50,8 @@ export function ProjectForm({
   isSubmitting: boolean
   serverError?: string | null
   users?: { id: string; name: string }[]
+  /** Rendered inside a Dialog: pin the submit button in the sheet footer on phones. */
+  inDialog?: boolean
 }) {
   const form = useForm<ProjectFormValues>({ resolver: zodResolver(schema), defaultValues })
 
@@ -60,13 +64,13 @@ export function ProjectForm({
     >
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="name">Name</Label>
-        <Input id="name" {...form.register('name')} />
+        <Input id="name" autoComplete="off" {...form.register('name')} />
         {form.formState.errors.name && (
           <p className="text-xs text-[var(--destructive)]">{form.formState.errors.name.message}</p>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="domain">Domain</Label>
           <Select id="domain" {...form.register('domain')}>
@@ -102,7 +106,7 @@ export function ProjectForm({
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="manager_name">Manager name</Label>
-        <Input id="manager_name" {...form.register('manager_name')} />
+        <Input id="manager_name" autoComplete="off" {...form.register('manager_name')} />
       </div>
 
       {users.length > 0 && (
@@ -119,7 +123,7 @@ export function ProjectForm({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="start_date">Start date</Label>
           <Input id="start_date" type="date" {...form.register('start_date')} />
@@ -133,10 +137,10 @@ export function ProjectForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="budget">Budget</Label>
-          <Input id="budget" type="number" min={0} step="0.01" {...form.register('budget')} />
+          <Input id="budget" type="number" inputMode="decimal" min={0} step="0.01" {...form.register('budget')} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="region">Region</Label>
@@ -146,9 +150,17 @@ export function ProjectForm({
 
       {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
 
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
-        {isSubmitting ? 'Saving…' : submitLabel}
-      </Button>
+      {inDialog ? (
+        <DialogFooter>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Saving…' : submitLabel}
+          </Button>
+        </DialogFooter>
+      ) : (
+        <Button type="submit" disabled={isSubmitting} className="mt-2">
+          {isSubmitting ? 'Saving…' : submitLabel}
+        </Button>
+      )}
     </form>
   )
 }

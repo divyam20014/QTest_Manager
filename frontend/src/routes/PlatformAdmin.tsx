@@ -15,6 +15,7 @@ import {
   updatePlatformAdminActive,
   updateTenantDataRegion,
   updateTenantStatus,
+  type MarketingLead,
   type LeadKind,
   type LeadStatus,
   type PlatformAdminAccount,
@@ -22,10 +23,12 @@ import {
   type Tenant,
   type TenantStatus,
 } from '@/api/platformAdmin'
+import { FilterBar } from '@/components/table/FilterBar'
+import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -143,11 +146,11 @@ function AdminConsole({
   onSignOut: () => void
 }) {
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold">Platform Administration</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
+          <p className="break-all text-sm text-[var(--muted-foreground)]">
             Signed in as {credentials.email}
           </p>
         </div>
@@ -199,7 +202,7 @@ function ConfirmActionDialog({
     <Dialog open={open} onClose={onClose} title={title}>
       <div className="flex flex-col gap-4 text-sm">
         <p className="text-[var(--muted-foreground)]">{description}</p>
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
             Cancel
           </Button>
@@ -211,7 +214,7 @@ function ConfirmActionDialog({
           >
             {pending ? 'Working…' : confirmLabel}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -275,15 +278,78 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
     }
   }
 
+  const tenantColumns: ResponsiveColumn<Tenant>[] = [
+    {
+      key: 'tenant',
+      header: 'Tenant',
+      card: 'title',
+      cell: (t) => (
+        <>
+          <div className="font-medium">{t.name}</div>
+          <div className="font-mono text-xs text-[var(--muted-foreground)]">{t.id}</div>
+        </>
+      ),
+      cardCell: (t) => (
+        <>
+          <p className="break-words py-1 text-base font-medium leading-snug">{t.name}</p>
+          <p className="break-all font-mono text-xs text-[var(--muted-foreground)]">{t.id}</p>
+        </>
+      ),
+    },
+    { key: 'status', header: 'Status', card: 'badge', cell: (t) => <StatusBadge status={t.status} /> },
+    {
+      key: 'region',
+      header: 'Region',
+      cardLabel: 'Data region',
+      cell: (t) => (
+        <Select
+          aria-label={`Data region for ${t.name}`}
+          className="h-7 w-24 px-2 py-0.5 text-xs max-md:h-11 max-md:w-full max-md:text-base"
+          value={t.data_region}
+          disabled={dataRegionMutation.isPending}
+          onChange={(e) => dataRegionMutation.mutate({ id: t.id, dataRegion: e.target.value })}
+        >
+          {REGION_OPTIONS.includes(t.data_region) ? null : <option value={t.data_region}>{t.data_region}</option>}
+          {REGION_OPTIONS.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </Select>
+      ),
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      tdClassName: 'text-[var(--muted-foreground)]',
+      cell: (t) => new Date(t.created_at).toLocaleDateString(),
+    },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1.5">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          New Tenant
+        </Button>
+      </div>
+
+      <FilterBar
+        activeCount={statusFilter ? 1 : 0}
+        onClear={() => {
+          setStatusFilter('')
+          setPage(1)
+        }}
+        desktopClear={false}
+        primary={
+          <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor="tenant-search">Search</Label>
             <Input
               id="tenant-search"
-              className="w-56"
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+              className="w-56 max-md:w-full"
               placeholder="Name or tenant ID…"
               value={search}
               onChange={(e) => {
@@ -292,127 +358,64 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
               }}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="tenant-status-filter">Status</Label>
-            <Select
-              id="tenant-status-filter"
-              className="w-36"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as TenantStatus | '')
-                setPage(1)
-              }}
-            >
-              <option value="">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="suspended">Suspended</option>
-              <option value="inactive">Inactive</option>
-            </Select>
-          </div>
+        }
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="tenant-status-filter">Status</Label>
+          <Select
+            id="tenant-status-filter"
+            className="w-36"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as TenantStatus | '')
+              setPage(1)
+            }}
+          >
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="suspended">Suspended</option>
+            <option value="inactive">Inactive</option>
+          </Select>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          New Tenant
-        </Button>
-      </div>
+      </FilterBar>
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">Tenant</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Region</th>
-              <th className="px-4 py-2 font-medium">Created</th>
-              <th className="px-4 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {tenantsQuery.isLoading && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  Loading tenants…
-                </td>
-              </tr>
+      <ResponsiveTable
+        label="Tenants"
+        rows={tenantsQuery.data?.items ?? []}
+        rowKey={(t) => t.id}
+        columns={tenantColumns}
+        stateCellClassName="px-4"
+        state={
+          tenantsQuery.isLoading ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">Loading tenants…</p>
+          ) : total === 0 ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">No tenants match your search.</p>
+          ) : undefined
+        }
+        rowActions={(t) => (
+          <div className="flex flex-wrap justify-end gap-2 md:flex-nowrap">
+            <Button variant="outline" size="sm" onClick={() => setPlanTarget(t)}>
+              Plan
+            </Button>
+            {t.status !== 'approved' && (
+              <Button variant="outline" size="sm" onClick={() => requestStatusChange(t, 'approved')}>
+                Approve
+              </Button>
             )}
-            {!tenantsQuery.isLoading && total === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No tenants match your search.
-                </td>
-              </tr>
+            {t.status !== 'inactive' && (
+              <Button variant="outline" size="sm" onClick={() => requestStatusChange(t, 'inactive')}>
+                Deactivate
+              </Button>
             )}
-            {tenantsQuery.data?.items.map((t) => (
-              <tr key={t.id} className="border-t border-[var(--border)]">
-                <td className="px-4 py-2">
-                  <div className="font-medium">{t.name}</div>
-                  <div className="font-mono text-xs text-[var(--muted-foreground)]">{t.id}</div>
-                </td>
-                <td className="px-4 py-2">
-                  <StatusBadge status={t.status} />
-                </td>
-                <td className="px-4 py-2">
-                  <Select
-                    aria-label={`Data region for ${t.name}`}
-                    className="h-7 w-24 px-2 py-0.5 text-xs"
-                    value={t.data_region}
-                    disabled={dataRegionMutation.isPending}
-                    onChange={(e) =>
-                      dataRegionMutation.mutate({ id: t.id, dataRegion: e.target.value })
-                    }
-                  >
-                    {REGION_OPTIONS.includes(t.data_region) ? null : (
-                      <option value={t.data_region}>{t.data_region}</option>
-                    )}
-                    {REGION_OPTIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </Select>
-                </td>
-                <td className="px-4 py-2 text-[var(--muted-foreground)]">
-                  {new Date(t.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setPlanTarget(t)}>
-                      Plan
-                    </Button>
-                    {t.status !== 'approved' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => requestStatusChange(t, 'approved')}
-                      >
-                        Approve
-                      </Button>
-                    )}
-                    {t.status !== 'inactive' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => requestStatusChange(t, 'inactive')}
-                      >
-                        Deactivate
-                      </Button>
-                    )}
-                    {t.status !== 'suspended' && (
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => requestStatusChange(t, 'suspended')}
-                      >
-                        Suspend
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            {t.status !== 'suspended' && (
+              <Button variant="destructive" size="sm" onClick={() => requestStatusChange(t, 'suspended')}>
+                Suspend
+              </Button>
+            )}
+          </div>
+        )}
+      />
 
       {total > 0 && (
         <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
@@ -541,7 +544,7 @@ function PlanDialog({
           />
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
@@ -552,7 +555,7 @@ function PlanDialog({
           >
             {assignMutation.isPending ? 'Saving…' : 'Save'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -687,14 +690,14 @@ function NewTenantDialog({
             {serverError}
           </p>
         )}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" size="sm" disabled={createMutation.isPending}>
             {createMutation.isPending ? 'Creating…' : 'Create Tenant'}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Dialog>
   )
@@ -726,9 +729,50 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
   const isSelf = (admin: PlatformAdminAccount) =>
     admin.email.toLowerCase() === credentials.email.toLowerCase()
 
+  const adminColumns: ResponsiveColumn<PlatformAdminAccount>[] = [
+    {
+      key: 'email',
+      header: 'Email',
+      card: 'title',
+      cell: (a) => (
+        <>
+          <div className="font-medium">{a.email}</div>
+          {isSelf(a) && <div className="text-xs text-[var(--muted-foreground)]">You</div>}
+        </>
+      ),
+      cardCell: (a) => (
+        <>
+          <p className="break-all py-1 text-base font-medium leading-snug">{a.email}</p>
+          {isSelf(a) && <p className="text-xs text-[var(--muted-foreground)]">You</p>}
+        </>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      card: 'badge',
+      cell: (a) => (
+        <Badge tone={a.is_active ? 'positive' : 'warning'} className="gap-1">
+          {a.is_active ? (
+            <ShieldCheck aria-hidden="true" className="h-3 w-3" />
+          ) : (
+            <ShieldOff aria-hidden="true" className="h-3 w-3" />
+          )}
+          {a.is_active ? 'active' : 'inactive'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      tdClassName: 'text-[var(--muted-foreground)]',
+      cell: (a) => new Date(a.created_at).toLocaleDateString(),
+    },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-[var(--muted-foreground)]">
           Accounts that can sign in to Platform Administration.
         </p>
@@ -737,72 +781,35 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
         </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">Email</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Created</th>
-              <th className="px-4 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {adminsQuery.isLoading && (
-              <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  Loading admins…
-                </td>
-              </tr>
-            )}
-            {adminsQuery.data?.items.map((a) => (
-              <tr key={a.id} className="border-t border-[var(--border)]">
-                <td className="px-4 py-2">
-                  <div className="font-medium">{a.email}</div>
-                  {isSelf(a) && (
-                    <div className="text-xs text-[var(--muted-foreground)]">You</div>
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  <Badge tone={a.is_active ? 'positive' : 'warning'} className="gap-1">
-                    {a.is_active ? (
-                      <ShieldCheck aria-hidden="true" className="h-3 w-3" />
-                    ) : (
-                      <ShieldOff aria-hidden="true" className="h-3 w-3" />
-                    )}
-                    {a.is_active ? 'active' : 'inactive'}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2 text-[var(--muted-foreground)]">
-                  {new Date(a.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  {a.is_active ? (
-                    <span title={isSelf(a) ? 'You cannot deactivate your own account' : undefined}>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        disabled={isSelf(a)}
-                        onClick={() => setConfirmTarget(a)}
-                      >
-                        Deactivate
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleMutation.mutate({ id: a.id, isActive: true })}
-                    >
-                      Reactivate
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        label="Platform administrators"
+        rows={adminsQuery.data?.items ?? []}
+        rowKey={(a) => a.id}
+        columns={adminColumns}
+        stateCellClassName="px-4"
+        state={
+          adminsQuery.isLoading ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">Loading admins…</p>
+          ) : undefined
+        }
+        rowActions={(a) =>
+          a.is_active ? (
+            <span title={isSelf(a) ? 'You cannot deactivate your own account' : undefined}>
+              <Button variant="destructive" size="sm" disabled={isSelf(a)} onClick={() => setConfirmTarget(a)}>
+                Deactivate
+              </Button>
+            </span>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => toggleMutation.mutate({ id: a.id, isActive: true })}
+            >
+              Reactivate
+            </Button>
+          )
+        }
+      />
 
       <NewAdminDialog
         credentials={credentials}
@@ -890,14 +897,14 @@ function NewAdminDialog({
             {serverError}
           </p>
         )}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button type="button" variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" size="sm" disabled={createMutation.isPending}>
             {createMutation.isPending ? 'Creating…' : 'Create Admin'}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Dialog>
   )
@@ -943,137 +950,165 @@ function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
   const total = leadsQuery.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
+  const statusSelect = (lead: MarketingLead) => (
+    <Select
+      aria-label={`Status for ${lead.full_name}`}
+      className="w-32 max-md:w-full"
+      value={lead.status}
+      disabled={statusMutation.isPending}
+      onChange={(e) => statusMutation.mutate({ id: lead.id, next: e.target.value as LeadStatus })}
+    >
+      <option value="new">New</option>
+      <option value="contacted">Contacted</option>
+      <option value="closed">Closed</option>
+    </Select>
+  )
+
+  const leadColumns: ResponsiveColumn<MarketingLead>[] = [
+    {
+      key: 'received',
+      header: 'Received',
+      tdClassName: 'whitespace-nowrap text-[var(--muted-foreground)]',
+      cell: (lead) => new Date(lead.created_at).toLocaleString(),
+    },
+    {
+      key: 'contact',
+      header: 'Contact',
+      card: 'title',
+      cell: (lead) => (
+        <>
+          <div className="font-medium">{lead.full_name}</div>
+          <a className="text-xs text-[var(--brand)] hover:underline" href={`mailto:${lead.business_email}`}>
+            {lead.business_email}
+          </a>
+          {lead.message && (
+            <p className="mt-1 max-w-md whitespace-pre-line text-xs text-[var(--muted-foreground)]">{lead.message}</p>
+          )}
+        </>
+      ),
+      cardCell: (lead) => (
+        <>
+          <p className="break-words py-1 text-base font-medium leading-snug">{lead.full_name}</p>
+          <a
+            className="relative z-10 inline-flex min-h-11 items-center break-all text-sm text-[var(--brand)] hover:underline"
+            href={`mailto:${lead.business_email}`}
+          >
+            {lead.business_email}
+          </a>
+          {lead.message && (
+            <p className="whitespace-pre-line break-words text-sm text-[var(--muted-foreground)]">{lead.message}</p>
+          )}
+          <div className="mt-2 flex flex-col gap-1">
+            <span className="text-xs text-[var(--muted-foreground)]">Update status</span>
+            {statusSelect(lead)}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: 'company',
+      header: 'Company',
+      cell: (lead) => (
+        <>
+          <div>{lead.company}</div>
+          <div className="text-xs text-[var(--muted-foreground)]">
+            {[lead.job_role, lead.team_size && `${lead.team_size} people`, lead.primary_requirement]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+        </>
+      ),
+    },
+    {
+      key: 'kind',
+      header: 'Type',
+      card: 'badge',
+      cell: (lead) => <Badge tone="neutral">{LEAD_KIND_LABEL[lead.kind]}</Badge>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      card: 'badge',
+      cell: (lead) => (
+        <div className="flex flex-col items-start gap-1.5">
+          <Badge tone={LEAD_STATUS_TONE[lead.status]}>{lead.status}</Badge>
+          {statusSelect(lead)}
+        </div>
+      ),
+      cardCell: (lead) => <Badge tone={LEAD_STATUS_TONE[lead.status]}>{lead.status}</Badge>,
+    },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lead-kind-filter">Type</Label>
-            <Select
-              id="lead-kind-filter"
-              className="w-40"
-              value={kind}
-              onChange={(e) => {
-                setKind(e.target.value as LeadKind | '')
-                setPage(1)
-              }}
-            >
-              <option value="">All types</option>
-              <option value="demo">Demo request</option>
-              <option value="contact">Contact</option>
-              <option value="pricing">Pricing</option>
-              <option value="enterprise">Enterprise</option>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lead-status-filter">Status</Label>
-            <Select
-              id="lead-status-filter"
-              className="w-36"
-              value={status}
-              onChange={(e) => {
-                setStatus(e.target.value as LeadStatus | '')
-                setPage(1)
-              }}
-            >
-              <option value="">All statuses</option>
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="closed">Closed</option>
-            </Select>
-          </div>
-        </div>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          Submitted from the public website&rsquo;s demo and contact forms.
-        </p>
-      </div>
+      <p className="text-sm text-[var(--muted-foreground)]">
+        Submitted from the public website&rsquo;s demo and contact forms.
+      </p>
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">Received</th>
-              <th className="px-4 py-2 font-medium">Contact</th>
-              <th className="px-4 py-2 font-medium">Company</th>
-              <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {leadsQuery.isLoading && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  Loading leads…
-                </td>
-              </tr>
-            )}
-            {leadsQuery.isError && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[var(--status-serious)]">
-                  Could not load leads.
-                </td>
-              </tr>
-            )}
-            {leadsQuery.data && leadsQuery.data.items.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No leads match these filters yet.
-                </td>
-              </tr>
-            )}
-            {leadsQuery.data?.items.map((lead) => (
-              <tr key={lead.id} className="border-t border-[var(--border)] align-top">
-                <td className="whitespace-nowrap px-4 py-3 text-[var(--muted-foreground)]">
-                  {new Date(lead.created_at).toLocaleString()}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="font-medium">{lead.full_name}</div>
-                  <a
-                    className="text-xs text-[var(--brand)] hover:underline"
-                    href={`mailto:${lead.business_email}`}
-                  >
-                    {lead.business_email}
-                  </a>
-                  {lead.message && (
-                    <p className="mt-1 max-w-md whitespace-pre-line text-xs text-[var(--muted-foreground)]">
-                      {lead.message}
-                    </p>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <div>{lead.company}</div>
-                  <div className="text-xs text-[var(--muted-foreground)]">
-                    {[lead.job_role, lead.team_size && `${lead.team_size} people`, lead.primary_requirement]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge tone="neutral">{LEAD_KIND_LABEL[lead.kind]}</Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-col items-start gap-1.5">
-                    <Badge tone={LEAD_STATUS_TONE[lead.status]}>{lead.status}</Badge>
-                    <Select
-                      aria-label={`Status for ${lead.full_name}`}
-                      className="w-32"
-                      value={lead.status}
-                      disabled={statusMutation.isPending}
-                      onChange={(e) =>
-                        statusMutation.mutate({ id: lead.id, next: e.target.value as LeadStatus })
-                      }
-                    >
-                      <option value="new">New</option>
-                      <option value="contacted">Contacted</option>
-                      <option value="closed">Closed</option>
-                    </Select>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <FilterBar
+        activeCount={(kind ? 1 : 0) + (status ? 1 : 0)}
+        onClear={() => {
+          setKind('')
+          setStatus('')
+          setPage(1)
+        }}
+        desktopClear={false}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="lead-kind-filter">Type</Label>
+          <Select
+            id="lead-kind-filter"
+            className="w-40"
+            value={kind}
+            onChange={(e) => {
+              setKind(e.target.value as LeadKind | '')
+              setPage(1)
+            }}
+          >
+            <option value="">All types</option>
+            <option value="demo">Demo request</option>
+            <option value="contact">Contact</option>
+            <option value="pricing">Pricing</option>
+            <option value="enterprise">Enterprise</option>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="lead-status-filter">Status</Label>
+          <Select
+            id="lead-status-filter"
+            className="w-36"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value as LeadStatus | '')
+              setPage(1)
+            }}
+          >
+            <option value="">All statuses</option>
+            <option value="new">New</option>
+            <option value="contacted">Contacted</option>
+            <option value="closed">Closed</option>
+          </Select>
+        </div>
+      </FilterBar>
+
+      <ResponsiveTable
+        label="Leads"
+        rows={leadsQuery.data?.items ?? []}
+        rowKey={(l) => l.id}
+        columns={leadColumns}
+        stateCellClassName="px-4"
+        state={
+          leadsQuery.isLoading ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">Loading leads…</p>
+          ) : leadsQuery.isError ? (
+            <p className="py-6 text-center text-sm text-[var(--status-serious)]">Could not load leads.</p>
+          ) : leadsQuery.data && leadsQuery.data.items.length === 0 ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              No leads match these filters yet.
+            </p>
+          ) : undefined
+        }
+      />
 
       {total > 0 && (
         <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">

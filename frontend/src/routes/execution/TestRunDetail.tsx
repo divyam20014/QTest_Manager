@@ -18,10 +18,11 @@ import {
 } from '@/api/execution'
 import { listTestCases } from '@/api/testCases'
 import { listUsers } from '@/api/users'
+import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { humanizeKey } from '@/lib/labels'
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -112,21 +113,73 @@ export function TestRunDetail() {
   const finishError = finishMutation.error instanceof ApiError ? finishMutation.error.message : null
   const usersById = new Map((usersQuery.data ?? []).map((u) => [u.id, u.name]))
 
+  const caseColumns: ResponsiveColumn<(typeof run.cases)[number]>[] = [
+    {
+      key: 'title',
+      header: 'Test Case',
+      card: 'title',
+      tdClassName: 'font-medium',
+      cell: (rc) => rc.title,
+      cardCell: (rc) => (
+        <Link to={`/test-run-cases/${rc.id}?runId=${run.id}`} className={CARD_LINK_CLASS}>
+          {rc.title}
+        </Link>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      card: 'badge',
+      cell: (rc) => <Badge tone={CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</Badge>,
+    },
+    {
+      key: 'progress',
+      header: 'Progress',
+      tdClassName: 'text-xs text-[var(--muted-foreground)]',
+      cell: (rc) => `${rc.passed_count + rc.failed_count + rc.ignored_count}/${rc.step_count} steps`,
+    },
+    {
+      key: 'assignee',
+      header: 'Assignee',
+      cell: (rc) =>
+        canManage && !run.finished_at ? (
+          <Select
+            aria-label={`Assignee for ${rc.title}`}
+            value={rc.assigned_to ?? ''}
+            onChange={(e) => assignMutation.mutate({ runCaseId: rc.id, userId: e.target.value || null })}
+            className="w-36 max-md:w-full"
+          >
+            <option value="">Unassigned</option>
+            {(usersQuery.data ?? []).map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          (rc.assigned_to && usersById.get(rc.assigned_to)) || '—'
+        ),
+    },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link to={`/projects/${run.project_id}/test-runs`} className="text-xs text-[var(--muted-foreground)] hover:underline">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <Link
+            to={`/projects/${run.project_id}/test-runs`}
+            className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
+          >
             ← Test Runs
           </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold">{run.name}</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="min-w-0 break-words text-lg font-semibold">{run.name}</h1>
             <Badge tone="neutral">{run.run_type}</Badge>
             <Badge tone={run.finished_at ? 'neutral' : 'positive'}>{run.finished_at ? 'Finished' : 'Active'}</Badge>
             {run.paused_at && <Badge tone="warning">Paused</Badge>}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 max-md:[&>button]:flex-1">
           {canEdit && (
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               Edit Run
@@ -156,73 +209,32 @@ export function TestRunDetail() {
       </div>
       {finishError && <p className="text-xs text-[var(--destructive)]">{finishError}</p>}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">Test Case</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Progress</th>
-              <th className="px-4 py-2 font-medium">Assignee</th>
-              <th className="px-4 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.cases.map((rc) => (
-              <tr key={rc.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
-                <td className="px-4 py-2 font-medium">{rc.title}</td>
-                <td className="px-4 py-2">
-                  <Badge tone={CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</Badge>
-                </td>
-                <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
-                  {rc.passed_count + rc.failed_count + rc.ignored_count}/{rc.step_count} steps
-                </td>
-                <td className="px-4 py-2">
-                  {canManage && !run.finished_at ? (
-                    <Select
-                      aria-label={`Assignee for ${rc.title}`}
-                      value={rc.assigned_to ?? ''}
-                      onChange={(e) =>
-                        assignMutation.mutate({ runCaseId: rc.id, userId: e.target.value || null })
-                      }
-                      className="w-36"
-                    >
-                      <option value="">Unassigned</option>
-                      {(usersQuery.data ?? []).map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : (
-                    (rc.assigned_to && usersById.get(rc.assigned_to)) || '—'
-                  )}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    {canManage && !run.finished_at && !rc.started_at && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeMutation.mutate(rc.id)}
-                        disabled={removeMutation.isPending}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                    <Link
-                      to={`/test-run-cases/${rc.id}?runId=${run.id}`}
-                      className="text-sm underline-offset-2 hover:underline"
-                    >
-                      {run.finished_at ? 'View' : 'Execute'}
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        label="Test cases in this run"
+        rows={run.cases}
+        rowKey={(rc) => rc.id}
+        columns={caseColumns}
+        rowActions={(rc) => (
+          <div className="flex items-center justify-end gap-3">
+            {canManage && !run.finished_at && !rc.started_at && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeMutation.mutate(rc.id)}
+                disabled={removeMutation.isPending}
+              >
+                Remove
+              </Button>
+            )}
+            <Link
+              to={`/test-run-cases/${rc.id}?runId=${run.id}`}
+              className="text-sm underline-offset-2 hover:underline max-md:inline-flex max-md:min-h-11 max-md:flex-1 max-md:items-center max-md:justify-center max-md:rounded-md max-md:border max-md:border-[var(--border)] max-md:font-medium max-md:no-underline"
+            >
+              {run.finished_at ? 'View' : 'Execute'}
+            </Link>
+          </div>
+        )}
+      />
 
       <LinkedDefectsCard runId={run.id} />
 
@@ -286,14 +298,14 @@ function EditRunDialog({
           </Select>
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
             {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -349,10 +361,10 @@ function AddCasesDialog({
             No more approved test cases are available to add to this run.
           </p>
         )}
-        <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-md border border-[var(--border)] p-2">
+        <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-md border border-[var(--border)] p-2 max-md:max-h-[50svh]">
           {addableCases.map((tc) => (
             <li key={tc.id}>
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 max-md:min-h-11">
                 <input type="checkbox" checked={selectedIds.includes(tc.id)} onChange={() => toggle(tc.id)} />
                 {tc.title}
               </label>
@@ -360,14 +372,14 @@ function AddCasesDialog({
           ))}
         </ul>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" disabled={selectedIds.length === 0 || addMutation.isPending} onClick={() => addMutation.mutate()}>
             {addMutation.isPending ? 'Adding…' : 'Add Selected'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -388,8 +400,8 @@ function LinkedDefectsCard({ runId }: { runId: string }) {
       <div className="overflow-hidden rounded-lg border border-[var(--border)]">
         <ul className="divide-y divide-[var(--border)] text-sm">
           {defects.map((d) => (
-            <li key={d.id} className="flex items-center justify-between px-4 py-2">
-              <Link to={`/defects/${d.id}`} className="underline-offset-2 hover:underline">
+            <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-2 max-md:min-h-11">
+              <Link to={`/defects/${d.id}`} className="min-w-0 break-words underline-offset-2 hover:underline">
                 {d.title}
               </Link>
               <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>

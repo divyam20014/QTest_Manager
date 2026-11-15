@@ -58,6 +58,7 @@ export function AcceptInvite() {
                 <Input
                   id="accept-password"
                   type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />

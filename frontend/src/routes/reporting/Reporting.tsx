@@ -32,6 +32,7 @@ import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Select } from '@/components/ui/select'
@@ -156,10 +157,10 @@ export function Reporting() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h1 className="text-lg font-semibold">Reporting</h1>
         {canExport && (
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 md:flex-row [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center [&>a]:justify-center md:[&>a]:min-h-0">
             <a
               href="/reporting/print"
               className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
@@ -189,7 +190,20 @@ export function Reporting() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-3">
+          <FilterBar
+            activeCount={[projectId, domain, assigneeId, priority, status, dateFrom || dateTo].filter(Boolean).length}
+            onClear={() => {
+              setProjectId('')
+              setDomain('')
+              setAssigneeId('')
+              setPriority('')
+              setStatus('')
+              setDateFrom('')
+              setDateTo('')
+            }}
+            desktopClear={false}
+          >
+            <FilterField label="Project">
             <Select
               aria-label="Project"
               value={projectId}
@@ -203,6 +217,8 @@ export function Reporting() {
                 </option>
               ))}
             </Select>
+            </FilterField>
+            <FilterField label="Domain">
             <Select aria-label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)} className="w-36">
               <option value="">All domains</option>
               {DOMAINS.map((d) => (
@@ -211,6 +227,8 @@ export function Reporting() {
                 </option>
               ))}
             </Select>
+            </FilterField>
+            <FilterField label="Assignee">
             <Select
               aria-label="Assignee"
               value={assigneeId}
@@ -224,6 +242,8 @@ export function Reporting() {
                 </option>
               ))}
             </Select>
+            </FilterField>
+            <FilterField label="Priority">
             <Select
               aria-label="Priority"
               value={priority}
@@ -237,6 +257,8 @@ export function Reporting() {
                 </option>
               ))}
             </Select>
+            </FilterField>
+            <FilterField label="Status">
             <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
               <option value="">All statuses</option>
               {TEST_CASE_STATUSES.map((s) => (
@@ -245,6 +267,7 @@ export function Reporting() {
                 </option>
               ))}
             </Select>
+            </FilterField>
             <DateRangePicker
               idPrefix="reporting-date"
               fromValue={dateFrom}
@@ -254,7 +277,7 @@ export function Reporting() {
                 setDateTo(to)
               }}
             />
-          </div>
+          </FilterBar>
         </CardContent>
       </Card>
 
@@ -487,7 +510,7 @@ export function Reporting() {
               aria-label="Metric"
               value={metric}
               onChange={(e) => setMetric(e.target.value as Metric)}
-              className="w-52"
+              className="w-52 max-md:w-full"
             >
               {METRICS.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -499,7 +522,7 @@ export function Reporting() {
               aria-label="Group by"
               value={groupBy}
               onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-              className="w-40"
+              className="w-40 max-md:w-full"
             >
               {GROUP_BYS.map((g) => (
                 <option key={g.value} value={g.value}>
@@ -511,7 +534,7 @@ export function Reporting() {
               aria-label="Chart type"
               value={chartType}
               onChange={(e) => setChartType(e.target.value as 'bar' | 'pie' | 'line')}
-              className="w-32"
+              className="w-32 max-md:w-full"
             >
               <option value="bar">Bar chart</option>
               <option value="pie">Pie / donut</option>

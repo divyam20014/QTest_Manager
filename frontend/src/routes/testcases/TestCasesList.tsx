@@ -13,11 +13,14 @@ import {
   createTestCase,
   listTestCases,
   type Priority,
+  type TestCase,
   type TestCaseCreateRequest,
   type TestCaseStatus,
 } from '@/api/testCases'
 import { listUsers } from '@/api/users'
 import { listFieldOptions } from '@/api/fieldCustomization'
+import { FilterBar } from '@/components/table/FilterBar'
+import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, Drawer } from '@/components/ui/dialog'
@@ -25,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
+import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
 import { ImportDialog } from './ImportDialog'
 import { SharedStepsDialog } from './SharedStepsDialog'
@@ -48,16 +52,6 @@ const DEFAULT_VALUES: TestCaseFormValues = {
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
 const PAGE_SIZE = 10
-
-const COLUMNS: { key: string; label: string; sortable: boolean }[] = [
-  { key: 'title', label: 'Title', sortable: true },
-  { key: 'status', label: 'Status', sortable: true },
-  { key: 'priority', label: 'Priority', sortable: true },
-  { key: 'assignee', label: 'Assignee', sortable: false },
-  { key: 'module', label: 'Module', sortable: false },
-  { key: 'version', label: 'Version', sortable: false },
-  { key: 'steps', label: 'Steps', sortable: false },
-]
 
 export function TestCasesList() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -99,6 +93,7 @@ export function TestCasesList() {
   // one status" -- a page can show fewer than PAGE_SIZE rows as a result,
   // which is an acceptable trade-off for this fix.
   const [showDeprecated, setShowDeprecated] = useState(false)
+  const isMobile = useIsMobile()
 
   // Gap-closure pass (ADR-057): the priority filter must reflect this
   // tenant's actual configured value set (Tier 5 / ADR-055), the same
@@ -212,21 +207,105 @@ export function TestCasesList() {
   }
   const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
 
+  const allItems = testCasesQuery.data?.items ?? []
+  const visibleItems = allItems.filter(
+    (tc) => showDeprecated || status === 'deprecated' || tc.status !== 'deprecated',
+  )
+  const hiddenCount = allItems.length - visibleItems.length
+
+  const sortHeader = (key: string, label: string) => {
+    const isActive = sort.replace(/^-/, '') === key
+    return (
+      <button
+        type="button"
+        className="flex items-center gap-1 hover:text-[var(--foreground)]"
+        onClick={() => toggleSort(key)}
+      >
+        {label}
+        {isActive &&
+          (sort.startsWith('-') ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />)}
+      </button>
+    )
+  }
+
+  const columns: ResponsiveColumn<TestCase>[] = [
+    {
+      key: 'title',
+      header: 'Title',
+      headerCell: sortHeader('title', 'Title'),
+      card: 'title',
+      cell: (tc) => (
+        <Link to={`/test-cases/${tc.id}`} className="font-medium underline-offset-2 hover:underline">
+          {tc.title}
+        </Link>
+      ),
+      cardCell: (tc) => (
+        <Link to={`/test-cases/${tc.id}`} className={CARD_LINK_CLASS}>
+          {tc.title}
+        </Link>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      headerCell: sortHeader('status', 'Status'),
+      card: 'badge',
+      cell: (tc) => <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>,
+    },
+    {
+      key: 'priority',
+      header: 'Priority',
+      headerCell: sortHeader('priority', 'Priority'),
+      card: 'badge',
+      cell: (tc) => <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>,
+    },
+    {
+      key: 'assignee',
+      header: 'Assignee',
+      tdClassName: 'text-[var(--muted-foreground)]',
+      cell: (tc) => (tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'),
+    },
+    {
+      key: 'module',
+      header: 'Module',
+      cell: (tc) => (
+        <Select
+          aria-label={`Module for ${tc.title}`}
+          className="h-7 w-36 text-xs max-md:h-11 max-md:w-full max-md:text-base"
+          value={tc.module_id ?? ''}
+          onChange={(e) => assignModuleMutation.mutate({ id: tc.id, module: e.target.value || null })}
+        >
+          <option value="">Ungrouped</option>
+          {modules.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </Select>
+      ),
+    },
+    { key: 'version', header: 'Version', cell: (tc) => `v${tc.version_number}` },
+    { key: 'steps', header: 'Steps', cell: (tc) => tc.steps.length },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <Link to={`/projects/${projectId}`} className="text-xs text-[var(--muted-foreground)] hover:underline">
+          <Link
+            to={`/projects/${projectId}`}
+            className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
+          >
             ← {projectQuery.data?.name ?? 'Project'}
           </Link>
           <h1 className="text-lg font-semibold">Test Cases</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 md:flex">
           <a
             href={exportUrl(projectId!)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-8 items-center rounded-md border border-[var(--border)] px-3 text-sm hover:bg-[var(--muted)]"
+            className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border)] px-3 text-sm hover:bg-[var(--muted)] max-md:h-11"
           >
             Export CSV
           </a>
@@ -242,22 +321,36 @@ export function TestCasesList() {
           <Button variant="outline" size="sm" onClick={() => setSharedStepsOpen(true)}>
             Shared Steps
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>New Test Case</Button>
+          <Button className="col-span-2 max-md:order-first md:col-span-1" onClick={() => setCreateOpen(true)}>
+            New Test Case
+          </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
-          <label htmlFor="tc-search" className="text-xs text-[var(--muted-foreground)]">
-            Search
-          </label>
-          <Input
-            id="tc-search"
-            placeholder="Search by title…"
-            value={search}
-            onChange={(e) => setFilter('search', e.target.value)}
-          />
-        </div>
+      <FilterBar
+        activeCount={[status, priority, assigneeId, moduleId].filter(Boolean).length + (showDeprecated ? 1 : 0)}
+        onClear={() => {
+          urlFilters.setFilters({ status: '', priority: '', assigneeId: '', moduleId: '', page: '1' })
+          setShowDeprecated(false)
+        }}
+        desktopClear={false}
+        primary={
+          <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+            <label htmlFor="tc-search" className="text-xs text-[var(--muted-foreground)]">
+              Search
+            </label>
+            <Input
+              id="tc-search"
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+              placeholder="Search by title…"
+              value={search}
+              onChange={(e) => setFilter('search', e.target.value)}
+            />
+          </div>
+        }
+      >
         <div className="flex flex-col gap-1.5">
           <label htmlFor="tc-filter-status" className="text-xs text-[var(--muted-foreground)]">
             Status
@@ -330,7 +423,22 @@ export function TestCasesList() {
             ))}
           </Select>
         </div>
-        <label className="flex items-center gap-2 pb-2 text-sm">
+        {isMobile && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="tc-sort" className="text-xs text-[var(--muted-foreground)]">
+              Sort by
+            </label>
+            <Select id="tc-sort" value={sort} onChange={(e) => urlFilters.setFilters({ sort: e.target.value, page: '1' })}>
+              <option value="created_at">Newest</option>
+              <option value="title">Title (A-Z)</option>
+              <option value="-title">Title (Z-A)</option>
+              <option value="status">Status</option>
+              <option value="priority">Priority (A-Z)</option>
+              <option value="-priority">Priority (Z-A)</option>
+            </Select>
+          </div>
+        )}
+        <label className="flex min-h-11 items-center gap-2 pb-2 text-sm md:min-h-0">
           <input
             type="checkbox"
             checked={showDeprecated}
@@ -338,12 +446,12 @@ export function TestCasesList() {
           />
           Show deprecated
         </label>
-        {visibleFilterChips.length > 0 && (
+        {!isMobile && visibleFilterChips.length > 0 && (
           <Button variant="ghost" size="sm" onClick={urlFilters.clearAll}>
             Clear filters
           </Button>
         )}
-      </div>
+      </FilterBar>
 
       {visibleFilterChips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -357,7 +465,7 @@ export function TestCasesList() {
                 type="button"
                 onClick={() => setFilter(key as 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId', '')}
                 aria-label={`Remove ${FILTER_CHIP_LABEL[key]} filter`}
-                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] max-md:flex max-md:size-8 max-md:items-center max-md:justify-center"
               >
                 ×
               </button>
@@ -366,99 +474,23 @@ export function TestCasesList() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              {COLUMNS.map((col) => {
-                const isActive = sort.replace(/^-/, '') === col.key
-                return (
-                  <th key={col.key} className="px-4 py-2 font-medium">
-                    {col.sortable ? (
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 hover:text-[var(--foreground)]"
-                        onClick={() => toggleSort(col.key)}
-                      >
-                        {col.label}
-                        {isActive &&
-                          (sort.startsWith('-') ? (
-                            <ChevronDown className="size-3.5" />
-                          ) : (
-                            <ChevronUp className="size-3.5" />
-                          ))}
-                      </button>
-                    ) : (
-                      col.label
-                    )}
-                  </th>
-                )
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {(() => {
-              const allItems = testCasesQuery.data?.items ?? []
-              const visibleItems = allItems.filter(
-                (tc) => showDeprecated || status === 'deprecated' || tc.status !== 'deprecated',
-              )
-              const hiddenCount = allItems.length - visibleItems.length
-              return (
-                <>
-                  {testCasesQuery.data && visibleItems.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={COLUMNS.length}
-                        className="px-4 py-6 text-center text-[var(--muted-foreground)]"
-                      >
-                        {hiddenCount > 0
-                          ? `No test cases match these filters — ${hiddenCount} deprecated case${hiddenCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
-                          : 'No test cases match these filters.'}
-                      </td>
-                    </tr>
-                  )}
-                  {visibleItems.map((tc) => (
-              <tr key={tc.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
-                <td className="px-4 py-2">
-                  <Link to={`/test-cases/${tc.id}`} className="font-medium underline-offset-2 hover:underline">
-                    {tc.title}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">
-                  <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>
-                </td>
-                <td className="px-4 py-2">
-                  <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>
-                </td>
-                <td className="px-4 py-2 text-[var(--muted-foreground)]">
-                  {tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'}
-                </td>
-                <td className="px-4 py-2">
-                  <Select
-                    className="h-7 w-36 text-xs"
-                    value={tc.module_id ?? ''}
-                    onChange={(e) =>
-                      assignModuleMutation.mutate({ id: tc.id, module: e.target.value || null })
-                    }
-                  >
-                    <option value="">Ungrouped</option>
-                    {modules.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </Select>
-                </td>
-                <td className="px-4 py-2">v{tc.version_number}</td>
-                <td className="px-4 py-2">{tc.steps.length}</td>
-              </tr>
-                  ))}
-                </>
-              )
-            })()}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        label="Test cases"
+        rows={visibleItems}
+        rowKey={(tc) => tc.id}
+        columns={columns}
+        loading={testCasesQuery.isLoading}
+        stateCellClassName="px-4"
+        state={
+          testCasesQuery.data && visibleItems.length === 0 ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              {hiddenCount > 0
+                ? `No test cases match these filters — ${hiddenCount} deprecated case${hiddenCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
+                : 'No test cases match these filters.'}
+            </p>
+          ) : undefined
+        }
+      />
 
       {total > 0 && (
         <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">

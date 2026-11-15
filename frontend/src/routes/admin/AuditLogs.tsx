@@ -1,21 +1,22 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 
-import { auditExportUrl, listAuditLogs, verifyAuditChain, type AuditLogEntry } from '@/api/audit'
+import { AUDIT_PAGE_SIZE, auditExportUrl, listAuditLogs, verifyAuditChain, type AuditLogEntry } from '@/api/audit'
 import { listUsers } from '@/api/users'
+import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { humanizeActionCode, humanizeKey } from '@/lib/labels'
+import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
 
 // GAP-91 item 2: URL-persisted filters + chips, same pattern as
-// Test Cases/Defects. No pagination exists on `GET /audit-logs` today
-// (it returns the full filtered array) -- adding server-side pagination
-// is a backend change out of scope for this frontend rollout, noted
-// rather than silently worked around. No bulk actions apply (a read-only
+// Test Cases/Defects. `GET /audit-logs` is limit/offset paginated
+// (default 50, max 200), so the list loads 50 at a time with a "Load more"
+// button instead of silently stopping at the first page. No bulk actions apply (a read-only
 // log) and no column-picker (the audit schema's columns are fixed), so
 // neither is added here. Sort is already fixed (newest first) server-side.
 export function AuditLogs() {
@@ -29,6 +30,7 @@ export function AuditLogs() {
   const dateTo = urlFilters.values.dateTo
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [verifyRequested, setVerifyRequested] = useState(false)
+  const isMobile = useIsMobile()
 
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
 
@@ -54,10 +56,15 @@ export function AuditLogs() {
   }
   const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
 
-  const logsQuery = useQuery({
+  const logsQuery = useInfiniteQuery({
     queryKey: ['audit-logs', filters],
-    queryFn: () => listAuditLogs(filters),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      listAuditLogs(filters, { limit: AUDIT_PAGE_SIZE, offset: pageParam }),
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < AUDIT_PAGE_SIZE ? undefined : allPages.length * AUDIT_PAGE_SIZE,
   })
+  const entries = logsQuery.data?.pages.flat()
 
   const verifyQuery = useQuery({
     queryKey: ['audit-logs', 'verify-chain'],
@@ -67,13 +74,13 @@ export function AuditLogs() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">Audit Logs</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <a
             href={auditExportUrl(filters)}
             download
-            className="inline-flex h-8 items-center rounded-md border border-[var(--border)] px-3 text-sm hover:bg-[var(--muted)]"
+            className="inline-flex h-8 items-center rounded-md border max-md:h-11 border-[var(--border)] px-3 text-sm hover:bg-[var(--muted)]"
           >
             Export CSV
           </a>
@@ -102,53 +109,68 @@ export function AuditLogs() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <Input
-          aria-label="Filter by action"
-          placeholder="Filter by action (e.g. user.created)"
-          value={action}
-          onChange={(e) => urlFilters.setFilter('action', e.target.value)}
-          className="w-56"
-        />
-        <Input
-          aria-label="Filter by entity type"
-          placeholder="Filter by entity type (e.g. project)"
-          value={entityType}
-          onChange={(e) => urlFilters.setFilter('entityType', e.target.value)}
-          className="w-56"
-        />
-        <Input
-          aria-label="Filter by entity ID"
-          placeholder="Filter by entity ID"
-          value={entityId}
-          onChange={(e) => urlFilters.setFilter('entityId', e.target.value)}
-          className="w-56"
-        />
-        <Select
-          aria-label="Filter by user"
-          value={userId}
-          onChange={(e) => urlFilters.setFilter('userId', e.target.value)}
-          className="w-48"
-        >
-          <option value="">All users</option>
-          {usersQuery.data?.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name}
-            </option>
-          ))}
-        </Select>
+      <FilterBar
+        activeCount={urlFilters.active.length}
+        onClear={urlFilters.clearAll}
+        desktopClear={false}
+      >
+        <FilterField label="Action">
+          <Input
+            aria-label="Filter by action"
+            placeholder="Filter by action (e.g. user.created)"
+            autoComplete="off"
+            value={action}
+            onChange={(e) => urlFilters.setFilter('action', e.target.value)}
+            className="w-56"
+          />
+        </FilterField>
+        <FilterField label="Entity type">
+          <Input
+            aria-label="Filter by entity type"
+            placeholder="Filter by entity type (e.g. project)"
+            autoComplete="off"
+            value={entityType}
+            onChange={(e) => urlFilters.setFilter('entityType', e.target.value)}
+            className="w-56"
+          />
+        </FilterField>
+        <FilterField label="Entity ID">
+          <Input
+            aria-label="Filter by entity ID"
+            placeholder="Filter by entity ID"
+            autoComplete="off"
+            value={entityId}
+            onChange={(e) => urlFilters.setFilter('entityId', e.target.value)}
+            className="w-56"
+          />
+        </FilterField>
+        <FilterField label="User">
+          <Select
+            aria-label="Filter by user"
+            value={userId}
+            onChange={(e) => urlFilters.setFilter('userId', e.target.value)}
+            className="w-48"
+          >
+            <option value="">All users</option>
+            {usersQuery.data?.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
         <DateRangePicker
           idPrefix="audit-date"
           fromValue={dateFrom}
           toValue={dateTo}
           onChange={(from, to) => urlFilters.setFilters({ dateFrom: from, dateTo: to })}
         />
-        {urlFilters.active.length > 0 && (
+        {!isMobile && urlFilters.active.length > 0 && (
           <Button variant="outline" size="sm" onClick={urlFilters.clearAll}>
             Clear filters
           </Button>
         )}
-      </div>
+      </FilterBar>
 
       {visibleFilterChips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -171,38 +193,159 @@ export function AuditLogs() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">When</th>
-              <th className="px-4 py-2 font-medium">User</th>
-              <th className="px-4 py-2 font-medium">Action</th>
-              <th className="px-4 py-2 font-medium">Entity</th>
-              <th className="px-4 py-2 font-medium">Record Hash</th>
-              <th className="px-4 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {logsQuery.data?.length === 0 && (
+      {isMobile ? (
+        <ul aria-label="Audit log entries" className="flex flex-col gap-3">
+          {entries?.length === 0 && (
+            <li className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
+              No audit entries found.
+            </li>
+          )}
+          {entries?.map((entry) => (
+            <AuditCard
+              key={entry.id}
+              entry={entry}
+              expanded={expandedId === entry.id}
+              onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+            />
+          ))}
+        </ul>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No audit entries found.
-                </td>
+                <th className="px-4 py-2 font-medium">When</th>
+                <th className="px-4 py-2 font-medium">User</th>
+                <th className="px-4 py-2 font-medium">Action</th>
+                <th className="px-4 py-2 font-medium">Entity</th>
+                <th className="px-4 py-2 font-medium">Record Hash</th>
+                <th className="px-4 py-2 font-medium"></th>
               </tr>
-            )}
-            {logsQuery.data?.map((entry) => (
-              <AuditRow
-                key={entry.id}
-                entry={entry}
-                expanded={expandedId === entry.id}
-                onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {entries?.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                    No audit entries found.
+                  </td>
+                </tr>
+              )}
+              {entries?.map((entry) => (
+                <AuditRow
+                  key={entry.id}
+                  entry={entry}
+                  expanded={expandedId === entry.id}
+                  onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {logsQuery.hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => logsQuery.fetchNextPage()}
+            disabled={logsQuery.isFetchingNextPage}
+          >
+            {logsQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
+      )}
     </div>
+  )
+}
+
+function AuditDetails({ entry }: { entry: AuditLogEntry }) {
+  return (
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
+        <div>
+          <dt className="text-[var(--muted-foreground)]">Audit ID</dt>
+          <dd className="font-mono">{entry.id}</dd>
+        </div>
+        <div>
+          <dt className="text-[var(--muted-foreground)]">Tenant ID</dt>
+          <dd className="font-mono">{entry.tenant_id}</dd>
+        </div>
+        <div>
+          <dt className="text-[var(--muted-foreground)]">Entity ID</dt>
+          <dd className="font-mono">{entry.entity_id}</dd>
+        </div>
+        <div>
+          <dt className="text-[var(--muted-foreground)]">User ID</dt>
+          <dd className="font-mono">{entry.user_id ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-[var(--muted-foreground)]">Previous Hash</dt>
+          <dd className="break-all font-mono">{entry.prev_hash}</dd>
+        </div>
+        <div>
+          <dt className="text-[var(--muted-foreground)]">Record Hash</dt>
+          <dd className="break-all font-mono">{entry.record_hash}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-[var(--muted-foreground)]">Metadata</dt>
+          <dd>
+            {entry.metadata ? (
+              <pre className="mt-1 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--background)] p-2 font-mono">
+                {JSON.stringify(entry.metadata, null, 2)}
+              </pre>
+            ) : (
+              <span className="text-[var(--muted-foreground)]">—</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+  )
+}
+
+function AuditCard({
+  entry,
+  expanded,
+  onToggle,
+}: {
+  entry: AuditLogEntry
+  expanded: boolean
+  onToggle: () => void
+}) {
+  return (
+    <li className="qth-raised-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Badge title={entry.action} className="max-w-full break-all">
+          {humanizeActionCode(entry.action)}
+        </Badge>
+        <span className="text-xs text-[var(--muted-foreground)]">
+          {new Date(entry.created_at).toLocaleString()}
+        </span>
+      </div>
+      <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+        <div className="min-w-0">
+          <dt className="text-[var(--muted-foreground)]">User</dt>
+          <dd className="mt-0.5 break-words">{entry.user_name ?? 'System'}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-[var(--muted-foreground)]">Entity</dt>
+          <dd className="mt-0.5 break-words">
+            {humanizeKey(entry.entity_type)} · {entry.entity_id.slice(0, 8)}
+          </dd>
+        </div>
+      </dl>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="mt-2 inline-flex min-h-11 min-w-11 items-center text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:underline"
+      >
+        {expanded ? 'Hide details' : 'Details'}
+      </button>
+      {expanded && (
+        <div className="mt-1 border-t border-[var(--border)] pt-3">
+          <AuditDetails entry={entry} />
+        </div>
+      )}
+    </li>
   )
 }
 
@@ -250,44 +393,7 @@ function AuditRow({
       {expanded && (
         <tr className="border-t border-[var(--border)] bg-[var(--muted)]">
           <td colSpan={6} className="px-4 py-3">
-            <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
-              <div>
-                <dt className="text-[var(--muted-foreground)]">Audit ID</dt>
-                <dd className="font-mono">{entry.id}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--muted-foreground)]">Tenant ID</dt>
-                <dd className="font-mono">{entry.tenant_id}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--muted-foreground)]">Entity ID</dt>
-                <dd className="font-mono">{entry.entity_id}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--muted-foreground)]">User ID</dt>
-                <dd className="font-mono">{entry.user_id ?? '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--muted-foreground)]">Previous Hash</dt>
-                <dd className="break-all font-mono">{entry.prev_hash}</dd>
-              </div>
-              <div>
-                <dt className="text-[var(--muted-foreground)]">Record Hash</dt>
-                <dd className="break-all font-mono">{entry.record_hash}</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-[var(--muted-foreground)]">Metadata</dt>
-                <dd>
-                  {entry.metadata ? (
-                    <pre className="mt-1 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--background)] p-2 font-mono">
-                      {JSON.stringify(entry.metadata, null, 2)}
-                    </pre>
-                  ) : (
-                    <span className="text-[var(--muted-foreground)]">—</span>
-                  )}
-                </dd>
-              </div>
-            </dl>
+            <AuditDetails entry={entry} />
           </td>
         </tr>
       )}

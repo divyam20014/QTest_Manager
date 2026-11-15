@@ -8,15 +8,16 @@ import {
   createRequirement,
   getCoverageReport,
   listRequirements,
+  type Requirement,
   type RequirementCreateRequest,
 } from '@/api/requirements'
+import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { TableSkeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
@@ -25,6 +26,31 @@ import { useUrlFilters } from '@/lib/useUrlFilters'
 import { useNavigate } from 'react-router-dom'
 
 const PAGE_SIZE = 20
+
+const columns: ResponsiveColumn<Requirement>[] = [
+  {
+    key: 'title',
+    header: 'Title',
+    card: 'title',
+    tdClassName: 'font-medium',
+    cell: (r) => (
+      <Link to={`/requirements/${r.id}`} className="underline-offset-2 hover:underline">
+        {r.title}
+      </Link>
+    ),
+    cardCell: (r) => (
+      <Link to={`/requirements/${r.id}`} className={CARD_LINK_CLASS}>
+        {r.title}
+      </Link>
+    ),
+  },
+  { key: 'version', header: 'Version', cell: (r) => `v${r.version_number}` },
+  {
+    key: 'linked',
+    header: 'Linked Test Cases',
+    cell: (r) => <Badge tone={r.linked_test_case_count > 0 ? 'positive' : 'neutral'}>{r.linked_test_case_count}</Badge>,
+  },
+]
 
 // GAP-91 item 2: `GET /projects/{id}/requirements` only accepts
 // page/page_size today (no search param), so a server-side search filter
@@ -78,8 +104,8 @@ export function RequirementsList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="min-w-0 break-words text-lg font-semibold">
           Requirements {projectQuery.data ? `— ${projectQuery.data.name}` : ''}
         </h1>
         {canManage && (
@@ -90,7 +116,7 @@ export function RequirementsList() {
       </div>
 
       {coverageQuery.data && (
-        <div className="flex items-center gap-4 rounded-lg border border-[var(--border)] px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-[var(--border)] px-4 py-3 text-sm">
           <span className="font-medium">Coverage</span>
           <span>
             {coverageQuery.data.covered_requirements} / {coverageQuery.data.total_requirements}{' '}
@@ -101,63 +127,38 @@ export function RequirementsList() {
           </Badge>
           <Link
             to={`/projects/${projectId}/traceability-matrix`}
-            className="ml-auto text-sm underline-offset-2 hover:underline"
+            className="inline-flex min-h-11 items-center text-sm underline-offset-2 hover:underline md:ml-auto md:min-h-0"
           >
             View full Traceability Matrix →
           </Link>
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">Title</th>
-              <th className="px-4 py-2 font-medium">Version</th>
-              <th className="px-4 py-2 font-medium">Linked Test Cases</th>
-            </tr>
-          </thead>
-          <tbody>
-            {requirementsQuery.isLoading && <TableSkeleton columns={3} />}
-            {requirementsQuery.isError && (
-              <tr>
-                <td colSpan={3} className="px-4">
-                  <ErrorState onRetry={() => requirementsQuery.refetch()} />
-                </td>
-              </tr>
-            )}
-            {requirementsQuery.data?.items.map((r) => (
-              <tr
-                key={r.id}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') navigate(`/requirements/${r.id}`)
-                }}
-                className="cursor-pointer border-t border-[var(--border)] outline-none hover:bg-[var(--muted)] focus-visible:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
-              >
-                <td className="px-4 py-2 font-medium">
-                  <Link to={`/requirements/${r.id}`} className="underline-offset-2 hover:underline">
-                    {r.title}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">v{r.version_number}</td>
-                <td className="px-4 py-2">
-                  <Badge tone={r.linked_test_case_count > 0 ? 'positive' : 'neutral'}>
-                    {r.linked_test_case_count}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
-            {!requirementsQuery.isLoading && !requirementsQuery.isError && requirementsQuery.data?.items.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-4">
-                  <EmptyState title="No requirements yet" description="Add a requirement to start tracking coverage against test cases." />
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        label="Requirements"
+        rows={requirementsQuery.data?.items ?? []}
+        rowKey={(r) => r.id}
+        columns={columns}
+        loading={requirementsQuery.isLoading}
+        rowProps={(r) => ({
+          tabIndex: 0,
+          onKeyDown: (e) => {
+            if (e.key === 'Enter') navigate(`/requirements/${r.id}`)
+          },
+          className:
+            'cursor-pointer outline-none focus-visible:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
+        })}
+        state={
+          requirementsQuery.isError ? (
+            <ErrorState onRetry={() => requirementsQuery.refetch()} />
+          ) : !requirementsQuery.isLoading && requirementsQuery.data?.items.length === 0 ? (
+            <EmptyState
+              title="No requirements yet"
+              description="Add a requirement to start tracking coverage against test cases."
+            />
+          ) : undefined
+        }
+      />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-end gap-2 text-sm">
@@ -227,14 +228,14 @@ function NewRequirementDialog({
           />
         </div>
         {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" disabled={isPending || title.length < 5} onClick={handleSubmit}>
             {isPending ? 'Creating…' : 'Create Requirement'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )

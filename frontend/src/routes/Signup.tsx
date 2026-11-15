@@ -64,6 +64,7 @@ export function Signup() {
                 <Label htmlFor="signup-tenant">Organization Name</Label>
                 <Input
                   id="signup-tenant"
+                  autoComplete="organization"
                   value={tenantName}
                   onChange={(e) => setTenantName(e.target.value)}
                   required
@@ -74,6 +75,7 @@ export function Signup() {
                 <Label htmlFor="signup-name">Your Name</Label>
                 <Input
                   id="signup-name"
+                  autoComplete="name"
                   value={adminName}
                   onChange={(e) => setAdminName(e.target.value)}
                   required
@@ -84,6 +86,9 @@ export function Signup() {
                 <Input
                   id="signup-email"
                   type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="off"
                   value={adminEmail}
                   onChange={(e) => setAdminEmail(e.target.value)}
                   required
@@ -94,6 +99,7 @@ export function Signup() {
                 <Input
                   id="signup-password"
                   type="password"
+                  autoComplete="new-password"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   required

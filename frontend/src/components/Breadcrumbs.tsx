@@ -4,19 +4,20 @@ import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 
 // Maps a static path segment to a readable label. Dynamic segments (ids)
-// fall back to a generic "Detail" crumb -- resolving them to the entity's
-// actual name would mean a lookup per route, not worth it for a shell-level
-// breadcrumb trail.
+// are labelled by the kind of record the preceding segment names
+// (ID_LABELS) -- resolving them to the entity's actual name would mean a
+// lookup per route, not worth it for a shell-level breadcrumb trail.
 const SEGMENT_LABELS: Record<string, string> = {
   projects: 'Projects',
   requirements: 'Requirements',
-  'test-cases': 'Test Case',
+  'test-cases': 'Test Cases',
   'test-repository': 'Test Repository',
   'test-runs': 'Test Runs',
   'test-run-cases': 'Execution',
   execution: 'Execution Console',
   defects: 'Defects',
   reporting: 'Reporting',
+  'traceability-matrix': 'Traceability Matrix',
   admin: 'Administration',
   users: 'Users & Roles',
   roles: 'Roles & Permissions',
@@ -25,6 +26,20 @@ const SEGMENT_LABELS: Record<string, string> = {
   settings: 'Settings',
   account: 'My Account',
 }
+
+const ID_LABELS: Record<string, string> = {
+  projects: 'Project',
+  requirements: 'Requirement',
+  'test-cases': 'Test Case',
+  'test-runs': 'Test Run',
+  'test-run-cases': 'Execution',
+  defects: 'Defect',
+}
+
+// Top-level segments that only exist as a prefix for a detail route
+// (/test-cases/:id) -- there is no list page at that path, so the crumb is
+// plain text rather than a link to a 404.
+const NO_LIST_PAGE = new Set(['test-cases', 'requirements', 'test-run-cases'])
 
 // Bug #6: every route segment must resolve to a friendly label -- a raw
 // or truncated path segment slipping through here (e.g. "environmen…")
@@ -44,7 +59,7 @@ export function Breadcrumbs() {
 
   const crumbs = segments.map((segment, index) => {
     const path = '/' + segments.slice(0, index + 1).join('/')
-    const label = isId(segment) ? 'Detail' : (SEGMENT_LABELS[segment] ?? segment)
+    const label = isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment)
     return { path, label }
   })
 
@@ -66,8 +81,15 @@ export function Breadcrumbs() {
             className={cn('flex min-w-0 items-center gap-1', !isLast && 'hidden sm:flex')}
           >
             <ChevronRight className="hidden size-3.5 shrink-0 text-[var(--muted-foreground)] sm:block" />
-            {isLast ? (
-              <span className="truncate font-medium text-[var(--foreground)]">{crumb.label}</span>
+            {isLast || (index === 0 && NO_LIST_PAGE.has(segments[0])) ? (
+              <span
+                className={cn(
+                  'truncate',
+                  isLast ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted-foreground)]',
+                )}
+              >
+                {crumb.label}
+              </span>
             ) : (
               <Link
                 to={crumb.path}

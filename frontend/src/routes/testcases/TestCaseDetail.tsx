@@ -32,7 +32,7 @@ import { TestDataSetsCard } from '@/components/TestDataSetsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, Drawer } from '@/components/ui/dialog'
+import { Dialog, DialogFooter, Drawer } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -172,12 +172,12 @@ export function TestCaseDetail() {
       <div>
         <Link
           to={`/projects/${testCase.project_id}/test-cases`}
-          className="text-xs text-[var(--muted-foreground)] hover:underline"
+          className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
         >
           ← Test Cases
         </Link>
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">{testCase.title}</h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="min-w-0 break-words text-lg font-semibold">{testCase.title}</h1>
           <Badge tone={STATUS_DISPLAY[testCase.status].tone}>{STATUS_DISPLAY[testCase.status].label}</Badge>
           <span className="text-xs text-[var(--muted-foreground)]">v{testCase.version_number}</span>
         </div>
@@ -195,7 +195,7 @@ export function TestCaseDetail() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           Edit
         </Button>
@@ -354,14 +354,14 @@ export function TestCaseDetail() {
                 ))}
             </Select>
           </div>
-          <div className="flex justify-end gap-2">
+          <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setSubmitReviewOpen(false)}>
               Cancel
             </Button>
             <Button size="sm" disabled={runAction.isPending} onClick={() => runAction.mutate('submit')}>
               {runAction.isPending ? 'Submitting…' : 'Submit'}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       </Dialog>
       <Dialog
@@ -379,7 +379,7 @@ export function TestCaseDetail() {
               rows={4}
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setRequestChangesOpen(false)}>
               Cancel
             </Button>
@@ -390,7 +390,7 @@ export function TestCaseDetail() {
             >
               {requestChangesMutation.isPending ? 'Sending…' : 'Send Back for Changes'}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       </Dialog>
     </div>
@@ -465,14 +465,14 @@ function ReviewWithAIDialog({
             <p className="text-xs text-[var(--muted-foreground)]">{result.total_tokens} tokens used.</p>
           </div>
         )}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
           <Button size="sm" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate()}>
             {reviewMutation.isPending ? 'Reviewing…' : 'Review'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -511,7 +511,7 @@ function VersionHistoryCard({
             <li key={v.version_number} className="border-b border-[var(--border)] pb-2 last:border-0">
               <button
                 type="button"
-                className="flex w-full items-center justify-between text-left"
+                className="flex w-full items-center justify-between text-left max-md:min-h-11"
                 onClick={() => setExpanded(expanded === v.version_number ? null : v.version_number)}
               >
                 <span className="font-medium">v{v.version_number}</span>

@@ -82,5 +82,8 @@ test('Executing a run: failing a step auto-opens a defect, case rolls up to Fail
 
   await page.goBack()
   await page.waitForSelector('text=Sprint 42 Motor Regression Cycle', { timeout: 10000 })
-  await expect(page.getByText('failed')).toBeVisible({ timeout: 10000 })
+  // Exact cell match: the Linked Defects card below also contains the word
+  // "Failed" (the auto-created defect is titled "Step 1 Failed: ..."), so a
+  // loose getByText('failed') is ambiguous once that card has loaded.
+  await expect(page.getByRole('cell', { name: 'Failed', exact: true })).toBeVisible({ timeout: 10000 })
 })

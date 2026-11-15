@@ -138,7 +138,7 @@ export function TestCaseForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="module_id">Module</Label>
           <Select id="module_id" {...form.register('module_id')}>
@@ -176,7 +176,7 @@ export function TestCaseForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="prerequisite">Prerequisite</Label>
           <Textarea id="prerequisite" {...form.register('prerequisite')} />
@@ -187,7 +187,7 @@ export function TestCaseForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="priority">
             Priority <span className="text-[var(--destructive)]">*</span>
@@ -220,10 +220,10 @@ export function TestCaseForm({
         {fields.map((field, index) => (
           <div
             key={field.id}
-            className="flex items-start gap-2 rounded-md border border-[var(--border)] p-2"
+            className="flex items-start gap-2 rounded-md border border-[var(--border)] p-2 max-md:flex-wrap"
           >
             <span className="mt-2 w-5 shrink-0 text-xs text-[var(--muted-foreground)]">{index + 1}.</span>
-            <div className="flex flex-1 flex-col gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5 max-md:basis-[calc(100%-1.75rem)]">
               <Input
                 placeholder="Action"
                 aria-label={`Step ${index + 1} action`}
@@ -241,7 +241,8 @@ export function TestCaseForm({
                 {...form.register(`steps.${index}.expected` as const)}
               />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex items-start gap-0.5 max-md:w-full max-md:justify-end">
+            <div className="flex flex-col gap-0.5 max-md:flex-row">
               <Button
                 type="button"
                 variant="ghost"
@@ -285,12 +286,13 @@ export function TestCaseForm({
             >
               <Trash2 className="size-4" />
             </Button>
+            </div>
           </div>
         ))}
         {form.formState.errors.steps?.message && (
           <p className="text-xs text-[var(--destructive)]">{form.formState.errors.steps.message}</p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => append({ action: '', expected: '' })}>
             Add Step
           </Button>
@@ -298,7 +300,7 @@ export function TestCaseForm({
             <>
               <Select
                 aria-label="Insert from shared step library"
-                className="max-w-[16rem]"
+                className="max-w-[16rem] max-md:max-w-none max-md:flex-1"
                 value={libraryPick}
                 onChange={(e) => setLibraryPick(e.target.value)}
               >
@@ -331,9 +333,13 @@ export function TestCaseForm({
 
       {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
 
-      <Button type="submit" disabled={isSubmitting} className="mt-2">
-        {isSubmitting ? 'Saving…' : submitLabel}
-      </Button>
+      {/* Phone: the submit sits pinned at the bottom of the Drawer so a long
+          form never leaves it off-screen. */}
+      <div className="max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-4 max-md:mt-1 max-md:border-t max-md:border-[var(--border)] max-md:bg-[var(--tactile-surface-raised)] max-md:px-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:pt-3">
+        <Button type="submit" disabled={isSubmitting} className="mt-2 max-md:mt-0 max-md:w-full">
+          {isSubmitting ? 'Saving…' : submitLabel}
+        </Button>
+      </div>
     </form>
   )
 }

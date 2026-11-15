@@ -155,13 +155,13 @@ export function ProjectDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">{project.name}</h1>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="min-w-0 break-words text-lg font-semibold">{project.name}</h1>
           <Badge tone={STATUS_TONE[project.status]}>{project.status}</Badge>
           <Badge tone={PRIORITY_TONE[project.priority]}>{project.priority}</Badge>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap [&>a]:justify-center">
           <Link to={`/projects/${project.id}/requirements`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Requirements
           </Link>
@@ -502,7 +502,18 @@ function TestSuitesCard({ projectId, canManage }: { projectId: string; canManage
   })
   const casesQuery = useQuery({
     queryKey: ['test-cases-for-suite', projectId],
-    queryFn: () => listTestCases(projectId, { page_size: 200 }),
+    // The API caps page_size at 100, so walk the pages until every case is
+    // loaded (the suite picker needs the full list).
+    queryFn: async () => {
+      const first = await listTestCases(projectId, { page: 1, page_size: 100 })
+      const items = [...first.items]
+      for (let page = 2; items.length < first.total && page <= 50; page += 1) {
+        const next = await listTestCases(projectId, { page, page_size: 100 })
+        if (next.items.length === 0) break
+        items.push(...next.items)
+      }
+      return { ...first, items }
+    },
   })
 
   const createMutation = useMutation({

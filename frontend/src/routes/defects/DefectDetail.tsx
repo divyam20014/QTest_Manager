@@ -189,11 +189,14 @@ export function DefectDetail() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link to="/defects" className="text-xs text-[var(--muted-foreground)] hover:underline">
+        <Link
+          to="/defects"
+          className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
+        >
           ← Defects
         </Link>
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">{defect.title}</h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="min-w-0 break-words text-lg font-semibold">{defect.title}</h1>
           <Badge tone={severityTone(defect.severity)}>{defect.severity}</Badge>
           <Badge tone={STATUS_TONE[defect.status]}>{defect.status_label}</Badge>
           {defect.sla_breached && <Badge tone="critical">SLA Breached · {defect.age_days}d</Badge>}
@@ -228,7 +231,7 @@ export function DefectDetail() {
               I confirm this defect has been verified and should be closed.
             </label>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 max-md:[&>button]:w-full">
             <Button size="sm" disabled={advanceDisabled} onClick={() => statusMutation.mutate(nextStatus)}>
               Advance to {nextStatus}
             </Button>
@@ -248,7 +251,7 @@ export function DefectDetail() {
           </p>
           <ul className="mt-2 flex flex-col gap-1">
             {duplicatesQuery.data?.map((d) => (
-              <li key={d.defect_id} className="flex items-center justify-between">
+              <li key={d.defect_id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
                 <Link to={`/defects/${d.defect_id}`} className="underline-offset-2 hover:underline">
                   {d.title}
                 </Link>
@@ -443,7 +446,7 @@ export function DefectDetail() {
             <CardTitle>Traceability</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col flex-wrap items-stretch gap-2 md:flex-row md:items-center">
+            <div className="flex flex-col items-stretch gap-2 md:flex-row md:flex-wrap md:items-center">
               <TraceNode
                 icon={Building2}
                 label="Project"

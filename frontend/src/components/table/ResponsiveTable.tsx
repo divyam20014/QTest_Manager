@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from 'react'
+import type { HTMLAttributes, MouseEvent, ReactNode } from 'react'
 
 import { ResizableTh } from '@/components/table/ResizableTh'
 import { Skeleton, TableSkeleton } from '@/components/ui/skeleton'
@@ -21,6 +21,8 @@ export interface ResponsiveColumn<T> {
   key: string
   /** Desktop column header (also the field label on a card, if it is a string). */
   header: string
+  /** Desktop-only header content (e.g. a sort button); defaults to `header`. */
+  headerCell?: ReactNode
   cell: (row: T) => ReactNode
   /** Desktop: cap the cell at the column's pref width (`maxWidth`), as the old tables did. */
   limitWidth?: boolean
@@ -36,6 +38,8 @@ export interface ResponsiveColumn<T> {
   card?: 'title' | 'badge' | 'meta' | 'none'
   /** Label shown above/next to a meta value; defaults to `header`. */
   cardLabel?: string
+  /** Phone card: let this field span the full card width (long values such as emails). */
+  cardFull?: boolean
   /** Phone-only renderer (falls back to `cell`). */
   cardCell?: (row: T) => ReactNode
 }
@@ -71,6 +75,8 @@ interface ResponsiveTableProps<T> {
   rowActions?: (row: T) => ReactNode
   /** Desktop right-click menu. */
   onRowContextMenu?: (event: MouseEvent, row: T) => void
+  /** Desktop-only extra <tr> props (e.g. keyboard activation, cursor). */
+  rowProps?: (row: T) => HTMLAttributes<HTMLTableRowElement>
   /** Shown instead of rows (empty / error). */
   state?: ReactNode
   /** Classes for the state cell on desktop (the old tables differed per page). */
@@ -95,6 +101,7 @@ function DesktopTable<T>({
   selection,
   rowActions,
   onRowContextMenu,
+  rowProps,
   state,
   stateCellClassName,
   loading,
@@ -121,11 +128,11 @@ function DesktopTable<T>({
             {visible.map((c) =>
               prefs ? (
                 <ResizableTh key={c.key} width={prefs.width(c.key)} onResize={(w) => prefs.setWidth(c.key, w)}>
-                  {c.header}
+                  {c.headerCell ?? c.header}
                 </ResizableTh>
               ) : (
                 <th key={c.key} className="px-4 py-2 font-medium">
-                  {c.header}
+                  {c.headerCell ?? c.header}
                 </th>
               ),
             )}
@@ -144,10 +151,12 @@ function DesktopTable<T>({
           ) : (
             rows.map((row) => {
               const id = rowKey(row)
+              const extra = rowProps?.(row)
               return (
                 <tr
                   key={id}
-                  className="border-t border-[var(--border)] hover:bg-[var(--muted)]"
+                  {...extra}
+                  className={cn('border-t border-[var(--border)] hover:bg-[var(--muted)]', extra?.className)}
                   onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(e, row) : undefined}
                 >
                   {selection && (
@@ -271,7 +280,7 @@ function CardList<T>({
               {metaCols.length > 0 && (
                 <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                   {metaCols.map((c) => (
-                    <div key={c.key} className="min-w-0">
+                    <div key={c.key} className={cn('min-w-0', c.cardFull && 'col-span-2')}>
                       <dt className="text-[var(--muted-foreground)]">{c.cardLabel ?? c.header}</dt>
                       <dd className="mt-0.5 min-w-0 break-words text-[var(--foreground)]">
                         {(c.cardCell ?? c.cell)(row)}

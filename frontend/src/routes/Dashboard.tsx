@@ -273,7 +273,7 @@ export function Dashboard() {
           />
         )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {summaryQuery.isLoading &&
           Array.from({ length: 8 }).map((_, i) => (
             <EmbossedCard key={i}>
@@ -287,7 +287,7 @@ export function Dashboard() {
             </EmbossedCard>
           ))}
         {summaryQuery.isError && (
-          <EmbossedCard className="sm:col-span-2 lg:col-span-4">
+          <EmbossedCard className="col-span-2 lg:col-span-4">
             <CardContent>
               <ErrorState onRetry={() => summaryQuery.refetch()} />
             </CardContent>
@@ -308,22 +308,27 @@ export function Dashboard() {
               </CardContent>
             </EmbossedCard>
           )
+          // An odd number of tiles would strand the last one half-width on a
+          // phone; let it span the row there.
+          const spanLast = i === kpis.length - 1 && kpis.length % 2 === 1 ? 'max-sm:col-span-2' : ''
           return kpi.href ? (
             <Link
               key={kpi.title}
               to={kpi.href}
-              className={`block rounded-xl ${TILE_INTERACTIVE}`}
+              className={`block rounded-xl ${spanLast} ${TILE_INTERACTIVE}`}
               aria-label={`View ${kpi.title}`}
             >
               {card}
             </Link>
           ) : (
-            <div key={kpi.title}>{card}</div>
+            <div key={kpi.title} className={spanLast}>
+              {card}
+            </div>
           )
         })}
         {summary && (
           <EmbossedCard
-            className="qth-animate-in h-full"
+            className="qth-animate-in h-full max-sm:order-first max-sm:col-span-2"
             style={{ animation: `qth-slide-in 0.25s ease-out ${kpis.length * 30}ms backwards` }}
           >
             <CardHeader>
@@ -364,7 +369,7 @@ export function Dashboard() {
               <AlertTriangle className="size-3.5 text-[var(--status-warning)]" />
               Needs Attention
             </CardTitle>
-            <Link to="/defects" className="text-xs text-[var(--link)] hover:underline">
+            <Link to="/defects" className="inline-flex text-xs text-[var(--link)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm">
               View all →
             </Link>
           </CardHeader>
@@ -388,7 +393,7 @@ export function Dashboard() {
                 <li key={d.id}>
                   <Link
                     to={`/defects/${d.id}`}
-                    className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] px-3 py-2 text-sm transition-colors hover:bg-[var(--muted)]"
+                    className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] px-3 py-2 text-sm transition-colors hover:bg-[var(--muted)] max-md:min-h-11"
                   >
                     <span className="min-w-0 truncate">{d.title}</span>
                     <Badge tone={SEVERITY_TONE[d.severity] ?? 'neutral'} className="shrink-0">
@@ -499,6 +504,7 @@ export function Dashboard() {
                     <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
                     <XAxis
                       dataKey="date"
+                      minTickGap={24}
                       tick={{ fontSize: 10, fill: isDark ? '#c3c2b7' : '#52514e' }}
                       axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
                       tickLine={false}
@@ -584,12 +590,12 @@ export function Dashboard() {
               return (
                 <li
                   key={i}
-                  className="flex justify-between gap-4 border-b border-[var(--border)] pb-2 last:border-0"
+                  className="flex flex-col gap-0.5 border-b border-[var(--border)] pb-2 last:border-0 sm:flex-row sm:justify-between sm:gap-4"
                 >
                   {entityRoute ? (
                     <Link
                       to={`${entityRoute}/${entry.entity_id}`}
-                      className="min-w-0 hover:underline"
+                      className="min-w-0 break-words hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
                       title="View this item"
                     >
                       {body}

@@ -5,7 +5,7 @@ import { addDefectLink, createDefect, listDefects, type Priority, type Severity 
 import { ApiError } from '@/api/client'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -256,7 +256,7 @@ function DefectQuickCreateForm({
         )}
 
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Skip
           </Button>
@@ -271,7 +271,7 @@ function DefectQuickCreateForm({
                 ? 'Report Defect'
                 : 'Link to This Defect'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
   )
 }

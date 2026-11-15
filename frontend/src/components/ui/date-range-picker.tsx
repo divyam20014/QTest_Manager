@@ -51,7 +51,7 @@ export function DateRangePicker({
             type="button"
             onClick={() => onChange(p.from(), p.to())}
             className={cn(
-              'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+              'rounded-full border px-2.5 py-0.5 text-xs transition-colors max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:px-3 max-md:text-sm',
               activePreset?.label === p.label
                 ? 'border-[var(--brand)] bg-[var(--brand-muted)] text-[var(--link)]'
                 : 'border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]',
@@ -64,7 +64,7 @@ export function DateRangePicker({
           <button
             type="button"
             onClick={() => onChange('', '')}
-            className="rounded-full px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            className="rounded-full px-2 py-0.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] max-md:min-h-11 max-md:px-3 max-md:text-sm"
           >
             Clear
           </button>

@@ -20,7 +20,7 @@ import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -100,12 +100,12 @@ export function RequirementDetail() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">{req.title}</h1>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="min-w-0 break-words text-lg font-semibold">{req.title}</h1>
           <Badge tone="neutral">v{req.version_number}</Badge>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setAnalyzeOpen(true)}>
             Analyze Impact with AI
           </Button>
@@ -140,9 +140,9 @@ export function RequirementDetail() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle>Linked Test Cases ({req.linked_test_cases.length})</CardTitle>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setGenerateOpen(true)}>
               Generate with AI
             </Button>
@@ -301,7 +301,7 @@ function AnalyzeChangeDialog({
             <p className="text-xs text-[var(--muted-foreground)]">{result.total_tokens} tokens used.</p>
           </div>
         )}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
@@ -312,7 +312,7 @@ function AnalyzeChangeDialog({
           >
             {analyzeMutation.isPending ? 'Analyzing…' : 'Analyze'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -378,14 +378,14 @@ function GenerateWithAIDialog({
             ({result.total_tokens} tokens used).
           </p>
         )}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
           <Button size="sm" disabled={generateMutation.isPending} onClick={() => generateMutation.mutate()}>
             {generateMutation.isPending ? 'Generating…' : 'Generate'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -440,7 +440,7 @@ function EditRequirementDialog({
           />
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
@@ -451,7 +451,7 @@ function EditRequirementDialog({
           >
             {saveMutation.isPending ? 'Saving…' : 'Save as New Version'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )
@@ -516,14 +516,14 @@ function LinkTestCaseDialog({
           </Select>
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button size="sm" disabled={!selected || linkMutation.isPending} onClick={() => linkMutation.mutate()}>
             {linkMutation.isPending ? 'Linking…' : 'Link'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )

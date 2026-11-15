@@ -205,7 +205,17 @@ export function Login() {
             >
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" autoFocus {...emailForm.register('email')} />
+                <Input
+                  id="email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="username"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoFocus
+                  {...emailForm.register('email')}
+                />
                 {emailForm.formState.errors.email && (
                   <p className="text-xs text-[var(--destructive)]">
                     {emailForm.formState.errors.email.message}
@@ -268,6 +278,7 @@ export function Login() {
                 <Input
                   id="password"
                   type="password"
+                  autoComplete="current-password"
                   autoFocus
                   {...passwordForm.register('password')}
                 />
@@ -311,7 +322,7 @@ export function Login() {
                   id="code"
                   inputMode="numeric"
                   maxLength={6}
-                  autoComplete="off"
+                  autoComplete="one-time-code"
                   autoCorrect="off"
                   autoCapitalize="off"
                   spellCheck={false}

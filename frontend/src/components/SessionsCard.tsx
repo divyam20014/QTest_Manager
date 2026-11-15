@@ -6,7 +6,7 @@ import { ApiError } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { useToast } from '@/lib/toast'
 
 export function SessionsCard() {
@@ -81,7 +81,7 @@ export function SessionsCard() {
             Revoke this session? The device will be signed out immediately and will need to log
             in again. This cannot be undone.
           </p>
-          <div className="flex justify-end gap-2">
+          <DialogFooter>
             <Button
               variant="outline"
               size="sm"
@@ -98,7 +98,7 @@ export function SessionsCard() {
             >
               {revokeMutation.isPending ? 'Revoking…' : 'Revoke'}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       </Dialog>
     </Card>

@@ -15,11 +15,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/lib/toast'
+import { useIsMobile } from '@/lib/useMediaQuery'
 
 function groupByPrefix(permissions: Permission[]): Record<string, Permission[]> {
   const groups: Record<string, Permission[]> = {}
@@ -63,8 +65,8 @@ export function RolesPermissions() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
           <h1 className="text-lg font-semibold">Roles &amp; Permissions</h1>
           <p className="text-sm text-[var(--muted-foreground)]">
             Admin, Manager, and Tester are built-in and can't be edited or removed. Define
@@ -248,6 +250,12 @@ function PermissionMatrix({
 
   const editableRoles = roles.filter((r) => !r.is_system)
   const dirtyRoleIds = Object.keys(drafts)
+  const isMobile = useIsMobile()
+  // Phone: the role x permission grid is genuinely two-dimensional, so rather
+  // than scroll it sideways, pick ONE role and edit/see its permissions as a
+  // grouped list. Same drafts/save/cancel state as the desktop grid.
+  const [mobileRoleId, setMobileRoleId] = useState<string>('')
+  const mobileRole = roles.find((r) => r.id === mobileRoleId) ?? roles[0]
 
   return (
     <Card>
@@ -260,6 +268,119 @@ function PermissionMatrix({
       </CardHeader>
       <CardContent>
         {saveError && <p className="mb-2 text-xs text-[var(--destructive)]">{saveError}</p>}
+        {isMobile && mobileRole ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="matrix-role">Role</Label>
+              <Select id="matrix-role" value={mobileRole.id} onChange={(e) => setMobileRoleId(e.target.value)}>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                    {r.is_system ? ' (system)' : ''}
+                    {dirtyRoleIds.includes(r.id) ? ' *' : ''}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {dirtyRoleIds.includes(mobileRole.id) && (
+              <div className="flex gap-2">
+                <Button className="flex-1" disabled={saveMutation.isPending} onClick={() => saveDraft(mobileRole)}>
+                  {saveMutation.isPending ? 'Saving…' : 'Save changes'}
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => cancelDraft(mobileRole.id)}>
+                  Cancel
+                </Button>
+              </div>
+            )}
+            {mobileRole.is_system && (
+              <p className="text-xs text-[var(--muted-foreground)]">System roles are fixed and shown for reference only.</p>
+            )}
+            {groupNames.map((group) => {
+              const perms = grouped[group]
+              const codes = perms.map((p) => p.code)
+              const current = currentCodes(mobileRole)
+              const collapsed = collapsedGroups.has(group)
+              const allOn = codes.every((c) => current.has(c))
+              const allOff = codes.every((c) => !current.has(c))
+              return (
+                <section key={group} className="rounded-lg border border-[var(--border)]">
+                  <div className="flex items-center justify-between gap-2 bg-[var(--muted)]/40 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group)}
+                      aria-expanded={!collapsed}
+                      className="flex min-h-11 flex-1 items-center gap-1 px-3 text-xs font-semibold uppercase text-[var(--muted-foreground)]"
+                    >
+                      {collapsed ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
+                      {group}
+                    </button>
+                    {!mobileRole.is_system && !collapsed && (
+                      <div className="flex gap-1 text-xs">
+                        <button
+                          type="button"
+                          disabled={allOn}
+                          onClick={() => setGroupAll(mobileRole, codes, true)}
+                          className="min-h-11 px-2 text-[var(--link)] disabled:opacity-40"
+                        >
+                          All
+                        </button>
+                        <button
+                          type="button"
+                          disabled={allOff}
+                          onClick={() => setGroupAll(mobileRole, codes, false)}
+                          className="min-h-11 px-2 text-[var(--link)] disabled:opacity-40"
+                        >
+                          None
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {!collapsed && (
+                    <ul>
+                      {perms.map((p) => {
+                        const checked = current.has(p.code)
+                        return (
+                          <li key={p.code} className="border-t border-[var(--border)]">
+                            {mobileRole.is_system ? (
+                              <div className="flex min-h-11 items-start gap-3 px-3 py-2.5">
+                                {checked ? (
+                                  <Check className="mt-0.5 size-4 shrink-0 text-[var(--status-good)]" aria-label="Granted" />
+                                ) : (
+                                  <Minus className="mt-0.5 size-4 shrink-0 text-[var(--muted-foreground)]/60" aria-label="Not granted" />
+                                )}
+                                <PermissionLabel code={p.code} description={p.description} />
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                role="checkbox"
+                                aria-checked={checked}
+                                aria-label={`${checked ? 'Disable' : 'Enable'} ${p.code} for ${mobileRole.name}`}
+                                onClick={() => toggleCell(mobileRole, p.code)}
+                                className="flex min-h-11 w-full items-start gap-3 px-3 py-2.5 text-left"
+                              >
+                                <span
+                                  className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                                    checked
+                                      ? 'border-[var(--status-good)] bg-[var(--status-good-bg)] text-[var(--status-good)]'
+                                      : 'border-[var(--border)] text-transparent'
+                                  }`}
+                                >
+                                  <Check className="size-3.5" />
+                                </span>
+                                <PermissionLabel code={p.code} description={p.description} />
+                              </button>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </section>
+              )
+            })}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-[var(--muted-foreground)]">
@@ -415,8 +536,18 @@ function PermissionMatrix({
             </tbody>
           </table>
         </div>
+        )}
       </CardContent>
     </Card>
+  )
+}
+
+function PermissionLabel({ code, description }: { code: string; description?: string | null }) {
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="block break-all font-mono text-xs">{code}</span>
+      {description && <span className="block text-xs text-[var(--muted-foreground)]">{description}</span>}
+    </span>
   )
 }
 
@@ -487,7 +618,7 @@ function RoleFormDialog({
       onClose={handleClose}
       title={mode === 'create' ? 'New Role' : `Edit Role — ${role?.name}`}
     >
-      <div className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto text-sm">
+      <div className="flex flex-col gap-3 text-sm md:max-h-[70vh] md:overflow-y-auto">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="role-name">Role Name</Label>
           <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -495,7 +626,7 @@ function RoleFormDialog({
         <div className="flex flex-col gap-2">
           <Label>Permissions</Label>
           {permissions.map((p) => (
-            <label key={p.code} className="flex items-start gap-2 text-xs">
+            <label key={p.code} className="flex items-start gap-2 text-xs max-md:min-h-11 max-md:items-center">
               <input
                 type="checkbox"
                 checked={selected.has(p.code)}
@@ -512,7 +643,7 @@ function RoleFormDialog({
           ))}
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={handleClose}>
             Cancel
           </Button>
@@ -523,7 +654,7 @@ function RoleFormDialog({
           >
             {mutation.isPending ? 'Saving…' : 'Save Role'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )

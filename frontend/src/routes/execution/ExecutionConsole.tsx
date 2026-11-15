@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ChevronDown } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { listDefects, type Defect } from '@/api/defects'
@@ -47,6 +48,8 @@ export function ExecutionConsole() {
   const runId = searchParams.get('runId')
   const queryClient = useQueryClient()
   const [failedStepContext, setFailedStepContext] = useState<FailedStepContext | null>(null)
+  // Phone only: the run's case list is collapsed by default so the steps come first.
+  const [casesOpen, setCasesOpen] = useState(false)
   const { show: showToast } = useToast()
 
   const contextQuery = useQuery({
@@ -185,14 +188,32 @@ export function ExecutionConsole() {
   const progressPercent = steps.length ? Math.round((answeredCount / steps.length) * 100) : 0
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] gap-4">
-      {/* Left panel: test case navigation within this run */}
-      <aside className="flex w-64 shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]">
-        <div className="shrink-0 border-b border-[var(--border)] p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Test Run</p>
-          <p className="truncate text-sm font-medium">{runQuery.data?.name ?? context?.run_name ?? '—'}</p>
+    <div className="flex flex-col gap-4 md:h-[calc(100vh-7.5rem)] md:flex-row">
+      {/* Left panel: test case navigation within this run. On a phone it is a
+          collapsed "cases in this run" header so the steps come first. */}
+      <aside className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)] md:w-64">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3 max-md:border-b-0 max-md:py-1">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Test Run</p>
+            <p className="truncate text-sm font-medium">{runQuery.data?.name ?? context?.run_name ?? '—'}</p>
+          </div>
+          {runQuery.data && (
+            <button
+              type="button"
+              onClick={() => setCasesOpen((o) => !o)}
+              aria-expanded={casesOpen}
+              aria-controls="run-cases-list"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-md px-2 text-sm text-[var(--muted-foreground)] md:hidden"
+            >
+              {runQuery.data.cases.length} cases
+              <ChevronDown className={cn('size-4 transition-transform motion-reduce:transition-none', casesOpen && 'rotate-180')} aria-hidden="true" />
+            </button>
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
+        <div
+          id="run-cases-list"
+          className={cn('flex-1 overflow-y-auto p-2 max-md:max-h-72 max-md:border-t max-md:border-[var(--border)]', !casesOpen && 'max-md:hidden')}
+        >
           {!runQuery.data && (
             <p className="p-2 text-xs text-[var(--muted-foreground)]">
               No run context — opened outside a test run.
@@ -203,7 +224,7 @@ export function ExecutionConsole() {
               key={c.id}
               to={`/test-run-cases/${c.id}?runId=${runId}`}
               className={cn(
-                'flex flex-col gap-1 rounded-md px-2.5 py-2 text-sm hover:bg-[var(--muted)]',
+                'flex flex-col gap-1 rounded-md px-2.5 py-2 text-sm hover:bg-[var(--muted)] max-md:min-h-11 max-md:justify-center',
                 c.id === runCaseId && 'bg-[var(--muted)] font-medium',
               )}
             >
@@ -222,9 +243,9 @@ export function ExecutionConsole() {
       </aside>
 
       {/* Main panel: step execution */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)]">
+      <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-[var(--border)] bg-[var(--background)] md:overflow-hidden">
         <div className="shrink-0 border-b border-[var(--border)] p-4">
-          <h1 className="text-lg font-semibold">{context?.test_case_title ?? 'Execution Console'}</h1>
+          <h1 className="break-words text-lg font-semibold">{context?.test_case_title ?? 'Execution Console'}</h1>
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
             <div className="h-full bg-[var(--primary)] transition-all" style={{ width: `${progressPercent}%` }} />
           </div>
@@ -233,7 +254,7 @@ export function ExecutionConsole() {
           </p>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 p-4 md:overflow-y-auto">
           <div className="flex flex-col gap-3">
             {steps.map((step) => (
               <StepCard
@@ -253,25 +274,32 @@ export function ExecutionConsole() {
         </div>
 
         {currentStep && !runLocked && (
-          <div className="shrink-0 border-t border-[var(--border)] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate text-sm text-[var(--muted-foreground)]">
+          // Phone: the verdict bar is pinned just above the bottom tab bar so
+          // Pass / Fail / Ignore are always one thumb-tap away while the steps
+          // scroll beneath it. Desktop keeps the old in-panel footer.
+          <div
+            role="group"
+            aria-label="Record a verdict for the current step"
+            className="shrink-0 border-t border-[var(--border)] bg-[var(--background)] p-3 max-md:sticky max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] max-md:z-30 max-md:rounded-b-lg max-md:shadow-[0_-6px_16px_-8px_rgb(0_0_0/0.25)]"
+          >
+            <div className="flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch max-md:gap-2">
+              <p className="min-w-0 truncate text-sm text-[var(--muted-foreground)] max-md:line-clamp-2 max-md:whitespace-normal">
                 Step {currentStep.step_number}: {currentStep.action}
               </p>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 gap-2 max-md:[&>button]:h-12 max-md:[&>button]:flex-1 max-md:[&>button]:text-base">
                 <Button
                   size="sm"
                   onClick={() => submitVerdict('pass')}
                   disabled={verdictMutation.isPending}
                   className="bg-emerald-600 hover:opacity-90"
                 >
-                  Pass <kbd className="ml-1 opacity-60">P</kbd>
+                  Pass <kbd className="ml-1 opacity-60 max-md:hidden">P</kbd>
                 </Button>
                 <Button size="sm" variant="destructive" onClick={() => submitVerdict('fail')} disabled={verdictMutation.isPending}>
-                  Fail <kbd className="ml-1 opacity-60">F</kbd>
+                  Fail <kbd className="ml-1 opacity-60 max-md:hidden">F</kbd>
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => submitVerdict('ignore')} disabled={verdictMutation.isPending}>
-                  Ignore <kbd className="ml-1 opacity-60">I</kbd>
+                  Ignore <kbd className="ml-1 opacity-60 max-md:hidden">I</kbd>
                 </Button>
               </div>
             </div>
@@ -285,7 +313,7 @@ export function ExecutionConsole() {
       </div>
 
       {/* Right panel: execution info + defect details */}
-      <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
+      <aside className="flex shrink-0 flex-col gap-3 md:w-72 md:overflow-y-auto">
         <Card>
           <CardHeader>
             <CardTitle>Execution Info</CardTitle>
@@ -419,11 +447,11 @@ function StepCard({
       className={`rounded-lg border p-4 ${isCurrent ? 'border-[var(--primary)]' : 'border-[var(--border)]'}`}
     >
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium">
+        <div className="min-w-0">
+          <p className="break-words text-sm font-medium max-md:text-base">
             {step.step_number}. {step.action}
           </p>
-          <p className="text-sm text-[var(--muted-foreground)]">Expected: {step.expected}</p>
+          <p className="break-words text-sm text-[var(--muted-foreground)] max-md:text-base">Expected: {step.expected}</p>
           {hasDefect && (
             <Badge tone="critical" className="mt-1">
               🐞 Defect reported
@@ -468,7 +496,7 @@ function StepAttachments({ stepId }: { stepId: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline"
+        className="inline-flex text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
       >
         {open ? 'Hide attachments' : 'Attachments'}
       </button>
@@ -491,7 +519,7 @@ function StepComments({ stepId }: { stepId: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline"
+        className="inline-flex text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
       >
         {open ? 'Hide comments' : 'Comments'}
       </button>
@@ -518,7 +546,7 @@ function ReverdictControl({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline"
+        className="mt-2 inline-flex text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
       >
         Re-run step
       </button>
@@ -526,7 +554,7 @@ function ReverdictControl({
   }
 
   return (
-    <div className="mt-3 flex gap-2">
+    <div className="mt-3 flex flex-wrap gap-2">
       <Button
         size="sm"
         onClick={() => {

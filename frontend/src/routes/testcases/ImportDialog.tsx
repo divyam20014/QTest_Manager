@@ -14,7 +14,7 @@ import { ApiError } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CsvDropZone } from '@/components/ui/csv-drop-zone'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
 
 const PRESETS: { value: ImportPreset; label: string }[] = [
@@ -121,7 +121,7 @@ function MappedImportFlow({
         </div>
         <CsvDropZone file={file} onSelect={setFile} disabled={detectMutation.isPending} />
         {detectError && <p className="text-xs text-[var(--destructive)]">{detectError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onCancel}>
             Back
           </Button>
@@ -132,7 +132,7 @@ function MappedImportFlow({
           >
             {detectMutation.isPending ? 'Reading…' : 'Next: Map Columns'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     )
   }
@@ -183,7 +183,7 @@ function MappedImportFlow({
         </p>
       )}
       {importError && <p className="text-xs text-[var(--destructive)]">{importError}</p>}
-      <div className="flex justify-end gap-2">
+      <DialogFooter>
         <Button variant="outline" size="sm" onClick={() => setDetection(null)}>
           Back
         </Button>
@@ -194,7 +194,7 @@ function MappedImportFlow({
         >
           {importMutation.isPending ? 'Importing…' : 'Import'}
         </Button>
-      </div>
+      </DialogFooter>
     </div>
   )
 }
@@ -275,7 +275,7 @@ export function ImportDialog({
           </>
         )}
 
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={handleClose}>
             Close
           </Button>
@@ -288,7 +288,7 @@ export function ImportDialog({
               {importMutation.isPending ? 'Importing…' : 'Import'}
             </Button>
           )}
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )

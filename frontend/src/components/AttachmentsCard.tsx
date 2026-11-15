@@ -14,7 +14,7 @@ import {
 import { ApiError } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { useToast } from '@/lib/toast'
 
 function formatBytes(bytes: number): string {
@@ -296,7 +296,7 @@ export function AttachmentsPanel({
           <p className="text-[var(--muted-foreground)]">
             Delete {deleteTarget?.file_name}? This cannot be undone.
           </p>
-          <div className="flex justify-end gap-2">
+          <DialogFooter>
             <Button
               variant="outline"
               size="sm"
@@ -313,7 +313,7 @@ export function AttachmentsPanel({
             >
               {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       </Dialog>
     </div>

@@ -3,18 +3,55 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
-import { createTestRun, listTestRuns, type RunType, type TestRunCreateRequest } from '@/api/execution'
+import {
+  createTestRun,
+  listTestRuns,
+  type RunType,
+  type TestRunCreateRequest,
+  type TestRunSummary,
+} from '@/api/execution'
 import { getProject } from '@/api/projects'
 import { listTestCases } from '@/api/testCases'
+import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
+
+// One definition feeds the desktop table and the phone cards (ResponsiveTable).
+const RUN_COLUMNS: ResponsiveColumn<TestRunSummary>[] = [
+  {
+    key: 'name',
+    header: 'Name',
+    card: 'title',
+    cell: (run) => (
+      <Link to={`/test-runs/${run.id}`} className="font-medium underline-offset-2 hover:underline">
+        {run.name}
+      </Link>
+    ),
+    cardCell: (run) => (
+      <Link to={`/test-runs/${run.id}`} className={CARD_LINK_CLASS}>
+        {run.name}
+      </Link>
+    ),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    card: 'badge',
+    cell: (run) => (
+      <Badge tone={run.finished_at ? 'neutral' : 'positive'}>{run.finished_at ? 'Finished' : 'Active'}</Badge>
+    ),
+  },
+  { key: 'type', header: 'Type', cell: (run) => run.run_type },
+  { key: 'cases', header: 'Cases', cell: (run) => run.case_count },
+  { key: 'created', header: 'Created', cell: (run) => new Date(run.created_at).toLocaleDateString() },
+]
 
 export function TestRunsList() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -65,9 +102,12 @@ export function TestRunsList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link to={`/projects/${projectId}`} className="text-xs text-[var(--muted-foreground)] hover:underline">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <Link
+            to={`/projects/${projectId}`}
+            className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
+          >
             ← {projectQuery.data?.name ?? 'Project'}
           </Link>
           <h1 className="text-lg font-semibold">Test Runs</h1>
@@ -75,45 +115,19 @@ export function TestRunsList() {
         <Button onClick={() => setCreateOpen(true)}>New Test Run</Button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">Name</th>
-              <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 font-medium">Cases</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runsQuery.data?.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No test runs yet.
-                </td>
-              </tr>
-            )}
-            {runsQuery.data?.map((run) => (
-              <tr key={run.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
-                <td className="px-4 py-2">
-                  <Link to={`/test-runs/${run.id}`} className="font-medium underline-offset-2 hover:underline">
-                    {run.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">{run.run_type}</td>
-                <td className="px-4 py-2">{run.case_count}</td>
-                <td className="px-4 py-2">
-                  <Badge tone={run.finished_at ? 'neutral' : 'positive'}>
-                    {run.finished_at ? 'Finished' : 'Active'}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2">{new Date(run.created_at).toLocaleDateString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        label="Test runs"
+        rows={runsQuery.data ?? []}
+        rowKey={(run) => run.id}
+        columns={RUN_COLUMNS}
+        loading={runsQuery.isLoading}
+        state={
+          runsQuery.data?.length === 0 ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">No test runs yet.</p>
+          ) : undefined
+        }
+        stateCellClassName="px-4"
+      />
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Run" className="max-w-xl">
         <div className="flex flex-col gap-3 text-sm">
@@ -138,10 +152,10 @@ export function TestRunsList() {
                 No approved test cases in this project yet — only approved cases can be bundled into a run.
               </p>
             )}
-            <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-[var(--border)] p-2">
+            <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-[var(--border)] p-2 max-md:max-h-[40svh]">
               {approvedCases.map((tc) => (
                 <li key={tc.id}>
-                  <label className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 max-md:min-h-11">
                     <input
                       type="checkbox"
                       checked={selectedCaseIds.includes(tc.id)}
@@ -154,12 +168,14 @@ export function TestRunsList() {
             </ul>
           </div>
           {createError && <p className="text-xs text-[var(--destructive)]">{createError}</p>}
-          <Button
-            disabled={!name || selectedCaseIds.length === 0 || createMutation.isPending}
-            onClick={submitCreate}
-          >
-            {createMutation.isPending ? 'Creating…' : 'Create Test Run'}
-          </Button>
+          <DialogFooter>
+            <Button
+              disabled={!name || selectedCaseIds.length === 0 || createMutation.isPending}
+              onClick={submitCreate}
+            >
+              {createMutation.isPending ? 'Creating…' : 'Create Test Run'}
+            </Button>
+          </DialogFooter>
         </div>
       </Dialog>
     </div>

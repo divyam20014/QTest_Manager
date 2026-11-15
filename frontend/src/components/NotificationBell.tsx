@@ -88,7 +88,7 @@ export function NotificationBell() {
         aria-label="Notifications"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="relative"
+        className="relative max-md:min-w-11"
       >
         <Bell className="size-4" />
         {unreadCount > 0 && (

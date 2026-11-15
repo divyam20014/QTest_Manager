@@ -4,9 +4,57 @@ import { Link, useSearchParams } from 'react-router-dom'
 
 import { listTestRuns, type TestRunSummary } from '@/api/execution'
 import { listProjects, type Project } from '@/api/projects'
+import { FilterBar } from '@/components/table/FilterBar'
+import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
-import { TableSkeleton } from '@/components/ui/skeleton'
+
+type OverviewRow = { project: Project; run: TestRunSummary }
+
+const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
+  {
+    key: 'run',
+    header: 'Run',
+    card: 'title',
+    cell: ({ run }) => (
+      <Link to={`/test-runs/${run.id}`} className="font-medium underline-offset-2 hover:underline">
+        {run.name}
+      </Link>
+    ),
+    cardCell: ({ run }) => (
+      <Link to={`/test-runs/${run.id}`} className={CARD_LINK_CLASS}>
+        {run.name}
+      </Link>
+    ),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    card: 'badge',
+    cell: ({ run }) => (
+      <Badge tone={run.finished_at ? 'neutral' : run.paused_at ? 'warning' : 'positive'}>
+        {run.finished_at ? 'Finished' : run.paused_at ? 'Paused' : 'Active'}
+      </Badge>
+    ),
+  },
+  {
+    key: 'project',
+    header: 'Project',
+    cell: ({ project }) => (
+      <Link to={`/projects/${project.id}/test-runs`} className="relative z-10 text-[var(--muted-foreground)] hover:underline">
+        {project.name}
+      </Link>
+    ),
+  },
+  { key: 'type', header: 'Type', tdClassName: 'text-[var(--muted-foreground)]', cell: ({ run }) => run.run_type },
+  { key: 'cases', header: 'Cases', cell: ({ run }) => run.case_count },
+  {
+    key: 'created',
+    header: 'Created',
+    tdClassName: 'text-xs text-[var(--muted-foreground)]',
+    cell: ({ run }) => new Date(run.created_at).toLocaleDateString(),
+  },
+]
 
 // Cross-project test run overview (foundation pass for the "Test Runs"
 // sidebar item). Same client-side-merge approach as TestRepository.tsx --
@@ -43,7 +91,7 @@ export function TestRunsOverview() {
   })
 
   const isLoading = perProjectQueries.some((q) => q.isLoading)
-  const rows: { project: Project; run: TestRunSummary }[] = perProjectQueries
+  const rows: OverviewRow[] = perProjectQueries
     .flatMap((q) => (q.data ? q.data.runs.map((run) => ({ project: q.data!.project, run })) : []))
     .filter((r) => !activeOnly || !r.run.finished_at)
     .sort((a, b) => b.run.created_at.localeCompare(a.run.created_at))
@@ -52,7 +100,7 @@ export function TestRunsOverview() {
     <div className="flex flex-col gap-4">
       <h1 className="text-lg font-semibold">Test Runs</h1>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <FilterBar activeCount={(projectId ? 1 : 0) + (activeOnly ? 1 : 0)} onClear={() => { setProjectId(''); setActiveOnly(false) }} desktopClear={false}>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="runs-project" className="text-xs text-[var(--muted-foreground)]">
             Project
@@ -71,7 +119,7 @@ export function TestRunsOverview() {
             ))}
           </Select>
         </div>
-        <label className="flex items-center gap-2 pb-2 text-sm">
+        <label className="flex min-h-11 items-center gap-2 pb-2 text-sm md:min-h-0">
           <input
             type="checkbox"
             checked={activeOnly}
@@ -79,59 +127,23 @@ export function TestRunsOverview() {
           />
           Active runs only
         </label>
-      </div>
+      </FilterBar>
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)]">
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="px-4 py-2 font-medium">Run</th>
-              <th className="px-4 py-2 font-medium">Project</th>
-              <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 font-medium">Cases</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!isLoading && rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  No test runs match these filters.
-                </td>
-              </tr>
-            )}
-            {isLoading && <TableSkeleton columns={6} />}
-            {rows.map(({ project, run }) => (
-              <tr key={run.id} className="border-t border-[var(--border)] hover:bg-[var(--muted)]">
-                <td className="px-4 py-2">
-                  <Link to={`/test-runs/${run.id}`} className="font-medium underline-offset-2 hover:underline">
-                    {run.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">
-                  <Link
-                    to={`/projects/${project.id}/test-runs`}
-                    className="text-[var(--muted-foreground)] hover:underline"
-                  >
-                    {project.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2 text-[var(--muted-foreground)]">{run.run_type}</td>
-                <td className="px-4 py-2">{run.case_count}</td>
-                <td className="px-4 py-2">
-                  <Badge tone={run.finished_at ? 'neutral' : run.paused_at ? 'warning' : 'positive'}>
-                    {run.finished_at ? 'Finished' : run.paused_at ? 'Paused' : 'Active'}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
-                  {new Date(run.created_at).toLocaleDateString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        label="Test runs"
+        rows={rows}
+        rowKey={(r) => r.run.id}
+        columns={OVERVIEW_COLUMNS}
+        loading={isLoading}
+        className="bg-[var(--background)]"
+        state={
+          !isLoading && rows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              No test runs match these filters.
+            </p>
+          ) : undefined
+        }
+      />
     </div>
   )
 }

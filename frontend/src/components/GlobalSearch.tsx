@@ -56,7 +56,7 @@ export function GlobalSearch() {
     <div
       ref={containerRef}
       role="search"
-      className="relative hidden w-72 md:block"
+      className="relative hidden md:block md:w-44 2xl:w-72"
     >
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />

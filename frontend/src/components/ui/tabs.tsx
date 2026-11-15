@@ -34,7 +34,7 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
               // this is a navigation strip inside otherwise-dense admin
               // pages, not a hero widget. Also added a focus-visible
               // outline -- there wasn't one before.
-              className={`shrink-0 rounded-t-md border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] ${
+              className={`shrink-0 rounded-t-md border-b-2 px-3 py-2 max-md:min-h-11 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] ${
                 isActive
                   ? 'qth-raised-sm border-[var(--primary)] bg-[var(--tactile-surface-raised)] text-[var(--foreground)]'
                   : 'border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]'

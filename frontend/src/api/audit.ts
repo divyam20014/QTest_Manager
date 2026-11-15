@@ -40,8 +40,16 @@ function buildAuditParams(filters: AuditLogFilters): URLSearchParams {
   return params
 }
 
-export function listAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogEntry[]> {
-  const query = buildAuditParams(filters).toString()
+export const AUDIT_PAGE_SIZE = 50
+
+export function listAuditLogs(
+  filters: AuditLogFilters = {},
+  page: { limit?: number; offset?: number } = {},
+): Promise<AuditLogEntry[]> {
+  const params = buildAuditParams(filters)
+  if (page.limit) params.set('limit', String(page.limit))
+  if (page.offset) params.set('offset', String(page.offset))
+  const query = params.toString()
   return apiFetch<AuditLogEntry[]>(`/audit-logs${query ? `?${query}` : ''}`)
 }
 
