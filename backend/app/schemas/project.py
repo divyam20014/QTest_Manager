@@ -80,3 +80,17 @@ class ProjectListResponse(BaseModel):
 
 class ProjectMemberAddRequest(BaseModel):
     user_id: UUID
+
+
+class ProjectMemberOut(BaseModel):
+    user_id: UUID
+    name: str
+    tenant_role_name: str
+    project_role_id: UUID | None
+    project_role_name: str | None
+
+
+class ProjectMemberRoleUpdateRequest(BaseModel):
+    # None clears the override, reverting the member to their tenant-wide
+    # role for this project.
+    role_id: UUID | None = None

@@ -29,6 +29,13 @@ export function listRoles(): Promise<Role[]> {
   return apiFetch<Role[]>('/roles')
 }
 
+// RBAC Phase 1: same data as listRoles, but reachable by a Manager (who
+// holds project.members.manage but not the tenant-wide user.manage) --
+// use this to populate a project-role-override picker.
+export function listAssignableRoles(): Promise<Role[]> {
+  return apiFetch<Role[]>('/roles/assignable')
+}
+
 export function listPermissions(): Promise<Permission[]> {
   return apiFetch<Permission[]>('/roles/permissions')
 }

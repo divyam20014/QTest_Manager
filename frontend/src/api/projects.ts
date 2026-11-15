@@ -96,3 +96,27 @@ export function addProjectMember(projectId: string, userId: string): Promise<Pro
 export function removeProjectMember(projectId: string, userId: string): Promise<Project> {
   return apiFetch<Project>(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' })
 }
+
+// RBAC Phase 1: project-scoped role overrides.
+export interface ProjectMemberWithRole {
+  user_id: string
+  name: string
+  tenant_role_name: string
+  project_role_id: string | null
+  project_role_name: string | null
+}
+
+export function listProjectMembers(projectId: string): Promise<ProjectMemberWithRole[]> {
+  return apiFetch<ProjectMemberWithRole[]>(`/projects/${projectId}/members`)
+}
+
+export function setProjectMemberRole(
+  projectId: string,
+  userId: string,
+  roleId: string | null
+): Promise<Project> {
+  return apiFetch<Project>(`/projects/${projectId}/members/${userId}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role_id: roleId }),
+  })
+}

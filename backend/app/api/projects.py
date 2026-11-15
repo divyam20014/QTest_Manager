@@ -3,7 +3,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, get_current_context, require_permission
+from app.core.auth import (
+    SessionContext,
+    get_current_context,
+    require_any_permission,
+    require_permission,
+)
 from app.core.db import get_db
 from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
@@ -11,6 +16,7 @@ from app.schemas.project import (
     ProjectCreateRequest,
     ProjectListResponse,
     ProjectMemberAddRequest,
+    ProjectMemberRoleUpdateRequest,
     ProjectUpdateRequest,
 )
 from app.services import project_service
@@ -125,5 +131,31 @@ def remove_member(
 ) -> dict:
     project = project_service.remove_member(
         db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id, user_id
+    )
+    return envelope(project_service.to_out(db, project).model_dump(mode="json"))
+
+
+@router.get("/{project_id}/members")
+def list_members(
+    project_id: UUID,
+    ctx: SessionContext = Depends(
+        require_any_permission("project.members.manage", "user.manage")
+    ),
+    db: Session = Depends(get_db),
+) -> dict:
+    members = project_service.list_members_with_roles(db, ctx.tenant_id, project_id)
+    return envelope([m.model_dump(mode="json") for m in members])
+
+
+@router.patch("/{project_id}/members/{user_id}/role")
+def set_member_role(
+    project_id: UUID,
+    user_id: UUID,
+    req: ProjectMemberRoleUpdateRequest,
+    ctx: SessionContext = Depends(require_permission("project.members.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    project = project_service.set_member_role(
+        db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id, user_id, req.role_id
     )
     return envelope(project_service.to_out(db, project).model_dump(mode="json"))

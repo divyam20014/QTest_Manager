@@ -3,7 +3,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, get_current_context, require_permission
+from app.core.auth import (
+    SessionContext,
+    get_current_context,
+    require_permission,
+    require_project_permission,
+)
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.requirement import (
@@ -36,7 +41,7 @@ def list_requirements(
 def create_requirement(
     project_id: UUID,
     req: RequirementCreateRequest,
-    ctx: SessionContext = Depends(require_permission("requirement.manage")),
+    ctx: SessionContext = Depends(require_project_permission("requirement.manage")),
     db: Session = Depends(get_db),
 ) -> dict:
     requirement = requirement_service.create_requirement(

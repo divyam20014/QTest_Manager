@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from ipaddress import ip_address, ip_network
 from uuid import UUID
 
 from fastapi import Depends, Request, Response
@@ -10,9 +9,14 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import get_db, set_tenant_context
 from app.core.errors import ForbiddenError, UnauthorizedError
-from app.core.logging import logger
+from app.core.policy import (
+    enforce_ip_allowlist,
+    enforce_mfa_verified,
+    resolve_project_id_for_resource,
+)
 from app.models.identity import Permission, Role, RolePermission, User
 from app.models.identity import Session as SessionModel
+from app.models.project import ProjectMember
 from app.models.tenant import Tenant
 
 settings = get_settings()
@@ -51,30 +55,11 @@ def client_ip(request: Request) -> str | None:
 
 
 def _enforce_ip_allowlist(db: Session, tenant_id: UUID, request: Request) -> None:
-    allowlist = db.execute(
-        select(Tenant.ip_allowlist).where(Tenant.id == tenant_id)
-    ).scalar_one_or_none()
-    if not allowlist:
-        return  # unset/empty means no restriction (PV-11.3's documented default)
-
-    caller_ip = client_ip(request)
-    if caller_ip is None:
-        raise ForbiddenError("Access denied: client IP could not be determined")
-    try:
-        caller = ip_address(caller_ip)
-    except ValueError:
-        raise ForbiddenError("Access denied: client IP could not be determined") from None
-
-    for cidr in allowlist:
-        try:
-            if caller in ip_network(cidr, strict=False):
-                return
-        except ValueError:
-            continue  # a malformed stored entry never silently blocks every request
-    logger.warning(
-        "security_event=ip_allowlist_blocked tenant_id=%s client_ip=%s", tenant_id, caller_ip
-    )
-    raise ForbiddenError("Access denied: your network is not on this organization's allowlist")
+    """Thin wrapper kept for backward compatibility with existing callers
+    (`app.services.auth_service.start_login`) -- the real logic now lives
+    in `app.core.policy.enforce_ip_allowlist` (RBAC/PBAC/ABAC plan, Phase 2:
+    a behavior-identical extraction, not a new check)."""
+    enforce_ip_allowlist(db, tenant_id, client_ip(request))
 
 
 def parse_session_cookie(request: Request) -> UUID:
@@ -142,8 +127,7 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
         raise UnauthorizedError("Session revoked")
     if session_row.expires_at < datetime.now(UTC):
         raise UnauthorizedError("Session expired")
-    if not session_row.mfa_verified:
-        raise UnauthorizedError("MFA verification required")
+    enforce_mfa_verified(session_row)
 
     now = datetime.now(UTC)
     idle_cutoff = now - timedelta(minutes=settings.session_ttl_minutes)
@@ -158,7 +142,7 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
     if tenant_status is not None and tenant_status != "approved":
         raise ForbiddenError("This organization's account is no longer active.")
 
-    _enforce_ip_allowlist(db, session_row.tenant_id, request)
+    enforce_ip_allowlist(db, session_row.tenant_id, client_ip(request))
 
     session_row.last_seen_at = now
     db.commit()
@@ -181,6 +165,110 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
 def require_permission(code: str):
     def _checker(ctx: SessionContext = Depends(get_current_context)) -> SessionContext:
         if code not in ctx.permissions:
+            raise ForbiddenError(f"Missing permission: {code}")
+        return ctx
+
+    return _checker
+
+
+def get_effective_permissions_for_project(
+    db: Session, ctx: SessionContext, project_id: UUID
+) -> set[str]:
+    """RBAC Phase 1 (project-level role scoping): if this member has a
+    project-scoped role override (`project_members.role_id`), their
+    permissions FOR ACTIONS SCOPED TO THIS PROJECT come from that role
+    instead of their tenant-wide role. No override (the default -- every
+    member until an admin/manager explicitly sets one) means this returns
+    `ctx.permissions` unchanged, so behavior for the overwhelming majority
+    of users is identical to before this feature existed.
+
+    This only generalizes the FastAPI permission *gate* -- it does not
+    change `ctx.role_code`, so deeper service-layer logic that branches on
+    role_code (e.g. manager-assigned-or-admin checks) still uses the
+    tenant-wide role. Extending the override to that layer is a
+    deliberately deferred, separately-scoped follow-up, not part of this
+    phase.
+    """
+    override_role_id = db.execute(
+        select(ProjectMember.role_id).where(
+            ProjectMember.project_id == project_id, ProjectMember.user_id == ctx.user_id
+        )
+    ).scalar_one_or_none()
+    if override_role_id is None:
+        return ctx.permissions
+
+    return set(
+        db.execute(
+            select(Permission.code)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .where(RolePermission.role_id == override_role_id)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def require_project_permission(code: str):
+    """Project-aware variant of `require_permission`, for routes where
+    `project_id` is itself a path parameter (FastAPI binds it here by
+    parameter name). Only use this where a project-scoped role override
+    should actually take effect; routes with no project in their path
+    keep using the plain `require_permission`/`require_any_permission`.
+    """
+
+    def _checker(
+        project_id: UUID,
+        ctx: SessionContext = Depends(get_current_context),
+        db: Session = Depends(get_db),
+    ) -> SessionContext:
+        effective = get_effective_permissions_for_project(db, ctx, project_id)
+        if code not in effective:
+            raise ForbiddenError(f"Missing permission: {code}")
+        return ctx
+
+    return _checker
+
+
+def require_resource_permission(code: str, resource_type: str):
+    """RBAC Phase 3: resource-id-keyed sibling of `require_project_permission`,
+    for routes where the resource is addressed by its own id
+    (`test_case_id`/`defect_id`) rather than by a `project_id` path param.
+    `resource_type` must be a key `policy.resolve_project_id_for_resource`
+    knows (`"test_case"`/`"defect"`) and its id must be bound in the route
+    path under `f"{resource_type}_id"`.
+
+    This generalizes Phase 1's project-role override to these routes: if
+    the resource's project_id resolves and the caller has a project-scoped
+    role override there, that override's permissions decide this check,
+    same as `require_project_permission` already does for `project_id`-path
+    routes. If the resource can't be resolved (wrong tenant / doesn't
+    exist), falls back to the plain tenant-wide permission check so the
+    service layer still gets to raise its own NotFoundError, unchanged.
+
+    Additive, not a replacement: the existing service-layer project-access
+    checks (`_authorize_case_access`, `_require_project_access`) still run
+    exactly as before and are untouched by this.
+    """
+
+    id_param = f"{resource_type}_id"
+
+    def _checker(
+        request: Request,
+        ctx: SessionContext = Depends(get_current_context),
+        db: Session = Depends(get_db),
+    ) -> SessionContext:
+        raw_id = request.path_params.get(id_param)
+        project_id = (
+            resolve_project_id_for_resource(db, ctx.tenant_id, resource_type, UUID(raw_id))
+            if raw_id is not None
+            else None
+        )
+        effective = (
+            get_effective_permissions_for_project(db, ctx, project_id)
+            if project_id is not None
+            else ctx.permissions
+        )
+        if code not in effective:
             raise ForbiddenError(f"Missing permission: {code}")
         return ctx
 

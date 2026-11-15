@@ -71,3 +71,13 @@ class ProjectMember(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True
     )
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Project-scoped role override (RBAC Phase 1): null (the default, every
+    # pre-existing row) means the member's permissions on this project are
+    # exactly their tenant-wide role's permissions, unchanged. When set,
+    # this role's permissions apply INSTEAD, but only for actions scoped to
+    # this one project -- see app.core.auth.get_effective_permissions_for_project.
+    # ON DELETE SET NULL: deleting the role a member was overridden to
+    # silently reverts them to their tenant-wide role rather than erroring.
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL"), nullable=True
+    )

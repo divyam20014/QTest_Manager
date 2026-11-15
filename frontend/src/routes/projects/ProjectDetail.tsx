@@ -7,10 +7,13 @@ import {
   addProjectMember,
   deleteProject,
   getProject,
+  listProjectMembers,
   removeProjectMember,
+  setProjectMemberRole,
   updateProject,
   type ProjectUpdateRequest,
 } from '@/api/projects'
+import { listAssignableRoles } from '@/api/roles'
 import {
   createBuild,
   createRelease,
@@ -64,6 +67,30 @@ export function ProjectDetail() {
   function canManage() {
     return isManagerOrAbove(user)
   }
+
+  // RBAC Phase 1: project-scoped role overrides -- loaded alongside the
+  // member list only when the viewer can manage membership, same gate as
+  // the rest of this card.
+  const projectRolesQuery = useQuery({
+    queryKey: ['projects', projectId, 'members-with-roles'],
+    queryFn: () => listProjectMembers(projectId!),
+    enabled: !!projectId && canManage(),
+  })
+  const assignableRolesQuery = useQuery({
+    queryKey: ['roles', 'assignable'],
+    queryFn: listAssignableRoles,
+    enabled: canManage(),
+  })
+
+  const setMemberRoleMutation = useMutation({
+    mutationFn: ({ userId, roleId }: { userId: string; roleId: string | null }) =>
+      setProjectMemberRole(projectId!, userId, roleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'members-with-roles'] })
+      showToast('success', 'Project role updated')
+    },
+    onError: () => showToast('error', 'Could not update that member’s project role'),
+  })
 
   const updateMutation = useMutation({
     mutationFn: (req: ProjectUpdateRequest) => updateProject(projectId!, req),
@@ -224,23 +251,54 @@ export function ProjectDetail() {
           <CardContent className="flex flex-col gap-3">
             <ul className="flex flex-col gap-2 text-sm">
               {memberUsers.length === 0 && <li className="text-[var(--muted-foreground)]">No members assigned.</li>}
-              {memberUsers.map((member) => (
-                <li key={member.id} className="flex items-center justify-between">
-                  <span>
-                    {member.name} <span className="text-xs text-[var(--muted-foreground)]">({member.role})</span>
-                  </span>
-                  {canManage() && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeMemberMutation.mutate(member.id)}
-                      disabled={removeMemberMutation.isPending}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </li>
-              ))}
+              {memberUsers.map((member) => {
+                const projectRole = projectRolesQuery.data?.find((m) => m.user_id === member.id)
+                return (
+                  <li key={member.id} className="flex flex-col gap-1 border-b border-[var(--border)] pb-2 last:border-none last:pb-0">
+                    <div className="flex items-center justify-between">
+                      <span>
+                        {member.name} <span className="text-xs text-[var(--muted-foreground)]">({member.role})</span>
+                      </span>
+                      {canManage() && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeMemberMutation.mutate(member.id)}
+                          disabled={removeMemberMutation.isPending}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                    {canManage() && assignableRolesQuery.data && (
+                      <div className="flex items-center gap-2">
+                        <label htmlFor={`project-role-${member.id}`} className="text-xs text-[var(--muted-foreground)] whitespace-nowrap">
+                          Project role
+                        </label>
+                        <Select
+                          id={`project-role-${member.id}`}
+                          aria-label={`Project-scoped role override for ${member.name}`}
+                          value={projectRole?.project_role_id ?? ''}
+                          onChange={(e) =>
+                            setMemberRoleMutation.mutate({
+                              userId: member.id,
+                              roleId: e.target.value || null,
+                            })
+                          }
+                          disabled={setMemberRoleMutation.isPending}
+                        >
+                          <option value="">Use tenant role ({member.role})</option>
+                          {assignableRolesQuery.data.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
 
             {canManage() && assignableUsers.length > 0 && (

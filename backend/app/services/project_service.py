@@ -9,7 +9,7 @@ from app.core.audit import record_audit_event
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.models.defect import Defect
 from app.models.execution import TestRun
-from app.models.identity import User
+from app.models.identity import Role, User
 from app.models.project import Project, ProjectMember
 from app.models.tenant import Tenant
 from app.models.test_case import TestCase
@@ -17,6 +17,7 @@ from app.schemas.project import (
     Domain,
     Priority,
     ProjectCreateRequest,
+    ProjectMemberOut,
     ProjectOut,
     ProjectStatus,
     ProjectUpdateRequest,
@@ -448,6 +449,87 @@ def remove_member(
         entity_type="project",
         entity_id=project.id,
         metadata={"user_id": str(member_user_id)},
+    )
+    db.commit()
+    return project
+
+
+def list_members_with_roles(
+    db: Session, tenant_id: UUID, project_id: UUID
+) -> list[ProjectMemberOut]:
+    """RBAC Phase 1: members plus their tenant-wide role name and (if set)
+    their project-scoped role override, for the Team Members management UI."""
+    project_role = Role.__table__.alias("project_role")
+    rows = db.execute(
+        select(
+            User.id,
+            User.name,
+            Role.name.label("tenant_role_name"),
+            ProjectMember.role_id.label("project_role_id"),
+            project_role.c.name.label("project_role_name"),
+        )
+        .select_from(ProjectMember)
+        .join(User, User.id == ProjectMember.user_id)
+        .join(Role, Role.id == User.role_id)
+        .outerjoin(project_role, project_role.c.id == ProjectMember.role_id)
+        .where(ProjectMember.project_id == project_id, User.tenant_id == tenant_id)
+        .order_by(User.name)
+    ).all()
+    return [
+        ProjectMemberOut(
+            user_id=r.id,
+            name=r.name,
+            tenant_role_name=r.tenant_role_name,
+            project_role_id=r.project_role_id,
+            project_role_name=r.project_role_name,
+        )
+        for r in rows
+    ]
+
+
+def set_member_role(
+    db: Session,
+    tenant_id: UUID,
+    actor_user_id: UUID,
+    role_code: str,
+    project_id: UUID,
+    member_user_id: UUID,
+    role_id: UUID | None,
+) -> Project:
+    project = _get_project_or_404(db, tenant_id, project_id)
+    _require_manager_assigned_or_admin(db, project, role_code, actor_user_id)
+
+    member = db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id, ProjectMember.user_id == member_user_id
+        )
+    ).scalar_one_or_none()
+    if member is None:
+        raise NotFoundError("That user is not a member of this project")
+
+    if role_id is not None:
+        # A role assignable here must be one the tenant can actually see --
+        # a system role (tenant_id IS NULL) or this tenant's own custom role
+        # -- never another tenant's custom role.
+        role = db.execute(
+            select(Role).where(
+                Role.id == role_id,
+                (Role.tenant_id.is_(None)) | (Role.tenant_id == tenant_id),
+                Role.is_active.is_(True),
+            )
+        ).scalar_one_or_none()
+        if role is None:
+            raise NotFoundError("Role not found")
+
+    member.role_id = role_id
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="project.member_role_set",
+        entity_type="project",
+        entity_id=project.id,
+        metadata={"user_id": str(member_user_id), "role_id": str(role_id) if role_id else None},
     )
     db.commit()
     return project

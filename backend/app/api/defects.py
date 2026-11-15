@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
 from app.core.idempotency import with_idempotency
+from app.core.policy import require_policy
 from app.core.responses import envelope
 from app.schemas.defect import (
     DefectBuildReleaseUpdateRequest,
@@ -109,7 +110,7 @@ def get_defect(
 def update_defect(
     defect_id: UUID,
     req: DefectUpdateRequest,
-    ctx: SessionContext = Depends(get_current_context),
+    ctx: SessionContext = Depends(require_policy("resource_not_locked")),
     db: Session = Depends(get_db),
 ) -> dict:
     defect = defect_service.update_defect(

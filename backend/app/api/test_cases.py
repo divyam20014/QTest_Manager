@@ -3,7 +3,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, get_current_context, require_permission
+from app.core.auth import (
+    SessionContext,
+    get_current_context,
+    require_project_permission,
+    require_resource_permission,
+)
 from app.core.db import get_db
 from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
@@ -57,7 +62,7 @@ def create_test_case(
     project_id: UUID,
     req: TestCaseCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ctx: SessionContext = Depends(require_permission("testcase.create")),
+    ctx: SessionContext = Depends(require_project_permission("testcase.create")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = with_idempotency(
@@ -131,7 +136,7 @@ def compare_versions(
 def update_test_case(
     test_case_id: UUID,
     req: TestCaseUpdateRequest,
-    ctx: SessionContext = Depends(require_permission("testcase.edit")),
+    ctx: SessionContext = Depends(require_resource_permission("testcase.edit", "test_case")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.update_test_case(
@@ -144,7 +149,7 @@ def update_test_case(
 def submit_for_review(
     test_case_id: UUID,
     req: SubmitForReviewRequest = SubmitForReviewRequest(),
-    ctx: SessionContext = Depends(require_permission("testcase.edit")),
+    ctx: SessionContext = Depends(require_resource_permission("testcase.edit", "test_case")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.submit_for_review(
@@ -156,7 +161,7 @@ def submit_for_review(
 @router.post("/test-cases/{test_case_id}/approve")
 def approve_test_case(
     test_case_id: UUID,
-    ctx: SessionContext = Depends(require_permission("testcase.approve")),
+    ctx: SessionContext = Depends(require_resource_permission("testcase.approve", "test_case")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.approve_test_case(
@@ -169,7 +174,7 @@ def approve_test_case(
 def request_changes(
     test_case_id: UUID,
     req: RequestChangesRequest,
-    ctx: SessionContext = Depends(require_permission("testcase.approve")),
+    ctx: SessionContext = Depends(require_resource_permission("testcase.approve", "test_case")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.request_changes_test_case(
@@ -181,7 +186,7 @@ def request_changes(
 @router.post("/test-cases/{test_case_id}/deprecate")
 def deprecate_test_case(
     test_case_id: UUID,
-    ctx: SessionContext = Depends(require_permission("testcase.deprecate")),
+    ctx: SessionContext = Depends(require_resource_permission("testcase.deprecate", "test_case")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.deprecate_test_case(db, ctx.tenant_id, ctx.user_id, test_case_id)

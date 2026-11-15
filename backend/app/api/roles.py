@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, require_permission
+from app.core.auth import SessionContext, require_any_permission, require_permission
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.role import RoleCreateRequest, RoleUpdateRequest
@@ -17,6 +17,21 @@ def list_roles(
     ctx: SessionContext = Depends(require_permission("user.manage")),
     db: Session = Depends(get_db),
 ) -> dict:
+    return envelope([r.model_dump(mode="json") for r in role_service.list_roles(db, ctx.tenant_id)])
+
+
+@router.get("/assignable")
+def list_assignable_roles(
+    ctx: SessionContext = Depends(
+        require_any_permission("user.manage", "project.members.manage")
+    ),
+    db: Session = Depends(get_db),
+) -> dict:
+    """RBAC Phase 1: same list as GET /roles, but gated by the lighter
+    `project.members.manage` permission too, so a Manager (who legitimately
+    manages project membership but lacks tenant-wide `user.manage`) can
+    populate a project-role-override picker without being granted full
+    user-management rights."""
     return envelope([r.model_dump(mode="json") for r in role_service.list_roles(db, ctx.tenant_id)])
 
 

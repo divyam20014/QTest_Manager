@@ -3,7 +3,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, get_current_context, require_permission
+from app.core.auth import (
+    SessionContext,
+    get_current_context,
+    require_permission,
+    require_project_permission,
+)
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.execution import (
@@ -22,7 +27,7 @@ router = APIRouter(tags=["execution"])
 def create_test_run(
     project_id: UUID,
     req: TestRunCreateRequest,
-    ctx: SessionContext = Depends(require_permission("testrun.create")),
+    ctx: SessionContext = Depends(require_project_permission("testrun.create")),
     db: Session = Depends(get_db),
 ) -> dict:
     run = execution_service.create_test_run(
