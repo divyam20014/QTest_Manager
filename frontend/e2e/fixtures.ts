@@ -65,7 +65,7 @@ export async function loginViaUi(
   email: string,
   password: string,
 ): Promise<void> {
-  await page.goto('/')
+  await page.goto('/login')
   await page.waitForSelector('text=Sign in to your organization')
   await page.fill('#email', email)
   await page.click('button[type="submit"]:has-text("Continue")')

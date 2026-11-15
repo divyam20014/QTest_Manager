@@ -28,7 +28,7 @@ async function expectNoViolationsOfAnyImpact(page: import('@playwright/test').Pa
 
 test.describe('accessibility', () => {
   test('Login screen has no serious violations', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/login')
     await page.waitForSelector('text=Sign in to your organization')
     await expectNoSeriousViolations(page)
   })

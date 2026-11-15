@@ -8,7 +8,7 @@ import { Login } from '@/routes/Login'
 import { Signup } from '@/routes/Signup'
 import { NotFound } from '@/routes/NotFound'
 import { PlatformAdmin } from '@/routes/PlatformAdmin'
-import { ProtectedRoute } from '@/routes/ProtectedRoute'
+import { HomeGate } from '@/routes/HomeGate'
 import { DefectDetail } from '@/routes/defects/DefectDetail'
 import { DefectsList } from '@/routes/defects/DefectsList'
 import { ExecutionConsole } from '@/routes/execution/ExecutionConsole'
@@ -41,7 +41,7 @@ export function App() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/accept-invite/:token" element={<AcceptInvite />} />
       <Route path="/platform-admin" element={<PlatformAdmin />} />
-      <Route element={<ProtectedRoute />}>
+      <Route element={<HomeGate />}>
         <Route path="/reporting/print" element={<CompliancePrintView />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
