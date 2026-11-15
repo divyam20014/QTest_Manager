@@ -22,6 +22,7 @@ from app.api import (
     execution,
     export,
     field_customization,
+    marketing,
     notifications,
     platform,
     projects,
@@ -202,6 +203,8 @@ app.include_router(shared_steps.router, prefix="/api/v1")
 app.include_router(test_data_sets.router, prefix="/api/v1")
 app.include_router(test_suites.router, prefix="/api/v1")
 app.include_router(test_plans.router, prefix="/api/v1")
+app.include_router(marketing.public_router, prefix="/api/v1")
+app.include_router(marketing.admin_router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

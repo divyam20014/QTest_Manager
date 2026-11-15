@@ -203,3 +203,51 @@ export function updatePlatformAdminActive(
     body: JSON.stringify({ is_active: isActive }),
   })
 }
+
+export type LeadKind = 'demo' | 'contact' | 'pricing' | 'enterprise'
+export type LeadStatus = 'new' | 'contacted' | 'closed'
+
+export interface MarketingLead {
+  id: string
+  kind: LeadKind
+  full_name: string
+  business_email: string
+  company: string
+  job_role: string | null
+  team_size: string | null
+  primary_requirement: string | null
+  message: string | null
+  source_page: string | null
+  status: LeadStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadListResponse {
+  items: MarketingLead[]
+  total: number
+}
+
+export function listLeads(
+  credentials: PlatformCredentials,
+  params: { kind?: LeadKind | ''; status?: LeadStatus | ''; page?: number; page_size?: number } = {},
+): Promise<LeadListResponse> {
+  const query = new URLSearchParams()
+  if (params.kind) query.set('kind', params.kind)
+  if (params.status) query.set('status', params.status)
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  const qs = query.toString()
+  return platformFetch<LeadListResponse>(`/platform/leads${qs ? `?${qs}` : ''}`, credentials)
+}
+
+export function updateLeadStatus(
+  credentials: PlatformCredentials,
+  leadId: string,
+  status: LeadStatus,
+): Promise<MarketingLead> {
+  return platformFetch<MarketingLead>(`/platform/leads/${leadId}`, credentials, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}

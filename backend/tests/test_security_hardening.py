@@ -235,6 +235,10 @@ _PRE_SESSION_ROUTES = {
     # than login (see app/api/auth.py::signup) precisely because it's a
     # new, real attack surface, not because it's less sensitive.
     ("POST", "/api/v1/auth/signup"),
+    # Marketing-site demo/contact form: prospects have no account by
+    # definition. Write-only (no read path without platform-admin auth),
+    # honeypot-guarded and throttled per IP.
+    ("POST", "/api/v1/public/leads"),
 }
 
 

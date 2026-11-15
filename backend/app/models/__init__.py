@@ -20,6 +20,7 @@ from app.models.identity import (
     Session,
     User,
 )
+from app.models.marketing import MarketingLead
 from app.models.notification import Notification
 from app.models.project import Project, ProjectMember
 from app.models.report_schedule import ReportSchedule
@@ -71,6 +72,7 @@ __all__ = [
     "AIUsageLog",
     "Comment",
     "CommentMention",
+    "MarketingLead",
     "Notification",
     "Plan",
     "Subscription",

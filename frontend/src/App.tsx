@@ -9,6 +9,8 @@ import { Signup } from '@/routes/Signup'
 import { NotFound } from '@/routes/NotFound'
 import { PlatformAdmin } from '@/routes/PlatformAdmin'
 import { HomeGate } from '@/routes/HomeGate'
+import { MarketingRoute } from '@/routes/MarketingRoute'
+import { MARKETING_PATHS } from '@/routes/marketingPaths'
 import { DefectDetail } from '@/routes/defects/DefectDetail'
 import { DefectsList } from '@/routes/defects/DefectsList'
 import { ExecutionConsole } from '@/routes/execution/ExecutionConsole'
@@ -37,6 +39,9 @@ export function App() {
   usePageTitleFromRoute()
   return (
     <Routes>
+      {MARKETING_PATHS.map((path) => (
+        <Route key={path} path={path} element={<MarketingRoute />} />
+      ))}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/accept-invite/:token" element={<AcceptInvite />} />

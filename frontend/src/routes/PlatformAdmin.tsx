@@ -7,12 +7,16 @@ import {
   assignTenantSubscription,
   createPlatformAdmin,
   createTenant,
+  listLeads,
   listPlans,
   listPlatformAdmins,
   listTenants,
+  updateLeadStatus,
   updatePlatformAdminActive,
   updateTenantDataRegion,
   updateTenantStatus,
+  type LeadKind,
+  type LeadStatus,
   type PlatformAdminAccount,
   type PlatformCredentials,
   type Tenant,
@@ -161,6 +165,7 @@ function AdminConsole({
             label: 'Platform Admins',
             content: <PlatformAdminsPanel credentials={credentials} />,
           },
+          { key: 'leads', label: 'Leads', content: <LeadsPanel credentials={credentials} /> },
         ]}
       />
     </div>
@@ -895,5 +900,201 @@ function NewAdminDialog({
         </div>
       </form>
     </Dialog>
+  )
+}
+
+const LEAD_KIND_LABEL: Record<LeadKind, string> = {
+  demo: 'Demo request',
+  contact: 'Contact',
+  pricing: 'Pricing',
+  enterprise: 'Enterprise',
+}
+const LEAD_STATUS_TONE: Record<LeadStatus, 'warning' | 'positive' | 'neutral'> = {
+  new: 'warning',
+  contacted: 'positive',
+  closed: 'neutral',
+}
+
+// Enquiries from the public website's Request a Demo / Contact forms.
+// Prospects have no tenant yet, so leads live at platform level.
+function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
+  const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
+  const [kind, setKind] = useState<LeadKind | ''>('')
+  const [status, setStatus] = useState<LeadStatus | ''>('')
+  const [page, setPage] = useState(1)
+
+  const leadsQuery = useQuery({
+    queryKey: ['platform-leads', kind, status, page],
+    queryFn: () => listLeads(credentials, { kind, status, page, page_size: PAGE_SIZE }),
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: LeadStatus }) =>
+      updateLeadStatus(credentials, id, next),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-leads'] })
+      showToast('success', 'Lead updated')
+    },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not update that lead'),
+  })
+
+  const total = leadsQuery.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lead-kind-filter">Type</Label>
+            <Select
+              id="lead-kind-filter"
+              className="w-40"
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value as LeadKind | '')
+                setPage(1)
+              }}
+            >
+              <option value="">All types</option>
+              <option value="demo">Demo request</option>
+              <option value="contact">Contact</option>
+              <option value="pricing">Pricing</option>
+              <option value="enterprise">Enterprise</option>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lead-status-filter">Status</Label>
+            <Select
+              id="lead-status-filter"
+              className="w-36"
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as LeadStatus | '')
+                setPage(1)
+              }}
+            >
+              <option value="">All statuses</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="closed">Closed</option>
+            </Select>
+          </div>
+        </div>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Submitted from the public website&rsquo;s demo and contact forms.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
+            <tr>
+              <th className="px-4 py-2 font-medium">Received</th>
+              <th className="px-4 py-2 font-medium">Contact</th>
+              <th className="px-4 py-2 font-medium">Company</th>
+              <th className="px-4 py-2 font-medium">Type</th>
+              <th className="px-4 py-2 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leadsQuery.isLoading && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                  Loading leads…
+                </td>
+              </tr>
+            )}
+            {leadsQuery.isError && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-[var(--status-serious)]">
+                  Could not load leads.
+                </td>
+              </tr>
+            )}
+            {leadsQuery.data && leadsQuery.data.items.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
+                  No leads match these filters yet.
+                </td>
+              </tr>
+            )}
+            {leadsQuery.data?.items.map((lead) => (
+              <tr key={lead.id} className="border-t border-[var(--border)] align-top">
+                <td className="whitespace-nowrap px-4 py-3 text-[var(--muted-foreground)]">
+                  {new Date(lead.created_at).toLocaleString()}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="font-medium">{lead.full_name}</div>
+                  <a
+                    className="text-xs text-[var(--brand)] hover:underline"
+                    href={`mailto:${lead.business_email}`}
+                  >
+                    {lead.business_email}
+                  </a>
+                  {lead.message && (
+                    <p className="mt-1 max-w-md whitespace-pre-line text-xs text-[var(--muted-foreground)]">
+                      {lead.message}
+                    </p>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div>{lead.company}</div>
+                  <div className="text-xs text-[var(--muted-foreground)]">
+                    {[lead.job_role, lead.team_size && `${lead.team_size} people`, lead.primary_requirement]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge tone="neutral">{LEAD_KIND_LABEL[lead.kind]}</Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-col items-start gap-1.5">
+                    <Badge tone={LEAD_STATUS_TONE[lead.status]}>{lead.status}</Badge>
+                    <Select
+                      aria-label={`Status for ${lead.full_name}`}
+                      className="w-32"
+                      value={lead.status}
+                      disabled={statusMutation.isPending}
+                      onChange={(e) =>
+                        statusMutation.mutate({ id: lead.id, next: e.target.value as LeadStatus })
+                      }
+                    >
+                      <option value="new">New</option>
+                      <option value="contacted">Contacted</option>
+                      <option value="closed">Closed</option>
+                    </Select>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {total > 0 && (
+        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+          <span>
+            Page {page} of {totalPages} ({total} lead{total === 1 ? '' : 's'})
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

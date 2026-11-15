@@ -333,7 +333,17 @@ export function Dashboard() {
               <GaugeDial
                 value={summary.test_runs.step_pass_percentage * 100}
                 label="Execution pass rate"
-                valueLabel={formatPassRate(summary.test_runs.step_pass_percentage, summary.test_runs.step_sample_size)}
+                valueLabel={
+                  summary.test_runs.step_sample_size === 0
+                    ? 'n/a'
+                    : formatPercent(summary.test_runs.step_pass_percentage)
+                }
+                detail={
+                  summary.test_runs.step_sample_size > 0 &&
+                  summary.test_runs.step_sample_size < THIN_SAMPLE_THRESHOLD
+                    ? `${Math.round(summary.test_runs.step_pass_percentage * summary.test_runs.step_sample_size)} of ${summary.test_runs.step_sample_size} steps passed`
+                    : undefined
+                }
               />
               <p className="text-xs text-[var(--muted-foreground)]">
                 {summary.test_runs.step_sample_size === 0

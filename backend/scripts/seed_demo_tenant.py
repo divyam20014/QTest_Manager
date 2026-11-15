@@ -440,10 +440,325 @@ def main() -> None:
         # (not committing) between steps keeps everything in one
         # transaction, so the GUC never resets until this final commit.
         db.commit()
+        _enrich(db, tenant, admin)
+        db.commit()
         print("\nDemo tenant ready.")
         print(f"  Tenant ID: {tenant.id}")
         print(f"  Admin login: {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
         print(f"  Tester login: {TESTER_EMAIL} / {TESTER_PASSWORD}")
+
+
+def _ctx(db, tenant):
+    set_tenant_context(db, str(tenant.id))
+
+
+def _sentence_case(title: str) -> str:
+    """Lower-cases the first letter for mid-sentence use, but leaves acronyms (NCD, FNOL, API) alone."""
+    if len(title) > 1 and title[1].isupper():
+        return title
+    return title[0].lower() + title[1:]
+
+
+def _ensure_team(db, tenant):
+    """Fictional QA team so activity, assignments and authorship look like a real org."""
+    from scripts.demo_dataset import TEAM, TEAM_PASSWORD
+
+    team = {}
+    for name, email, role_code in TEAM:
+        _ctx(db, tenant)
+        user = db.execute(select(User).where(User.tenant_id == tenant.id, User.email == email)).scalar_one_or_none()
+        if user is None:
+            user = User(
+                tenant_id=tenant.id,
+                email=email,
+                name=name,
+                role_id=_get_or_create_role_id(db, tenant.id, role_code),
+                password_hash=hash_password(TEAM_PASSWORD),
+            )
+            db.add(user)
+            db.flush()
+            print(f"Created team member {name} ({role_code})")
+        team[email] = (user, role_code)
+    return team
+
+
+def _ensure_member(db, tenant, project, user):
+    from app.models.project import ProjectMember
+
+    _ctx(db, tenant)
+    exists = db.execute(
+        select(ProjectMember).where(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)
+    ).first()
+    if exists is None:
+        db.add(ProjectMember(project_id=project.id, user_id=user.id))
+        db.flush()
+
+
+def _backdate(db, model, row_id, **values):
+    from sqlalchemy import update
+
+    db.execute(update(model).where(model.id == row_id).values(**values))
+
+
+def _enrich(db, tenant, admin):
+    """Idempotent: every object is matched by name/title before creation, and
+    timestamps are only backdated on rows created in this pass."""
+    import hashlib
+    from datetime import UTC, datetime
+
+    from app.models.defect import Defect
+    from app.models.execution import ExecutionStep, TestRun, TestRunCase
+    from app.models.project import Project
+    from app.models.requirement import Requirement
+    from app.models.test_case import TestCase, TestCaseVersion
+    from scripts.demo_dataset import PROJECTS, RUNS, TEAM
+
+    def stable(*parts) -> int:
+        return int(hashlib.sha256("|".join(map(str, parts)).encode()).hexdigest()[:8], 16)
+
+    now = datetime.now(UTC)
+    team = _ensure_team(db, tenant)
+    managers = [team[e][0] for _, e, r in TEAM if r == "manager"]
+    testers = [team[e][0] for _, e, r in TEAM if r == "tester"]
+    sam = db.execute(select(User).where(User.tenant_id == tenant.id, User.email == TESTER_EMAIL)).scalar_one_or_none()
+    if sam is not None:
+        testers.append(sam)
+
+    for p_index, spec in enumerate(PROJECTS):
+        _ctx(db, tenant)
+        project = db.execute(
+            select(Project).where(Project.tenant_id == tenant.id, Project.name == spec["name"])
+        ).scalar_one_or_none()
+        if project is None:
+            manager = managers[p_index % len(managers)]
+            project = project_service.create_project(
+                db, tenant.id, admin.id,
+                ProjectCreateRequest(
+                    name=spec["name"],
+                    domain="Motor",
+                    priority=spec["priority"],
+                    status=spec["status"],
+                    manager_name=manager.name,
+                    manager_user_id=manager.id,
+                    start_date=date.today() - timedelta(days=90 + 15 * p_index),
+                    end_date=date.today() + timedelta(days=120 + 30 * p_index),
+                    budget=spec["budget"],
+                    region=spec["region"],
+                ),
+            )
+            db.flush()
+            print(f"Created project '{project.name}'")
+        for user in managers + testers:
+            _ensure_member(db, tenant, project, user)
+
+        _ctx(db, tenant)
+        release_name = spec["release"]
+        if not db.execute(
+            select(test_asset_service.Release).where(
+                test_asset_service.Release.project_id == project.id, test_asset_service.Release.name == release_name
+            )
+        ).scalar_one_or_none():
+            _ctx(db, tenant)
+            test_asset_service.create_release(
+                db, tenant.id, admin.id, project.id,
+                ReleaseCreateRequest(name=release_name, release_date=date.today() + timedelta(days=10 + 7 * p_index)),
+            )
+
+        # -- test cases -------------------------------------------------
+        _ctx(db, tenant)
+        existing = {
+            v.title: v.test_case_id
+            for v in db.execute(
+                select(TestCaseVersion)
+                .join(TestCase, TestCase.id == TestCaseVersion.test_case_id)
+                .where(TestCase.project_id == project.id, TestCase.current_version_id == TestCaseVersion.id)
+            ).scalars()
+        }
+        cases_by_module: dict[str, list] = {}
+        created = 0
+        for m_index, (module_name, (persona, cases)) in enumerate(spec["modules"].items()):
+            _ctx(db, tenant)
+            module = template_service._get_or_create_module(  # noqa: SLF001
+                db, tenant.id, "admin", admin.id, project.id, module_name
+            )
+            for c_index, (title, priority, expected) in enumerate(cases):
+                if title in existing:
+                    cases_by_module.setdefault(module_name, []).append(existing[title])
+                    continue
+                author = managers[(m_index + c_index) % len(managers)]
+                reviewer = managers[(m_index + c_index + 1) % len(managers)]
+                _ctx(db, tenant)
+                case = test_case_service.create_test_case(
+                    db, tenant.id, "manager", author.id, project.id,
+                    TestCaseCreateRequest(
+                        title=title,
+                        module_id=module.id if module else None,
+                        description=f"Verifies that {_sentence_case(title)}.",
+                        priority=priority,
+                        assignee_id=testers[(m_index * 3 + c_index) % len(testers)].id,
+                        steps=[
+                            StepIn(action=f"Sign in as a {persona} and open the {module_name} area", expected=f"The {module_name} screen loads without errors"),
+                            StepIn(action="Set up the scenario data described in the preconditions", expected="Scenario data is available and valid"),
+                            StepIn(action=f"Perform the action under test: {_sentence_case(title)}", expected=expected),
+                        ],
+                        scenario_id=f"SCN-{p_index + 1:02d}{m_index + 1}-{c_index + 1:03d}",
+                        prerequisite=f"An active {persona} account with access to {module_name}",
+                    ),
+                )
+                # Last case per module stays a draft, second-to-last in review, rest approved.
+                if c_index < len(cases) - 2 or (c_index == len(cases) - 2 and m_index % 2 == 0):
+                    _ctx(db, tenant)
+                    test_case_service.submit_for_review(db, tenant.id, "manager", author.id, case.id, reviewer_id=reviewer.id)
+                    if c_index < len(cases) - 2:
+                        _ctx(db, tenant)
+                        test_case_service.approve_test_case(db, tenant.id, "manager", reviewer.id, case.id)
+                _ctx(db, tenant)
+                _backdate(db, TestCase, case.id, created_at=now - timedelta(days=60 - (m_index * 8 + c_index), hours=c_index))
+                cases_by_module.setdefault(module_name, []).append(case.id)
+                created += 1
+        print(f"  {project.name}: {created} test cases created")
+
+        # -- requirements + traceability -------------------------------
+        _ctx(db, tenant)
+        existing_reqs = {r.title for r in db.execute(select(Requirement).where(Requirement.project_id == project.id)).scalars()}
+        for r_index, (module_name, title, description) in enumerate(spec["requirements"]):
+            if title in existing_reqs:
+                continue
+            author = managers[r_index % len(managers)]
+            _ctx(db, tenant)
+            req = requirement_service.create_requirement(
+                db, tenant.id, "manager", author.id, project.id,
+                RequirementCreateRequest(title=title, description=description),
+            )
+            _ctx(db, tenant)
+            _backdate(db, Requirement, req.id, created_at=now - timedelta(days=75 - r_index * 3))
+            # Leave the last requirement of each project unlinked: a real coverage gap.
+            if r_index == len(spec["requirements"]) - 1:
+                continue
+            module_cases = cases_by_module.get(module_name, [])
+            start = stable(title) % max(1, len(module_cases))
+            for k in range(min(len(module_cases), 2 + stable(title, "n") % 3)):
+                _ctx(db, tenant)
+                try:
+                    requirement_service.link_test_case(
+                        db, tenant.id, "manager", author.id, req.id, module_cases[(start + k) % len(module_cases)]
+                    )
+                except Exception:  # noqa: BLE001 -- already linked on a resumed run
+                    db.rollback()
+
+        # -- test runs with dated execution history ---------------------
+        _ctx(db, tenant)
+        approved = [
+            row[0]
+            for row in db.execute(
+                select(TestCase.id).where(TestCase.project_id == project.id, TestCase.status == "approved").order_by(TestCase.created_at)
+            ).all()
+        ]
+        if not approved:
+            continue
+        for r_index, (run_name, run_type, days_ago, pass_rate, finished) in enumerate(RUNS):
+            _ctx(db, tenant)
+            if db.execute(select(TestRun).where(TestRun.project_id == project.id, TestRun.name == run_name)).scalar_one_or_none():
+                continue
+            size = 10 if run_type == "Smoke" else min(len(approved), 14 + (stable(project.name, run_name) % 6))
+            offset = stable(project.name, run_name, "o") % len(approved)
+            case_ids = list(dict.fromkeys(approved[(offset + i) % len(approved)] for i in range(size)))
+            owner = managers[r_index % len(managers)]
+            _ctx(db, tenant)
+            run = execution_service.create_test_run(
+                db, tenant.id, "manager", owner.id, project.id,
+                TestRunCreateRequest(name=run_name, run_type=run_type, test_case_ids=case_ids),
+            )
+            run_day = now - timedelta(days=days_ago)
+            _ctx(db, tenant)
+            _backdate(db, TestRun, run.id, created_at=run_day - timedelta(hours=2))
+            _ctx(db, tenant)
+            run_cases = db.execute(select(TestRunCase).where(TestRunCase.test_run_id == run.id)).scalars().all()
+            for rc_index, run_case in enumerate(run_cases):
+                executor = testers[(rc_index + r_index) % len(testers)]
+                _ctx(db, tenant)
+                run_case.assigned_to = executor.id
+                db.flush()
+                db.commit()
+                # The in-progress run leaves its tail unexecuted.
+                if not finished and rc_index >= int(len(run_cases) * 0.6):
+                    continue
+                fails = (stable(run.id, rc_index) % 1000) / 1000 >= pass_rate
+                _ctx(db, tenant)
+                steps = db.execute(
+                    select(ExecutionStep).where(ExecutionStep.test_run_case_id == run_case.id).order_by(ExecutionStep.id)
+                ).scalars().all()
+                # Real runs are executed over a few days, not in one sitting.
+                span = min(3, days_ago + 1)
+                exec_start = min(
+                    run_day + timedelta(days=rc_index % span, minutes=12 * (rc_index // span)),
+                    now - timedelta(minutes=30),
+                )
+                for s_index, step in enumerate(steps):
+                    verdict = "fail" if fails and s_index == len(steps) - 1 else "pass"
+                    _ctx(db, tenant)
+                    execution_service.record_verdict(db, tenant.id, "tester", executor.id, step.id, verdict)
+                    _ctx(db, tenant)
+                    _backdate(
+                        db, ExecutionStep, step.id,
+                        opened_at=exec_start + timedelta(minutes=3 * s_index),
+                        closed_at=exec_start + timedelta(minutes=3 * s_index + 2),
+                    )
+                _ctx(db, tenant)
+                _backdate(
+                    db, TestRunCase, run_case.id,
+                    started_at=exec_start,
+                    completed_at=exec_start + timedelta(minutes=3 * len(steps)),
+                )
+                db.commit()
+            if finished:
+                _ctx(db, tenant)
+                execution_service.finish_test_run(db, tenant.id, owner.id, run.id)
+                _ctx(db, tenant)
+                _backdate(db, TestRun, run.id, finished_at=run_day + timedelta(days=2, hours=8))
+                db.commit()
+            print(f"  {project.name}: run '{run_name}' executed")
+
+        # -- defects across the lifecycle -------------------------------
+        _ctx(db, tenant)
+        existing_defects = {d[0] for d in db.execute(select(Defect.title).where(Defect.project_id == project.id)).all()}
+        flow = ["Open", "Fixed", "Verified", "Closed"]
+        for d_index, (title, severity, target_status) in enumerate(spec["defects"]):
+            if title in existing_defects:
+                continue
+            reporter = testers[d_index % len(testers)]
+            fixer = managers[d_index % len(managers)]
+            linked_case = approved[stable(title) % len(approved)]
+            _ctx(db, tenant)
+            defect = defect_service.create_defect(
+                db, tenant.id, "tester", reporter.id,
+                DefectCreateRequest(
+                    project_id=project.id,
+                    test_case_id=linked_case,
+                    title=title,
+                    severity=severity,
+                    priority="Critical" if severity == "Critical" else ("High" if severity == "High" else "Medium"),
+                    description=f"Observed during regression testing: {_sentence_case(title)}.",
+                    steps_to_reproduce="1. Prepare the scenario data.\n2. Perform the action described in the linked test case.\n3. Observe the result.",
+                    expected_result="Behaviour matches the linked requirement and test case.",
+                    actual_result=title + ".",
+                    environment="Staging",
+                ),
+            )
+            if target_status != "New":
+                for status in flow[: flow.index(target_status) + 1]:
+                    _ctx(db, tenant)
+                    defect_service.update_status(
+                        db, tenant.id, "manager", fixer.id, defect.id, status, verification_confirmed=True
+                    )
+            opened = now - timedelta(days=3 + (stable(title) % 26), hours=stable(title, "h") % 9)
+            _ctx(db, tenant)
+            values = {"created_at": opened}
+            if target_status == "Closed":
+                values["closed_at"] = min(now - timedelta(hours=6), opened + timedelta(days=2 + stable(title, "c") % 6))
+            _backdate(db, Defect, defect.id, **values)
+            db.commit()
+        print(f"  {project.name}: defects ready")
 
 
 if __name__ == "__main__":

@@ -6,8 +6,10 @@ export interface GaugeDialProps {
   /** 0-100 */
   value: number
   label: string
-  /** Optional formatted value shown in the dial center, e.g. "87%". Defaults to `${value}%`. */
+  /** Optional formatted value shown in the dial center, e.g. "87%". Defaults to `${value}%`. Keep it short. */
   valueLabel?: string
+  /** Secondary text (e.g. "5 of 7 steps") rendered below the dial, never inside the arc. */
+  detail?: string
   className?: string
 }
 
@@ -19,7 +21,7 @@ export interface GaugeDialProps {
  * cleanly in a narrow card at phone width; the metric is also exposed
  * as text so nothing is lost if the SVG doesn't render.
  */
-export function GaugeDial({ value, label, valueLabel, className }: GaugeDialProps) {
+export function GaugeDial({ value, label, valueLabel, detail, className }: GaugeDialProps) {
   const clamped = Math.min(100, Math.max(0, value))
   const gradientId = useId()
 
@@ -49,7 +51,13 @@ export function GaugeDial({ value, label, valueLabel, className }: GaugeDialProp
   }
 
   const needleTip = toXY(angle)
-  const needleBase = toXY(angle + 180) // short tail on the opposite side for a balanced needle
+  // Short tail only -- a full-radius tail sweeps through the value text near 50%.
+  const tailRad = ((angle + 180) * Math.PI) / 180
+  const needleBase = { x: cx + 12 * Math.sin(tailRad), y: cy - 12 * Math.cos(tailRad) }
+
+  // The gap between the arc's two ends fits ~5 glyphs at 22px; shrink longer labels to fit.
+  const centerText = valueLabel ?? `${Math.round(clamped)}%`
+  const fontSize = centerText.length <= 5 ? 22 : Math.max(12, Math.floor((22 * 5) / centerText.length))
 
   return (
     <div
@@ -99,16 +107,20 @@ export function GaugeDial({ value, label, valueLabel, className }: GaugeDialProp
         />
         <circle cx={cx} cy={cy} r={10} fill="var(--tactile-surface-raised)" stroke="var(--border)" strokeWidth={1} />
 
+        {/* Sits in the open gap between the arc's ends, below where the needle
+            can reach even at 0% or 100%. */}
         <text
           x={cx}
-          y={cy + r / 2 + 6}
+          y={cy + r - 4}
           textAnchor="middle"
-          className="fill-[var(--foreground)] text-[22px] font-semibold"
+          fontSize={fontSize}
+          className="fill-[var(--foreground)] font-semibold"
         >
-          {valueLabel ?? `${Math.round(clamped)}%`}
+          {centerText}
         </text>
       </svg>
       <span className="text-sm font-medium text-[var(--muted-foreground)]">{label}</span>
+      {detail && <span className="text-xs text-[var(--muted-foreground)]">{detail}</span>}
     </div>
   )
 }
