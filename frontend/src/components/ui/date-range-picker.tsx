@@ -44,7 +44,7 @@ export function DateRangePicker({
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         {PRESETS.map((p) => (
           <button
             key={p.label}
@@ -70,7 +70,7 @@ export function DateRangePicker({
           </button>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Label htmlFor={`${idPrefix}-from`} className="text-xs text-[var(--muted-foreground)]">
           From
         </Label>

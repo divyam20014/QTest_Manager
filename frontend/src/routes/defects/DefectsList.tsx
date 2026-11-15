@@ -3,23 +3,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
-import { createDefect, listDefects, type DefectStatus, type Priority, type Severity } from '@/api/defects'
+import { createDefect, listDefects, type Defect, type DefectStatus, type Priority, type Severity } from '@/api/defects'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
-import { Dialog } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { TableSkeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
-import { ResizableTh } from '@/components/table/ResizableTh'
-import { useRowContextMenu, type RowContextMenuItem } from '@/components/table/RowContextMenu'
+import { FilterBar, FilterField } from '@/components/table/FilterBar'
+import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
+import { useRowContextMenu } from '@/components/table/RowContextMenu'
 import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
 import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
 import { useAuth } from '@/lib/auth'
@@ -47,6 +47,79 @@ const DEFECT_FILTER_CHIP_LABEL: Record<string, string> = {
   createdFrom: 'From',
   createdTo: 'To',
 }
+
+// One definition feeds the desktop table and the phone cards (ResponsiveTable).
+const DEFECT_TABLE_COLUMNS: ResponsiveColumn<Defect>[] = [
+  {
+    key: 'title',
+    header: 'Title',
+    limitWidth: true,
+    card: 'title',
+    cell: (d) => (
+      <>
+        <Link to={`/defects/${d.id}`} className="block truncate font-medium underline-offset-2 hover:underline">
+          {d.title}
+        </Link>
+        {d.step_number !== null && (
+          <span className="ml-2 text-xs text-[var(--muted-foreground)]">step {d.step_number}</span>
+        )}
+      </>
+    ),
+    cardCell: (d) => (
+      <>
+        <Link to={`/defects/${d.id}`} className={CARD_LINK_CLASS}>
+          {d.title}
+        </Link>
+        {d.step_number !== null && (
+          <span className="text-xs text-[var(--muted-foreground)]">Found at step {d.step_number}</span>
+        )}
+      </>
+    ),
+  },
+  { key: 'project', header: 'Project', limitWidth: true, tdClassName: 'truncate', cell: (d) => d.project_name },
+  {
+    key: 'severity',
+    header: 'Severity',
+    card: 'badge',
+    cell: (d) => <Badge tone={severityTone(d.severity)}>{d.severity}</Badge>,
+  },
+  {
+    key: 'priority',
+    header: 'Priority',
+    tdClassName: 'text-xs text-[var(--muted-foreground)]',
+    cell: (d) => d.priority,
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    card: 'badge',
+    cell: (d) => <Badge tone={STATUS_TONE[d.status]}>{d.status_label}</Badge>,
+  },
+  {
+    key: 'sla',
+    header: 'SLA',
+    cardLabel: 'Age',
+    cell: (d) =>
+      d.sla_breached ? (
+        <Badge tone="critical">Breached</Badge>
+      ) : (
+        <span className="text-xs text-[var(--muted-foreground)]">{d.age_days}d</span>
+      ),
+  },
+  {
+    key: 'reportedBy',
+    header: 'Reported By',
+    limitWidth: true,
+    tdClassName: 'truncate text-xs text-[var(--muted-foreground)]',
+    cell: (d) => d.reported_by_name ?? 'Unknown',
+  },
+  {
+    key: 'reported',
+    header: 'Reported',
+    tdClassName: 'text-xs text-[var(--muted-foreground)]',
+    cell: (d) => new Date(d.created_at).toLocaleDateString(),
+  },
+]
 
 export function DefectsList() {
   const { user } = useAuth()
@@ -137,59 +210,87 @@ export function DefectsList() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <Select
-          aria-label="Filter by project"
-          value={projectId}
-          onChange={(e) => urlFilters.setFilter('projectId', e.target.value)}
-          className="w-56"
-        >
-          <option value="">All Projects</option>
-          {projectsQuery.data?.items.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter by status"
-          value={status}
-          onChange={(e) => urlFilters.setFilter('status', e.target.value)}
-          className="w-40"
-        >
-          <option value="">All Statuses</option>
-          {STATUS_ORDER.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter by severity"
-          value={severity}
-          onChange={(e) => urlFilters.setFilter('severity', e.target.value)}
-          className="w-40"
-        >
-          <option value="">All Severities</option>
-          {(severitiesQuery.data ?? []).map((s) => (
-            <option key={s.code} value={s.code}>
-              {s.label}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Filter by reporter"
-          value={reportedBy}
-          onChange={(e) => urlFilters.setFilter('reportedBy', e.target.value)}
-          className="w-44"
-        >
-          <option value="">All Reporters</option>
-          {usersQuery.data?.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name}
-            </option>
-          ))}
-        </Select>
+      <FilterBar
+        activeCount={urlFilters.active.length}
+        onClear={urlFilters.clearAll}
+        saved={
+          <SavedFiltersMenu
+            current={urlFilters.values}
+            saved={savedFilters.saved}
+            onSave={savedFilters.save}
+            onApply={(f) => urlFilters.setFilters(f)}
+            onRemove={savedFilters.remove}
+          />
+        }
+        toolbar={
+          <ColumnVisibilityMenu
+            columns={DEFECT_COLUMNS}
+            isVisible={columnPrefs.isVisible}
+            toggleVisible={columnPrefs.toggleVisible}
+            showAll={columnPrefs.showAll}
+          />
+        }
+      >
+        <FilterField label="Project">
+          <Select
+            aria-label="Filter by project"
+            value={projectId}
+            onChange={(e) => urlFilters.setFilter('projectId', e.target.value)}
+            className="w-56"
+          >
+            <option value="">All Projects</option>
+            {projectsQuery.data?.items.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <FilterField label="Status">
+          <Select
+            aria-label="Filter by status"
+            value={status}
+            onChange={(e) => urlFilters.setFilter('status', e.target.value)}
+            className="w-40"
+          >
+            <option value="">All Statuses</option>
+            {STATUS_ORDER.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <FilterField label="Severity">
+          <Select
+            aria-label="Filter by severity"
+            value={severity}
+            onChange={(e) => urlFilters.setFilter('severity', e.target.value)}
+            className="w-40"
+          >
+            <option value="">All Severities</option>
+            {(severitiesQuery.data ?? []).map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <FilterField label="Reported by">
+          <Select
+            aria-label="Filter by reporter"
+            value={reportedBy}
+            onChange={(e) => urlFilters.setFilter('reportedBy', e.target.value)}
+            className="w-44"
+          >
+            <option value="">All Reporters</option>
+            {usersQuery.data?.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
         <DateRangePicker
           idPrefix="defect-reported"
           fromValue={createdFrom}
@@ -199,27 +300,7 @@ export function DefectsList() {
             urlFilters.setFilter('createdTo', to)
           }}
         />
-        {urlFilters.active.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={urlFilters.clearAll}>
-            Clear filters
-          </Button>
-        )}
-        <div className="ml-auto flex items-end gap-2 pb-0.5">
-          <SavedFiltersMenu
-            current={urlFilters.values}
-            saved={savedFilters.saved}
-            onSave={savedFilters.save}
-            onApply={(f) => urlFilters.setFilters(f)}
-            onRemove={savedFilters.remove}
-          />
-          <ColumnVisibilityMenu
-            columns={DEFECT_COLUMNS}
-            isVisible={columnPrefs.isVisible}
-            toggleVisible={columnPrefs.toggleVisible}
-            showAll={columnPrefs.showAll}
-          />
-        </div>
-      </div>
+      </FilterBar>
 
       {urlFilters.active.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -233,7 +314,7 @@ export function DefectsList() {
                 type="button"
                 onClick={() => urlFilters.setFilter(key, '')}
                 aria-label={`Remove ${DEFECT_FILTER_CHIP_LABEL[key]} filter`}
-                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] max-md:-my-2.5 max-md:-mr-2 max-md:flex max-md:size-11 max-md:items-center max-md:justify-center"
               >
                 ×
               </button>
@@ -242,139 +323,39 @@ export function DefectsList() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <ResizableTh width={columnPrefs.width('title')} onResize={(w) => columnPrefs.setWidth('title', w)}>
-                Title
-              </ResizableTh>
-              {columnPrefs.isVisible('project') && (
-                <ResizableTh width={columnPrefs.width('project')} onResize={(w) => columnPrefs.setWidth('project', w)}>
-                  Project
-                </ResizableTh>
-              )}
-              {columnPrefs.isVisible('severity') && (
-                <ResizableTh width={columnPrefs.width('severity')} onResize={(w) => columnPrefs.setWidth('severity', w)}>
-                  Severity
-                </ResizableTh>
-              )}
-              {columnPrefs.isVisible('priority') && (
-                <ResizableTh width={columnPrefs.width('priority')} onResize={(w) => columnPrefs.setWidth('priority', w)}>
-                  Priority
-                </ResizableTh>
-              )}
-              <ResizableTh width={columnPrefs.width('status')} onResize={(w) => columnPrefs.setWidth('status', w)}>
-                Status
-              </ResizableTh>
-              {columnPrefs.isVisible('sla') && (
-                <ResizableTh width={columnPrefs.width('sla')} onResize={(w) => columnPrefs.setWidth('sla', w)}>
-                  SLA
-                </ResizableTh>
-              )}
-              {columnPrefs.isVisible('reportedBy') && (
-                <ResizableTh width={columnPrefs.width('reportedBy')} onResize={(w) => columnPrefs.setWidth('reportedBy', w)}>
-                  Reported By
-                </ResizableTh>
-              )}
-              {columnPrefs.isVisible('reported') && (
-                <ResizableTh width={columnPrefs.width('reported')} onResize={(w) => columnPrefs.setWidth('reported', w)}>
-                  Reported
-                </ResizableTh>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {defectsQuery.isLoading && <TableSkeleton columns={8} />}
-            {defectsQuery.isError && (
-              <tr>
-                <td colSpan={8} className="px-4">
-                  <ErrorState onRetry={() => defectsQuery.refetch()} />
-                </td>
-              </tr>
-            )}
-            {!defectsQuery.isLoading && !defectsQuery.isError && defectsQuery.data?.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4">
-                  <EmptyState
-                    title={status || severity || reportedBy || createdFrom || createdTo ? 'No defects match your filters' : 'No defects yet'}
-                    description={
-                      status || severity || reportedBy || createdFrom || createdTo
-                        ? 'Try clearing a filter to see more results.'
-                        : 'Defects reported from a failed test step, or created directly, will show up here.'
-                    }
-                  />
-                </td>
-              </tr>
-            )}
-            {defectsQuery.data?.map((d) => {
-              const contextItems: RowContextMenuItem[] = [
-                { label: 'Open', onSelect: () => navigate(`/defects/${d.id}`) },
-                {
-                  label: 'Copy defect ID',
-                  onSelect: () => {
-                    void navigator.clipboard?.writeText(d.id)
-                  },
-                },
-              ]
-              return (
-                <tr
-                  key={d.id}
-                  className="border-t border-[var(--border)] hover:bg-[var(--muted)]"
-                  onContextMenu={(e) => rowMenu.openAt(e, contextItems)}
-                >
-                  <td className="px-4 py-2" style={{ maxWidth: columnPrefs.width('title') }}>
-                    <Link
-                      to={`/defects/${d.id}`}
-                      className="block truncate font-medium underline-offset-2 hover:underline"
-                    >
-                      {d.title}
-                    </Link>
-                    {d.step_number !== null && (
-                      <span className="ml-2 text-xs text-[var(--muted-foreground)]">step {d.step_number}</span>
-                    )}
-                  </td>
-                  {columnPrefs.isVisible('project') && (
-                    <td className="truncate px-4 py-2" style={{ maxWidth: columnPrefs.width('project') }}>
-                      {d.project_name}
-                    </td>
-                  )}
-                  {columnPrefs.isVisible('severity') && (
-                    <td className="px-4 py-2">
-                      <Badge tone={severityTone(d.severity)}>{d.severity}</Badge>
-                    </td>
-                  )}
-                  {columnPrefs.isVisible('priority') && (
-                    <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">{d.priority}</td>
-                  )}
-                  <td className="px-4 py-2">
-                    <Badge tone={STATUS_TONE[d.status]}>{d.status_label}</Badge>
-                  </td>
-                  {columnPrefs.isVisible('sla') && (
-                    <td className="px-4 py-2">
-                      {d.sla_breached ? (
-                        <Badge tone="critical">Breached</Badge>
-                      ) : (
-                        <span className="text-xs text-[var(--muted-foreground)]">{d.age_days}d</span>
-                      )}
-                    </td>
-                  )}
-                  {columnPrefs.isVisible('reportedBy') && (
-                    <td className="truncate px-4 py-2 text-xs text-[var(--muted-foreground)]" style={{ maxWidth: columnPrefs.width('reportedBy') }}>
-                      {d.reported_by_name ?? 'Unknown'}
-                    </td>
-                  )}
-                  {columnPrefs.isVisible('reported') && (
-                    <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
-                      {new Date(d.created_at).toLocaleDateString()}
-                    </td>
-                  )}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <ResponsiveTable
+        label="Defects"
+        rows={defectsQuery.data ?? []}
+        rowKey={(d) => d.id}
+        columns={DEFECT_TABLE_COLUMNS}
+        prefs={columnPrefs}
+        loading={defectsQuery.isLoading}
+        onRowContextMenu={(e, d) =>
+          rowMenu.openAt(e, [
+            { label: 'Open', onSelect: () => navigate(`/defects/${d.id}`) },
+            {
+              label: 'Copy defect ID',
+              onSelect: () => {
+                void navigator.clipboard?.writeText(d.id)
+              },
+            },
+          ])
+        }
+        state={
+          defectsQuery.isError ? (
+            <ErrorState onRetry={() => defectsQuery.refetch()} />
+          ) : !defectsQuery.isLoading && defectsQuery.data?.length === 0 ? (
+            <EmptyState
+              title={status || severity || reportedBy || createdFrom || createdTo ? 'No defects match your filters' : 'No defects yet'}
+              description={
+                status || severity || reportedBy || createdFrom || createdTo
+                  ? 'Try clearing a filter to see more results.'
+                  : 'Defects reported from a failed test step, or created directly, will show up here.'
+              }
+            />
+          ) : undefined
+        }
+      />
       {rowMenu.menu}
 
       <NewDefectDialog
@@ -490,7 +471,7 @@ function NewDefectDialog({
           />
         </div>
         {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
@@ -501,7 +482,7 @@ function NewDefectDialog({
           >
             {createMutation.isPending ? 'Creating…' : 'Create Defect'}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Dialog>
   )

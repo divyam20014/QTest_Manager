@@ -16,6 +16,9 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
         'qth-pressed-sm flex h-9 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-1 text-sm',
         'placeholder:text-[var(--muted-foreground)] focus-visible:outline-2 focus-visible:outline-offset-1',
         'focus-visible:outline-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50',
+        // Mobile redesign Phase 2: phone-size fields are 44px tall with 16px
+        // text -- anything under 16px makes iOS Safari zoom the page on focus.
+        'max-md:h-11 max-md:text-base',
         className,
       )}
       {...props}

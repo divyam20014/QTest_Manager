@@ -2,66 +2,45 @@ import type { ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
+import { useOverlayBehavior } from '@/components/ui/useOverlayBehavior'
+import { useIsMobile } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+// Mobile redesign Phase 2: below `md` a Dialog is a bottom sheet (full width,
+// rounded top, safe-area aware, body scrolls under a pinned header). Above
+// `md` it is the same centered raised panel as before. Same component, same
+// focus trap / Escape / aria -- only layout and entry animation differ.
 
-// Shared focus-trap/Escape/return-focus behavior for both Dialog (centered
-// modal) and Drawer (side panel) -- UI/UX review bug #2's fix, factored out
-// so the two surfaces never drift out of sync with each other.
-function useOverlayBehavior(
-  open: boolean,
-  onClose: () => void,
-  panelRef: React.RefObject<HTMLDivElement | null>,
-  closeButtonRef: React.RefObject<HTMLButtonElement | null>,
-) {
-  const triggerElementRef = useRef<HTMLElement | null>(null)
-
+// Lock page scroll behind a phone-sized sheet so a swipe inside it can't
+// scroll the page underneath.
+function useScrollLock(active: boolean) {
   useEffect(() => {
-    if (!open) return
-
-    triggerElementRef.current = document.activeElement as HTMLElement | null
-    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0)
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        onClose()
-        return
-      }
-      if (event.key !== 'Tab') return
-
-      const panel = panelRef.current
-      if (!panel) return
-      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-        (el) => el.offsetParent !== null,
-      )
-      if (focusable.length === 0) return
-
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      const active = document.activeElement
-
-      if (event.shiftKey && active === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault()
-        first.focus()
-      } else if (!panel.contains(active)) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown, true)
+    if (!active) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     return () => {
-      window.clearTimeout(focusTimer)
-      document.removeEventListener('keydown', handleKeyDown, true)
-      triggerElementRef.current?.focus?.()
+      document.body.style.overflow = previous
     }
-  }, [open, onClose, panelRef, closeButtonRef])
+  }, [active])
+}
+
+/** Action row for a Dialog. Plain right-aligned buttons on desktop; pinned to
+ * the bottom of the sheet (above the home bar) on phones so the primary action
+ * never scrolls out of reach. */
+export function DialogFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={cn(
+        'flex justify-end gap-2',
+        'max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-5 max-md:-mb-5 max-md:mt-2 max-md:border-t max-md:border-[var(--border)] max-md:bg-[var(--tactile-surface-raised)] max-md:px-5 max-md:py-3',
+        // Buttons share the width on a phone: big, equal thumb targets.
+        'max-md:[&>button]:flex-1',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
 }
 
 export function Dialog({
@@ -79,13 +58,15 @@ export function Dialog({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const isMobile = useIsMobile()
   useOverlayBehavior(open, onClose, panelRef, closeButtonRef)
+  useScrollLock(open && isMobile)
 
   if (!open) return null
 
   return (
     <div
-      className="qth-animate-in fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[1px]"
+      className="qth-animate-in fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[1px] md:items-center md:p-4"
       style={{ animation: 'qth-fade-in 0.15s ease-out' }}
       onClick={onClose}
       role="presentation"
@@ -106,9 +87,11 @@ export function Dialog({
           // shadow-xl card, so overlays feel consistent with the rest of
           // the tactile language.
           'qth-animate-in qth-raised-lg relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-[var(--border)] bg-[var(--tactile-surface-raised)]',
+          // Phone: bottom sheet.
+          'max-md:max-h-[92svh] max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl max-md:border-b-0 max-md:pb-[env(safe-area-inset-bottom)]',
           className,
         )}
-        style={{ animation: 'qth-scale-in 0.16s ease-out' }}
+        style={{ animation: isMobile ? 'qth-sheet-in 0.2s ease-out' : 'qth-scale-in 0.16s ease-out' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -119,12 +102,15 @@ export function Dialog({
           type="button"
           onClick={onClose}
           aria-label="Close dialog"
-          className="absolute right-4 top-4 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          className="absolute right-4 top-4 z-20 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:right-1.5 max-md:top-2 max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
         >
-          <X className="size-4" />
+          <X className="size-4 max-md:size-5" />
         </button>
-        <h2 className="shrink-0 border-b border-[var(--border)] px-5 py-4 pr-10 text-sm font-semibold">{title}</h2>
-        <div className="overflow-y-auto px-5 py-5">{children}</div>
+        <div aria-hidden="true" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[var(--border)] md:hidden" />
+        <h2 className="shrink-0 border-b border-[var(--border)] px-5 py-4 pr-10 text-sm font-semibold max-md:pr-14 max-md:text-base">
+          {title}
+        </h2>
+        <div className="overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
       </div>
     </div>
   )
@@ -149,7 +135,9 @@ export function Drawer({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const isMobile = useIsMobile()
   useOverlayBehavior(open, onClose, panelRef, closeButtonRef)
+  useScrollLock(open && isMobile)
 
   if (!open) return null
 
@@ -173,19 +161,21 @@ export function Drawer({
         aria-modal="true"
         aria-label={title}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-4 max-md:px-4 max-md:py-2 max-md:pt-[max(0.5rem,env(safe-area-inset-top))]">
           <h2 className="text-sm font-semibold">{title}</h2>
           <button
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close panel"
-            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
           >
             <X className="size-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-5 max-md:px-4 max-md:pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
     </div>
   )

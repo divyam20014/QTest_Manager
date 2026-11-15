@@ -27,9 +27,24 @@ interface ChatMessage {
   text: string
 }
 
-export function AIAssistantPanel() {
+export function AIAssistantPanel({
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  // Mobile shell: the "More" sheet owns the trigger, this panel only renders
+  // the dialog. Uncontrolled (own trigger button) by default for desktop.
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
+} = {}) {
   const { user } = useAuth()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = (value: boolean) => {
+    setInternalOpen(value)
+    onOpenChange?.(value)
+  }
   const [question, setQuestion] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
 
@@ -63,16 +78,18 @@ export function AIAssistantPanel() {
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label="Ask AI"
-        onClick={() => setOpen(true)}
-      >
-        <Bot className="size-4" />
-        <span className="hidden sm:inline">Ask AI</span>
-      </Button>
+      {!hideTrigger && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label="Ask AI"
+          onClick={() => setOpen(true)}
+        >
+          <Bot className="size-4" />
+          <span className="hidden sm:inline">Ask AI</span>
+        </Button>
+      )}
       <Dialog open={open} onClose={() => setOpen(false)} title="AI Assistant" className="max-w-md">
         <div className="flex flex-col gap-3">
           <p className="text-xs text-[var(--muted-foreground)]">

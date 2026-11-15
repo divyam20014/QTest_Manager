@@ -1,43 +1,11 @@
 import { Moon, Sun } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useThemePreference } from '@/lib/useThemePreference'
 
-type Theme = 'light' | 'dark'
-
-const STORAGE_KEY = 'qtesthub:theme'
-
-function prefersDark(): boolean {
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
-}
-
-function readStoredTheme(): Theme | null {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    return stored === 'light' || stored === 'dark' ? stored : null
-  } catch {
-    return null
-  }
-}
-
-function applyTheme(theme: Theme) {
-  document.documentElement.dataset.theme = theme
-}
-
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(() => readStoredTheme() ?? (prefersDark() ? 'dark' : 'light'))
-
-  useEffect(() => {
-    applyTheme(theme)
-  }, [theme])
+export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {}) {
+  const [theme, setTheme] = useThemePreference()
 
   function toggle() {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    try {
-      localStorage.setItem(STORAGE_KEY, next)
-    } catch {
-      // Private browsing / blocked storage -- toggle still works for this
-      // page view, it just won't persist across reloads.
-    }
+    setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
   return (
@@ -46,9 +14,14 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+      className={
+        showLabel
+          ? 'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]'
+          : 'rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]'
+      }
     >
       {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+      {showLabel && (theme === 'dark' ? 'Light mode' : 'Dark mode')}
     </button>
   )
 }

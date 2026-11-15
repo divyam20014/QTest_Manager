@@ -14,6 +14,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
         'qth-pressed-sm flex h-9 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-1 text-sm',
         'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
+        // Mobile redesign Phase 2: 44px tall / 16px text (no iOS focus zoom).
+        'max-md:h-11 max-md:text-base',
         className,
       )}
       {...props}

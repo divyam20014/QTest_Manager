@@ -8,7 +8,7 @@ import {
   LayoutDashboard,
   Layers,
   KeyRound,
-  Menu,
+  Search,
   MonitorPlay,
   PanelLeftClose,
   PanelLeftOpen,
@@ -16,7 +16,6 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   Users,
-  X,
 } from 'lucide-react'
 import { type ComponentType, type CSSProperties, useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
@@ -29,6 +28,7 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { MobileTabBar, MoreSheet } from '@/components/MobileNav'
 import { UserMenu } from '@/components/UserMenu'
 import { isAdmin, isManagerOrAbove } from '@/api/auth'
 import { cn } from '@/lib/utils'
@@ -137,7 +137,7 @@ export function AppShell() {
   const { user, refresh } = useAuth()
   const navigate = useNavigate()
   const [collapsed, setCollapsed] = useCollapsedPreference()
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Phase 2: Ctrl+K / Cmd+K opens the command palette from anywhere in
@@ -173,6 +173,16 @@ export function AppShell() {
       isActive && 'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)]',
     )
 
+  const visibleSections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => {
+      if (item.allowedRoles?.includes('manager-or-above')) {
+        return isManagerOrAbove(user)
+      }
+      return !item.adminOnly || isAdmin(user)
+    }),
+  })).filter((section) => section.items.length > 0)
+
   return (
     <div className="flex min-h-svh">
       <a
@@ -181,18 +191,11 @@ export function AppShell() {
       >
         Skip to main content
       </a>
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
-          onClick={() => setMobileOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] transition-transform duration-200 motion-reduce:transition-none md:static md:z-auto md:translate-x-0 md:transition-[width] md:duration-200',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          // Mobile redesign Phase 1: below md the sidebar is replaced by the
+          // bottom tab bar + More sheet (components/MobileNav.tsx).
+          'hidden w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] md:static md:flex md:transition-[width] md:duration-200 motion-reduce:md:transition-none',
           collapsed ? 'md:w-16' : 'md:w-60',
         )}
         style={branding?.primary_color ? ({ '--sidebar-accent': branding.primary_color } as CSSProperties) : undefined}
@@ -220,48 +223,30 @@ export function AppShell() {
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </button>
-          <button
-            type="button"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
-            className="shrink-0 rounded-md p-1.5 text-[var(--sidebar-foreground-muted)] hover:bg-[var(--sidebar-bg-raised)] hover:text-white md:hidden"
-          >
-            <X className="size-4" />
-          </button>
         </div>
 
         <nav className="flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-3 pb-4">
-          {NAV_SECTIONS.map((section) => {
-            const visibleItems = section.items.filter((item) => {
-              if (item.allowedRoles?.includes('manager-or-above')) {
-                return isManagerOrAbove(user)
-              }
-              return !item.adminOnly || isAdmin(user)
-            })
-            if (visibleItems.length === 0) return null
-            return (
-              <div key={section.label} className="flex flex-col gap-1">
-                {!collapsed && (
-                  <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sidebar-foreground-muted)]">
-                    {section.label}
-                  </p>
-                )}
-                {visibleItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    title={collapsed ? item.label : undefined}
-                    className={navLinkClass}
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    <item.icon className="size-4 shrink-0" />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </NavLink>
-                ))}
-              </div>
-            )
-          })}
+          {visibleSections.map((section) => (
+            <div key={section.label} className="flex flex-col gap-1">
+              {!collapsed && (
+                <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sidebar-foreground-muted)]">
+                  {section.label}
+                </p>
+              )}
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  title={collapsed ? item.label : undefined}
+                  className={navLinkClass}
+                >
+                  <item.icon className="size-4 shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          ))}
         </nav>
 
         <div className="border-t border-[var(--sidebar-border)] px-3 py-3">
@@ -269,7 +254,6 @@ export function AppShell() {
             to="/account"
             title={collapsed ? 'Profile' : undefined}
             className={navLinkClass}
-            onClick={() => setMobileOpen(false)}
           >
             <Users className="size-4 shrink-0" />
             {!collapsed && 'Profile'}
@@ -279,8 +263,7 @@ export function AppShell() {
               to="/settings"
               title={collapsed ? 'Organization' : undefined}
               className={navLinkClass}
-              onClick={() => setMobileOpen(false)}
-            >
+              >
               <Building2 className="size-4 shrink-0" />
               {!collapsed && 'Organization'}
             </NavLink>
@@ -289,16 +272,8 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 py-3 md:px-6">
+        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:px-6 md:py-3">
           <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open menu"
-              className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:hidden"
-            >
-              <Menu className="size-5" />
-            </button>
             <Breadcrumbs />
           </div>
           <div className="flex shrink-0 items-center gap-2 text-sm">
@@ -313,16 +288,44 @@ export function AppShell() {
                 Ctrl K
               </kbd>
             </button>
-            <AIAssistantPanel />
-            <ThemeToggle />
+            {/* Mobile: global search opens the command palette (the inline
+                search field is desktop-only). */}
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Search"
+              className="flex size-11 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:hidden"
+            >
+              <Search className="size-5" />
+            </button>
+            <div className="hidden items-center gap-2 md:flex">
+              <AIAssistantPanel />
+              <ThemeToggle />
+            </div>
             <NotificationBell />
-            <UserMenu name={user?.name} role={user?.role} onLogout={() => logoutMutation.mutate()} />
+            <div className="hidden md:block">
+              <UserMenu name={user?.name} role={user?.role} onLogout={() => logoutMutation.mutate()} />
+            </div>
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 md:p-6">
+        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-6">
           <Outlet />
         </main>
       </div>
+      <MobileTabBar moreOpen={moreOpen} onMore={() => setMoreOpen(true)} />
+      <MoreSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        sections={visibleSections}
+        userName={user?.name}
+        userRole={user?.role}
+        showOrganization={isAdmin(user)}
+        onSearch={() => setPaletteOpen(true)}
+        onLogout={() => {
+          setMoreOpen(false)
+          logoutMutation.mutate()
+        }}
+      />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   )

@@ -24,9 +24,9 @@ import { Drawer } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { TableSkeleton } from '@/components/ui/skeleton'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
-import { ResizableTh } from '@/components/table/ResizableTh'
+import { FilterBar } from '@/components/table/FilterBar'
+import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { useRowContextMenu, type RowContextMenuItem } from '@/components/table/RowContextMenu'
 import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
 import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
@@ -258,6 +258,62 @@ export function TestRepository() {
 
   const selectedRows = rows.filter((r) => selected.has(r.case.id))
 
+  // One definition feeds the desktop table and the phone cards (ResponsiveTable).
+  type Row = { project: Project; case: TestCase }
+  const tableColumns: ResponsiveColumn<Row>[] = [
+    {
+      key: 'title',
+      header: 'Title',
+      limitWidth: true,
+      card: 'title',
+      cell: ({ case: tc }) => (
+        <Link to={`/test-cases/${tc.id}`} className="block truncate font-medium underline-offset-2 hover:underline">
+          {tc.title}
+        </Link>
+      ),
+      cardCell: ({ case: tc }) => (
+        <Link to={`/test-cases/${tc.id}`} className={CARD_LINK_CLASS}>
+          {tc.title}
+        </Link>
+      ),
+    },
+    {
+      key: 'project',
+      header: 'Project',
+      limitWidth: true,
+      cell: ({ project }) => (
+        <Link
+          to={`/projects/${project.id}/test-cases`}
+          className="block truncate text-[var(--muted-foreground)] hover:underline"
+        >
+          {project.name}
+        </Link>
+      ),
+      // A second link inside a tappable card would be a second, tiny tap target.
+      cardCell: ({ project }) => project.name,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      card: 'badge',
+      cell: ({ case: tc }) => <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>,
+    },
+    {
+      key: 'priority',
+      header: 'Priority',
+      card: 'badge',
+      cell: ({ case: tc }) => <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>,
+    },
+    {
+      key: 'assignee',
+      header: 'Assignee',
+      limitWidth: true,
+      tdClassName: 'truncate text-[var(--muted-foreground)]',
+      cell: ({ case: tc }) => (tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'),
+    },
+    { key: 'steps', header: 'Steps', cell: ({ case: tc }) => tc.steps.length },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -272,18 +328,46 @@ export function TestRepository() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
-          <label htmlFor="repo-search" className="text-xs text-[var(--muted-foreground)]">
-            Search
-          </label>
-          <Input
-            id="repo-search"
-            placeholder="Search by title across all projects…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+      <FilterBar
+        activeCount={[status, priority, projectId].filter(Boolean).length + (showDeprecated ? 1 : 0)}
+        desktopClear={false}
+        onClear={() => {
+          setStatus('')
+          setPriority('')
+          setProjectId('')
+          setShowDeprecated(false)
+        }}
+        primary={
+          <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 max-md:min-w-0">
+            <label htmlFor="repo-search" className="text-xs text-[var(--muted-foreground)]">
+              Search
+            </label>
+            <Input
+              id="repo-search"
+              placeholder="Search by title across all projects…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        }
+        saved={
+          <SavedFiltersMenu
+            current={currentFilters}
+            saved={savedFilters.saved}
+            onSave={savedFilters.save}
+            onApply={applyFilters}
+            onRemove={savedFilters.remove}
           />
-        </div>
+        }
+        toolbar={
+          <ColumnVisibilityMenu
+            columns={REPO_COLUMNS}
+            isVisible={columnPrefs.isVisible}
+            toggleVisible={columnPrefs.toggleVisible}
+            showAll={columnPrefs.showAll}
+          />
+        }
+      >
         <div className="flex flex-col gap-1.5">
           <label htmlFor="repo-project" className="text-xs text-[var(--muted-foreground)]">
             Project
@@ -346,25 +430,10 @@ export function TestRepository() {
           />
           Show deprecated
         </label>
-        <div className="ml-auto flex items-end gap-2 pb-0.5">
-          <SavedFiltersMenu
-            current={currentFilters}
-            saved={savedFilters.saved}
-            onSave={savedFilters.save}
-            onApply={applyFilters}
-            onRemove={savedFilters.remove}
-          />
-          <ColumnVisibilityMenu
-            columns={REPO_COLUMNS}
-            isVisible={columnPrefs.isVisible}
-            toggleVisible={columnPrefs.toggleVisible}
-            showAll={columnPrefs.showAll}
-          />
-        </div>
-      </div>
+      </FilterBar>
 
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm max-md:sticky max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))] max-md:z-30 max-md:shadow-lg">
           <span className="font-medium">{selected.size} selected</span>
           <Button size="sm" variant="outline" disabled={bulkPending} onClick={() => runBulk('next-action')}>
             Advance status
@@ -379,145 +448,69 @@ export function TestRepository() {
       )}
       {bulkMessage && <p className="text-xs text-[var(--muted-foreground)]">{bulkMessage}</p>}
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)]">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
-            <tr>
-              <th className="w-10 px-4 py-2">
-                <input
-                  type="checkbox"
-                  aria-label="Select all"
-                  checked={rows.length > 0 && selected.size === rows.length}
-                  onChange={toggleAll}
-                />
-              </th>
-              <ResizableTh width={columnPrefs.width('title')} onResize={(w) => columnPrefs.setWidth('title', w)}>
-                Title
-              </ResizableTh>
-              {columnPrefs.isVisible('project') && (
-                <ResizableTh width={columnPrefs.width('project')} onResize={(w) => columnPrefs.setWidth('project', w)}>
-                  Project
-                </ResizableTh>
-              )}
-              <ResizableTh width={columnPrefs.width('status')} onResize={(w) => columnPrefs.setWidth('status', w)}>
-                Status
-              </ResizableTh>
-              {columnPrefs.isVisible('priority') && (
-                <ResizableTh width={columnPrefs.width('priority')} onResize={(w) => columnPrefs.setWidth('priority', w)}>
-                  Priority
-                </ResizableTh>
-              )}
-              {columnPrefs.isVisible('assignee') && (
-                <ResizableTh width={columnPrefs.width('assignee')} onResize={(w) => columnPrefs.setWidth('assignee', w)}>
-                  Assignee
-                </ResizableTh>
-              )}
-              {columnPrefs.isVisible('steps') && (
-                <ResizableTh width={columnPrefs.width('steps')} onResize={(w) => columnPrefs.setWidth('steps', w)}>
-                  Steps
-                </ResizableTh>
-              )}
-              <th className="px-4 py-2 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {!isLoading && rows.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-[var(--muted-foreground)]">
-                  {hiddenDeprecatedCount > 0
-                    ? `No test cases match these filters — ${hiddenDeprecatedCount} deprecated case${hiddenDeprecatedCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
-                    : 'No test cases match these filters.'}
-                </td>
-              </tr>
-            )}
-            {isLoading && <TableSkeleton columns={7} />}
-            {rows.map(({ project, case: tc }) => {
-              const nextAction = NEXT_ACTION[tc.status]
-              const contextItems: RowContextMenuItem[] = [
-                { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
-                ...(nextAction
-                  ? [{ label: nextAction.label, onSelect: () => inlineActionMutation.mutate(tc) }]
-                  : []),
-                ...(tc.status === 'draft'
-                  ? [{ label: 'Delete', destructive: true, onSelect: () => deleteMutation.mutate(tc.id) }]
-                  : []),
-              ]
-              return (
-                <tr
-                  key={tc.id}
-                  className="border-t border-[var(--border)] hover:bg-[var(--muted)]"
-                  onContextMenu={(e) => rowMenu.openAt(e, contextItems)}
+      <ResponsiveTable
+        label="Test cases"
+        className="bg-[var(--background)]"
+        rows={rows}
+        rowKey={(r) => r.case.id}
+        columns={tableColumns}
+        prefs={columnPrefs}
+        loading={isLoading}
+        stateCellClassName="px-4 py-6 text-center text-[var(--muted-foreground)]"
+        state={
+          !isLoading && rows.length === 0
+            ? hiddenDeprecatedCount > 0
+              ? `No test cases match these filters — ${hiddenDeprecatedCount} deprecated case${hiddenDeprecatedCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
+              : 'No test cases match these filters.'
+            : undefined
+        }
+        selection={{
+          selected,
+          onToggle: toggleRow,
+          onToggleAll: toggleAll,
+          label: (r) => `Select ${r.case.title}`,
+        }}
+        onRowContextMenu={(e, { case: tc }) => {
+          const nextAction = NEXT_ACTION[tc.status]
+          const contextItems: RowContextMenuItem[] = [
+            { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
+            ...(nextAction
+              ? [{ label: nextAction.label, onSelect: () => inlineActionMutation.mutate(tc) }]
+              : []),
+            ...(tc.status === 'draft'
+              ? [{ label: 'Delete', destructive: true, onSelect: () => deleteMutation.mutate(tc.id) }]
+              : []),
+          ]
+          rowMenu.openAt(e, contextItems)
+        }}
+        rowActions={({ case: tc }) => {
+          const nextAction = NEXT_ACTION[tc.status]
+          return (
+            <div className="flex justify-end gap-1.5">
+              {nextAction && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={inlineActionMutation.isPending}
+                  onClick={() => inlineActionMutation.mutate(tc)}
                 >
-                  <td className="px-4 py-2">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${tc.title}`}
-                      checked={selected.has(tc.id)}
-                      onChange={() => toggleRow(tc.id)}
-                    />
-                  </td>
-                  <td className="px-4 py-2" style={{ maxWidth: columnPrefs.width('title') }}>
-                    <Link
-                      to={`/test-cases/${tc.id}`}
-                      className="block truncate font-medium underline-offset-2 hover:underline"
-                    >
-                      {tc.title}
-                    </Link>
-                  </td>
-                  {columnPrefs.isVisible('project') && (
-                    <td className="px-4 py-2" style={{ maxWidth: columnPrefs.width('project') }}>
-                      <Link
-                        to={`/projects/${project.id}/test-cases`}
-                        className="block truncate text-[var(--muted-foreground)] hover:underline"
-                      >
-                        {project.name}
-                      </Link>
-                    </td>
-                  )}
-                  <td className="px-4 py-2">
-                    <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>
-                  </td>
-                  {columnPrefs.isVisible('priority') && (
-                    <td className="px-4 py-2">
-                      <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>
-                    </td>
-                  )}
-                  {columnPrefs.isVisible('assignee') && (
-                    <td className="px-4 py-2 truncate text-[var(--muted-foreground)]" style={{ maxWidth: columnPrefs.width('assignee') }}>
-                      {tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : '—'}
-                    </td>
-                  )}
-                  {columnPrefs.isVisible('steps') && <td className="px-4 py-2">{tc.steps.length}</td>}
-                  <td className="px-4 py-2 text-right">
-                    <div className="flex justify-end gap-1.5">
-                      {nextAction && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={inlineActionMutation.isPending}
-                          onClick={() => inlineActionMutation.mutate(tc)}
-                        >
-                          {nextAction.label}
-                        </Button>
-                      )}
-                      {tc.status === 'draft' && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => deleteMutation.mutate(tc.id)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+                  {nextAction.label}
+                </Button>
+              )}
+              {tc.status === 'draft' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => deleteMutation.mutate(tc.id)}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
+          )
+        }}
+      />
       {rowMenu.menu}
 
       {rows.length > 0 && (

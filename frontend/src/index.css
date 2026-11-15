@@ -210,6 +210,10 @@ body {
   from { transform: translateX(16px); }
   to { transform: translateX(0); }
 }
+@keyframes qth-sheet-in {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
   .qth-animate-in { animation: none !important; }
 }
@@ -250,3 +254,31 @@ body {
   .qth-tactile-btn:active { transform: none; }
 }
 .qth-pressed-md { box-shadow: var(--elevation-pressed-md); }
+
+/* Mobile redesign Phase 2: touch-sized checkboxes/radios inside the signed-in
+   app (scoped to the shell's <main> so the marketing site is untouched). The
+   glyph grows to 20px and any label that directly wraps one becomes a 44px row,
+   so the whole row is the tap target; `.qth-hit` is the opt-in for a bare
+   checkbox that has no label (e.g. a table-row selector). */
+@media (max-width: 767.98px) {
+  #main-content input[type='checkbox'],
+  #main-content input[type='radio'] {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    accent-color: var(--primary);
+  }
+  #main-content label:has(> input[type='checkbox']),
+  #main-content label:has(> input[type='radio']) {
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+  .qth-hit {
+    display: flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+  }
+}

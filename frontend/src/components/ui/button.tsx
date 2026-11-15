@@ -11,6 +11,9 @@ export const buttonVariants = cva(
     // Outline is a separate CSS property from box-shadow, so it never gets
     // swallowed by the tactile default variant's own box-shadow below.
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]',
+    // Mobile redesign Phase 2: 44px minimum touch target on phones, whatever
+    // the size variant (desktop sizes are untouched).
+    'max-md:min-h-11',
   ].join(' '),
   {
     variants: {
