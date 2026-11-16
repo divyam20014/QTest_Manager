@@ -87,7 +87,7 @@ export function AIAssistantPanel({
           onClick={() => setOpen(true)}
         >
           <Bot className="size-4" />
-          <span className="hidden sm:inline">Ask AI</span>
+          <span className="hidden xl:inline">Ask AI</span>
         </Button>
       )}
       <Dialog open={open} onClose={() => setOpen(false)} title="AI Assistant" className="max-w-md">
@@ -156,6 +156,7 @@ export function AIAssistantPanel({
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Ask a question…"
+              aria-label="Ask a question"
               disabled={queryMutation.isPending}
             />
             <Button type="submit" size="sm" disabled={queryMutation.isPending || !question.trim()}>

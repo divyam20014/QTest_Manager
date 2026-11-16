@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/auth'
+import { FormError } from '@/components/ui/form-field'
 
 // ADR-067: tenant-less login. "remember last tenant" is keyed per-email
 // (lowercased) in a single JSON blob rather than one localStorage key per
@@ -222,7 +223,7 @@ export function Login() {
                   </p>
                 )}
               </div>
-              {identifyError && <p className="text-xs text-[var(--destructive)]">{identifyError}</p>}
+              <FormError>{identifyError}</FormError>
               <Button type="submit" disabled={identifyMutation.isPending}>
                 {identifyMutation.isPending ? 'Checking…' : 'Continue'}
               </Button>
@@ -283,7 +284,7 @@ export function Login() {
                   {...passwordForm.register('password')}
                 />
               </div>
-              {credentialsError && <p className="text-xs text-[var(--destructive)]">{credentialsError}</p>}
+              <FormError>{credentialsError}</FormError>
               <Button type="submit" disabled={loginMutation.isPending}>
                 {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
               </Button>
@@ -312,7 +313,7 @@ export function Login() {
               onSubmit={codeForm.handleSubmit((values) => verifyMutation.mutate(values.code))}
             >
               {debugCode && (
-                <p className="rounded bg-[var(--muted)] p-2 text-xs text-[var(--muted-foreground)]">
+                <p className="rounded-md bg-[var(--muted)] p-2 text-xs text-[var(--muted-foreground)]">
                   Dev mode code: <span className="font-mono">{debugCode}</span>
                 </p>
               )}
@@ -332,7 +333,7 @@ export function Login() {
                   <p className="text-xs text-[var(--destructive)]">{codeForm.formState.errors.code.message}</p>
                 )}
               </div>
-              {codeError && <p className="text-xs text-[var(--destructive)]">{codeError}</p>}
+              <FormError>{codeError}</FormError>
               <Button type="submit" disabled={verifyMutation.isPending}>
                 {verifyMutation.isPending ? 'Verifying…' : 'Verify'}
               </Button>

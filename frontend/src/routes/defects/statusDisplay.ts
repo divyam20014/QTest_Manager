@@ -1,4 +1,6 @@
 import type { DefectStatus, RootCause, Severity } from '@/api/defects'
+import type { BadgeTone } from '@/components/ui/badge'
+import { levelTone } from '@/lib/statusTones'
 
 export const STATUS_ORDER: DefectStatus[] = ['New', 'Open', 'Fixed', 'Verified', 'Closed']
 
@@ -10,18 +12,9 @@ export const STATUS_TONE: Record<DefectStatus, 'neutral' | 'warning' | 'positive
   Closed: 'neutral',
 }
 
-// Tier 5 / ADR-055: severity is tenant-configurable now, so this map only
-// covers the four seeded defaults -- `severityTone` below falls back to
-// 'neutral' for any tenant-added custom severity it doesn't recognize.
-const SEVERITY_TONE: Partial<Record<Severity, 'neutral' | 'warning' | 'positive' | 'critical'>> = {
-  Low: 'neutral',
-  Medium: 'warning',
-  High: 'warning',
-  Critical: 'critical',
-}
-
-export function severityTone(severity: Severity): 'neutral' | 'warning' | 'positive' | 'critical' {
-  return SEVERITY_TONE[severity] ?? 'neutral'
+// Severity shares the app-wide level scale (src/lib/statusTones.ts).
+export function severityTone(severity: Severity): BadgeTone {
+  return levelTone(severity)
 }
 
 export const ROOT_CAUSES: RootCause[] = [

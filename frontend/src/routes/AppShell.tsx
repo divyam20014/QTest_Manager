@@ -10,6 +10,8 @@ import {
   KeyRound,
   Search,
   MonitorPlay,
+  ExternalLink,
+  UserCircle,
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
@@ -17,14 +19,15 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react'
-import { type ComponentType, type CSSProperties, useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { type ComponentType, type CSSProperties, useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
 import { getBranding, getLogoUrl } from '@/api/settings'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { Breadcrumbs } from '@/components/Breadcrumbs'
 import { CommandPalette } from '@/components/CommandPalette'
+import { RouteBoundary } from '@/components/RouteBoundary'
 import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -39,6 +42,9 @@ interface NavItem {
   label: string
   icon: ComponentType<{ className?: string }>
   end?: boolean
+  // UX-025: the item leaves the shell (a print-optimised page), so it opens
+  // in a new tab and says so.
+  newTab?: boolean
   adminOnly?: boolean
   // Gap-closure pass (ADR-057): Environments is adminOnly by default but
   // also gated at the API by `environment.manage`, which Managers also
@@ -84,7 +90,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Analytics',
     items: [
       { to: '/reporting', label: 'Reports', icon: BarChart3 },
-      { to: '/reporting/print', label: 'Compliance Reports', icon: ShieldCheck },
+      { to: '/reporting/print', label: 'Compliance Reports', icon: ShieldCheck, newTab: true },
     ],
   },
   {
@@ -133,9 +139,93 @@ function useCollapsedPreference(): [boolean, (value: boolean) => void] {
   return [collapsed, update]
 }
 
+// Collapsed sidebar: icon-only links need an accessible name and a visible
+// tooltip. The nav is overflow-clipped, so the tooltip is position:fixed and
+// placed from the link's bounding box on hover / keyboard focus (UX / Phase C).
+function SidebarLink({
+  item,
+  collapsed,
+  className,
+}: {
+  item: { to: string; label: string; icon: ComponentType<{ className?: string }>; end?: boolean; newTab?: boolean }
+  collapsed: boolean
+  className: (state: { isActive: boolean }) => string
+}) {
+  const [tip, setTip] = useState<{ top: number; left: number } | null>(null)
+  const ref = useRef<HTMLAnchorElement>(null)
+
+  function showTip() {
+    if (!collapsed || !ref.current) return
+    const r = ref.current.getBoundingClientRect()
+    setTip({ top: r.top + r.height / 2, left: r.right + 8 })
+  }
+
+  useEffect(() => {
+    if (!tip) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setTip(null)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [tip])
+
+  const content = (
+    <>
+      <item.icon className="size-4 shrink-0" aria-hidden="true" />
+      {!collapsed && <span className="truncate">{item.label}</span>}
+      {item.newTab && !collapsed && <ExternalLink className="ml-auto size-3 shrink-0 opacity-70" aria-hidden="true" />}
+      {item.newTab && <span className="sr-only"> (opens in a new tab)</span>}
+    </>
+  )
+  const events = {
+    onMouseEnter: showTip,
+    onMouseLeave: () => setTip(null),
+    onFocus: showTip,
+    onBlur: () => setTip(null),
+  }
+  return (
+    <>
+      {item.newTab ? (
+        <a
+          ref={ref}
+          href={item.to}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={collapsed ? `${item.label} (opens in a new tab)` : undefined}
+          className={className({ isActive: false })}
+          {...events}
+        >
+          {content}
+        </a>
+      ) : (
+        <NavLink
+          ref={ref}
+          to={item.to}
+          end={item.end}
+          aria-label={collapsed ? item.label : undefined}
+          className={className}
+          {...events}
+        >
+          {content}
+        </NavLink>
+      )}
+      {collapsed && tip && (
+        <span
+          role="tooltip"
+          style={{ top: tip.top, left: tip.left }}
+          className="pointer-events-none fixed z-[var(--z-overlay)] -translate-y-1/2 whitespace-nowrap rounded-[var(--radius-control)] bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] shadow-md"
+        >
+          {item.label}
+        </span>
+      )}
+    </>
+  )
+}
+
 export function AppShell() {
   const { user, refresh } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [collapsed, setCollapsed] = useCollapsedPreference()
   const [moreOpen, setMoreOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -168,9 +258,13 @@ export function AppShell() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[var(--sidebar-foreground)] transition-colors hover:bg-[var(--sidebar-bg-raised)] hover:text-white',
+      'relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-[var(--sidebar-foreground)] transition-colors hover:bg-[var(--sidebar-bg-raised)] hover:text-white motion-reduce:transition-none',
+      'outline-offset-[-2px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--sidebar-accent)]',
       collapsed && 'md:justify-center',
-      isActive && 'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)]',
+      // Active page: tinted fill + a 3px accent bar, so the state is not
+      // carried by colour alone.
+      isActive &&
+        'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)] before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--sidebar-accent)]',
     )
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
@@ -234,45 +328,23 @@ export function AppShell() {
                 </p>
               )}
               {section.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  title={collapsed ? item.label : undefined}
-                  className={navLinkClass}
-                >
-                  <item.icon className="size-4 shrink-0" />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </NavLink>
+                <SidebarLink key={item.to} item={item} collapsed={collapsed} className={navLinkClass} />
               ))}
             </div>
           ))}
         </nav>
 
         <div className="border-t border-[var(--sidebar-border)] px-3 py-3">
-          <NavLink
-            to="/account"
-            title={collapsed ? 'Profile' : undefined}
+          <SidebarLink
+            item={{ to: '/account', label: 'Profile', icon: UserCircle }}
+            collapsed={collapsed}
             className={navLinkClass}
-          >
-            <Users className="size-4 shrink-0" />
-            {!collapsed && 'Profile'}
-          </NavLink>
-          {isAdmin(user) && (
-            <NavLink
-              to="/settings"
-              title={collapsed ? 'Organization' : undefined}
-              className={navLinkClass}
-              >
-              <Building2 className="size-4 shrink-0" />
-              {!collapsed && 'Organization'}
-            </NavLink>
-          )}
+          />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:px-6 md:py-3">
+        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:h-14 md:px-6 md:py-0">
           <div className="flex min-w-0 items-center gap-2">
             <Breadcrumbs />
           </div>
@@ -281,22 +353,24 @@ export function AppShell() {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] lg:flex"
+              className="hidden items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] xl:flex"
             >
               <span>Jump to…</span>
-              <kbd className="rounded border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px]">
+              <kbd className="rounded-md border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[11px]">
                 Ctrl K
               </kbd>
             </button>
-            {/* Mobile: global search opens the command palette (the inline
-                search field is desktop-only). */}
+            {/* Phones and tablets (below lg): global search is an icon that
+                opens the command palette -- the inline search field needs
+                ~176px that the tablet header does not have next to the
+                sidebar (UX-001). */}
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
               aria-label="Search"
-              className="flex size-11 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:hidden"
+              className="flex size-11 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:size-9 lg:hidden"
             >
-              <Search className="size-5" />
+              <Search className="size-5 md:size-4" />
             </button>
             <div className="hidden items-center gap-2 md:flex">
               <AIAssistantPanel />
@@ -309,7 +383,9 @@ export function AppShell() {
           </div>
         </header>
         <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-6">
-          <Outlet />
+          <RouteBoundary resetKey={location.pathname}>
+            <Outlet />
+          </RouteBoundary>
         </main>
       </div>
       <MobileTabBar moreOpen={moreOpen} onMore={() => setMoreOpen(true)} />
@@ -319,7 +395,6 @@ export function AppShell() {
         sections={visibleSections}
         userName={user?.name}
         userRole={user?.role}
-        showOrganization={isAdmin(user)}
         onSearch={() => setPaletteOpen(true)}
         onLogout={() => {
           setMoreOpen(false)

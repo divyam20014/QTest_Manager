@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 // Tier 5 / ADR-055 / PV-10.1: Insurance QA Pack -- a small, generic
 // template library (Claims/Underwriting/Policy Admin). Importing creates
@@ -66,7 +67,7 @@ export function TemplatesDialog({
             <div key={category} className="flex flex-col gap-1.5">
               <p className="text-xs font-medium text-[var(--muted-foreground)]">{category}</p>
               {templates?.map((t) => (
-                <label key={t.id} className="flex items-start gap-2 rounded border border-[var(--border)] p-2">
+                <label key={t.id} className="flex items-start gap-2 rounded-lg border border-[var(--border)] p-2">
                   <input
                     type="checkbox"
                     className="mt-1"
@@ -90,7 +91,7 @@ export function TemplatesDialog({
             </div>
           ))}
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <div className="flex items-center gap-3">
           <Button
             type="button"

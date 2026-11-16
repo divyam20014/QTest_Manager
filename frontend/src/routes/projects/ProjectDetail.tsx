@@ -37,14 +37,19 @@ import {
   getTestPlanRollup,
   listTestPlans,
 } from '@/api/testPlans'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DetailSkeleton } from '@/components/ui/skeleton'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
 import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
@@ -55,6 +60,7 @@ export function ProjectDetail() {
   const queryClient = useQueryClient()
   const [newMemberId, setNewMemberId] = useState('')
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -131,8 +137,9 @@ export function ProjectDetail() {
   })
 
   const project = projectQuery.data
-  if (projectQuery.isLoading) return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
-  if (projectQuery.isError || !project) return <p className="text-sm text-[var(--destructive)]">Project not found.</p>
+  if (projectQuery.isLoading) return <DetailSkeleton />
+  if (projectQuery.isError) return <ErrorState message="Could not load this project." onRetry={() => projectQuery.refetch()} />
+  if (!project) return <EmptyState title="Project not found" description="It may have been deleted, or you may not have access to it." />
 
   const formValues: ProjectFormValues = {
     name: project.name,
@@ -155,13 +162,17 @@ export function ProjectDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="min-w-0 break-words text-lg font-semibold">{project.name}</h1>
-          <Badge tone={STATUS_TONE[project.status]}>{project.status}</Badge>
-          <Badge tone={PRIORITY_TONE[project.priority]}>{project.priority}</Badge>
-        </div>
-        <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap [&>a]:justify-center">
+      <PageHeader
+        title={project.name}
+        meta={
+          <>
+            <StatusBadge tone={STATUS_TONE[project.status]}>{project.status}</StatusBadge>
+            <StatusBadge tone={PRIORITY_TONE[project.priority]}>{project.priority}</StatusBadge>
+          </>
+        }
+        actionsClassName="grid grid-cols-2 md:flex md:flex-wrap [&>a]:justify-center"
+        actions={
+          <>
           <Link to={`/projects/${project.id}/requirements`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Requirements
           </Link>
@@ -187,15 +198,25 @@ export function ProjectDetail() {
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => deleteMutation.mutate()}
+              onClick={() =>
+                ask({
+                  title: `Delete project “${project.name}”?`,
+                  description: `This permanently deletes the project and everything in it: ${project.test_case_count} test case${project.test_case_count === 1 ? '' : 's'}, ${project.test_run_count} test run${project.test_run_count === 1 ? '' : 's'}, requirements, suites, plans and their results. This cannot be undone.`,
+                  confirmLabel: 'Delete project',
+                  requireText: project.name,
+                  run: () => deleteMutation.mutateAsync(),
+                })
+              }
               disabled={deleteMutation.isPending}
             >
               Delete Project
             </Button>
           )}
-        </div>
-      </div>
-      {deleteError && <p className="text-xs text-[var(--destructive)]">{deleteError}</p>}
+          </>
+        }
+      />
+      {confirmDialog}
+      <FormError>{deleteError}</FormError>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <MetricTile label="Test Cases" value={project.test_case_count} />
@@ -263,7 +284,14 @@ export function ProjectDetail() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => removeMemberMutation.mutate(member.id)}
+                          onClick={() =>
+                            ask({
+                              title: `Remove ${member.name} from this project?`,
+                              description: `${member.name} loses access to this project and any project-scoped role they hold here. Their account and past work are not affected, and you can add them back.`,
+                              confirmLabel: 'Remove member',
+                              run: () => removeMemberMutation.mutateAsync(member.id),
+                            })
+                          }
                           disabled={removeMemberMutation.isPending}
                         >
                           Remove
@@ -341,6 +369,7 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
   const [buildName, setBuildName] = useState('')
   const [releaseName, setReleaseName] = useState('')
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const buildsQuery = useQuery({
     queryKey: ['builds', projectId],
@@ -392,6 +421,7 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
         <CardTitle>Builds &amp; Releases</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {confirmDialog}
         <div>
           <p className="mb-1.5 text-xs font-medium text-[var(--muted-foreground)]">Builds</p>
           <ul className="flex flex-col gap-1.5 text-sm">
@@ -405,7 +435,15 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => deleteBuildMutation.mutate(b.id)}
+                    onClick={() =>
+                      ask({
+                        title: `Remove build “${b.name}”?`,
+                        description:
+                          'The build is removed from this project and can no longer be picked for runs. Runs that already used it keep their history.',
+                        confirmLabel: 'Remove build',
+                        run: () => deleteBuildMutation.mutateAsync(b.id),
+                      })
+                    }
                     disabled={deleteBuildMutation.isPending}
                   >
                     Remove
@@ -418,7 +456,7 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
             <div className="mt-2 flex gap-2">
               <Input
                 className="flex-1"
-                placeholder="New build name"
+                placeholder="New build name" aria-label="New build name"
                 value={buildName}
                 onChange={(e) => setBuildName(e.target.value)}
               />
@@ -446,7 +484,15 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => deleteReleaseMutation.mutate(r.id)}
+                    onClick={() =>
+                      ask({
+                        title: `Remove release “${r.name}”?`,
+                        description:
+                          'The release is removed from this project and no longer appears in readiness views. This cannot be undone.',
+                        confirmLabel: 'Remove release',
+                        run: () => deleteReleaseMutation.mutateAsync(r.id),
+                      })
+                    }
                     disabled={deleteReleaseMutation.isPending}
                   >
                     Remove
@@ -459,7 +505,7 @@ function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canMa
             <div className="mt-2 flex gap-2">
               <Input
                 className="flex-1"
-                placeholder="New release name"
+                placeholder="New release name" aria-label="New release name"
                 value={releaseName}
                 onChange={(e) => setReleaseName(e.target.value)}
               />
@@ -493,6 +539,7 @@ function MetricTile({ label, value }: { label: string; value: number }) {
 function TestSuitesCard({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
   const [suiteName, setSuiteName] = useState('')
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
 
@@ -536,6 +583,7 @@ function TestSuitesCard({ projectId, canManage }: { projectId: string; canManage
       queryClient.invalidateQueries({ queryKey: ['test-suites', projectId] })
       showToast('success', 'Test suite deleted')
     },
+    onError: () => showToast('error', 'Could not delete that test suite'),
   })
   const createRunMutation = useMutation({
     mutationFn: (suiteId: string) =>
@@ -558,6 +606,7 @@ function TestSuitesCard({ projectId, canManage }: { projectId: string; canManage
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
+        {confirmDialog}
         <ul className="flex flex-col gap-1.5">
           {(suitesQuery.data ?? []).length === 0 && (
             <li className="text-[var(--muted-foreground)]">No test suites yet.</li>
@@ -580,7 +629,20 @@ function TestSuitesCard({ projectId, canManage }: { projectId: string; canManage
                   Create Run
                 </Button>
                 {canManage && (
-                  <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(suite.id)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={deleteMutation.isPending}
+                    onClick={() =>
+                      ask({
+                        title: `Delete suite “${suite.name}”?`,
+                        description:
+                          'Only the suite (the saved selection) is deleted. The test cases in it, and runs already created from it, are not affected.',
+                        confirmLabel: 'Delete suite',
+                        run: () => deleteMutation.mutateAsync(suite.id),
+                      })
+                    }
+                  >
                     Delete
                   </Button>
                 )}
@@ -591,11 +653,11 @@ function TestSuitesCard({ projectId, canManage }: { projectId: string; canManage
         {canManage && (
           <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
             <Input
-              placeholder="New suite name (e.g. Regression Suite - Critical Path)"
+              placeholder="New suite name (e.g. Regression Suite - Critical Path)" aria-label="New suite name"
               value={suiteName}
               onChange={(e) => setSuiteName(e.target.value)}
             />
-            <div className="max-h-32 overflow-y-auto rounded border border-[var(--border)] p-2">
+            <div className="max-h-32 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
               {casesQuery.data?.items.map((c) => (
                 <label key={c.id} className="flex items-center gap-2 py-0.5 text-xs">
                   <input
@@ -632,6 +694,7 @@ function TestSuitesCard({ projectId, canManage }: { projectId: string; canManage
 function TestPlansCard({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
   const [planName, setPlanName] = useState('')
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([])
 
@@ -660,6 +723,7 @@ function TestPlansCard({ projectId, canManage }: { projectId: string; canManage:
       queryClient.invalidateQueries({ queryKey: ['test-plans', projectId] })
       showToast('success', 'Test plan deleted')
     },
+    onError: () => showToast('error', 'Could not delete that test plan'),
   })
 
   return (
@@ -671,22 +735,36 @@ function TestPlansCard({ projectId, canManage }: { projectId: string; canManage:
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
+        {confirmDialog}
         <ul className="flex flex-col gap-2">
           {(plansQuery.data ?? []).length === 0 && (
             <li className="text-[var(--muted-foreground)]">No test plans yet.</li>
           )}
           {plansQuery.data?.map((plan) => (
-            <PlanRow key={plan.id} plan={plan} canManage={canManage} onDelete={() => deleteMutation.mutate(plan.id)} />
+            <PlanRow
+              key={plan.id}
+              plan={plan}
+              canManage={canManage}
+              onDelete={() =>
+                ask({
+                  title: `Delete plan “${plan.name}”?`,
+                  description:
+                    'Only the plan (the grouping and its rollup) is deleted. The test runs inside it are not affected.',
+                  confirmLabel: 'Delete plan',
+                  run: () => deleteMutation.mutateAsync(plan.id),
+                })
+              }
+            />
           ))}
         </ul>
         {canManage && (
           <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
             <Input
-              placeholder="New plan name (e.g. Release 2.0 Test Plan)"
+              placeholder="New plan name (e.g. Release 2.0 Test Plan)" aria-label="New plan name"
               value={planName}
               onChange={(e) => setPlanName(e.target.value)}
             />
-            <div className="max-h-32 overflow-y-auto rounded border border-[var(--border)] p-2">
+            <div className="max-h-32 overflow-y-auto rounded-lg border border-[var(--border)] p-2">
               {runsQuery.data?.map((r) => (
                 <label key={r.id} className="flex items-center gap-2 py-0.5 text-xs">
                   <input
@@ -731,7 +809,7 @@ function PlanRow({
   })
 
   return (
-    <li className="rounded border border-[var(--border)] p-2">
+    <li className="rounded-lg border border-[var(--border)] p-2">
       <div className="flex items-center justify-between">
         <span className="font-medium">
           {plan.name}{' '}

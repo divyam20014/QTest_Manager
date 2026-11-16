@@ -1,5 +1,5 @@
-import { History, LogOut, User as UserIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { LogOut, User as UserIcon, UserCog } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ export function UserMenu({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const menuId = useId()
 
   useEffect(() => {
     function onClickOutside(event: MouseEvent) {
@@ -22,9 +23,23 @@ export function UserMenu({
         setOpen(false)
       }
     }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside)
+      document.removeEventListener('keydown', onKeyDown)
+    }
   }, [])
+
+  // UX-006: the visible text ("Name · role", shown from xl up) must be the
+  // start of the accessible name (WCAG 2.5.3 Label in Name). Below xl the
+  // button is icon-only, so the name is the same phrase without relying on
+  // visible text.
+  const visibleText = name ? `${name}${role ? ` · ${role}` : ''}` : ''
+  const accessibleName = visibleText ? `${visibleText} account menu` : 'Account menu'
 
   return (
     <div ref={ref} className="relative">
@@ -32,34 +47,37 @@ export function UserMenu({
         variant="ghost"
         size="sm"
         aria-expanded={open}
-        aria-label={name ? `${name} account menu` : 'Account menu'}
+        aria-controls={open ? menuId : undefined}
+        aria-label={accessibleName}
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2"
       >
         <span className="flex size-6 items-center justify-center rounded-full bg-[var(--muted)]">
           <UserIcon className="size-3.5" />
         </span>
-        <span className="hidden text-[var(--muted-foreground)] sm:inline">
-          {name} · {role}
-        </span>
+        <span className="hidden text-[var(--muted-foreground)] xl:inline">{visibleText}</span>
       </Button>
       {open && (
-        <div className="absolute right-0 top-full z-10 mt-2 w-48 rounded-md border border-[var(--border)] bg-[var(--background)] p-1 shadow-md">
+        <div
+          id={menuId}
+          className="absolute right-0 top-full z-[30] mt-2 w-52 rounded-md border border-[var(--border)] bg-[var(--background)] p-1 shadow-md"
+        >
           <div className="px-2 py-1.5 text-xs text-[var(--muted-foreground)]">
             Signed in as <span className="font-medium text-[var(--foreground)]">{name}</span>
+            {role && <span className="block capitalize">{role}</span>}
           </div>
           <Link
             to="/account"
             onClick={() => setOpen(false)}
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
           >
-            <History className="size-4" />
+            <UserCog className="size-4" />
             My Account
           </Link>
           <button
             type="button"
             onClick={onLogout}
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
           >
             <LogOut className="size-4" />
             Logout

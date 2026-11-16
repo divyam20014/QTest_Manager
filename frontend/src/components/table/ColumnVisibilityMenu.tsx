@@ -59,7 +59,7 @@ export function ColumnVisibilityMenu({
             <label
               key={col.key}
               className={cn(
-                'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-[var(--muted)]',
+                'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--muted)]',
               )}
             >
               <input type="checkbox" checked={isVisible(col.key)} onChange={() => toggleVisible(col.key)} />
@@ -70,7 +70,7 @@ export function ColumnVisibilityMenu({
             <button
               type="button"
               onClick={showAll}
-              className="w-full rounded px-2 py-1.5 text-left text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+              className="w-full rounded-md px-2 py-1.5 text-left text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
             >
               Show all columns
             </button>

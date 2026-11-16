@@ -25,13 +25,20 @@ export const buttonVariants = cva(
         // adding noise to toolbars full of outline/ghost buttons).
         default: 'qth-raised-sm qth-tactile-btn bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90',
         outline: 'border border-[var(--border)] bg-transparent hover:bg-[var(--muted)]',
-        destructive: 'bg-[var(--destructive)] text-white hover:opacity-90',
+        destructive: 'bg-[var(--destructive)] text-[var(--destructive-foreground)] hover:opacity-90',
+        // Solid positive action (Execution Console "Pass"). Same tactile lift as
+        // default, with AA-contrast text on the green in both themes.
+        success:
+          'qth-raised-sm qth-tactile-btn bg-[var(--success-solid)] text-[var(--success-solid-foreground)] hover:opacity-90',
         ghost: 'hover:bg-[var(--muted)]',
       },
       size: {
         default: 'h-9 px-4 py-2',
         sm: 'h-8 px-3',
         lg: 'h-10 px-6',
+        // Design system Phase B: square icon-only button. ALWAYS pass an
+        // aria-label. 44px on phones via the shared max-md:min-h-11 plus width.
+        icon: 'size-9 p-0 max-md:min-w-11',
       },
     },
     defaultVariants: {

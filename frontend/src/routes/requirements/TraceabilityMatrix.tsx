@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 
 import { fetchTraceabilityMatrix, traceabilityMatrixExportUrl, type TraceabilityMatrixEntry } from '@/api/reporting'
 import { getProject } from '@/api/projects'
+import { buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
@@ -54,7 +56,7 @@ const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
     key: 'linked',
     header: 'Test Cases',
     cell: (e) => (
-      <Link to={`/requirements/${e.requirement_id}`} className="relative z-10 underline-offset-2 hover:underline">
+      <Link to={`/requirements/${e.requirement_id}`} className="relative z-10 underline-offset-2 hover:underline max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center">
         {e.linked_test_case_count}
       </Link>
     ),
@@ -116,28 +118,28 @@ export function TraceabilityMatrix() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="break-words text-lg font-semibold">
-            Requirements Traceability Matrix {projectQuery.data ? `— ${projectQuery.data.name}` : ''}
-          </h1>
+      <PageHeader
+        back={
           <Link
             to={`/projects/${projectId}/requirements`}
-            className="inline-flex text-sm text-[var(--muted-foreground)] underline-offset-2 hover:underline max-md:min-h-11 max-md:items-center"
+            className="inline-flex text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
           >
             ← Back to Requirements
           </Link>
-        </div>
-        {report && (
-          <a
-            href={traceabilityMatrixExportUrl(projectId!)}
-            download
-            className="inline-flex min-h-11 items-center rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)] md:min-h-0"
-          >
-            Download CSV
-          </a>
-        )}
-      </div>
+        }
+        title={`Requirements Traceability Matrix ${projectQuery.data ? `— ${projectQuery.data.name}` : ''}`.trim()}
+        actions={
+          report && (
+            <a
+              href={traceabilityMatrixExportUrl(projectId!)}
+              download
+              className={buttonVariants({ variant: 'outline' })}
+            >
+              Download CSV
+            </a>
+          )
+        }
+      />
 
       {report && (
         <Card>

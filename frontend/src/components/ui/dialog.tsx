@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+import { DirtyContext } from '@/components/ui/dirtyForm'
 import { useOverlayBehavior } from '@/components/ui/useOverlayBehavior'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
@@ -22,6 +24,54 @@ function useScrollLock(active: boolean) {
       document.body.style.overflow = previous
     }
   }, [active])
+}
+
+function useDirtyGuard(onClose: () => void) {
+  const dirtyRef = useRef(false)
+  const [confirming, setConfirming] = useState(false)
+  const setDirty = useCallback((dirty: boolean) => {
+    dirtyRef.current = dirty
+  }, [])
+  const requestClose = useCallback(() => {
+    if (confirming) {
+      setConfirming(false)
+      return
+    }
+    if (dirtyRef.current) setConfirming(true)
+    else onClose()
+  }, [confirming, onClose])
+  const discard = useCallback(() => {
+    setConfirming(false)
+    dirtyRef.current = false
+    onClose()
+  }, [onClose])
+  return { setDirty, confirming, requestClose, keepEditing: () => setConfirming(false), discard }
+}
+
+function DiscardPrompt({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: () => void }) {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="qth-discard-title"
+      className="absolute inset-0 z-30 flex items-center justify-center rounded-[inherit] bg-black/40 p-4"
+    >
+      <div className="qth-raised-md flex w-full max-w-sm flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--tactile-surface-raised)] p-4">
+        <h3 id="qth-discard-title" className="text-sm font-semibold">
+          Discard unsaved changes?
+        </h3>
+        <p className="text-sm text-[var(--muted-foreground)]">Your edits have not been saved and will be lost.</p>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" autoFocus onClick={onKeep}>
+            Keep editing
+          </Button>
+          <Button type="button" variant="destructive" onClick={onDiscard}>
+            Discard
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** Action row for a Dialog. Plain right-aligned buttons on desktop; pinned to
@@ -59,7 +109,8 @@ export function Dialog({
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const isMobile = useIsMobile()
-  useOverlayBehavior(open, onClose, panelRef, closeButtonRef)
+  const guard = useDirtyGuard(onClose)
+  useOverlayBehavior(open, guard.requestClose, panelRef, closeButtonRef)
   useScrollLock(open && isMobile)
 
   if (!open) return null
@@ -68,7 +119,7 @@ export function Dialog({
     <div
       className="qth-animate-in fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[1px] md:items-center md:p-4"
       style={{ animation: 'qth-fade-in 0.15s ease-out' }}
-      onClick={onClose}
+      onClick={guard.requestClose}
       role="presentation"
     >
       <div
@@ -100,7 +151,7 @@ export function Dialog({
         <button
           ref={closeButtonRef}
           type="button"
-          onClick={onClose}
+          onClick={guard.requestClose}
           aria-label="Close dialog"
           className="absolute right-4 top-4 z-20 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:right-1.5 max-md:top-2 max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
         >
@@ -110,7 +161,10 @@ export function Dialog({
         <h2 className="shrink-0 border-b border-[var(--border)] px-5 py-4 pr-10 text-sm font-semibold max-md:pr-14 max-md:text-base">
           {title}
         </h2>
-        <div className="overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
+        <DirtyContext.Provider value={guard.setDirty}>
+          <div className="overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
+        </DirtyContext.Provider>
+        {guard.confirming && <DiscardPrompt onKeep={guard.keepEditing} onDiscard={guard.discard} />}
       </div>
     </div>
   )
@@ -136,7 +190,8 @@ export function Drawer({
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const isMobile = useIsMobile()
-  useOverlayBehavior(open, onClose, panelRef, closeButtonRef)
+  const guard = useDirtyGuard(onClose)
+  useOverlayBehavior(open, guard.requestClose, panelRef, closeButtonRef)
   useScrollLock(open && isMobile)
 
   if (!open) return null
@@ -145,14 +200,14 @@ export function Drawer({
     <div
       className="qth-animate-in fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-[1px]"
       style={{ animation: 'qth-fade-in 0.15s ease-out' }}
-      onClick={onClose}
+      onClick={guard.requestClose}
       role="presentation"
     >
       <div
         ref={panelRef}
         className={cn(
           // Dashboard redesign Phase 3: same raised tactile surface as Dialog.
-          'qth-animate-in qth-raised-lg flex h-full w-full max-w-2xl flex-col border-l border-[var(--border)] bg-[var(--tactile-surface-raised)]',
+          'qth-animate-in qth-raised-lg relative flex h-full w-full max-w-2xl flex-col border-l border-[var(--border)] bg-[var(--tactile-surface-raised)]',
           className,
         )}
         style={{ animation: 'qth-drawer-in 0.2s ease-out' }}
@@ -166,16 +221,19 @@ export function Drawer({
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={onClose}
+            onClick={guard.requestClose}
             aria-label="Close panel"
             className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
           >
             <X className="size-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-5 max-md:px-4 max-md:pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
-          {children}
-        </div>
+        <DirtyContext.Provider value={guard.setDirty}>
+          <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-5 max-md:px-4 max-md:pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+            {children}
+          </div>
+        </DirtyContext.Provider>
+        {guard.confirming && <DiscardPrompt onKeep={guard.keepEditing} onDiscard={guard.discard} />}
       </div>
     </div>
   )

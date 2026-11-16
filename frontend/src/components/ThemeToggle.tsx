@@ -1,4 +1,5 @@
 import { Moon, Sun } from 'lucide-react'
+import { Tooltip } from '@/components/ui/tooltip'
 import { useThemePreference } from '@/lib/useThemePreference'
 
 export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {}) {
@@ -8,12 +9,12 @@ export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {})
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
-  return (
+  const label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+  const button = (
     <button
       type="button"
       onClick={toggle}
-      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={label}
       className={
         showLabel
           ? 'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]'
@@ -24,4 +25,7 @@ export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {})
       {showLabel && (theme === 'dark' ? 'Light mode' : 'Dark mode')}
     </button>
   )
+  // The labelled (More-sheet) variant already shows its text; the icon-only
+  // header variant gets a keyboard- and touch-reachable tooltip instead of title=.
+  return showLabel ? button : <Tooltip content={label} side="bottom">{button}</Tooltip>
 }

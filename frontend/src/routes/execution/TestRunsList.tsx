@@ -14,12 +14,14 @@ import { getProject } from '@/api/projects'
 import { listTestCases } from '@/api/testCases'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
 
@@ -102,18 +104,18 @@ export function TestRunsList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
+      <PageHeader
+        back={
           <Link
             to={`/projects/${projectId}`}
             className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
           >
             ← {projectQuery.data?.name ?? 'Project'}
           </Link>
-          <h1 className="text-lg font-semibold">Test Runs</h1>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>New Test Run</Button>
-      </div>
+        }
+        title="Test Runs"
+        actions={<Button onClick={() => setCreateOpen(true)}>New Test Run</Button>}
+      />
 
       <ResponsiveTable
         label="Test runs"
@@ -167,7 +169,7 @@ export function TestRunsList() {
               ))}
             </ul>
           </div>
-          {createError && <p className="text-xs text-[var(--destructive)]">{createError}</p>}
+          <FormError>{createError}</FormError>
           <DialogFooter>
             <Button
               disabled={!name || selectedCaseIds.length === 0 || createMutation.isPending}

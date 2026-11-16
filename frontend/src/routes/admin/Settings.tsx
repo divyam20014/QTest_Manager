@@ -43,7 +43,10 @@ import {
 } from '@/api/settings'
 import { getSsoConfig, updateSsoConfig } from '@/api/sso'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -51,6 +54,7 @@ import { Tabs } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { humanizeActionCode } from '@/lib/labels'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 // Phase 1 (AI/SaaS vision roadmap): the tenant self-service settings
 // mechanism (GAP-80 / SAAS-GAP-7), extended in Phase 3 (ADR-045) with the
@@ -66,7 +70,7 @@ export function Settings() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-lg font-semibold">Settings</h1>
+      <PageHeader title="Settings" description="Organization-wide configuration." />
       <Tabs
         items={[
           {
@@ -86,7 +90,7 @@ export function Settings() {
                       </p>
                     </div>
                   ) : settingsQuery.isLoading || !settingsQuery.data ? (
-                    <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+                    <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading</span><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-32" /></div>
                   ) : (
                     <SettingsForm initial={settingsQuery.data} />
                   )}
@@ -160,6 +164,7 @@ function FieldOptionsCard({ fieldKey, title }: { fieldKey: FieldKey; title: stri
   const forbidden = optionsQuery.error instanceof ApiError && optionsQuery.error.code === 'forbidden'
   const [code, setCode] = useState('')
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const createMutation = useMutation({
     mutationFn: () => createFieldOption({ field_key: fieldKey, code, label: code }),
@@ -193,11 +198,12 @@ function FieldOptionsCard({ fieldKey, title }: { fieldKey: FieldKey; title: stri
       </CardHeader>
       <CardContent>
         <div className="flex max-w-sm flex-col gap-3 text-sm">
+          {confirmDialog}
           <ul className="flex flex-col gap-1.5">
             {optionsQuery.data?.map((option) => (
               <li
                 key={option.id}
-                className="flex items-center justify-between rounded border border-[var(--border)] px-2 py-1"
+                className="flex items-center justify-between rounded-lg border border-[var(--border)] px-2 py-1"
               >
                 <span>{option.label}</span>
                 <Button
@@ -205,7 +211,14 @@ function FieldOptionsCard({ fieldKey, title }: { fieldKey: FieldKey; title: stri
                   size="sm"
                   variant="outline"
                   disabled={deleteMutation.isPending}
-                  onClick={() => deleteMutation.mutate(option.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Remove option “${option.label}”?`,
+                      description: `It will no longer be offered for ${title.toLowerCase()}. Existing records that already use it are not changed.`,
+                      confirmLabel: 'Remove option',
+                      run: () => deleteMutation.mutateAsync(option.id),
+                    })
+                  }
                 >
                   Remove
                 </Button>
@@ -228,7 +241,7 @@ function FieldOptionsCard({ fieldKey, title }: { fieldKey: FieldKey; title: stri
               Add
             </Button>
           </div>
-          {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+          <FormError>{serverError}</FormError>
         </div>
       </CardContent>
     </Card>
@@ -332,6 +345,7 @@ function CustomFieldsCard({
   const [fieldType, setFieldType] = useState<CustomFieldType>('text')
   const [optionsText, setOptionsText] = useState('')
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -380,11 +394,12 @@ function CustomFieldsCard({
       </CardHeader>
       <CardContent>
         <div className="flex max-w-md flex-col gap-3 text-sm">
+          {confirmDialog}
           <ul className="flex flex-col gap-1.5">
             {definitionsQuery.data?.map((def) => (
               <li
                 key={def.id}
-                className="flex items-center justify-between rounded border border-[var(--border)] px-2 py-1"
+                className="flex items-center justify-between rounded-lg border border-[var(--border)] px-2 py-1"
               >
                 <span>
                   {def.label} <span className="text-xs text-[var(--muted-foreground)]">({def.field_type}{def.required ? ', required' : ''})</span>
@@ -394,7 +409,15 @@ function CustomFieldsCard({
                   size="sm"
                   variant="outline"
                   disabled={deleteMutation.isPending}
-                  onClick={() => deleteMutation.mutate(def.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Remove custom field “${def.label}”?`,
+                      description:
+                        'The field definition is removed, and the values people entered for it on existing records are no longer shown. This cannot be undone.',
+                      confirmLabel: 'Remove field',
+                      run: () => deleteMutation.mutateAsync(def.id),
+                    })
+                  }
                 >
                   Remove
                 </Button>
@@ -421,7 +444,7 @@ function CustomFieldsCard({
             <Label htmlFor={`${entityType}-field-type`}>Type</Label>
             <select
               id={`${entityType}-field-type`}
-              className="rounded border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
+              className="rounded-md border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
               value={fieldType}
               onChange={(e) => setFieldType(e.target.value as CustomFieldType)}
             >
@@ -442,7 +465,7 @@ function CustomFieldsCard({
               />
             </div>
           )}
-          {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+          <FormError>{serverError}</FormError>
           <Button
             type="button"
             size="sm"
@@ -528,7 +551,7 @@ function SubscriptionCard() {
       </CardHeader>
       <CardContent>
         {subscriptionQuery.isLoading || !subscriptionQuery.data ? (
-          <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+          <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading</span><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-32" /></div>
         ) : (
           <div className="flex flex-col gap-5 text-sm">
             <div className="flex items-center gap-2">
@@ -698,7 +721,7 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
           is before saving.
         </p>
       </div>
-      {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+      <FormError>{serverError}</FormError>
       <div className="flex items-center gap-3">
         <Button type="submit" size="sm" disabled={saveMutation.isPending}>
           {saveMutation.isPending ? 'Saving…' : 'Save Changes'}
@@ -798,7 +821,7 @@ function AISettingsForm({ initial }: { initial: TenantSettings }) {
               Currently {initial.ai_enabled ? 'enabled' : 'disabled'}.
             </span>
           </div>
-          {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+          <FormError>{serverError}</FormError>
         </div>
       </CardContent>
     </Card>
@@ -879,7 +902,7 @@ function BrandingForm({ initial }: { initial: TenantBranding }) {
               }}
             />
           </div>
-          {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+          <FormError>{serverError}</FormError>
           <div className="flex items-center gap-3">
             <Button type="button" size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
               {saveMutation.isPending ? 'Saving…' : 'Save Branding'}
@@ -905,7 +928,7 @@ function SsoCard() {
       </CardHeader>
       <CardContent>
         {ssoQuery.isLoading || !ssoQuery.data ? (
-          <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+          <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading</span><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-32" /></div>
         ) : (
           <SsoForm initial={ssoQuery.data} />
         )}
@@ -985,7 +1008,7 @@ function SsoForm({
         <Label htmlFor="sso-default-role">Default Role for New SSO Users</Label>
         <Input id="sso-default-role" value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)} />
       </div>
-      {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+      <FormError>{serverError}</FormError>
       <div className="flex items-center gap-3">
         <Button
           type="button"
@@ -1014,6 +1037,7 @@ function ScimTokensCard() {
   const forbidden = tokensQuery.error instanceof ApiError && tokensQuery.error.code === 'forbidden'
   const [justCreated, setJustCreated] = useState<string | null>(null)
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const createMutation = useMutation({
     mutationFn: createScimToken,
@@ -1043,13 +1067,14 @@ function ScimTokensCard() {
       </CardHeader>
       <CardContent>
         <div className="flex max-w-md flex-col gap-3 text-sm">
+          {confirmDialog}
           <p className="text-xs text-[var(--muted-foreground)]">
             Lets an identity provider create, update, and deactivate users automatically. Point
             your IdP's SCIM client at this tenant's SCIM base URL with one of the bearer tokens
             below.
           </p>
           {justCreated && (
-            <div className="rounded border border-[var(--border)] bg-[var(--muted)] p-2">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-2">
               <p className="text-xs text-[var(--muted-foreground)]">
                 Copy this token now — it will not be shown again:
               </p>
@@ -1063,7 +1088,7 @@ function ScimTokensCard() {
             {tokensQuery.data?.map((token) => (
               <li
                 key={token.id}
-                className="flex items-center justify-between rounded border border-[var(--border)] px-2 py-1"
+                className="flex items-center justify-between rounded-lg border border-[var(--border)] px-2 py-1"
               >
                 <span className="text-xs text-[var(--muted-foreground)]">
                   Created {new Date(token.created_at).toLocaleDateString()}
@@ -1075,7 +1100,14 @@ function ScimTokensCard() {
                     size="sm"
                     variant="outline"
                     disabled={revokeMutation.isPending}
-                    onClick={() => revokeMutation.mutate(token.id)}
+                    onClick={() =>
+                      ask({
+                        title: 'Revoke this SCIM token?',
+                        description: `The token created ${new Date(token.created_at).toLocaleDateString()} stops working immediately. Your identity provider will be unable to provision users until you give it a new token. This cannot be undone.`,
+                        confirmLabel: 'Revoke token',
+                        run: () => revokeMutation.mutateAsync(token.id),
+                      })
+                    }
                   >
                     Revoke
                   </Button>
@@ -1101,6 +1133,7 @@ function ServiceTokensCard() {
   const [name, setName] = useState('')
   const [justCreated, setJustCreated] = useState<string | null>(null)
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const createMutation = useMutation({
     mutationFn: () => createServiceToken(name),
@@ -1131,12 +1164,13 @@ function ServiceTokensCard() {
       </CardHeader>
       <CardContent>
         <div className="flex max-w-md flex-col gap-3 text-sm">
+          {confirmDialog}
           <p className="text-xs text-[var(--muted-foreground)]">
             Lets a CI job report test results directly into this tenant's test runs, authenticated
             by a bearer token scoped to result ingestion only.
           </p>
           {justCreated && (
-            <div className="rounded border border-[var(--border)] bg-[var(--muted)] p-2">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)] p-2">
               <p className="text-xs text-[var(--muted-foreground)]">
                 Copy this token now — it will not be shown again:
               </p>
@@ -1163,7 +1197,7 @@ function ServiceTokensCard() {
             {tokensQuery.data?.map((token) => (
               <li
                 key={token.id}
-                className="flex items-center justify-between rounded border border-[var(--border)] px-2 py-1"
+                className="flex items-center justify-between rounded-lg border border-[var(--border)] px-2 py-1"
               >
                 <span className="text-xs text-[var(--muted-foreground)]">
                   {token.name} — created {new Date(token.created_at).toLocaleDateString()}
@@ -1175,7 +1209,15 @@ function ServiceTokensCard() {
                     size="sm"
                     variant="outline"
                     disabled={revokeMutation.isPending}
-                    onClick={() => revokeMutation.mutate(token.id)}
+                    onClick={() =>
+                      ask({
+                        title: `Revoke token “${token.name}”?`,
+                        description:
+                          'Any CI job using this token will immediately stop being able to report results. This cannot be undone.',
+                        confirmLabel: 'Revoke token',
+                        run: () => revokeMutation.mutateAsync(token.id),
+                      })
+                    }
                   >
                     Revoke
                   </Button>
@@ -1263,6 +1305,7 @@ function ExportCard() {
 function ScheduledReportsCard() {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
   const [cadence, setCadence] = useState<ReportCadence>('weekly')
   const [emails, setEmails] = useState('')
 
@@ -1311,6 +1354,7 @@ function ScheduledReportsCard() {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4 text-sm">
+          {confirmDialog}
           <p className="text-xs text-[var(--muted-foreground)]">
             Automatically emails the compliance report (as a PDF) to the recipients below, on the
             cadence you choose.
@@ -1349,7 +1393,15 @@ function ScheduledReportsCard() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => deleteMutation.mutate(s.id)}
+                    disabled={deleteMutation.isPending}
+                    onClick={() =>
+                      ask({
+                        title: `Delete the ${s.cadence} scheduled report?`,
+                        description: `Reports will stop being emailed to ${s.recipient_emails.join(', ')}. This cannot be undone; use Pause if you may want it back.`,
+                        confirmLabel: 'Delete schedule',
+                        run: () => deleteMutation.mutateAsync(s.id),
+                      })
+                    }
                   >
                     Delete
                   </Button>

@@ -11,36 +11,21 @@ import {
   openStep,
   recordVerdict,
   type ExecutionStep,
-  type RunCaseStatus,
   type Verdict,
 } from '@/api/execution'
 import { AttachmentsPanel } from '@/components/AttachmentsCard'
 import { CommentsPanel } from '@/components/CommentsCard'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { humanizeKey } from '@/lib/labels'
+import { levelTone, RUN_CASE_STATUS_TONE, VERDICT_TONE } from '@/lib/statusTones'
 import { useToast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { DefectQuickCreateDialog, type FailedStepContext } from './DefectQuickCreateDialog'
-
-const VERDICT_TONE = { pass: 'positive', fail: 'critical', ignore: 'neutral' } as const
-const PRIORITY_TONE: Record<string, 'neutral' | 'warning' | 'critical'> = {
-  Low: 'neutral',
-  Medium: 'warning',
-  High: 'warning',
-  Critical: 'critical',
-}
-const RUN_CASE_STATUS_TONE: Record<RunCaseStatus, 'neutral' | 'positive' | 'warning' | 'critical'> = {
-  pending: 'neutral',
-  in_progress: 'warning',
-  passed: 'positive',
-  failed: 'critical',
-  blocked: 'critical',
-  ignored: 'neutral',
-}
 
 export function ExecutionConsole() {
   const { runCaseId } = useParams<{ runCaseId: string }>()
@@ -160,6 +145,16 @@ export function ExecutionConsole() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (failedStepContext !== null || runLocked || !currentStep) return
+      // Never treat typing as a verdict: the right panel has a comment box, and
+      // a tester typing "pass" there used to record Pass, then Ignore...
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return
+      }
       const key = e.key.toLowerCase()
       if (key === 'p') submitVerdict('pass')
       else if (key === 'f') submitVerdict('fail')
@@ -184,15 +179,25 @@ export function ExecutionConsole() {
     return <ErrorState onRetry={() => stepsQuery.refetch()} />
   }
 
+  // The next case in this run that still needs work (after this one, else the
+  // first earlier one), so a tester running many cases never goes back to the list.
+  const runCases = runQuery.data?.cases ?? []
+  const currentCaseIndex = runCases.findIndex((c) => c.id === runCaseId)
+  const needsWork = (c: (typeof runCases)[number]) => c.status === 'pending' || c.status === 'in_progress'
+  const nextCase =
+    runCases.slice(currentCaseIndex + 1).find((c) => c.id !== runCaseId && needsWork(c)) ??
+    runCases.find((c) => c.id !== runCaseId && needsWork(c)) ??
+    null
+
   const answeredCount = steps.filter((s) => s.verdict !== null).length
   const progressPercent = steps.length ? Math.round((answeredCount / steps.length) * 100) : 0
 
   return (
-    <div className="flex flex-col gap-4 md:h-[calc(100vh-7.5rem)] md:flex-row">
+    <div className="flex flex-col gap-4 xl:h-[calc(100vh-7.5rem)] xl:flex-row">
       {/* Left panel: test case navigation within this run. On a phone it is a
           collapsed "cases in this run" header so the steps come first. */}
-      <aside className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)] md:w-64">
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3 max-md:border-b-0 max-md:py-1">
+      <aside className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)] xl:w-64">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3 max-xl:border-b-0 max-xl:py-1">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Test Run</p>
             <p className="truncate text-sm font-medium">{runQuery.data?.name ?? context?.run_name ?? '—'}</p>
@@ -203,7 +208,7 @@ export function ExecutionConsole() {
               onClick={() => setCasesOpen((o) => !o)}
               aria-expanded={casesOpen}
               aria-controls="run-cases-list"
-              className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-md px-2 text-sm text-[var(--muted-foreground)] md:hidden"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-md px-2 text-sm text-[var(--muted-foreground)] xl:hidden"
             >
               {runQuery.data.cases.length} cases
               <ChevronDown className={cn('size-4 transition-transform motion-reduce:transition-none', casesOpen && 'rotate-180')} aria-hidden="true" />
@@ -212,7 +217,7 @@ export function ExecutionConsole() {
         </div>
         <div
           id="run-cases-list"
-          className={cn('flex-1 overflow-y-auto p-2 max-md:max-h-72 max-md:border-t max-md:border-[var(--border)]', !casesOpen && 'max-md:hidden')}
+          className={cn('flex-1 overflow-y-auto p-2 max-xl:max-h-72 max-xl:border-t max-xl:border-[var(--border)]', !casesOpen && 'max-xl:hidden')}
         >
           {!runQuery.data && (
             <p className="p-2 text-xs text-[var(--muted-foreground)]">
@@ -230,10 +235,10 @@ export function ExecutionConsole() {
             >
               <span className="truncate">{c.title}</span>
               <span className="flex items-center justify-between gap-2">
-                <Badge tone={RUN_CASE_STATUS_TONE[c.status]} className="text-[10px]">
+                <Badge tone={RUN_CASE_STATUS_TONE[c.status]} className="text-[11px]">
                   {humanizeKey(c.status)}
                 </Badge>
-                <span className="text-[10px] text-[var(--muted-foreground)]">
+                <span className="text-[11px] text-[var(--muted-foreground)]">
                   {c.passed_count}/{c.step_count}
                 </span>
               </span>
@@ -243,7 +248,7 @@ export function ExecutionConsole() {
       </aside>
 
       {/* Main panel: step execution */}
-      <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-[var(--border)] bg-[var(--background)] md:overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-[var(--border)] bg-[var(--background)] xl:overflow-hidden">
         <div className="shrink-0 border-b border-[var(--border)] p-4">
           <h1 className="break-words text-lg font-semibold">{context?.test_case_title ?? 'Execution Console'}</h1>
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
@@ -254,7 +259,7 @@ export function ExecutionConsole() {
           </p>
         </div>
 
-        <div className="flex-1 p-4 md:overflow-y-auto">
+        <div className="flex-1 p-4 xl:overflow-y-auto">
           <div className="flex flex-col gap-3">
             {steps.map((step) => (
               <StepCard
@@ -273,6 +278,35 @@ export function ExecutionConsole() {
           </div>
         </div>
 
+        {steps.length > 0 && !currentStep && !runLocked && (
+          <div
+            role="status"
+            className="shrink-0 border-t border-[var(--border)] bg-[var(--background)] p-3 max-xl:sticky max-xl:bottom-0 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] max-xl:z-30"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 max-md:flex-col max-md:items-stretch">
+              <p className="text-sm text-[var(--muted-foreground)]">
+                All {steps.length} steps recorded for this test case.
+              </p>
+              {nextCase ? (
+                <Link
+                  to={`/test-run-cases/${nextCase.id}?runId=${runId}`}
+                  className={cn(buttonVariants({ size: 'sm' }), 'max-md:h-12 max-md:text-base')}
+                >
+                  Next case: {nextCase.title.length > 40 ? `${nextCase.title.slice(0, 40)}…` : nextCase.title}
+                </Link>
+              ) : (
+                runId && (
+                  <Link
+                    to={`/test-runs/${runId}`}
+                    className={cn(buttonVariants({ size: 'sm', variant: 'outline' }), 'max-md:h-12 max-md:text-base')}
+                  >
+                    Back to the run
+                  </Link>
+                )
+              )}
+            </div>
+          </div>
+        )}
         {currentStep && !runLocked && (
           // Phone: the verdict bar is pinned just above the bottom tab bar so
           // Pass / Fail / Ignore are always one thumb-tap away while the steps
@@ -280,7 +314,7 @@ export function ExecutionConsole() {
           <div
             role="group"
             aria-label="Record a verdict for the current step"
-            className="shrink-0 border-t border-[var(--border)] bg-[var(--background)] p-3 max-md:sticky max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] max-md:z-30 max-md:rounded-b-lg max-md:shadow-[0_-6px_16px_-8px_rgb(0_0_0/0.25)]"
+            className="shrink-0 border-t border-[var(--border)] bg-[var(--background)] p-3 max-xl:sticky max-xl:bottom-0 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] max-xl:z-30 max-xl:rounded-b-lg max-xl:shadow-[0_-6px_16px_-8px_rgb(0_0_0/0.25)]"
           >
             <div className="flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch max-md:gap-2">
               <p className="min-w-0 truncate text-sm text-[var(--muted-foreground)] max-md:line-clamp-2 max-md:whitespace-normal">
@@ -289,9 +323,9 @@ export function ExecutionConsole() {
               <div className="flex shrink-0 gap-2 max-md:[&>button]:h-12 max-md:[&>button]:flex-1 max-md:[&>button]:text-base">
                 <Button
                   size="sm"
+                  variant="success"
                   onClick={() => submitVerdict('pass')}
                   disabled={verdictMutation.isPending}
-                  className="bg-emerald-600 hover:opacity-90"
                 >
                   Pass <kbd className="ml-1 opacity-60 max-md:hidden">P</kbd>
                 </Button>
@@ -313,7 +347,7 @@ export function ExecutionConsole() {
       </div>
 
       {/* Right panel: execution info + defect details */}
-      <aside className="flex shrink-0 flex-col gap-3 md:w-72 md:overflow-y-auto">
+      <aside className="flex shrink-0 flex-col gap-3 xl:w-72 xl:overflow-y-auto">
         <Card>
           <CardHeader>
             <CardTitle>Execution Info</CardTitle>
@@ -326,7 +360,7 @@ export function ExecutionConsole() {
                 <div className="flex items-center justify-between gap-2">
                   <dt className="text-[var(--muted-foreground)]">Priority</dt>
                   <dd>
-                    <Badge tone={PRIORITY_TONE[context.priority] ?? 'neutral'}>{context.priority}</Badge>
+                    <Badge tone={levelTone(context.priority)}>{context.priority}</Badge>
                   </dd>
                 </div>
                 <InfoRow label="Version" value={`v${context.version_number}`} />
@@ -358,7 +392,7 @@ export function ExecutionConsole() {
                 )}
               </dl>
             ) : (
-              <p className="text-xs text-[var(--muted-foreground)]">Loading…</p>
+              <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading</span><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-32" /></div>
             )}
           </CardContent>
         </Card>
@@ -461,7 +495,7 @@ function StepCard({
         </div>
         {step.verdict && (
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <Badge tone={VERDICT_TONE[step.verdict]}>{step.verdict}</Badge>
+            <StatusBadge tone={VERDICT_TONE[step.verdict]}>{step.verdict}</StatusBadge>
             {step.duration_ms !== null && (
               <span className="text-xs text-[var(--muted-foreground)]">{step.duration_ms}ms</span>
             )}
@@ -557,12 +591,12 @@ function ReverdictControl({
     <div className="mt-3 flex flex-wrap gap-2">
       <Button
         size="sm"
+        variant="success"
         onClick={() => {
           onVerdict('pass')
           setOpen(false)
         }}
         disabled={isSubmitting}
-        className="bg-emerald-600 hover:opacity-90"
       >
         Pass
       </Button>

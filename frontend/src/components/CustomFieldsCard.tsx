@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 // Tier 5 / ADR-055: tenant-defined custom fields. Values are already
 // included inline on the owning entity's own GET response (`custom_fields`)
@@ -29,9 +30,12 @@ function FieldInput({
   value: unknown
   onChange: (value: unknown) => void
 }) {
+  // The Label above this control points at this id (it was never set before).
+  const id = `custom-field-${definition.id}`
   if (definition.field_type === 'boolean') {
     return (
       <input
+        id={id}
         type="checkbox"
         checked={Boolean(value)}
         onChange={(e) => onChange(e.target.checked)}
@@ -41,6 +45,7 @@ function FieldInput({
   if (definition.field_type === 'select') {
     return (
       <Select
+        id={id}
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value || null)}
       >
@@ -75,6 +80,7 @@ function FieldInput({
   if (definition.field_type === 'number') {
     return (
       <Input
+        id={id}
         type="number"
         value={typeof value === 'number' ? value : ''}
         onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
@@ -84,6 +90,7 @@ function FieldInput({
   if (definition.field_type === 'date') {
     return (
       <Input
+        id={id}
         type="date"
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value || null)}
@@ -92,6 +99,7 @@ function FieldInput({
   }
   return (
     <Input
+      id={id}
       value={typeof value === 'string' ? value : ''}
       onChange={(e) => onChange(e.target.value || null)}
     />
@@ -156,7 +164,7 @@ export function CustomFieldsCard({
               />
             </div>
           ))}
-          {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+          <FormError>{serverError}</FormError>
           <Button
             type="button"
             size="sm"

@@ -31,7 +31,10 @@ import {
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ChartPanel } from '@/components/ui/ChartPanel'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -40,7 +43,8 @@ import { ChartSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { pivotAggregateRows } from './aggregate'
-import { categoricalColor, prefersDark, SEQUENTIAL_BLUE_LIGHT } from './palette'
+import { useThemePreference } from '@/lib/useThemePreference'
+import { categoricalColor, CATEGORICAL_DARK, SEQUENTIAL_BLUE_LIGHT } from './palette'
 import { QAManagerIntelligenceCard } from './QAManagerIntelligenceCard'
 
 const METRICS: { value: Metric; label: string }[] = [
@@ -75,11 +79,21 @@ const ASSIGNEE_HINTS: Record<Metric, string> = {
   defect_root_cause: 'Groups by the defect’s assignee.',
 }
 
+const chartTooltipStyle = {
+  background: 'var(--tactile-surface-raised)',
+  border: 'none',
+  borderRadius: 10,
+  boxShadow: 'var(--elevation-raised-sm)',
+  fontSize: 12,
+  color: 'var(--foreground)',
+}
+
 export function Reporting() {
   const { user } = useAuth()
   const [metric, setMetric] = useState<Metric>('run_status')
   const [groupBy, setGroupBy] = useState<GroupBy>('project')
   const [chartType, setChartType] = useState<'bar' | 'pie' | 'line'>('bar')
+  const [aggView, setAggView] = useState<'chart' | 'table'>('chart')
   const [projectId, setProjectId] = useState('')
   const [domain, setDomain] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
@@ -87,7 +101,11 @@ export function Reporting() {
   const [dateTo, setDateTo] = useState('')
   const [priority, setPriority] = useState('')
   const [status, setStatus] = useState('')
-  const isDark = prefersDark()
+  // The app's own light/dark toggle, not the OS setting: with the toggle on
+  // dark and the OS on light the charts used to draw the light palette on a
+  // dark card.
+  const [theme] = useThemePreference()
+  const isDark = theme === 'dark'
 
   // Pass 4 (ADR-065): a deep link from Project Detail's "Release Readiness"
   // button (`?project=<id>`) should actually pre-select this project, not
@@ -157,33 +175,37 @@ export function Reporting() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <h1 className="text-lg font-semibold">Reporting</h1>
-        {canExport && (
-          <div className="flex flex-col gap-2 md:flex-row [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center [&>a]:justify-center md:[&>a]:min-h-0">
+      <PageHeader
+        title="Reporting"
+        description="Release readiness, defect and execution analytics."
+        actionsClassName="flex-col md:flex-row [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center [&>a]:justify-center md:[&>a]:min-h-0 max-md:[&>a]:w-full"
+        actions={
+          canExport && (
+            <>
             <a
               href="/reporting/print"
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+              className={buttonVariants({ variant: 'outline' })}
             >
               Compliance Report (Print / PDF)
             </a>
             <a
               href={complianceExportUrl(exportPeriod)}
               download
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+              className={buttonVariants({ variant: 'outline' })}
             >
               Download Compliance CSV
             </a>
             <a
               href={complianceExportPdfUrl(exportPeriod)}
               download
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+              className={buttonVariants({ variant: 'outline' })}
             >
               Download Compliance PDF
             </a>
-          </div>
-        )}
-      </div>
+            </>
+          )
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -297,29 +319,24 @@ export function Reporting() {
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={domainQuery.data ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                 <XAxis
                   dataKey="domain"
-                  tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
-                  axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                  tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
+                  axisLine={{ stroke: 'var(--chart-axis-line)' }}
                   tickLine={false}
                 />
                 <YAxis
                   allowDecimals={false}
-                  tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                  tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
                   axisLine={false}
                   tickLine={false}
                   width={28}
                 />
                 <Tooltip
-                  contentStyle={{
-                    background: isDark ? '#1a1a19' : '#fcfcfb',
-                    border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                    borderRadius: 6,
-                    fontSize: 12,
-                  }}
+                  contentStyle={chartTooltipStyle}
                 />
-                <Bar dataKey="project_count" name="Projects" fill={SEQUENTIAL_BLUE_LIGHT} radius={[4, 4, 0, 0]} maxBarSize={48} />
+                <Bar dataKey="project_count" name="Projects" fill={isDark ? CATEGORICAL_DARK[0] : SEQUENTIAL_BLUE_LIGHT} radius={[4, 4, 0, 0]} maxBarSize={48} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -342,13 +359,14 @@ export function Reporting() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Execution Trends (last 30 days)</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <ChartPanel
+        title="Execution Trends (last 30 days)"
+        bodyClassName="h-72 overflow-y-auto"
+        summary={trendQuery.data?.points.length ? `Line chart of test step results over the last 30 days: ${trendQuery.data.points.reduce((a, p) => a + p.pass_count, 0)} passed, ${trendQuery.data.points.reduce((a, p) => a + p.fail_count, 0)} failed.` : undefined}
+        table={trendQuery.data?.points.length ? { columns: ['Date', 'Pass', 'Fail', 'Ignored'], rows: trendQuery.data.points.map((p) => [p.date, p.pass_count, p.fail_count, p.ignore_count]) } : undefined}
+      >
           {trendQuery.isLoading ? (
-            <div className="h-72"><ChartSkeleton /></div>
+            <ChartSkeleton />
           ) : trendQuery.isError ? (
             <ErrorState onRetry={() => trendQuery.refetch()} />
           ) : (trendQuery.data?.points.length ?? 0) === 0 ? (
@@ -357,27 +375,22 @@ export function Reporting() {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendQuery.data?.points ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
-                    axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
+                    axisLine={{ stroke: 'var(--chart-axis-line)' }}
                     tickLine={false}
                   />
                   <YAxis
                     allowDecimals={false}
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
                     axisLine={false}
                     tickLine={false}
                     width={28}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: isDark ? '#1a1a19' : '#fcfcfb',
-                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
+                    contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line type="monotone" dataKey="pass_count" name="Pass" stroke={categoricalColor(2, isDark)} strokeWidth={2} dot={false} />
@@ -387,16 +400,16 @@ export function Reporting() {
               </ResponsiveContainer>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </ChartPanel>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Defect Trend (last 30 days)</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <ChartPanel
+        title="Defect Trend (last 30 days)"
+        bodyClassName="h-72 overflow-y-auto"
+        summary={defectTrendQuery.data?.points.length ? `Line chart of defects over the last 30 days: ${defectTrendQuery.data.points.reduce((a, p) => a + p.opened_count, 0)} opened, ${defectTrendQuery.data.points.reduce((a, p) => a + p.closed_count, 0)} closed.` : undefined}
+        table={defectTrendQuery.data?.points.length ? { columns: ['Date', 'Opened', 'Closed'], rows: defectTrendQuery.data.points.map((p) => [p.date, p.opened_count, p.closed_count]) } : undefined}
+      >
           {defectTrendQuery.isLoading ? (
-            <div className="h-72"><ChartSkeleton /></div>
+            <ChartSkeleton />
           ) : defectTrendQuery.isError ? (
             <ErrorState onRetry={() => defectTrendQuery.refetch()} />
           ) : (defectTrendQuery.data?.points.length ?? 0) === 0 ? (
@@ -405,27 +418,22 @@ export function Reporting() {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={defectTrendQuery.data?.points ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="date"
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
-                    axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
+                    axisLine={{ stroke: 'var(--chart-axis-line)' }}
                     tickLine={false}
                   />
                   <YAxis
                     allowDecimals={false}
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
                     axisLine={false}
                     tickLine={false}
                     width={28}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: isDark ? '#1a1a19' : '#fcfcfb',
-                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
+                    contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line type="monotone" dataKey="opened_count" name="Opened" stroke={categoricalColor(7, isDark)} strokeWidth={2} dot={false} />
@@ -434,8 +442,7 @@ export function Reporting() {
               </ResponsiveContainer>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </ChartPanel>
 
       <Card>
         <CardHeader>
@@ -540,6 +547,14 @@ export function Reporting() {
               <option value="pie">Pie / donut</option>
               <option value="line">Line chart</option>
             </Select>
+            <button
+              type="button"
+              aria-pressed={aggView === 'table'}
+              onClick={() => setAggView(aggView === 'table' ? 'chart' : 'table')}
+              className="inline-flex items-center rounded-md px-1.5 text-sm text-[var(--link)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:min-h-11"
+            >
+              {aggView === 'table' ? 'View as chart' : 'View as table'}
+            </button>
           </div>
           {groupBy === 'assignee' && (
             <p className="mb-4 text-xs text-[var(--muted-foreground)]">{ASSIGNEE_HINTS[metric]}</p>
@@ -551,31 +566,58 @@ export function Reporting() {
             <ErrorState onRetry={() => aggregateQuery.refetch()} />
           ) : aggregateData.length === 0 ? (
             <EmptyState title="No data for this combination" description="Try a different metric, group-by, or widen the date range." />
+          ) : aggView === 'table' ? (
+            <div className="max-h-80 overflow-auto">
+              <table className="w-full text-left text-sm">
+                <caption className="sr-only">Aggregate report data</caption>
+                <thead className="sticky top-0 bg-[var(--background)]">
+                  <tr>
+                    <th scope="col" className="px-2 py-1.5 font-medium text-[var(--muted-foreground)]">
+                      Group
+                    </th>
+                    {valueOrder.map((v) => (
+                      <th key={v} scope="col" className="px-2 py-1.5 font-medium text-[var(--muted-foreground)]">
+                        {v}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {aggregateData.map((row) => (
+                    <tr key={String(row.group_label)} className="border-t border-[var(--border)]">
+                      <th scope="row" className="px-2 py-1.5 font-normal">
+                        {String(row.group_label)}
+                      </th>
+                      {valueOrder.map((v) => (
+                        <td key={v} className="px-2 py-1.5 tabular-nums">
+                          {Number(row[v]) || 0}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : chartType === 'bar' ? (
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={aggregateData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="group_label"
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
-                    axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
+                    axisLine={{ stroke: 'var(--chart-axis-line)' }}
                     tickLine={false}
                   />
                   <YAxis
                     allowDecimals={false}
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
                     axisLine={false}
                     tickLine={false}
                     width={28}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: isDark ? '#1a1a19' : '#fcfcfb',
-                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
+                    contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   {valueOrder.map((value, i) => (
@@ -596,17 +638,12 @@ export function Reporting() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Tooltip
-                    contentStyle={{
-                      background: isDark ? '#1a1a19' : '#fcfcfb',
-                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
+                    contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Pie data={pieData} dataKey="count" nameKey="value" innerRadius={60} outerRadius={110} paddingAngle={2}>
                     {pieData.map((entry, i) => (
-                      <Cell key={entry.value} fill={categoricalColor(i, isDark)} stroke={isDark ? '#1a1a19' : '#fcfcfb'} />
+                      <Cell key={entry.value} fill={categoricalColor(i, isDark)} stroke="var(--tactile-surface-raised)" />
                     ))}
                   </Pie>
                 </PieChart>
@@ -616,27 +653,22 @@ export function Reporting() {
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={aggregateData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="group_label"
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
-                    axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
+                    axisLine={{ stroke: 'var(--chart-axis-line)' }}
                     tickLine={false}
                   />
                   <YAxis
                     allowDecimals={false}
-                    tick={{ fontSize: 12, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                    tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
                     axisLine={false}
                     tickLine={false}
                     width={28}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: isDark ? '#1a1a19' : '#fcfcfb',
-                      border: `1px solid ${isDark ? '#383835' : '#c3c2b7'}`,
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
+                    contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   {valueOrder.map((value, i) => (

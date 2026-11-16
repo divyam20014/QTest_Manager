@@ -20,8 +20,14 @@ import { listTestCases } from '@/api/testCases'
 import { listUsers } from '@/api/users'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { humanizeKey } from '@/lib/labels'
+import { RUN_CASE_STATUS_TONE } from '@/lib/statusTones'
+import { DetailSkeleton } from '@/components/ui/skeleton'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,15 +35,8 @@ import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
-const CASE_STATUS_TONE = {
-  pending: 'neutral',
-  in_progress: 'warning',
-  passed: 'positive',
-  failed: 'critical',
-  blocked: 'critical',
-  ignored: 'neutral',
-} as const
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
 
@@ -48,6 +47,7 @@ export function TestRunDetail() {
   const [editOpen, setEditOpen] = useState(false)
   const [addCasesOpen, setAddCasesOpen] = useState(false)
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const runQuery = useQuery({ queryKey: ['test-runs', 'detail', runId], queryFn: () => getTestRun(runId!), enabled: !!runId })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
@@ -103,8 +103,9 @@ export function TestRunDetail() {
   })
 
   const run = runQuery.data
-  if (runQuery.isLoading) return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
-  if (runQuery.isError || !run) return <p className="text-sm text-[var(--destructive)]">Test run not found.</p>
+  if (runQuery.isLoading) return <DetailSkeleton />
+  if (runQuery.isError) return <ErrorState message="Could not load this test run." onRetry={() => runQuery.refetch()} />
+  if (!run) return <EmptyState title="Test run not found" description="It may have been deleted, or you may not have access to it." />
 
   const canManage = isManagerOrAbove(user)
   const canFinish = canManage && !run.finished_at
@@ -130,7 +131,7 @@ export function TestRunDetail() {
       key: 'status',
       header: 'Status',
       card: 'badge',
-      cell: (rc) => <Badge tone={CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</Badge>,
+      cell: (rc) => <StatusBadge tone={RUN_CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</StatusBadge>,
     },
     {
       key: 'progress',
@@ -164,22 +165,26 @@ export function TestRunDetail() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
+      <PageHeader
+        back={
           <Link
             to={`/projects/${run.project_id}/test-runs`}
             className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
           >
             ← Test Runs
           </Link>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h1 className="min-w-0 break-words text-lg font-semibold">{run.name}</h1>
+        }
+        title={run.name}
+        meta={
+          <>
             <Badge tone="neutral">{run.run_type}</Badge>
             <Badge tone={run.finished_at ? 'neutral' : 'positive'}>{run.finished_at ? 'Finished' : 'Active'}</Badge>
             {run.paused_at && <Badge tone="warning">Paused</Badge>}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 max-md:[&>button]:flex-1">
+          </>
+        }
+        actionsClassName="max-md:[&>button]:flex-1"
+        actions={
+          <>
           {canEdit && (
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               Edit Run
@@ -201,13 +206,27 @@ export function TestRunDetail() {
             </Button>
           )}
           {canFinish && (
-            <Button onClick={() => finishMutation.mutate()} disabled={finishMutation.isPending}>
+            <Button
+              onClick={() =>
+                ask({
+                  title: 'Finish this run?',
+                  description:
+                    'A finished run is locked: results can no longer be recorded, cases cannot be added or removed, and it counts towards reports as complete. Cases that are still pending stay pending.',
+                  confirmLabel: 'Finish run',
+                  destructive: false,
+                  run: () => finishMutation.mutateAsync(),
+                })
+              }
+              disabled={finishMutation.isPending}
+            >
               Finish Run
             </Button>
           )}
-        </div>
-      </div>
-      {finishError && <p className="text-xs text-[var(--destructive)]">{finishError}</p>}
+          </>
+        }
+      />
+      {confirmDialog}
+      <FormError>{finishError}</FormError>
 
       <ResponsiveTable
         label="Test cases in this run"
@@ -220,7 +239,14 @@ export function TestRunDetail() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => removeMutation.mutate(rc.id)}
+                onClick={() =>
+                  ask({
+                    title: 'Remove this test case from the run?',
+                    description: `“${rc.title}” is taken out of this run. The test case itself stays in the repository, and you can add it back while the run is open.`,
+                    confirmLabel: 'Remove from run',
+                    run: () => removeMutation.mutateAsync(rc.id),
+                  })
+                }
                 disabled={removeMutation.isPending}
               >
                 Remove
@@ -297,7 +323,7 @@ function EditRunDialog({
             ))}
           </Select>
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
@@ -371,7 +397,7 @@ function AddCasesDialog({
             </li>
           ))}
         </ul>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel

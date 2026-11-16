@@ -1,4 +1,6 @@
 import type { Priority, ProjectStatus } from '@/api/projects'
+import type { BadgeTone } from '@/components/ui/badge'
+import { levelTone } from '@/lib/statusTones'
 
 export const STATUS_TONE: Record<ProjectStatus, 'neutral' | 'warning' | 'positive' | 'critical'> = {
   'On Track': 'positive',
@@ -7,9 +9,9 @@ export const STATUS_TONE: Record<ProjectStatus, 'neutral' | 'warning' | 'positiv
   Completed: 'neutral',
 }
 
-export const PRIORITY_TONE: Record<Priority, 'neutral' | 'warning' | 'positive' | 'critical'> = {
-  Low: 'neutral',
-  Medium: 'warning',
-  High: 'warning',
-  Critical: 'critical',
+export const PRIORITY_TONE: Record<Priority, BadgeTone> = {
+  Low: levelTone('Low'),
+  Medium: levelTone('Medium'),
+  High: levelTone('High'),
+  Critical: levelTone('Critical'),
 }

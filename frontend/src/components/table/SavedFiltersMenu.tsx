@@ -57,7 +57,7 @@ export function SavedFiltersMenu<T extends Record<string, string>>({
             <p className="px-1 py-1 text-xs text-[var(--muted-foreground)]">No saved filter combinations yet.</p>
           )}
           {names.map((n) => (
-            <div key={n} className="flex items-center justify-between gap-1 rounded px-1 py-1 hover:bg-[var(--muted)]">
+            <div key={n} className="flex items-center justify-between gap-1 rounded-md px-1 py-1 hover:bg-[var(--muted)]">
               <button
                 type="button"
                 onClick={() => {
@@ -72,7 +72,7 @@ export function SavedFiltersMenu<T extends Record<string, string>>({
                 type="button"
                 aria-label={`Delete saved filter ${n}`}
                 onClick={() => onRemove(n)}
-                className="rounded px-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+                className="rounded-md px-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
               >
                 ×
               </button>
@@ -84,6 +84,7 @@ export function SavedFiltersMenu<T extends Record<string, string>>({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Name this view…"
+              aria-label="Name for the saved view"
               className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-[var(--ring)]"
             />
             <button

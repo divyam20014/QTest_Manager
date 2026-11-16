@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FormError } from '@/components/ui/form-field'
 
 // Pass 2 (ADR-064): public, unauthenticated -- creating the tenant IS the
 // thing that happens here, there's no session to require yet. The new
@@ -109,7 +110,7 @@ export function Signup() {
                   digit.
                 </p>
               </div>
-              {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
+              <FormError>{error}</FormError>
               <Button type="submit" disabled={signupMutation.isPending}>
                 {signupMutation.isPending ? 'Creating your organization…' : 'Create Account'}
               </Button>

@@ -10,6 +10,8 @@ export interface GaugeDialProps {
   valueLabel?: string
   /** Secondary text (e.g. "5 of 7 steps") rendered below the dial, never inside the arc. */
   detail?: string
+  /** `lg` renders a bigger dial for hero placements (the Dashboard headline tile). */
+  size?: 'md' | 'lg'
   className?: string
 }
 
@@ -21,7 +23,7 @@ export interface GaugeDialProps {
  * cleanly in a narrow card at phone width; the metric is also exposed
  * as text so nothing is lost if the SVG doesn't render.
  */
-export function GaugeDial({ value, label, valueLabel, detail, className }: GaugeDialProps) {
+export function GaugeDial({ value, label, valueLabel, detail, size: dialSize = 'md', className }: GaugeDialProps) {
   const clamped = Math.min(100, Math.max(0, value))
   const gradientId = useId()
 
@@ -68,7 +70,9 @@ export function GaugeDial({ value, label, valueLabel, detail, className }: Gauge
       aria-valuemax={100}
       aria-label={label}
     >
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-auto w-full max-w-[160px]" aria-hidden="true">
+      <svg viewBox={`0 0 ${size} ${size}`} className={cn('h-auto w-full', dialSize === 'lg' ? 'max-w-[170px] sm:max-w-[200px] lg:max-w-[240px]' : 'max-w-[160px]')}
+        aria-hidden="true"
+      >
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="var(--brand)" />

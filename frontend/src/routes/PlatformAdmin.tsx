@@ -26,14 +26,18 @@ import {
 import { FilterBar } from '@/components/table/FilterBar'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Tabs } from '@/components/ui/tabs'
+import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 // Platform Administration manages tenant lifecycle (create/approve/suspend/
 // deactivate) and platform admin accounts, deliberately separate from the
@@ -147,17 +151,15 @@ function AdminConsole({
 }) {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold">Platform Administration</h1>
-          <p className="break-all text-sm text-[var(--muted-foreground)]">
-            Signed in as {credentials.email}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={onSignOut}>
-          Sign out
-        </Button>
-      </div>
+      <PageHeader
+        title="Platform Administration"
+        description={<span className="break-all">Signed in as {credentials.email}</span>}
+        actions={
+          <Button variant="outline" size="sm" onClick={onSignOut}>
+            Sign out
+          </Button>
+        }
+      />
 
       <Tabs
         defaultKey="tenants"
@@ -175,50 +177,9 @@ function AdminConsole({
   )
 }
 
-// A tiny reusable confirmation dialog built on the shared Dialog (focus
-// trap / Escape / return-focus already handled there) -- this app has no
-// standalone ConfirmDialog component yet, so this stays local rather than
-// introducing a new shared one for a single screen's use.
-function ConfirmActionDialog({
-  open,
-  title,
-  description,
-  confirmLabel,
-  destructive,
-  pending,
-  onConfirm,
-  onClose,
-}: {
-  open: boolean
-  title: string
-  description: string
-  confirmLabel: string
-  destructive?: boolean
-  pending: boolean
-  onConfirm: () => void
-  onClose: () => void
-}) {
-  return (
-    <Dialog open={open} onClose={onClose} title={title}>
-      <div className="flex flex-col gap-4 text-sm">
-        <p className="text-[var(--muted-foreground)]">{description}</p>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            variant={destructive ? 'destructive' : 'default'}
-            disabled={pending}
-            onClick={onConfirm}
-          >
-            {pending ? 'Working…' : confirmLabel}
-          </Button>
-        </DialogFooter>
-      </div>
-    </Dialog>
-  )
-}
+// The local ConfirmActionDialog was promoted to the shared ConfirmDialog
+// (components/ui/confirm-dialog.tsx) in design-system Phase B; behaviour and
+// props are unchanged.
 
 const PAGE_SIZE = 25
 const REGION_OPTIONS = ['us', 'eu', 'apac']
@@ -304,7 +265,7 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
       cell: (t) => (
         <Select
           aria-label={`Data region for ${t.name}`}
-          className="h-7 w-24 px-2 py-0.5 text-xs max-md:h-11 max-md:w-full max-md:text-base"
+          className="h-8 w-24 px-2 py-0.5 text-xs max-md:h-11 max-md:w-full max-md:text-base"
           value={t.data_region}
           disabled={dataRegionMutation.isPending}
           onChange={(e) => dataRegionMutation.mutate({ id: t.id, dataRegion: e.target.value })}
@@ -445,7 +406,7 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
       />
       <PlanDialog credentials={credentials} tenant={planTarget} onClose={() => setPlanTarget(null)} />
       {confirmTarget && (
-        <ConfirmActionDialog
+        <ConfirmDialog
           open={!!confirmTarget}
           title={`${confirmTarget.status === 'suspended' ? 'Suspend' : 'Deactivate'} ${confirmTarget.tenant.name}?`}
           description={
@@ -543,7 +504,7 @@ function PlanDialog({
             onChange={(e) => setSeatCount(Number(e.target.value))}
           />
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
@@ -794,11 +755,17 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
         }
         rowActions={(a) =>
           a.is_active ? (
-            <span title={isSelf(a) ? 'You cannot deactivate your own account' : undefined}>
-              <Button variant="destructive" size="sm" disabled={isSelf(a)} onClick={() => setConfirmTarget(a)}>
+            <Tooltip content={isSelf(a) ? 'You cannot deactivate your own account' : null} side="bottom">
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={isSelf(a)}
+                aria-label={isSelf(a) ? 'Deactivate (you cannot deactivate your own account)' : undefined}
+                onClick={() => setConfirmTarget(a)}
+              >
                 Deactivate
               </Button>
-            </span>
+            </Tooltip>
           ) : (
             <Button
               variant="outline"
@@ -817,7 +784,7 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
         onClose={() => setCreateOpen(false)}
       />
       {confirmTarget && (
-        <ConfirmActionDialog
+        <ConfirmDialog
           open={!!confirmTarget}
           title={`Deactivate ${confirmTarget.email}?`}
           description="This admin will no longer be able to sign in to Platform Administration until reactivated."

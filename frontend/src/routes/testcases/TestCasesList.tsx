@@ -22,7 +22,10 @@ import { listFieldOptions } from '@/api/fieldCustomization'
 import { FilterBar } from '@/components/table/FilterBar'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, Drawer } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -63,6 +66,7 @@ export function TestCasesList() {
   const [newModuleName, setNewModuleName] = useState('')
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   // Bug #13: filters now persist in the URL (shareable, survives
   // refresh) instead of plain component state.
@@ -169,7 +173,10 @@ export function TestCasesList() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['test-modules', projectId] })
       queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
+      showToast('success', 'Module deleted')
     },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not delete that module'),
   })
 
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
@@ -257,7 +264,7 @@ export function TestCasesList() {
       header: 'Priority',
       headerCell: sortHeader('priority', 'Priority'),
       card: 'badge',
-      cell: (tc) => <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>,
+      cell: (tc) => <StatusBadge tone={priorityTone(tc.priority)}>{tc.priority}</StatusBadge>,
     },
     {
       key: 'assignee',
@@ -271,7 +278,7 @@ export function TestCasesList() {
       cell: (tc) => (
         <Select
           aria-label={`Module for ${tc.title}`}
-          className="h-7 w-36 text-xs max-md:h-11 max-md:w-full max-md:text-base"
+          className="h-8 w-36 text-xs max-md:h-11 max-md:w-full max-md:text-base"
           value={tc.module_id ?? ''}
           onChange={(e) => assignModuleMutation.mutate({ id: tc.id, module: e.target.value || null })}
         >
@@ -290,22 +297,24 @@ export function TestCasesList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
+      <PageHeader
+        back={
           <Link
             to={`/projects/${projectId}`}
             className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
           >
             ← {projectQuery.data?.name ?? 'Project'}
           </Link>
-          <h1 className="text-lg font-semibold">Test Cases</h1>
-        </div>
-        <div className="grid grid-cols-2 gap-2 md:flex">
+        }
+        title="Test Cases"
+        actionsClassName="grid grid-cols-2 md:flex"
+        actions={
+          <>
           <a
             href={exportUrl(projectId!)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-8 items-center justify-center rounded-md border border-[var(--border)] px-3 text-sm hover:bg-[var(--muted)] max-md:h-11"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             Export CSV
           </a>
@@ -324,8 +333,9 @@ export function TestCasesList() {
           <Button className="col-span-2 max-md:order-first md:col-span-1" onClick={() => setCreateOpen(true)}>
             New Test Case
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <FilterBar
         activeCount={[status, priority, assigneeId, moduleId].filter(Boolean).length + (showDeprecated ? 1 : 0)}
@@ -580,7 +590,14 @@ export function TestCasesList() {
                   size="sm"
                   variant="ghost"
                   disabled={deleteModuleMutation.isPending}
-                  onClick={() => deleteModuleMutation.mutate(m.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Delete module “${m.name}”?`,
+                      description: `The module is deleted. Its ${m.test_case_count} test case${m.test_case_count === 1 ? '' : 's'} are not deleted, but they lose this module grouping.`,
+                      confirmLabel: 'Delete module',
+                      run: () => deleteModuleMutation.mutateAsync(m.id),
+                    })
+                  }
                 >
                   Delete
                 </Button>
@@ -589,6 +606,7 @@ export function TestCasesList() {
           </ul>
         </div>
       </Dialog>
+      {confirmDialog}
     </div>
   )
 }

@@ -5,12 +5,14 @@ import { createComment, deleteComment, listComments, type CommentOwnerType } fro
 import { ApiError } from '@/api/client'
 import { listUsers } from '@/api/users'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 // Phase 8 (AI/SaaS vision roadmap, GAP-74): reuses the exact same
 // polymorphic owner_type pattern Phase 7's AttachmentsCard established --
@@ -29,6 +31,7 @@ export function CommentsPanel({
   const [body, setBody] = useState('')
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([])
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const commentsQuery = useQuery({ queryKey, queryFn: () => listComments(ownerType, ownerId) })
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
@@ -64,6 +67,7 @@ export function CommentsPanel({
 
   return (
     <div className="flex flex-col gap-3">
+      {confirmDialog}
       <div className="flex flex-col gap-2">
         <Textarea
           aria-label="New comment"
@@ -110,7 +114,7 @@ export function CommentsPanel({
             )
           })}
         </div>
-        {createError && <p className="text-xs text-[var(--destructive)]">{createError}</p>}
+        <FormError>{createError}</FormError>
         <div>
           <Button
             size="sm"
@@ -150,7 +154,14 @@ export function CommentsPanel({
                     variant="ghost"
                     size="sm"
                     disabled={deleteMutation.isPending}
-                    onClick={() => deleteMutation.mutate(c.id)}
+                    onClick={() =>
+                      ask({
+                        title: 'Delete this comment?',
+                        description: 'The comment is removed for everyone and cannot be restored.',
+                        confirmLabel: 'Delete comment',
+                        run: () => deleteMutation.mutateAsync(c.id),
+                      })
+                    }
                   >
                     Delete
                   </Button>

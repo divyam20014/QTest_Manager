@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 export interface FailedStepContext {
   executionStepId: string
@@ -255,7 +256,7 @@ function DefectQuickCreateForm({
           </div>
         )}
 
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Skip

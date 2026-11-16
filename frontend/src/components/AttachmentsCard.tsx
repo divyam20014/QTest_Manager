@@ -56,7 +56,7 @@ function AttachmentThumbnail({ attachment }: { attachment: Attachment }) {
 
   if (!objectUrl) {
     return (
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)] text-[10px] text-[var(--muted-foreground)]">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)] text-[11px] text-[var(--muted-foreground)]">
         …
       </div>
     )
@@ -185,7 +185,6 @@ export function AttachmentsPanel({
       <div
         role="button"
         tabIndex={0}
-        aria-label="Upload attachment: click or drag and drop a file here"
         onClick={() => fileInputRef.current?.click()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -261,7 +260,7 @@ export function AttachmentsPanel({
               {a.mime_type.startsWith('image/') ? (
                 <AttachmentThumbnail attachment={a} />
               ) : (
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)] text-[10px] font-medium uppercase text-[var(--muted-foreground)]">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--muted)] text-[11px] font-medium uppercase text-[var(--muted-foreground)]">
                   {a.file_name.split('.').pop()?.slice(0, 4) ?? 'file'}
                 </div>
               )}

@@ -92,7 +92,7 @@ export function NotificationBell() {
       >
         <Bell className="size-4" />
         {unreadCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-[var(--destructive)] text-[10px] font-medium text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-[var(--destructive)] text-[11px] font-medium text-[var(--destructive-foreground)]">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -127,7 +127,7 @@ export function NotificationBell() {
                   >
                     <p className="font-medium">{n.title}</p>
                     <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">{n.body}</p>
-                    <p className="mt-0.5 text-[10px] text-[var(--muted-foreground)]">
+                    <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
                       {new Date(n.created_at).toLocaleString()}
                     </p>
                   </button>

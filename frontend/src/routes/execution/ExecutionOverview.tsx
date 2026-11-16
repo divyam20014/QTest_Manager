@@ -3,9 +3,13 @@ import { Link } from 'react-router-dom'
 
 import { listTestRuns, getTestRun, type TestRunCase } from '@/api/execution'
 import { listProjects, type Project } from '@/api/projects'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { humanizeKey } from '@/lib/labels'
+import { RUN_CASE_STATUS_TONE } from '@/lib/statusTones'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface ActiveRow {
   project: Project
@@ -14,14 +18,6 @@ interface ActiveRow {
   runCase: TestRunCase
 }
 
-const STATUS_TONE: Record<string, 'neutral' | 'positive' | 'warning' | 'critical'> = {
-  pending: 'neutral',
-  in_progress: 'warning',
-  passed: 'positive',
-  failed: 'critical',
-  blocked: 'critical',
-  ignored: 'neutral',
-}
 
 // "Execution Console" as a sidebar landing page: a cross-project queue of
 // test-run-cases currently in progress (or still pending in an active,
@@ -54,7 +50,10 @@ export function ExecutionOverview() {
     })),
   })
 
-  const isLoading = runListQueries.some((q) => q.isLoading) || runDetailQueries.some((q) => q.isLoading)
+  const isLoading =
+    projectsQuery.isLoading || runListQueries.some((q) => q.isLoading) || runDetailQueries.some((q) => q.isLoading)
+  const isError =
+    projectsQuery.isError || runListQueries.some((q) => q.isError) || runDetailQueries.some((q) => q.isError)
 
   const rows: ActiveRow[] = runDetailQueries
     .flatMap((q) => {
@@ -68,22 +67,39 @@ export function ExecutionOverview() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-lg font-semibold">Execution Console</h1>
-      <p className="text-sm text-[var(--muted-foreground)]">
-        Test cases awaiting or currently under execution, across every active test run you can see. Open one to
-        continue executing it.
-      </p>
+      <PageHeader
+        title="Execution Console"
+        description="Test cases awaiting or currently under execution, across every active test run you can see. Open one to continue executing it."
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>Active Executions</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading && <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>}
-          {!isLoading && rows.length === 0 && (
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Nothing in progress right now. Start a test run from a project's Test Runs tab.
-            </p>
+          {isLoading && (
+            <div role="status" className="flex flex-col gap-2">
+              <span className="sr-only">Loading active executions</span>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          )}
+          {isError && (
+            <ErrorState
+              message="Some projects or runs could not be loaded, so this list may be incomplete."
+              onRetry={() => {
+                projectsQuery.refetch()
+                runListQueries.forEach((q) => q.isError && q.refetch())
+                runDetailQueries.forEach((q) => q.isError && q.refetch())
+              }}
+            />
+          )}
+          {!isLoading && !isError && rows.length === 0 && (
+            <EmptyState
+              title="Nothing in progress right now"
+              description="Start a test run from a project's Test Runs tab and its cases will appear here."
+            />
           )}
           <ul className="flex flex-col gap-2">
             {rows.map(({ project, runId, runName, runCase }) => (
@@ -102,7 +118,7 @@ export function ExecutionOverview() {
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {runCase.passed_count}/{runCase.step_count} steps
                     </span>
-                    <Badge tone={STATUS_TONE[runCase.status]}>{humanizeKey(runCase.status)}</Badge>
+                    <StatusBadge tone={RUN_CASE_STATUS_TONE[runCase.status]}>{humanizeKey(runCase.status)}</StatusBadge>
                   </span>
                 </Link>
               </li>

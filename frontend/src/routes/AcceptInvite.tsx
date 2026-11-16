@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FormError } from '@/components/ui/form-field'
 
 // Tier 1 / ADR-053 (SR-2.4/5.11, SAAS-GAP-8): public, unauthenticated --
 // the token itself (an unguessable secret, hashed at rest server-side) is
@@ -67,7 +68,7 @@ export function AcceptInvite() {
                   digit.
                 </p>
               </div>
-              {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
+              <FormError>{error}</FormError>
               <Button type="submit" disabled={acceptMutation.isPending || !token}>
                 {acceptMutation.isPending ? 'Activating…' : 'Activate Account'}
               </Button>

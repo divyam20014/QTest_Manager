@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { CsvDropZone } from '@/components/ui/csv-drop-zone'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
+import { FormError } from '@/components/ui/form-field'
 
 const PRESETS: { value: ImportPreset; label: string }[] = [
   { value: 'testrail', label: 'TestRail' },
@@ -109,8 +110,8 @@ function MappedImportFlow({
           column to a field next.
         </p>
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium">Preset (optional)</label>
-          <Select value={preset} onChange={(e) => setPreset(e.target.value as ImportPreset | '')}>
+          <label htmlFor="import-preset" className="text-xs font-medium">Preset (optional)</label>
+          <Select id="import-preset" value={preset} onChange={(e) => setPreset(e.target.value as ImportPreset | '')}>
             <option value="">None — map manually</option>
             {PRESETS.map((p) => (
               <option key={p.value} value={p.value}>
@@ -120,7 +121,7 @@ function MappedImportFlow({
           </Select>
         </div>
         <CsvDropZone file={file} onSelect={setFile} disabled={detectMutation.isPending} />
-        {detectError && <p className="text-xs text-[var(--destructive)]">{detectError}</p>}
+        <FormError>{detectError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onCancel}>
             Back
@@ -157,6 +158,7 @@ function MappedImportFlow({
               </span>
               <Select
                 className="flex-1"
+                aria-label={`Source column for ${field}`}
                 value={mapping[field] ?? ''}
                 onChange={(e) =>
                   setMapping((m) => ({ ...m, [field]: e.target.value }) as Record<string, string>)
@@ -169,7 +171,7 @@ function MappedImportFlow({
                 ))}
               </Select>
               {sample && (
-                <span className="w-32 shrink-0 truncate text-xs text-[var(--muted-foreground)]" title={sample}>
+                <span className="line-clamp-2 w-32 shrink-0 break-words text-xs text-[var(--muted-foreground)]">
                   e.g. "{sample}"
                 </span>
               )}
@@ -182,7 +184,7 @@ function MappedImportFlow({
           Required fields still unmapped: {unmappedRequired.join(', ')}
         </p>
       )}
-      {importError && <p className="text-xs text-[var(--destructive)]">{importError}</p>}
+      <FormError>{importError}</FormError>
       <DialogFooter>
         <Button variant="outline" size="sm" onClick={() => setDetection(null)}>
           Back
@@ -271,7 +273,7 @@ export function ImportDialog({
 
             <CsvDropZone file={file} onSelect={setFile} disabled={importMutation.isPending} />
 
-            {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+            <FormError>{serverError}</FormError>
           </>
         )}
 

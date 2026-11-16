@@ -30,7 +30,12 @@ import { CommentsCard } from '@/components/CommentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { TestDataSetsCard } from '@/components/TestDataSetsCard'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DetailSkeleton } from '@/components/ui/skeleton'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogFooter, Drawer } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
@@ -39,6 +44,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { isAdmin, isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { STATUS_DISPLAY } from './statusDisplay'
 
@@ -143,9 +149,12 @@ export function TestCaseDetail() {
       showToast('error', err instanceof ApiError ? err.message : 'Something went wrong'),
   })
 
+  const { ask, dialog: confirmDialog } = useConfirm()
+
   const testCase = caseQuery.data
-  if (caseQuery.isLoading) return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
-  if (caseQuery.isError || !testCase) return <p className="text-sm text-[var(--destructive)]">Test case not found.</p>
+  if (caseQuery.isLoading) return <DetailSkeleton />
+  if (caseQuery.isError) return <ErrorState message="Could not load this test case." onRetry={() => caseQuery.refetch()} />
+  if (!testCase) return <EmptyState title="Test case not found" description="It may have been deleted, or you may not have access to it." />
 
   const canApprove = isManagerOrAbove(user)
   const isAssignedReviewer =
@@ -169,33 +178,27 @@ export function TestCaseDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Link
-          to={`/projects/${testCase.project_id}/test-cases`}
-          className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
-        >
-          ← Test Cases
-        </Link>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="min-w-0 break-words text-lg font-semibold">{testCase.title}</h1>
-          <Badge tone={STATUS_DISPLAY[testCase.status].tone}>{STATUS_DISPLAY[testCase.status].label}</Badge>
-          <span className="text-xs text-[var(--muted-foreground)]">v{testCase.version_number}</span>
-        </div>
-        {testCase.description && (
-          <p className="mt-1 max-w-2xl text-sm text-[var(--muted-foreground)]">{testCase.description}</p>
-        )}
-        <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-          Assignee: {testCase.assignee_id ? (usersById.get(testCase.assignee_id) ?? 'Unknown') : 'Unassigned'}
-        </p>
-        {testCase.status === 'ready_for_review' && (
-          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-            Reviewer:{' '}
-            {testCase.reviewer_id ? (testCase.reviewer_name ?? 'Unknown') : 'Anyone who can approve'}
-          </p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+      <div className="flex flex-col gap-1">
+      <PageHeader
+        back={
+          <Link
+            to={`/projects/${testCase.project_id}/test-cases`}
+            className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
+          >
+            ← Test Cases
+          </Link>
+        }
+        title={testCase.title}
+        meta={
+          <>
+            <StatusBadge tone={STATUS_DISPLAY[testCase.status].tone}>{STATUS_DISPLAY[testCase.status].label}</StatusBadge>
+            <span className="text-xs text-[var(--muted-foreground)]">v{testCase.version_number}</span>
+          </>
+        }
+        description={testCase.description || undefined}
+        actionsClassName="grid grid-cols-2 md:flex md:flex-wrap"
+        actions={
+          <>
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           Edit
         </Button>
@@ -226,7 +229,15 @@ export function TestCaseDetail() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => runAction.mutate('deprecate')}
+            onClick={() =>
+              ask({
+                title: 'Deprecate this test case?',
+                description:
+                  'A deprecated test case can no longer be added to new runs and cannot be returned to Approved. Past results and history are kept.',
+                confirmLabel: 'Deprecate',
+                run: () => runAction.mutateAsync('deprecate'),
+              })
+            }
             disabled={runAction.isPending}
           >
             Deprecate
@@ -235,13 +246,33 @@ export function TestCaseDetail() {
         <Button
           variant="destructive"
           size="sm"
-          onClick={() => runAction.mutate('delete')}
+          onClick={() =>
+            ask({
+              title: 'Delete this test case?',
+              description: `“${testCase.title}” and its steps, version history and comments are permanently deleted. This cannot be undone.`,
+              confirmLabel: 'Delete test case',
+              run: () => runAction.mutateAsync('delete'),
+            })
+          }
           disabled={runAction.isPending}
         >
           Delete
         </Button>
+          </>
+        }
+      />
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Assignee: {testCase.assignee_id ? (usersById.get(testCase.assignee_id) ?? 'Unknown') : 'Unassigned'}
+        </p>
+        {testCase.status === 'ready_for_review' && (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Reviewer:{' '}
+            {testCase.reviewer_id ? (testCase.reviewer_name ?? 'Unknown') : 'Anyone who can approve'}
+          </p>
+        )}
       </div>
-      {actionError && <p className="text-xs text-[var(--destructive)]">{actionError}</p>}
+      {confirmDialog}
+      <FormError>{actionError}</FormError>
 
       <Card>
         <CardHeader>
@@ -447,7 +478,7 @@ function ReviewWithAIDialog({
           ambiguous expected results. This only surfaces suggestions — nothing here is applied to
           the test case automatically; you decide what to change.
         </p>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         {result && (
           <div className="flex flex-col gap-2">
             {result.suggestions.length === 0 ? (
@@ -593,11 +624,11 @@ function VersionHistoryCard({
                       key={s.step_number}
                       className={
                         s.change === 'added'
-                          ? 'text-emerald-700 dark:text-emerald-400'
+                          ? 'text-[var(--status-good)]'
                           : s.change === 'removed'
-                            ? 'text-red-700 dark:text-red-400 line-through'
+                            ? 'text-[var(--status-serious)] line-through'
                             : s.change === 'modified'
-                              ? 'text-amber-700 dark:text-amber-400'
+                              ? 'text-[var(--status-warning)]'
                               : 'text-[var(--muted-foreground)]'
                       }
                     >

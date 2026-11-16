@@ -13,6 +13,7 @@ import {
 } from '@/api/requirements'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -23,6 +24,7 @@ import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { FormError } from '@/components/ui/form-field'
 import { useNavigate } from 'react-router-dom'
 
 const PAGE_SIZE = 20
@@ -104,16 +106,16 @@ export function RequirementsList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="min-w-0 break-words text-lg font-semibold">
-          Requirements {projectQuery.data ? `— ${projectQuery.data.name}` : ''}
-        </h1>
-        {canManage && (
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            New Requirement
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title={`Requirements ${projectQuery.data ? `— ${projectQuery.data.name}` : ''}`.trim()}
+        actions={
+          canManage && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              New Requirement
+            </Button>
+          )
+        }
+      />
 
       {coverageQuery.data && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-[var(--border)] px-4 py-3 text-sm">
@@ -227,7 +229,7 @@ function NewRequirementDialog({
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
+        <FormError>{error}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel

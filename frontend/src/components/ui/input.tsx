@@ -19,6 +19,8 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
         // Mobile redesign Phase 2: phone-size fields are 44px tall with 16px
         // text -- anything under 16px makes iOS Safari zoom the page on focus.
         'max-md:h-11 max-md:text-base',
+        // Validation failed: red border (the message sits under the field).
+        'aria-[invalid=true]:border-[var(--destructive)]',
         className,
       )}
       {...props}

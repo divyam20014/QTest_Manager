@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, Navigate } from 'react-router-dom'
 
 import { fetchComplianceDetail } from '@/api/reporting'
+import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
@@ -70,7 +71,7 @@ export function CompliancePrintView() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]"
+            className={buttonVariants({ variant: 'outline' })}
           >
             Print / Save as PDF
           </button>

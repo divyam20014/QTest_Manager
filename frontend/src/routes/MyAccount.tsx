@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { fetchOwnHistory } from '@/api/audit'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SessionsCard } from '@/components/SessionsCard'
 import { useAuth } from '@/lib/auth'
@@ -12,7 +13,7 @@ export function MyAccount() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-lg font-semibold">My Account</h1>
+      <PageHeader title="My Account" description="Your profile, active sessions and account activity." />
 
       <Card>
         <CardHeader>

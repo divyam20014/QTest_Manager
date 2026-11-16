@@ -5,8 +5,9 @@ import { z } from 'zod'
 import type { ProjectCreateRequest } from '@/api/projects'
 import { Button } from '@/components/ui/button'
 import { DialogFooter } from '@/components/ui/dialog'
+import { useReportDirty } from '@/components/ui/dirtyForm'
+import { FormError, FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 
 const DOMAINS = ['Motor', 'Health', 'Travel', 'Life', 'Property'] as const
@@ -54,101 +55,103 @@ export function ProjectForm({
   inDialog?: boolean
 }) {
   const form = useForm<ProjectFormValues>({ resolver: zodResolver(schema), defaultValues })
+  const errors = form.formState.errors
+  // Closing the surrounding dialog with unsaved edits asks first.
+  useReportDirty(form.formState.isDirty)
 
   return (
     <form
       className="flex flex-col gap-3"
+      noValidate
       onSubmit={form.handleSubmit((values) =>
         onSubmit({ ...values, manager_user_id: values.manager_user_id || null }),
       )}
     >
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="name">Name</Label>
-        <Input id="name" autoComplete="off" {...form.register('name')} />
-        {form.formState.errors.name && (
-          <p className="text-xs text-[var(--destructive)]">{form.formState.errors.name.message}</p>
-        )}
-      </div>
+      <FormField id="name" label="Name" required error={errors.name?.message}>
+        {(field) => <Input {...field} autoComplete="off" {...form.register('name')} />}
+      </FormField>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="domain">Domain</Label>
-          <Select id="domain" {...form.register('domain')}>
-            {DOMAINS.map((d) => (
-              <option key={d} value={d}>
-                {d}
+        <FormField id="domain" label="Domain" required error={errors.domain?.message}>
+          {(field) => (
+            <Select {...field} {...form.register('domain')}>
+              {DOMAINS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+        <FormField id="priority" label="Priority" required error={errors.priority?.message}>
+          {(field) => (
+            <Select {...field} {...form.register('priority')}>
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+      </div>
+
+      <FormField id="status" label="Status" required error={errors.status?.message}>
+        {(field) => (
+          <Select {...field} {...form.register('status')}>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
               </option>
             ))}
           </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="priority">Priority</Label>
-          <Select id="priority" {...form.register('priority')}>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+        )}
+      </FormField>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="status">Status</Label>
-        <Select id="status" {...form.register('status')}>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </Select>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="manager_name">Manager name</Label>
-        <Input id="manager_name" autoComplete="off" {...form.register('manager_name')} />
-      </div>
+      <FormField id="manager_name" label="Manager name" required error={errors.manager_name?.message}>
+        {(field) => <Input {...field} autoComplete="off" {...form.register('manager_name')} />}
+      </FormField>
 
       {users.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="manager_user_id">Linked manager account (optional)</Label>
-          <Select id="manager_user_id" {...form.register('manager_user_id')}>
-            <option value="">Not linked to a user account</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <FormField
+          id="manager_user_id"
+          label="Linked manager account (optional)"
+          helper="Link a user account so this manager can sign in and see the project."
+        >
+          {(field) => (
+            <Select {...field} {...form.register('manager_user_id')}>
+              <option value="">Not linked to a user account</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="start_date">Start date</Label>
-          <Input id="start_date" type="date" {...form.register('start_date')} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="end_date">End date</Label>
-          <Input id="end_date" type="date" {...form.register('end_date')} />
-          {form.formState.errors.end_date && (
-            <p className="text-xs text-[var(--destructive)]">{form.formState.errors.end_date.message}</p>
-          )}
-        </div>
+        <FormField id="start_date" label="Start date" required error={errors.start_date?.message}>
+          {(field) => <Input {...field} type="date" {...form.register('start_date')} />}
+        </FormField>
+        <FormField id="end_date" label="End date" required error={errors.end_date?.message}>
+          {(field) => <Input {...field} type="date" {...form.register('end_date')} />}
+        </FormField>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="budget">Budget</Label>
-          <Input id="budget" type="number" inputMode="decimal" min={0} step="0.01" {...form.register('budget')} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="region">Region</Label>
-          <Input id="region" {...form.register('region')} />
-        </div>
+        <FormField id="budget" label="Budget" required error={errors.budget?.message}>
+          {(field) => (
+            <Input {...field} type="number" inputMode="decimal" min={0} step="0.01" {...form.register('budget')} />
+          )}
+        </FormField>
+        <FormField id="region" label="Region" required error={errors.region?.message}>
+          {(field) => <Input {...field} {...form.register('region')} />}
+        </FormField>
       </div>
 
-      {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+      <FormError>{serverError}</FormError>
 
       {inDialog ? (
         <DialogFooter>

@@ -1,6 +1,20 @@
 @import "tailwindcss";
 
+/* App font (UX-028): self-hosted Inter Variable (imported in main.tsx).
+   "Inter Fallback" is a metric-matched local Arial so the swap from the
+   fallback to Inter does not shift layout (font-display: swap is set by
+   the fontsource face). */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
+  size-adjust: 107.4%;
+  ascent-override: 90.2%;
+  descent-override: 22.5%;
+  line-gap-override: 0%;
+}
+
 :root {
+  --font-sans: "Inter Variable", "Inter Fallback", system-ui, "Segoe UI", Roboto, sans-serif;
   --background: #ffffff;
   --foreground: #0a0a0a;
   --muted: #f4f4f5;
@@ -9,6 +23,13 @@
   --primary: #111827;
   --primary-foreground: #f9fafb;
   --destructive: #dc2626;
+  /* Text on a --destructive fill: 4.83:1 light, 7.16:1 dark. (White on the
+     dark-mode red #f87171 was 2.76:1 and failed WCAG AA.) */
+  --destructive-foreground: #ffffff;
+  /* Solid success fill (e.g. the Execution Console Pass button) and its text:
+     white on #047857 is 5.48:1. Dark mode swaps to the light status green. */
+  --success-solid: #047857;
+  --success-solid-foreground: #ffffff;
   --ring: #a1a1aa;
   --radius: 0.625rem;
 
@@ -80,6 +101,86 @@
      over it still passes WCAG AA. Reused via the .qth-texture utility
      below rather than inlined per-component. */
   --tactile-texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  /* ------------------------------------------------------------------
+     QTestHub design system tokens (Phase B). Formalises values the app
+     already uses -- nothing below changes existing visual output. See
+     docs/DESIGN_SYSTEM.md. Colour tokens that differ per theme exist in
+     ALL THREE places (here, the prefers-color-scheme block and the
+     [data-theme="dark"] block); designSystem.test.ts fails if they drift.
+     ------------------------------------------------------------------ */
+
+  /* Status: information (blue). Reserved for state like the other
+     --status-* tokens; light pair 5.85:1, dark pair 7.69:1 (AA). */
+  --status-info: #1d4ed8;
+  --status-info-bg: #e8f0fe;
+
+  /* Chart chrome -- axis/grid/tooltip colours for Recharts, replacing the
+     per-page isDark ? '#...' : '#...' ternaries. */
+  --chart-grid: #e1e0d9;
+  --chart-axis-text: #52514e;
+  --chart-axis-line: #c3c2b7;
+  --chart-tooltip-bg: #fcfcfb;
+  --chart-tooltip-border: #c3c2b7;
+
+  /* Radius scale. --radius (0.625rem) is kept for existing callers. */
+  --radius-control: 0.375rem; /* buttons, inputs, selects, tabs (rounded-md) */
+  --radius-card: 0.5rem; /* flat cards, tables, dropdown menus (rounded-lg) */
+  --radius-panel: 0.75rem; /* dialogs, embossed cards (rounded-xl) */
+  --radius-sheet: 1rem; /* phone bottom sheets (rounded-t-2xl) */
+  --radius-pill: 9999px; /* badges, chips */
+
+  /* Spacing scale: 4px base. Prefer Tailwind's gap-/p- utilities (they are
+     the same 4px scale); these exist for CSS and documentation. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --page-gutter: 1rem; /* main content padding below md; 1.5rem from md up */
+  --page-gutter-md: 1.5rem;
+  --control-height: 2.25rem; /* default button/input; 2.75rem on phones */
+  --control-height-sm: 2rem;
+  --control-height-touch: 2.75rem;
+
+  /* Typography scale (size / line-height / weight). Use the .qth-type-*
+     classes below, or the Tailwind equivalents named in each comment. */
+  --type-page-title-size: 1.125rem; /* text-lg font-semibold */
+  --type-page-title-line: 1.75rem;
+  --type-section-title-size: 1rem; /* text-base font-semibold */
+  --type-section-title-line: 1.5rem;
+  --type-card-heading-size: 0.875rem; /* text-sm font-semibold */
+  --type-card-heading-line: 1.25rem;
+  --type-body-size: 0.875rem; /* text-sm */
+  --type-body-line: 1.25rem;
+  --type-label-size: 0.75rem; /* text-xs font-medium */
+  --type-label-line: 1rem;
+  --type-helper-size: 0.75rem; /* text-xs, muted */
+  --type-helper-line: 1rem;
+  --type-table-head-size: 0.75rem; /* text-xs font-medium, muted */
+  --type-table-value-size: 0.875rem; /* text-sm */
+  --type-button-size: 0.875rem; /* text-sm font-medium */
+  --type-micro-size: 0.6875rem; /* 11px: kbd hints, overline labels only */
+
+  /* Stacking order (one ladder; do not invent new z-index values). */
+  --z-sticky: 10; /* sticky table heads, sheet footers */
+  --z-dropdown: 30;
+  --z-backdrop: 40; /* mobile nav backdrop */
+  --z-overlay: 50; /* dialogs, drawers, sidebar, tab bar sheets */
+  --z-toast: 100; /* toasts, skip link */
+
+  /* Motion. All durations collapse to 0 under prefers-reduced-motion. */
+  --motion-fast: 120ms;
+  --motion-base: 150ms;
+  --motion-slow: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Breakpoints (documentation -- Tailwind owns the real ones):
+     sm 640 / md 768 (phone <-> tablet; bottom nav and sheets switch here) /
+     lg 1024 / xl 1280 / 2xl 1536. */
 }
 
 /* Theme toggle (Tier 3 UX polish): an explicit data-theme attribute on
@@ -98,6 +199,9 @@
     --primary: #f4f4f5;
     --primary-foreground: #0a0a0a;
     --destructive: #f87171;
+    --destructive-foreground: #0a0a0a;
+    --success-solid: #3dd68c;
+    --success-solid-foreground: #0a0a0a;
     --ring: #52525b;
 
     --brand: #5b9dee;
@@ -115,6 +219,15 @@
     --status-critical-bg: #321830;
     --status-neutral: #a1a1aa;
     --status-neutral-bg: #232326;
+
+    --status-info: #8ab8f5;
+    --status-info-bg: #12233d;
+
+    --chart-grid: #2c2c2a;
+    --chart-axis-text: #c3c2b7;
+    --chart-axis-line: #383835;
+    --chart-tooltip-bg: #1a1a19;
+    --chart-tooltip-border: #383835;
 
     /* Dark-mode tactile palette is its own considered variant (brushed
        graphite/glass), not an inverted light palette -- a straight
@@ -139,6 +252,9 @@
   --primary: #f4f4f5;
   --primary-foreground: #0a0a0a;
   --destructive: #f87171;
+  --destructive-foreground: #0a0a0a;
+  --success-solid: #3dd68c;
+  --success-solid-foreground: #0a0a0a;
   --ring: #52525b;
 
   --brand: #5b9dee;
@@ -157,6 +273,15 @@
   --status-neutral: #a1a1aa;
   --status-neutral-bg: #232326;
 
+  --status-info: #8ab8f5;
+  --status-info-bg: #12233d;
+
+  --chart-grid: #2c2c2a;
+  --chart-axis-text: #c3c2b7;
+  --chart-axis-line: #383835;
+  --chart-tooltip-bg: #1a1a19;
+  --chart-tooltip-border: #383835;
+
   --tactile-surface: #1c1e24;
   --tactile-surface-raised: #23262e;
   --tactile-highlight: rgba(255, 255, 255, 0.06);
@@ -164,15 +289,22 @@
   --tactile-shadow-darker: rgba(0, 0, 0, 0.8);
 }
 
-* {
-  border-color: var(--border);
+/* Default border colour. It must live in a cascade layer: an unlayered rule
+   beats every Tailwind utility (utilities are layered), which made colour
+   utilities such as border-[var(--ring)], border-[var(--primary)] and the
+   aria-invalid red border silently do nothing. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
+  font: 15px/1.5 var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
 }
 
 #root {
@@ -280,5 +412,43 @@ body {
     min-height: 2.75rem;
     align-items: center;
     justify-content: center;
+  }
+
+  /* UX-017: secondary links and buttons inside a phone card (a project link
+     under a run name, a badge link) are 44px tall and sit above the title
+     link's stretched hit area, so tapping them never opens the card instead. */
+  .qth-card dd a,
+  .qth-card dd button,
+  .qth-card > div:not(:first-child) a {
+    position: relative;
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+}
+
+/* Typography utilities (design system). In @layer components so a Tailwind
+   utility on the same element (e.g. text-sm) still wins when a one-off is
+   genuinely needed. */
+@layer components {
+  .qth-type-page-title { font-size: var(--type-page-title-size); line-height: var(--type-page-title-line); font-weight: 600; }
+  .qth-type-section-title { font-size: var(--type-section-title-size); line-height: var(--type-section-title-line); font-weight: 600; }
+  .qth-type-card-heading { font-size: var(--type-card-heading-size); line-height: var(--type-card-heading-line); font-weight: 600; }
+  .qth-type-body { font-size: var(--type-body-size); line-height: var(--type-body-line); }
+  .qth-type-label { font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: 500; }
+  .qth-type-helper { font-size: var(--type-helper-size); line-height: var(--type-helper-line); color: var(--muted-foreground); }
+  .qth-type-table-head { font-size: var(--type-table-head-size); font-weight: 500; color: var(--muted-foreground); }
+  .qth-type-table-value { font-size: var(--type-table-value-size); }
+  .qth-type-overline { font-size: var(--type-micro-size); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+}
+
+/* Reduced motion: collapse the motion tokens so anything built on them
+   (and the keyframes above) stops animating for people who ask for that. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
   }
 }

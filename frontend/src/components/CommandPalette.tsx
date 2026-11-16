@@ -196,7 +196,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             autoComplete="off"
             className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
           />
-          <kbd className="shrink-0 rounded border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--muted-foreground)]">
+          <kbd className="shrink-0 rounded-md border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--muted-foreground)]">
             Esc
           </kbd>
         </div>

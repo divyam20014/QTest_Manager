@@ -7,6 +7,7 @@ import { listProjects, type Project } from '@/api/projects'
 import { FilterBar } from '@/components/table/FilterBar'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/select'
 
 type OverviewRow = { project: Project; run: TestRunSummary }
@@ -98,7 +99,7 @@ export function TestRunsOverview() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-lg font-semibold">Test Runs</h1>
+      <PageHeader title="Test Runs" description="Test runs across every project you can see." />
 
       <FilterBar activeCount={(projectId ? 1 : 0) + (activeOnly ? 1 : 0)} onClear={() => { setProjectId(''); setActiveOnly(false) }} desktopClear={false}>
         <div className="flex flex-col gap-1.5">

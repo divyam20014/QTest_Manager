@@ -6,6 +6,7 @@ import {
   fetchWorkloadSummary,
 } from '@/api/reporting'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 // PV-7.1/7.2/7.4: the underlying metrics for one project, not one blended
@@ -37,7 +38,7 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
         </CardHeader>
         <CardContent>
           {!readiness ? (
-            <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
+            <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading</span><Skeleton className="h-4 w-48" /><Skeleton className="h-4 w-32" /></div>
           ) : (
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between">

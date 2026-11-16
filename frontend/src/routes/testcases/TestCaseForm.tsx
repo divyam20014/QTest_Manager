@@ -10,6 +10,8 @@ import type { SharedStep } from '@/api/sharedSteps'
 import type { TestCaseCreateRequest } from '@/api/testCases'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useReportDirty } from '@/components/ui/dirtyForm'
+import { FormError, FormField } from '@/components/ui/form-field'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -85,6 +87,9 @@ export function TestCaseForm({
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [form.formState.isDirty])
+  // Closing the surrounding drawer with unsaved edits asks first.
+  useReportDirty(form.formState.isDirty)
+  const errors = form.formState.errors
   const { fields, append, remove, insert, move } = useFieldArray({
     control: form.control,
     name: 'steps',
@@ -128,95 +133,73 @@ export function TestCaseForm({
         }),
       )}
     >
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="title">
-          Title <span className="text-[var(--destructive)]">*</span>
-        </Label>
-        <Input id="title" {...form.register('title')} />
-        {form.formState.errors.title && (
-          <p className="text-xs text-[var(--destructive)]">{form.formState.errors.title.message}</p>
-        )}
-      </div>
+      <FormField id="title" label="Title" required error={errors.title?.message}>
+        {(field) => <Input {...field} {...form.register('title')} />}
+      </FormField>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="module_id">Module</Label>
-          <Select id="module_id" {...form.register('module_id')}>
-            <option value="">Select a module…</option>
-            {modules.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.parent_id ? `↳ ${m.name}` : m.name}
-              </option>
-            ))}
-          </Select>
-          {form.formState.errors.module_id && (
-            <p className="text-xs text-[var(--destructive)]">
-              {form.formState.errors.module_id.message}
-            </p>
+        <FormField id="module_id" label="Module" error={errors.module_id?.message}>
+          {(field) => (
+            <Select {...field} {...form.register('module_id')}>
+              <option value="">Select a module…</option>
+              {modules.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.parent_id ? `↳ ${m.name}` : m.name}
+                </option>
+              ))}
+            </Select>
           )}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="scenario_id">Scenario ID</Label>
-          <Input id="scenario_id" {...form.register('scenario_id')} />
-        </div>
+        </FormField>
+        <FormField id="scenario_id" label="Scenario ID">
+          {(field) => <Input {...field} {...form.register('scenario_id')} />}
+        </FormField>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="scenario_description">Scenario Description</Label>
-        <Textarea id="scenario_description" {...form.register('scenario_description')} />
-      </div>
+      <FormField id="scenario_description" label="Scenario Description">
+        {(field) => <Textarea {...field} {...form.register('scenario_description')} />}
+      </FormField>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="description">Description</Label>
-        <Textarea id="description" {...form.register('description')} />
-        {form.formState.errors.description && (
-          <p className="text-xs text-[var(--destructive)]">
-            {form.formState.errors.description.message}
-          </p>
-        )}
+      <FormField id="description" label="Description" error={errors.description?.message}>
+        {(field) => <Textarea {...field} {...form.register('description')} />}
+      </FormField>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormField id="prerequisite" label="Prerequisite">
+          {(field) => <Textarea {...field} {...form.register('prerequisite')} />}
+        </FormField>
+        <FormField id="test_data" label="Test Data">
+          {(field) => <Textarea {...field} {...form.register('test_data')} />}
+        </FormField>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="prerequisite">Prerequisite</Label>
-          <Textarea id="prerequisite" {...form.register('prerequisite')} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="test_data">Test Data</Label>
-          <Textarea id="test_data" {...form.register('test_data')} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="priority">
-            Priority <span className="text-[var(--destructive)]">*</span>
-          </Label>
-          <Select id="priority" {...form.register('priority')}>
-            {(prioritiesQuery.data ?? []).map((p) => (
-              <option key={p.code} value={p.code}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="assignee_id">Assignee</Label>
-          <Select id="assignee_id" {...form.register('assignee_id')}>
-            <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <FormField id="priority" label="Priority" required error={errors.priority?.message}>
+          {(field) => (
+            <Select {...field} {...form.register('priority')}>
+              {(prioritiesQuery.data ?? []).map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+        <FormField id="assignee_id" label="Assignee">
+          {(field) => (
+            <Select {...field} {...form.register('assignee_id')}>
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label>
-          Steps <span className="text-[var(--destructive)]">*</span>
-        </Label>
+        <Label required>Steps</Label>
         {fields.map((field, index) => (
           <div
             key={field.id}
@@ -227,6 +210,7 @@ export function TestCaseForm({
               <Input
                 placeholder="Action"
                 aria-label={`Step ${index + 1} action`}
+                aria-invalid={errors.steps?.[index]?.action ? true : undefined}
                 {...form.register(`steps.${index}.action` as const)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -238,8 +222,14 @@ export function TestCaseForm({
               <Input
                 placeholder="Expected outcome"
                 aria-label={`Step ${index + 1} expected outcome`}
+                aria-invalid={errors.steps?.[index]?.expected ? true : undefined}
                 {...form.register(`steps.${index}.expected` as const)}
               />
+              {(errors.steps?.[index]?.action || errors.steps?.[index]?.expected) && (
+                <p role="alert" className="text-xs text-[var(--destructive)]">
+                  Step {index + 1}: enter both an action and an expected outcome.
+                </p>
+              )}
             </div>
             <div className="flex items-start gap-0.5 max-md:w-full max-md:justify-end">
             <div className="flex flex-col gap-0.5 max-md:flex-row">
@@ -289,9 +279,7 @@ export function TestCaseForm({
             </div>
           </div>
         ))}
-        {form.formState.errors.steps?.message && (
-          <p className="text-xs text-[var(--destructive)]">{form.formState.errors.steps.message}</p>
-        )}
+        <FormError>{errors.steps?.message}</FormError>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => append({ action: '', expected: '' })}>
             Add Step
@@ -331,7 +319,7 @@ export function TestCaseForm({
         </div>
       </div>
 
-      {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+      <FormError>{serverError}</FormError>
 
       {/* Phone: the submit sits pinned at the bottom of the Drawer so a long
           form never leaves it off-screen. */}

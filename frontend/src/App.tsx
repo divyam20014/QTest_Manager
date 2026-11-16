@@ -1,47 +1,68 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+
+import { RouteBoundary } from '@/components/RouteBoundary'
+import { lazyRoute } from '@/lib/lazyRoute'
 
 import { usePageTitleFromRoute } from '@/lib/usePageTitle'
 import { AcceptInvite } from '@/routes/AcceptInvite'
 import { AppShell } from '@/routes/AppShell'
-import { Dashboard } from '@/routes/Dashboard'
 import { Login } from '@/routes/Login'
 import { Signup } from '@/routes/Signup'
 import { NotFound } from '@/routes/NotFound'
-import { PlatformAdmin } from '@/routes/PlatformAdmin'
 import { HomeGate } from '@/routes/HomeGate'
 import { MarketingRoute } from '@/routes/MarketingRoute'
 import { MARKETING_PATHS } from '@/routes/marketingPaths'
-import { DefectDetail } from '@/routes/defects/DefectDetail'
-import { DefectsList } from '@/routes/defects/DefectsList'
-import { ExecutionConsole } from '@/routes/execution/ExecutionConsole'
-import { ExecutionOverview } from '@/routes/execution/ExecutionOverview'
-import { TestRunDetail } from '@/routes/execution/TestRunDetail'
-import { TestRunsList } from '@/routes/execution/TestRunsList'
-import { TestRunsOverview } from '@/routes/execution/TestRunsOverview'
-import { AuditLogs } from '@/routes/admin/AuditLogs'
-import { Environments } from '@/routes/admin/Environments'
-import { RolesPermissions } from '@/routes/admin/RolesPermissions'
-import { Settings } from '@/routes/admin/Settings'
-import { UsersRoles } from '@/routes/admin/UsersRoles'
-import { ProjectDetail } from '@/routes/projects/ProjectDetail'
-import { ProjectsList } from '@/routes/projects/ProjectsList'
-import { RequirementDetail } from '@/routes/requirements/RequirementDetail'
-import { RequirementsList } from '@/routes/requirements/RequirementsList'
-import { TraceabilityMatrix } from '@/routes/requirements/TraceabilityMatrix'
-import { MyAccount } from '@/routes/MyAccount'
-import { CompliancePrintView } from '@/routes/reporting/CompliancePrintView'
-import { Reporting } from '@/routes/reporting/Reporting'
-import { TestRepository } from '@/routes/testrepository/TestRepository'
-import { TestCaseDetail } from '@/routes/testcases/TestCaseDetail'
-import { TestCasesList } from '@/routes/testcases/TestCasesList'
+
+const PlatformAdmin = lazyRoute(() => import('@/routes/PlatformAdmin'), 'PlatformAdmin')
+const Dashboard = lazyRoute(() => import('@/routes/Dashboard'), 'Dashboard')
+const MyAccount = lazyRoute(() => import('@/routes/MyAccount'), 'MyAccount')
+const DefectDetail = lazyRoute(() => import('@/routes/defects/DefectDetail'), 'DefectDetail')
+const DefectsList = lazyRoute(() => import('@/routes/defects/DefectsList'), 'DefectsList')
+const ExecutionConsole = lazyRoute(() => import('@/routes/execution/ExecutionConsole'), 'ExecutionConsole')
+const ExecutionOverview = lazyRoute(() => import('@/routes/execution/ExecutionOverview'), 'ExecutionOverview')
+const TestRunDetail = lazyRoute(() => import('@/routes/execution/TestRunDetail'), 'TestRunDetail')
+const TestRunsList = lazyRoute(() => import('@/routes/execution/TestRunsList'), 'TestRunsList')
+const TestRunsOverview = lazyRoute(() => import('@/routes/execution/TestRunsOverview'), 'TestRunsOverview')
+const AuditLogs = lazyRoute(() => import('@/routes/admin/AuditLogs'), 'AuditLogs')
+const Environments = lazyRoute(() => import('@/routes/admin/Environments'), 'Environments')
+const RolesPermissions = lazyRoute(() => import('@/routes/admin/RolesPermissions'), 'RolesPermissions')
+const Settings = lazyRoute(() => import('@/routes/admin/Settings'), 'Settings')
+const UsersRoles = lazyRoute(() => import('@/routes/admin/UsersRoles'), 'UsersRoles')
+const ProjectDetail = lazyRoute(() => import('@/routes/projects/ProjectDetail'), 'ProjectDetail')
+const ProjectsList = lazyRoute(() => import('@/routes/projects/ProjectsList'), 'ProjectsList')
+const RequirementDetail = lazyRoute(() => import('@/routes/requirements/RequirementDetail'), 'RequirementDetail')
+const RequirementsList = lazyRoute(() => import('@/routes/requirements/RequirementsList'), 'RequirementsList')
+const TraceabilityMatrix = lazyRoute(() => import('@/routes/requirements/TraceabilityMatrix'), 'TraceabilityMatrix')
+const CompliancePrintView = lazyRoute(() => import('@/routes/reporting/CompliancePrintView'), 'CompliancePrintView')
+const Reporting = lazyRoute(() => import('@/routes/reporting/Reporting'), 'Reporting')
+const TestRepository = lazyRoute(() => import('@/routes/testrepository/TestRepository'), 'TestRepository')
+const TestCaseDetail = lazyRoute(() => import('@/routes/testcases/TestCaseDetail'), 'TestCaseDetail')
+const TestCasesList = lazyRoute(() => import('@/routes/testcases/TestCasesList'), 'TestCasesList')
+
+// Design-system catalogue: dev server only. import.meta.env.DEV is replaced by
+// a literal false in production builds, so this chunk is never emitted there.
+const DesignCatalogue = import.meta.env.DEV ? lazy(() => import('@/routes/_DesignPreview')) : null
 
 export function App() {
   usePageTitleFromRoute()
+  const { pathname } = useLocation()
   return (
+    <RouteBoundary resetKey={pathname}>
     <Routes>
       {MARKETING_PATHS.map((path) => (
         <Route key={path} path={path} element={<MarketingRoute />} />
       ))}
+      {DesignCatalogue && (
+        <Route
+          path="/_design-system"
+          element={
+            <Suspense fallback={null}>
+              <DesignCatalogue />
+            </Suspense>
+          }
+        />
+      )}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/accept-invite/:token" element={<AcceptInvite />} />
@@ -81,5 +102,6 @@ export function App() {
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </RouteBoundary>
   )
 }

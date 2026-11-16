@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -18,9 +18,12 @@ import {
 } from '@/api/testCases'
 import { listModules } from '@/api/modules'
 import { listUsers } from '@/api/users'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Drawer } from '@/components/ui/dialog'
+import { ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -42,6 +45,11 @@ const REPO_COLUMNS: TableColumnDef[] = [
   { key: 'assignee', label: 'Assignee', defaultWidth: 140 },
   { key: 'steps', label: 'Steps', defaultWidth: 80 },
 ]
+
+// The API caps page_size at 100 and returns `total`. Each project loads 50 at a
+// time and "Load more" fetches the next page for every project that still has
+// cases it has not shown -- nothing is silently cut off.
+const PAGE_SIZE = 50
 
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
@@ -106,6 +114,16 @@ export function TestRepository() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createProjectId, setCreateProjectId] = useState('')
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
+  // Pages beyond the first, per project (see PAGE_SIZE).
+  const [extra, setExtra] = useState<Record<string, { page: number; items: TestCase[] }>>({})
+  const [loadingMore, setLoadingMore] = useState(false)
+  const filterSignature = JSON.stringify([search, status, priority, projectId])
+  const filterSignatureRef = useRef(filterSignature)
+  filterSignatureRef.current = filterSignature
+  useEffect(() => {
+    setExtra({})
+  }, [filterSignature])
 
   // Phase 2: the command palette's "Create Test Case" quick action
   // navigates here with ?action=create -- reuses this existing create
@@ -162,9 +180,10 @@ export function TestRepository() {
     queries: targetProjects.map((project) => ({
       queryKey: ['test-repository', project.id, { search, status, priority }],
       queryFn: () =>
-        listTestCases(project.id, { search, status, priority, page_size: 100 }).then((r) => ({
+        listTestCases(project.id, { search, status, priority, page_size: PAGE_SIZE }).then((r) => ({
           project,
           items: r.items,
+          total: r.total,
         })),
       enabled: targetProjects.length > 0,
     })),
@@ -176,16 +195,85 @@ export function TestRepository() {
   )
 
   const isLoading = perProjectQueries.some((q) => q.isLoading)
+  const failedCount = perProjectQueries.filter((q) => q.isError).length
   const allRows: { project: Project; case: TestCase }[] = perProjectQueries
-    .flatMap((q) => (q.data ? q.data.items.map((c) => ({ project: q.data!.project, case: c })) : []))
+    .flatMap((q) => {
+      if (!q.data) return []
+      const seen = new Set<string>()
+      return [...q.data.items, ...(extra[q.data.project.id]?.items ?? [])]
+        .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+        .map((c) => ({ project: q.data!.project, case: c }))
+    })
     .sort((a, b) => b.case.created_at.localeCompare(a.case.created_at))
+  // How much of what the server holds is on screen.
+  const totalAvailable = perProjectQueries.reduce((sum, q) => sum + (q.data?.total ?? 0), 0)
+  const hasMore = allRows.length < totalAvailable
+
+  async function loadMore() {
+    const signature = filterSignatureRef.current
+    setLoadingMore(true)
+    const targets = perProjectQueries
+      .map((q) => q.data)
+      .filter((d): d is NonNullable<typeof d> => !!d)
+      .filter((d) => d.items.length + (extra[d.project.id]?.items.length ?? 0) < d.total)
+    const results = await Promise.allSettled(
+      targets.map(async (d) => {
+        const page = (extra[d.project.id]?.page ?? 1) + 1
+        const r = await listTestCases(d.project.id, { search, status, priority, page_size: PAGE_SIZE, page })
+        return { id: d.project.id, page, items: r.items }
+      }),
+    )
+    setLoadingMore(false)
+    // The filters changed while this was loading: those rows belong to a
+    // different result set, so drop them.
+    if (signature !== filterSignatureRef.current) return
+    setExtra((prev) => {
+      const next = { ...prev }
+      for (const res of results) {
+        if (res.status !== 'fulfilled') continue
+        const { id, page, items } = res.value
+        next[id] = { page, items: [...(next[id]?.items ?? []), ...items] }
+      }
+      return next
+    })
+    if (results.some((r) => r.status === 'rejected')) {
+      showToast('error', 'Some test cases could not be loaded. Try “Load more” again.')
+    }
+  }
   const rows = allRows.filter(
     (r) => showDeprecated || status === 'deprecated' || r.case.status !== 'deprecated',
   )
   const hiddenDeprecatedCount = allRows.length - rows.length
 
   function invalidateRepository() {
+    // Back to the first page: rows loaded by "Load more" may have been deleted
+    // or changed, and the refetch only covers the first page of each project.
+    setExtra({})
     queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'test-repository' })
+  }
+
+  // Deprecating is one-way (there is no "un-deprecate"), so it is confirmed;
+  // the other lifecycle steps (Submit, Approve) are reversible and are not.
+  function advance(tc: TestCase) {
+    if (tc.status !== 'approved') {
+      inlineActionMutation.mutate(tc)
+      return
+    }
+    ask({
+      title: 'Deprecate this test case?',
+      description: `“${tc.title}” is retired: it can no longer be added to new runs and cannot be returned to Approved.`,
+      confirmLabel: 'Deprecate',
+      run: () => inlineActionMutation.mutateAsync(tc),
+    })
+  }
+
+  function confirmDelete(tc: TestCase) {
+    ask({
+      title: 'Delete this test case?',
+      description: `“${tc.title}” and its steps are permanently deleted. This cannot be undone.`,
+      confirmLabel: 'Delete test case',
+      run: () => deleteMutation.mutateAsync(tc.id),
+    })
   }
 
   function toggleRow(id: string) {
@@ -296,13 +384,13 @@ export function TestRepository() {
       key: 'status',
       header: 'Status',
       card: 'badge',
-      cell: ({ case: tc }) => <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>,
+      cell: ({ case: tc }) => <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</StatusBadge>,
     },
     {
       key: 'priority',
       header: 'Priority',
       card: 'badge',
-      cell: ({ case: tc }) => <Badge tone={priorityTone(tc.priority)}>{tc.priority}</Badge>,
+      cell: ({ case: tc }) => <StatusBadge tone={priorityTone(tc.priority)}>{tc.priority}</StatusBadge>,
     },
     {
       key: 'assignee',
@@ -316,17 +404,20 @@ export function TestRepository() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Test Repository</h1>
-        {/* Bug #11: previously defaulted to projects[0] when viewing "All
-            projects" -- silently created the case in whichever project
-            happened to sort first. Now defaults to unselected (forcing an
-            explicit choice) unless the list is already filtered to one
-            specific project. */}
-        <Button onClick={() => { setCreateProjectId(projectId); setCreateOpen(true) }} disabled={projects.length === 0}>
-          New Test Case
-        </Button>
-      </div>
+      {/* Bug #11: previously defaulted to projects[0] when viewing "All
+          projects" -- silently created the case in whichever project
+          happened to sort first. Now defaults to unselected (forcing an
+          explicit choice) unless the list is already filtered to one
+          specific project. */}
+      <PageHeader
+        title="Test Repository"
+        description="Every test case across your projects."
+        actions={
+          <Button onClick={() => { setCreateProjectId(projectId); setCreateOpen(true) }} disabled={projects.length === 0}>
+            New Test Case
+          </Button>
+        }
+      />
 
       <FilterBar
         activeCount={[status, priority, projectId].filter(Boolean).length + (showDeprecated ? 1 : 0)}
@@ -435,10 +526,41 @@ export function TestRepository() {
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm max-md:sticky max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))] max-md:z-30 max-md:shadow-lg">
           <span className="font-medium">{selected.size} selected</span>
-          <Button size="sm" variant="outline" disabled={bulkPending} onClick={() => runBulk('next-action')}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkPending}
+            onClick={() => {
+              const deprecating = selectedRows.filter((r) => r.case.status === 'approved').length
+              if (deprecating === 0) {
+                void runBulk('next-action')
+                return
+              }
+              ask({
+                title: `Advance ${selected.size} test case${selected.size === 1 ? '' : 's'}?`,
+                description: `${deprecating} approved case${deprecating === 1 ? ' will be' : 's will be'} deprecated, which cannot be undone. The rest move to their next status.`,
+                confirmLabel: 'Advance status',
+                destructive: false,
+                run: () => runBulk('next-action'),
+              })
+            }}
+          >
             Advance status
           </Button>
-          <Button size="sm" variant="destructive" disabled={bulkPending} onClick={() => runBulk('delete')}>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={bulkPending}
+            onClick={() =>
+              ask({
+                title: `Delete ${selected.size} test case${selected.size === 1 ? '' : 's'}?`,
+                description:
+                  'The selected test cases and their steps are permanently deleted. Cases the server refuses to delete (for example ones that are already in a run) are reported afterwards. This cannot be undone.',
+                confirmLabel: `Delete ${selected.size}`,
+                run: () => runBulk('delete'),
+              })
+            }
+          >
             Delete
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
@@ -475,10 +597,10 @@ export function TestRepository() {
           const contextItems: RowContextMenuItem[] = [
             { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
             ...(nextAction
-              ? [{ label: nextAction.label, onSelect: () => inlineActionMutation.mutate(tc) }]
+              ? [{ label: nextAction.label, onSelect: () => advance(tc) }]
               : []),
             ...(tc.status === 'draft'
-              ? [{ label: 'Delete', destructive: true, onSelect: () => deleteMutation.mutate(tc.id) }]
+              ? [{ label: 'Delete', destructive: true, onSelect: () => confirmDelete(tc) }]
               : []),
           ]
           rowMenu.openAt(e, contextItems)
@@ -492,7 +614,7 @@ export function TestRepository() {
                   size="sm"
                   variant="outline"
                   disabled={inlineActionMutation.isPending}
-                  onClick={() => inlineActionMutation.mutate(tc)}
+                  onClick={() => advance(tc)}
                 >
                   {nextAction.label}
                 </Button>
@@ -502,7 +624,7 @@ export function TestRepository() {
                   size="sm"
                   variant="ghost"
                   disabled={deleteMutation.isPending}
-                  onClick={() => deleteMutation.mutate(tc.id)}
+                  onClick={() => confirmDelete(tc)}
                 >
                   Delete
                 </Button>
@@ -512,13 +634,37 @@ export function TestRepository() {
         }}
       />
       {rowMenu.menu}
+      {confirmDialog}
+
+      {failedCount > 0 && (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--background)]">
+          <ErrorState
+            message={`${failedCount} of ${targetProjects.length} project${targetProjects.length === 1 ? '' : 's'} could not be loaded, so the list below is incomplete.`}
+            onRetry={invalidateRepository}
+          />
+        </div>
+      )}
 
       {rows.length > 0 && (
-        <p className="text-xs text-[var(--muted-foreground)]">
-          {rows.length} test case{rows.length === 1 ? '' : 's'} across {targetProjects.length} project
-          {targetProjects.length === 1 ? '' : 's'}
-          {selectedRows.length > 0 ? ` · ${selectedRows.length} selected` : ''}.
-        </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--muted-foreground)]">
+          <p>
+            {rows.length} test case{rows.length === 1 ? '' : 's'} shown
+            {hasMore ? ` of ${totalAvailable} matching` : ''} across {targetProjects.length} project
+            {targetProjects.length === 1 ? '' : 's'}
+            {selectedRows.length > 0 ? ` · ${selectedRows.length} selected` : ''}.
+          </p>
+          {hasMore && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              className="max-md:flex-1"
+            >
+              {loadingMore ? 'Loading…' : `Load more (${totalAvailable - allRows.length} remaining)`}
+            </Button>
+          )}
+        </div>
       )}
 
       {/* GAP-91 item 1: a 10+ field form no longer fits well in a centered
@@ -526,9 +672,7 @@ export function TestRepository() {
       <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="create-project">
-              Project <span className="text-[var(--destructive)]">*</span>
-            </Label>
+            <Label htmlFor="create-project" required>Project</Label>
             <Select
               id="create-project"
               required

@@ -4,10 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '@/api/client'
 import { createEnvironment, deleteEnvironment, listEnvironments } from '@/api/testAssets'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 // Tier 2 (PV-8.1): tenant-wide Environments (Staging/Production/etc.),
 // shared across projects -- distinct from project-scoped Builds/Releases,
@@ -17,6 +20,7 @@ export function Environments() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const environmentsQuery = useQuery({ queryKey: ['environments'], queryFn: listEnvironments })
 
@@ -44,7 +48,8 @@ export function Environments() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-lg font-semibold">Environments</h1>
+      <PageHeader title="Environments" description="The environments your test runs can target." />
+      {confirmDialog}
       <Card>
         <CardHeader>
           <CardTitle>Test Environments</CardTitle>
@@ -68,7 +73,15 @@ export function Environments() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => deleteMutation.mutate(env.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Remove environment “${env.name}”?`,
+                      description:
+                        'Test runs that already used this environment keep their history, but it can no longer be chosen for new runs.',
+                      confirmLabel: 'Remove environment',
+                      run: () => deleteMutation.mutateAsync(env.id),
+                    })
+                  }
                   disabled={deleteMutation.isPending}
                 >
                   Remove
@@ -106,7 +119,7 @@ export function Environments() {
               Add Environment
             </Button>
           </form>
-          {createError && <p className="text-xs text-[var(--destructive)]">{createError}</p>}
+          <FormError>{createError}</FormError>
         </CardContent>
       </Card>
     </div>

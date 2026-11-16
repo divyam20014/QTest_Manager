@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { CsvDropZone } from '@/components/ui/csv-drop-zone'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 // Pass 2 (ADR-061): Defect bulk import, newly built -- mirrors
 // routes/testcases/ImportDialog.tsx exactly.
@@ -90,7 +91,7 @@ export function DefectImportDialog({ open, onClose }: { open: boolean; onClose: 
           />
         )}
 
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
 
         {!report && (
           <DialogFooter>

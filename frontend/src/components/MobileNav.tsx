@@ -1,13 +1,13 @@
 import {
   Bot,
   Bug,
-  Building2,
   ClipboardList,
   FileStack,
   LayoutDashboard,
   LogOut,
   Menu,
   Search,
+  ExternalLink,
   User,
   X,
 } from 'lucide-react'
@@ -28,6 +28,8 @@ export interface MobileNavItem {
   to: string
   label: string
   icon: ComponentType<{ className?: string }>
+  /** Leaves the shell (print page): opens in a new tab with an indicator. */
+  newTab?: boolean
 }
 
 export interface MobileNavSection {
@@ -111,7 +113,6 @@ export function MoreSheet({
   sections,
   userName,
   userRole,
-  showOrganization,
   onSearch,
   onLogout,
 }: {
@@ -120,7 +121,6 @@ export function MoreSheet({
   sections: MobileNavSection[]
   userName?: string
   userRole?: string
-  showOrganization: boolean
   onSearch: () => void
   onLogout: () => void
 }) {
@@ -218,12 +218,27 @@ export function MoreSheet({
                   <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                     {section.label}
                   </p>
-                  {section.items.map((item) => (
-                    <NavLink key={item.to} to={item.to} end className={rowClass}>
-                      <item.icon className="size-4 shrink-0" />
-                      <span className="truncate">{item.label}</span>
-                    </NavLink>
-                  ))}
+                  {section.items.map((item) =>
+                    item.newTab ? (
+                      <a
+                        key={item.to}
+                        href={item.to}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={rowClass({ isActive: false })}
+                      >
+                        <item.icon className="size-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                        <ExternalLink className="ml-auto size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    ) : (
+                      <NavLink key={item.to} to={item.to} end className={rowClass}>
+                        <item.icon className="size-4 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </NavLink>
+                    ),
+                  )}
                 </div>
               ))}
 
@@ -232,12 +247,6 @@ export function MoreSheet({
                   <User className="size-4 shrink-0" />
                   Profile
                 </NavLink>
-                {showOrganization && (
-                  <NavLink to="/settings" className={rowClass}>
-                    <Building2 className="size-4 shrink-0" />
-                    Organization
-                  </NavLink>
-                )}
                 <button type="button" className={plainRow} onClick={() => setAiOpen(true)}>
                   <Bot className="size-4 shrink-0" />
                   Ask AI

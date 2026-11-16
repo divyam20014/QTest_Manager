@@ -16,10 +16,12 @@ import {
 import { listUsers } from '@/api/users'
 import { FilterBar } from '@/components/table/FilterBar'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { useIsMobile } from '@/lib/useMediaQuery'
@@ -164,14 +166,14 @@ export function ProjectsList() {
       header: 'Status',
       headerCell: sortHeader('status', 'Status'),
       card: 'badge',
-      cell: (project) => <Badge tone={STATUS_TONE[project.status]}>{project.status}</Badge>,
+      cell: (project) => <StatusBadge tone={STATUS_TONE[project.status]}>{project.status}</StatusBadge>,
     },
     {
       key: 'priority',
       header: 'Priority',
       headerCell: sortHeader('priority', 'Priority'),
       card: 'badge',
-      cell: (project) => <Badge tone={PRIORITY_TONE[project.priority]}>{project.priority}</Badge>,
+      cell: (project) => <StatusBadge tone={PRIORITY_TONE[project.priority]}>{project.priority}</StatusBadge>,
     },
     { key: 'manager_name', header: 'Manager', cell: (project) => project.manager_name },
     { key: 'region', header: 'Region', cell: (project) => project.region },
@@ -191,10 +193,10 @@ export function ProjectsList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Projects</h1>
-        {canCreate && <Button onClick={() => setCreateOpen(true)}>New Project</Button>}
-      </div>
+      <PageHeader
+        title="Projects"
+        actions={canCreate && <Button onClick={() => setCreateOpen(true)}>New Project</Button>}
+      />
 
       <FilterBar
         activeCount={[domain, status, priority].filter(Boolean).length}
@@ -315,31 +317,7 @@ export function ProjectsList() {
         }
       />
 
-      {total > 0 && (
-        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
-          <span>
-            Page {page} of {totalPages} ({total} project{total === 1 ? '' : 's'})
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} total={total} noun="project" onPageChange={setPage} />
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Project">
         <ProjectForm

@@ -27,6 +27,10 @@ import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DetailSkeleton } from '@/components/ui/skeleton'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
@@ -34,6 +38,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 import { ROOT_CAUSE_LABEL, ROOT_CAUSES, STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
 const HISTORY_ACTION_LABEL: Record<string, string> = {
@@ -170,8 +175,9 @@ export function DefectDetail() {
   })
 
   const defect = defectQuery.data
-  if (defectQuery.isLoading) return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
-  if (defectQuery.isError || !defect) return <p className="text-sm text-[var(--destructive)]">Defect not found.</p>
+  if (defectQuery.isLoading) return <DetailSkeleton />
+  if (defectQuery.isError) return <ErrorState message="Could not load this defect." onRetry={() => defectQuery.refetch()} />
+  if (!defect) return <EmptyState title="Defect not found" description="It may have been deleted, or you may not have access to it." />
 
   const currentIndex = STATUS_ORDER.indexOf(defect.status)
   const nextStatus = STATUS_ORDER[currentIndex + 1]
@@ -188,23 +194,25 @@ export function DefectDetail() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Link
-          to="/defects"
-          className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
-        >
-          ← Defects
-        </Link>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="min-w-0 break-words text-lg font-semibold">{defect.title}</h1>
-          <Badge tone={severityTone(defect.severity)}>{defect.severity}</Badge>
-          <Badge tone={STATUS_TONE[defect.status]}>{defect.status_label}</Badge>
-          {defect.sla_breached && <Badge tone="critical">SLA Breached · {defect.age_days}d</Badge>}
-          {defect.reopened_count > 0 && (
-            <Badge tone="neutral">Reopened {defect.reopened_count}x</Badge>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        back={
+          <Link
+            to="/defects"
+            className="inline-flex text-xs text-[var(--muted-foreground)] hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
+          >
+            ← Defects
+          </Link>
+        }
+        title={defect.title}
+        meta={
+          <>
+            <StatusBadge tone={severityTone(defect.severity)}>{defect.severity}</StatusBadge>
+            <StatusBadge tone={STATUS_TONE[defect.status]}>{defect.status_label}</StatusBadge>
+            {defect.sla_breached && <Badge tone="critical">SLA Breached · {defect.age_days}d</Badge>}
+            {defect.reopened_count > 0 && <Badge tone="neutral">Reopened {defect.reopened_count}x</Badge>}
+          </>
+        }
+      />
 
       {canCloseRole && REOPENABLE_STATUSES.includes(defect.status) && (
         <div>
@@ -241,7 +249,7 @@ export function DefectDetail() {
           </div>
         </div>
       )}
-      {statusError && <p className="text-xs text-[var(--destructive)]">{statusError}</p>}
+      <FormError>{statusError}</FormError>
 
       {(duplicatesQuery.data ?? []).length > 0 && (
         <div className="rounded-md border border-[var(--border)] bg-[var(--muted)] p-3 text-sm">
@@ -572,7 +580,7 @@ export function DefectDetail() {
                 </p>
               )}
               {aiSuggestion && (
-                <div className="flex flex-col gap-2 rounded border border-[var(--border)] p-3">
+                <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
                   <p className="text-xs">
                     <span className="font-medium">Suggested category:</span>{' '}
                     {ROOT_CAUSE_LABEL[aiSuggestion.category as keyof typeof ROOT_CAUSE_LABEL] ??
@@ -640,7 +648,7 @@ function TraceNode({
     >
       <Icon className="size-4 shrink-0 text-[var(--muted-foreground)]" />
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
+        <p className="text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
         <p className="truncate text-sm font-medium">{value ?? '—'}</p>
         {sub && <p className="text-xs text-[var(--muted-foreground)]">{sub}</p>}
       </div>

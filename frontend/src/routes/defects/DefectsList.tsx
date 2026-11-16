@@ -8,6 +8,8 @@ import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
@@ -18,6 +20,7 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { FilterBar, FilterField } from '@/components/table/FilterBar'
+import { Pagination } from '@/components/ui/pagination'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { useRowContextMenu } from '@/components/table/RowContextMenu'
 import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
@@ -25,6 +28,7 @@ import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/componen
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { FormError } from '@/components/ui/form-field'
 import { DefectImportDialog } from './DefectImportDialog'
 import { STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
@@ -81,7 +85,7 @@ const DEFECT_TABLE_COLUMNS: ResponsiveColumn<Defect>[] = [
     key: 'severity',
     header: 'Severity',
     card: 'badge',
-    cell: (d) => <Badge tone={severityTone(d.severity)}>{d.severity}</Badge>,
+    cell: (d) => <StatusBadge tone={severityTone(d.severity)}>{d.severity}</StatusBadge>,
   },
   {
     key: 'priority',
@@ -93,7 +97,7 @@ const DEFECT_TABLE_COLUMNS: ResponsiveColumn<Defect>[] = [
     key: 'status',
     header: 'Status',
     card: 'badge',
-    cell: (d) => <Badge tone={STATUS_TONE[d.status]}>{d.status_label}</Badge>,
+    cell: (d) => <StatusBadge tone={STATUS_TONE[d.status]}>{d.status_label}</StatusBadge>,
   },
   {
     key: 'sla',
@@ -120,6 +124,8 @@ const DEFECT_TABLE_COLUMNS: ResponsiveColumn<Defect>[] = [
     cell: (d) => new Date(d.created_at).toLocaleDateString(),
   },
 ]
+
+const DEFECTS_PAGE_SIZE = 50
 
 export function DefectsList() {
   const { user } = useAuth()
@@ -193,6 +199,15 @@ export function DefectsList() {
       }),
   })
 
+  // The API returns every matching defect, so the list pages on the client
+  // (50 per page) to keep the DOM small; the page resets when a filter changes.
+  const allDefects = defectsQuery.data ?? []
+  const filterKey = [projectId, status, severity, reportedBy, createdFrom, createdTo].join('|')
+  const [paging, setPaging] = useState({ key: filterKey, page: 1 })
+  const totalPages = Math.max(1, Math.ceil(allDefects.length / DEFECTS_PAGE_SIZE))
+  const page = Math.min(paging.key === filterKey ? paging.page : 1, totalPages)
+  const pageRows = allDefects.slice((page - 1) * DEFECTS_PAGE_SIZE, page * DEFECTS_PAGE_SIZE)
+
   // defect.create is granted to every role (admin/manager/tester) per
   // ADR-014's seed, so this is a contextual action available uniformly --
   // not role-gated, matching the backend permission it calls.
@@ -200,15 +215,18 @@ export function DefectsList() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Defects</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            Import
-          </Button>
-          {canCreate && <Button onClick={() => setCreateOpen(true)}>New Defect</Button>}
-        </div>
-      </div>
+      <PageHeader
+        title="Defects"
+        description="Track, triage and resolve the defects found during testing."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              Import
+            </Button>
+            {canCreate && <Button onClick={() => setCreateOpen(true)}>New Defect</Button>}
+          </>
+        }
+      />
 
       <FilterBar
         activeCount={urlFilters.active.length}
@@ -325,7 +343,7 @@ export function DefectsList() {
 
       <ResponsiveTable
         label="Defects"
-        rows={defectsQuery.data ?? []}
+        rows={pageRows}
         rowKey={(d) => d.id}
         columns={DEFECT_TABLE_COLUMNS}
         prefs={columnPrefs}
@@ -356,6 +374,15 @@ export function DefectsList() {
           ) : undefined
         }
       />
+      {allDefects.length > DEFECTS_PAGE_SIZE && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={allDefects.length}
+          noun="defect"
+          onPageChange={(next) => setPaging({ key: filterKey, page: next })}
+        />
+      )}
       {rowMenu.menu}
 
       <NewDefectDialog
@@ -470,7 +497,7 @@ function NewDefectDialog({
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel

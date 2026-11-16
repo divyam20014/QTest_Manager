@@ -14,6 +14,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
         'focus-visible:outline-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50',
         // Mobile redesign Phase 2: 16px text (no iOS focus zoom), taller start.
         'max-md:min-h-24 max-md:text-base',
+        'aria-[invalid=true]:border-[var(--destructive)]',
         className,
       )}
       {...props}

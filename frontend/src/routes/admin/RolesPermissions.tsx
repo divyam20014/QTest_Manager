@@ -13,8 +13,10 @@ import {
   type Role,
 } from '@/api/roles'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,6 +24,7 @@ import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/lib/toast'
 import { useIsMobile } from '@/lib/useMediaQuery'
+import { FormError } from '@/components/ui/form-field'
 
 function groupByPrefix(permissions: Permission[]): Record<string, Permission[]> {
   const groups: Record<string, Permission[]> = {}
@@ -36,6 +39,7 @@ function groupByPrefix(permissions: Permission[]): Record<string, Permission[]> 
 export function RolesPermissions() {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Role | null>(null)
 
@@ -65,20 +69,18 @@ export function RolesPermissions() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold">Roles &amp; Permissions</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Admin, Manager, and Tester are built-in and can't be edited or removed. Define
-            additional roles below with any combination of permissions.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          New Role
-        </Button>
-      </div>
+      <PageHeader
+        title="Roles & Permissions"
+        description="Admin, Manager, and Tester are built-in and can't be edited or removed. Define additional roles below with any combination of permissions."
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            New Role
+          </Button>
+        }
+      />
 
-      {deactivateError && <p className="text-xs text-[var(--destructive)]">{deactivateError}</p>}
+      {confirmDialog}
+      <FormError>{deactivateError}</FormError>
 
       {isLoading ? (
         <Card>
@@ -86,7 +88,7 @@ export function RolesPermissions() {
             <CardTitle className="text-base">Permission Matrix</CardTitle>
           </CardHeader>
           <CardContent>
-            <table className="w-full text-sm">
+            <table aria-label="Permission matrix (loading)" aria-busy="true" className="w-full text-sm">
               <tbody>
                 <TableSkeleton rows={6} columns={4} />
               </tbody>
@@ -128,7 +130,17 @@ export function RolesPermissions() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => deactivateMutation.mutate(r.id)}
+                        onClick={() =>
+                          ask({
+                            title: `Deactivate role “${r.name}”?`,
+                            description:
+                              r.user_count > 0
+                                ? `${r.user_count} user${r.user_count === 1 ? ' is' : 's are'} assigned this role. It can no longer be given to anyone new. If the server refuses because users still hold it, you will see its message here.`
+                                : 'The role can no longer be assigned to users.',
+                            confirmLabel: 'Deactivate role',
+                            run: () => deactivateMutation.mutateAsync(r.id),
+                          })
+                        }
                       >
                         Deactivate
                       </Button>
@@ -174,8 +186,23 @@ function PermissionMatrix({
 }) {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
-  const groupNames = Object.keys(grouped)
+  const [permissionFilter, setPermissionFilter] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  // Filtering only hides rows. A group's All / None buttons still act on the
+  // whole group (`grouped`), never on whatever the filter happens to show.
+  const needle = permissionFilter.trim().toLowerCase()
+  const shownGrouped = useMemo(() => {
+    if (!needle) return grouped
+    const out: Record<string, Permission[]> = {}
+    for (const [group, perms] of Object.entries(grouped)) {
+      const matches = perms.filter(
+        (p) => p.code.toLowerCase().includes(needle) || (p.description ?? '').toLowerCase().includes(needle),
+      )
+      if (matches.length > 0) out[group] = matches
+    }
+    return out
+  }, [grouped, needle])
+  const groupNames = Object.keys(shownGrouped)
   // roleId -> draft set of permission codes, only present while that
   // role's column has unsaved changes.
   const [drafts, setDrafts] = useState<Record<string, Set<string>>>({})
@@ -267,7 +294,43 @@ function PermissionMatrix({
         </p>
       </CardHeader>
       <CardContent>
-        {saveError && <p className="mb-2 text-xs text-[var(--destructive)]">{saveError}</p>}
+        <FormError>{saveError}</FormError>
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 max-w-sm max-md:max-w-none">
+            <Label htmlFor="permission-filter">Filter permissions</Label>
+            <Input
+              id="permission-filter"
+              type="search"
+              placeholder="e.g. defect, approve, project.view"
+              autoComplete="off"
+              value={permissionFilter}
+              onChange={(e) => setPermissionFilter(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCollapsedGroups(new Set())}
+              disabled={collapsedGroups.size === 0}
+            >
+              Expand all
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCollapsedGroups(new Set(Object.keys(grouped)))}
+              disabled={collapsedGroups.size === Object.keys(grouped).length}
+            >
+              Collapse all
+            </Button>
+          </div>
+        </div>
+        {needle && groupNames.length === 0 && (
+          <p className="mb-3 text-sm text-[var(--muted-foreground)]">No permissions match “{permissionFilter}”.</p>
+        )}
         {isMobile && mobileRole ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
@@ -296,10 +359,10 @@ function PermissionMatrix({
               <p className="text-xs text-[var(--muted-foreground)]">System roles are fixed and shown for reference only.</p>
             )}
             {groupNames.map((group) => {
-              const perms = grouped[group]
-              const codes = perms.map((p) => p.code)
+              const perms = shownGrouped[group]
+              const codes = grouped[group].map((p) => p.code)
               const current = currentCodes(mobileRole)
-              const collapsed = collapsedGroups.has(group)
+              const collapsed = !needle && collapsedGroups.has(group)
               const allOn = codes.every((c) => current.has(c))
               const allOff = codes.every((c) => !current.has(c))
               return (
@@ -382,7 +445,7 @@ function PermissionMatrix({
           </div>
         ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table aria-label="Permission matrix" className="w-full text-sm">
             <thead className="text-left text-xs text-[var(--muted-foreground)]">
               <tr>
                 <th className="sticky left-0 bg-[var(--background)] px-2 py-2 font-medium">
@@ -398,7 +461,8 @@ function PermissionMatrix({
                           {isDirty && (
                             <span
                               className="size-1.5 rounded-full bg-[var(--status-warning)]"
-                              title="Unsaved changes"
+                              role="img"
+                              aria-label="Unsaved changes"
                             />
                           )}
                         </span>
@@ -407,7 +471,7 @@ function PermissionMatrix({
                           <div className="flex gap-1">
                             <Button
                               size="sm"
-                              className="h-6 px-2 text-xs"
+                              
                               disabled={saveMutation.isPending}
                               onClick={() => saveDraft(r)}
                             >
@@ -416,7 +480,7 @@ function PermissionMatrix({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-6 px-2 text-xs"
+                              
                               onClick={() => cancelDraft(r.id)}
                             >
                               Cancel
@@ -431,8 +495,8 @@ function PermissionMatrix({
             </thead>
             <tbody>
               {groupNames.map((group) => {
-                const perms = grouped[group]
-                const collapsed = collapsedGroups.has(group)
+                const perms = shownGrouped[group]
+                const collapsed = !needle && collapsedGroups.has(group)
                 return (
                   <Fragment key={group}>
                     <tr className="border-t border-[var(--border)] bg-[var(--muted)]/40">
@@ -454,19 +518,19 @@ function PermissionMatrix({
                       {editableRoles.length > 0 &&
                         roles.map((r) => {
                           if (r.is_system) return <td key={r.id} />
-                          const codes = perms.map((p) => p.code)
+                          const codes = grouped[group].map((p) => p.code)
                           const current = currentCodes(r)
                           const allOn = codes.every((c) => current.has(c))
                           const allOff = codes.every((c) => !current.has(c))
                           return (
                             <td key={r.id} className="px-2 py-1.5 text-center">
                               {!collapsed && (
-                                <div className="flex justify-center gap-1 text-[10px]">
+                                <div className="flex justify-center gap-1 text-[11px]">
                                   <button
                                     type="button"
                                     disabled={allOn}
                                     onClick={() => setGroupAll(r, codes, true)}
-                                    className="rounded px-1 text-[var(--link)] hover:underline disabled:opacity-40 disabled:no-underline"
+                                    className="rounded-md px-1 text-[var(--link)] hover:underline disabled:opacity-40 disabled:no-underline"
                                   >
                                     All
                                   </button>
@@ -475,7 +539,7 @@ function PermissionMatrix({
                                     type="button"
                                     disabled={allOff}
                                     onClick={() => setGroupAll(r, codes, false)}
-                                    className="rounded px-1 text-[var(--link)] hover:underline disabled:opacity-40 disabled:no-underline"
+                                    className="rounded-md px-1 text-[var(--link)] hover:underline disabled:opacity-40 disabled:no-underline"
                                   >
                                     None
                                   </button>
@@ -642,7 +706,7 @@ function RoleFormDialog({
             </label>
           ))}
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={handleClose}>
             Cancel

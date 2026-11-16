@@ -3,6 +3,11 @@ import { useEffect, useRef } from 'react'
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+// Overlays can stack (a confirmation opened from inside a dialog). Only the
+// topmost one may react to Escape/Tab, otherwise Escape closes both and the
+// lower trap pulls focus out of the confirmation.
+const overlayStack: symbol[] = []
+
 // Shared focus-trap/Escape/return-focus behavior for both Dialog (centered
 // modal) and Drawer (side panel) -- UI/UX review bug #2's fix, factored out
 // so the two surfaces never drift out of sync with each other.
@@ -28,8 +33,11 @@ export function useOverlayBehavior(
 
     triggerElementRef.current = document.activeElement as HTMLElement | null
     const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0)
+    const id = Symbol('overlay')
+    overlayStack.push(id)
 
     function handleKeyDown(event: KeyboardEvent) {
+      if (overlayStack[overlayStack.length - 1] !== id) return
       if (event.key === 'Escape') {
         event.stopPropagation()
         onCloseRef.current()
@@ -63,6 +71,8 @@ export function useOverlayBehavior(
     document.addEventListener('keydown', handleKeyDown, true)
     return () => {
       window.clearTimeout(focusTimer)
+      const index = overlayStack.indexOf(id)
+      if (index !== -1) overlayStack.splice(index, 1)
       document.removeEventListener('keydown', handleKeyDown, true)
       triggerElementRef.current?.focus?.()
     }

@@ -11,13 +11,17 @@ const TONE_CLASSES = {
   positive: 'bg-[var(--status-good-bg)] text-[var(--status-good)]',
   warning: 'bg-[var(--status-warning-bg)] text-[var(--status-warning)]',
   critical: 'bg-[var(--status-serious-bg)] text-[var(--status-serious)]',
+  // Design system Phase B: the blue "information" state (--status-info).
+  info: 'bg-[var(--status-info-bg)] text-[var(--status-info)]',
 } as const
+
+export type BadgeTone = keyof typeof TONE_CLASSES
 
 export function Badge({
   tone = 'neutral',
   className,
   ...props
-}: HTMLAttributes<HTMLSpanElement> & { tone?: keyof typeof TONE_CLASSES }) {
+}: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
   return (
     <span
       className={cn(

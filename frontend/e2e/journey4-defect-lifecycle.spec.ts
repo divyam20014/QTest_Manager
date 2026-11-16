@@ -109,6 +109,9 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
 
 test('Tester cannot close a defect', async ({ page, request }) => {
   const tenant = await bootstrapTenant(request, 'J4TesterGate')
+  // Unique per run: a fixed address ended up in every leftover throwaway tenant,
+  // so sign-in showed the organisation picker instead of the password step.
+  const testerEmail = `tester-${tenant.tenantId.slice(0, 8)}@example.com`
 
   // Create a Tester via the API as the bootstrap Admin (faster and more
   // reliable than driving the Administration UI just to set up this test's
@@ -123,10 +126,10 @@ test('Tester cannot close a defect', async ({ page, request }) => {
   await request.post(`${API_BASE_URL}/auth/mfa/verify`, { data: { code } })
 
   await request.post(`${API_BASE_URL}/users`, {
-    data: { email: 'tester@example.com', name: 'Tester One', role: 'tester', password: 'TesterPassw0rd1!' },
+    data: { email: testerEmail, name: 'Tester One', role: 'tester', password: 'TesterPassw0rd1!' },
   })
   const usersList = (await (await request.get(`${API_BASE_URL}/users`)).json()).data
-  const testerId = usersList.find((u: { email: string; id: string }) => u.email === 'tester@example.com').id
+  const testerId = usersList.find((u: { email: string; id: string }) => u.email === testerEmail).id
 
   const project = (
     await (
@@ -176,7 +179,7 @@ test('Tester cannot close a defect', async ({ page, request }) => {
 
   await request.post(`${API_BASE_URL}/auth/logout`)
 
-  await loginViaUi(page, tenant.tenantId, 'tester@example.com', 'TesterPassw0rd1!')
+  await loginViaUi(page, tenant.tenantId, testerEmail, 'TesterPassw0rd1!')
   await page.goto(`/defects/${defect.id}`)
   await page.waitForSelector('text=Traceability', { timeout: 10000 })
   await page.click('button:has-text("Advance to Open")')

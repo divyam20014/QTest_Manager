@@ -5,9 +5,13 @@ import { AUDIT_PAGE_SIZE, auditExportUrl, listAuditLogs, verifyAuditChain, type 
 import { listUsers } from '@/api/users'
 import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { Tooltip } from '@/components/ui/tooltip'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { ErrorState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/select'
 import { humanizeActionCode, humanizeKey } from '@/lib/labels'
 import { useIsMobile } from '@/lib/useMediaQuery'
@@ -74,33 +78,36 @@ export function AuditLogs() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold">Audit Logs</h1>
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={auditExportUrl(filters)}
-            download
-            className="inline-flex h-8 items-center rounded-md border max-md:h-11 border-[var(--border)] px-3 text-sm hover:bg-[var(--muted)]"
-          >
-            Export CSV
-          </a>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => (verifyRequested ? verifyQuery.refetch() : setVerifyRequested(true))}
-            disabled={verifyQuery.isFetching}
-          >
-            {verifyQuery.isFetching ? 'Verifying…' : 'Verify Chain Integrity'}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Audit Logs"
+        actions={
+          <>
+            <a
+              href={auditExportUrl(filters)}
+              download
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              Export CSV
+            </a>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => (verifyRequested ? verifyQuery.refetch() : setVerifyRequested(true))}
+              disabled={verifyQuery.isFetching}
+            >
+              {verifyQuery.isFetching ? 'Verifying…' : 'Verify Chain Integrity'}
+            </Button>
+          </>
+        }
+      />
 
       {verifyRequested && verifyQuery.data && (
         <div
+          role={verifyQuery.data.valid ? 'status' : 'alert'}
           className={`rounded-md border p-3 text-xs ${
             verifyQuery.data.valid
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
-              : 'border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300'
+              ? 'border-[var(--status-good)] bg-[var(--status-good-bg)] text-[var(--status-good)]'
+              : 'border-[var(--status-serious)] bg-[var(--status-serious-bg)] text-[var(--status-serious)]'
           }`}
         >
           {verifyQuery.data.valid
@@ -193,7 +200,18 @@ export function AuditLogs() {
         </div>
       )}
 
-      {isMobile ? (
+      {logsQuery.isLoading ? (
+        <div role="status" className="flex flex-col gap-2">
+          <span className="sr-only">Loading audit log</span>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      ) : logsQuery.isError ? (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--background)]">
+          <ErrorState message="The audit log could not be loaded." onRetry={() => logsQuery.refetch()} />
+        </div>
+      ) : isMobile ? (
         <ul aria-label="Audit log entries" className="flex flex-col gap-3">
           {entries?.length === 0 && (
             <li className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
@@ -211,7 +229,7 @@ export function AuditLogs() {
         </ul>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-          <table className="w-full text-sm">
+          <table aria-label="Audit log events" className="w-full text-sm">
             <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
               <tr>
                 <th className="px-4 py-2 font-medium">When</th>
@@ -313,9 +331,7 @@ function AuditCard({
   return (
     <li className="qth-raised-sm rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <Badge title={entry.action} className="max-w-full break-all">
-          {humanizeActionCode(entry.action)}
-        </Badge>
+        <Badge className="max-w-full break-all">{humanizeActionCode(entry.action)}</Badge>
         <span className="text-xs text-[var(--muted-foreground)]">
           {new Date(entry.created_at).toLocaleString()}
         </span>
@@ -366,7 +382,9 @@ function AuditRow({
         </td>
         <td className="px-4 py-2">{entry.user_name ?? 'System'}</td>
         <td className="px-4 py-2">
-          <Badge title={entry.action}>{humanizeActionCode(entry.action)}</Badge>
+          <Tooltip content={entry.action} side="bottom">
+            <Badge>{humanizeActionCode(entry.action)}</Badge>
+          </Tooltip>
         </td>
         <td className="px-4 py-2 text-xs text-[var(--muted-foreground)]">
           {humanizeKey(entry.entity_type)} · {entry.entity_id.slice(0, 8)}

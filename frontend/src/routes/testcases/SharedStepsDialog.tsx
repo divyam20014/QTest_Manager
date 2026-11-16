@@ -11,11 +11,13 @@ import {
 import { ApiError } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 const EMPTY = { name: '', action: '', expected: '', category: '' }
 
@@ -36,6 +38,7 @@ export function SharedStepsDialog({
 }) {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
   const [editing, setEditing] = useState<SharedStep | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [showForm, setShowForm] = useState(false)
@@ -117,6 +120,7 @@ export function SharedStepsDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} title="Shared Steps Library" className="max-w-2xl">
       <div className="flex flex-col gap-4 text-sm">
         <p className="text-xs text-[var(--muted-foreground)]">
@@ -129,7 +133,7 @@ export function SharedStepsDialog({
           {(stepsQuery.data ?? []).map((step) => (
             <div
               key={step.id}
-              className="flex items-start justify-between gap-2 rounded border border-[var(--border)] p-2"
+              className="flex items-start justify-between gap-2 rounded-lg border border-[var(--border)] p-2"
             >
               <div>
                 <p className="font-medium">
@@ -146,7 +150,15 @@ export function SharedStepsDialog({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => deleteMutation.mutate(step.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Delete shared step “${step.name}”?`,
+                      description:
+                        'It is removed from the library. Test cases that already copied this step keep their own copy.',
+                      confirmLabel: 'Delete shared step',
+                      run: () => deleteMutation.mutateAsync(step.id),
+                    })
+                  }
                 >
                   Delete
                 </Button>
@@ -159,7 +171,7 @@ export function SharedStepsDialog({
         </div>
 
         {showForm ? (
-          <div className="flex flex-col gap-2 rounded border border-[var(--border)] p-3">
+          <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ss-name">Name</Label>
               <Input
@@ -192,7 +204,7 @@ export function SharedStepsDialog({
                 onChange={(e) => setForm({ ...form, expected: e.target.value })}
               />
             </div>
-            {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+            <FormError>{serverError}</FormError>
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -229,5 +241,7 @@ export function SharedStepsDialog({
         )}
       </div>
     </Dialog>
+    {confirmDialog}
+    </>
   )
 }

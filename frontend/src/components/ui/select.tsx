@@ -16,6 +16,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
         'disabled:cursor-not-allowed disabled:opacity-50',
         // Mobile redesign Phase 2: 44px tall / 16px text (no iOS focus zoom).
         'max-md:h-11 max-md:text-base',
+        'aria-[invalid=true]:border-[var(--destructive)]',
         className,
       )}
       {...props}

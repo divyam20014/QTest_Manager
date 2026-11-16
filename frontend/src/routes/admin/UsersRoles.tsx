@@ -16,7 +16,9 @@ import {
 import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,6 +27,7 @@ import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { FormError } from '@/components/ui/form-field'
 
 const INVITE_ROLES: RoleCode[] = ['admin', 'manager', 'tester']
 
@@ -43,6 +46,7 @@ export function UsersRoles() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [resetTarget, setResetTarget] = useState<User | null>(null)
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
 
   const filterDefaults = { search: '', role: '', status: '', sort: 'name' }
   const urlFilters = useUrlFilters(filterDefaults)
@@ -154,7 +158,7 @@ export function UsersRoles() {
       cardFull: true,
       cell: (u) => u.email,
       cardCell: (u) => (
-        <span className="block min-w-0 [overflow-wrap:anywhere]" title={u.email}>
+        <span className="block min-w-0 [overflow-wrap:anywhere]">
           {u.email}
         </span>
       ),
@@ -197,17 +201,20 @@ export function UsersRoles() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold">Users &amp; Roles</h1>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => setInviteOpen(true)}>
-            Invite User
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-            New User (set password directly)
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Users & Roles"
+        description="Invite people, assign their roles and control who can sign in."
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+              New User (set password directly)
+            </Button>
+            <Button size="sm" onClick={() => setInviteOpen(true)}>
+              Invite User
+            </Button>
+          </>
+        }
+      />
 
       <FilterBar
         activeCount={(roleFilter ? 1 : 0) + (statusFilter ? 1 : 0)}
@@ -318,7 +325,18 @@ export function UsersRoles() {
               Reset Password
             </Button>
             {u.is_active && u.id !== currentUser?.user_id && (
-              <Button variant="outline" size="sm" onClick={() => deactivateMutation.mutate(u.id)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  ask({
+                    title: `Deactivate ${u.name}?`,
+                    description: `${u.name} will be signed out and unable to log in until an admin activates them again. Their test results, defects and comments are kept.`,
+                    confirmLabel: 'Deactivate user',
+                    run: () => deactivateMutation.mutateAsync(u.id),
+                  })
+                }
+              >
                 Deactivate
               </Button>
             )}
@@ -331,6 +349,7 @@ export function UsersRoles() {
         )}
       />
 
+      {confirmDialog}
       <NewUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       <InviteUserDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
       <ResetPasswordDialog
@@ -376,7 +395,7 @@ function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: ()
             signs the user out of all existing sessions.
           </p>
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
@@ -453,7 +472,7 @@ function NewUserDialog({ open, onClose }: { open: boolean; onClose: () => void }
             At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.
           </p>
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
@@ -516,7 +535,7 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
               Invite created. No email provider is configured in this environment, so share this
               link with the invitee directly — it expires after a few days:
             </p>
-            <p className="break-all rounded bg-[var(--muted)] p-2 font-mono text-xs">{sentLink}</p>
+            <p className="break-all rounded-md bg-[var(--muted)] p-2 font-mono text-xs">{sentLink}</p>
             <DialogFooter>
               <Button size="sm" onClick={handleClose}>
                 Done
@@ -550,7 +569,7 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 ))}
               </Select>
             </div>
-            {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+            <FormError>{serverError}</FormError>
             <DialogFooter>
               <Button variant="outline" size="sm" onClick={handleClose}>
                 Cancel

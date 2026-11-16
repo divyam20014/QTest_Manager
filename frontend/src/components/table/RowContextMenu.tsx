@@ -79,7 +79,7 @@ function RowContextMenuPortal({
             onClose()
           }}
           className={cn(
-            'block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-[var(--muted)] disabled:opacity-50',
+            'block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-[var(--muted)] disabled:opacity-50',
             item.destructive && 'text-[var(--destructive)]',
           )}
         >

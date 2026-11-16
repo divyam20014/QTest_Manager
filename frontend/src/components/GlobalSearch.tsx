@@ -56,7 +56,7 @@ export function GlobalSearch() {
     <div
       ref={containerRef}
       role="search"
-      className="relative hidden md:block md:w-44 2xl:w-72"
+      className="relative hidden lg:block lg:w-44 2xl:w-72"
     >
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -87,7 +87,7 @@ export function GlobalSearch() {
               setQuery('')
               setOpen(false)
             }}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
           >
             <X className="size-3.5" />
           </button>

@@ -13,7 +13,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   'test-cases': 'Test Cases',
   'test-repository': 'Test Repository',
   'test-runs': 'Test Runs',
-  'test-run-cases': 'Execution',
+  'test-run-cases': 'Execution Console',
   execution: 'Execution Console',
   defects: 'Defects',
   reporting: 'Reporting',
@@ -32,7 +32,7 @@ const ID_LABELS: Record<string, string> = {
   requirements: 'Requirement',
   'test-cases': 'Test Case',
   'test-runs': 'Test Run',
-  'test-run-cases': 'Execution',
+  'test-run-cases': 'Test Case',
   defects: 'Defect',
 }
 

@@ -1,11 +1,10 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, type ReactNode } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Check, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   CartesianGrid,
   Cell,
-  Legend,
   Line,
   LineChart,
   Pie,
@@ -19,6 +18,8 @@ import {
 import { fetchActivityStream, fetchAggregateReport, fetchDashboardSummary, fetchExecutionTrend } from '@/api/reporting'
 import { listDefects, type Severity } from '@/api/defects'
 import { Badge } from '@/components/ui/badge'
+import { ChartLegend, ChartPanel, RangeControl } from '@/components/ui/ChartPanel'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -26,7 +27,10 @@ import { GaugeDial } from '@/components/ui/GaugeDial'
 import { ChartSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { TactileButton } from '@/components/ui/TactileButton'
 import { humanizeActionCode } from '@/lib/labels'
-import { categoricalColor, prefersDark } from '@/routes/reporting/palette'
+import { levelTone } from '@/lib/statusTones'
+import { useThemePreference } from '@/lib/useThemePreference'
+import { cn } from '@/lib/utils'
+import { categoricalColor } from '@/routes/reporting/palette'
 
 // Tactile hover affordance for clickable dashboard tiles -- a lift via
 // transform rather than overriding EmbossedCard's own box-shadow token
@@ -68,12 +72,6 @@ function formatPassRate(percentage: number, sampleSize: number): string {
 // cover the four seeded defaults, with a sensible fallback for anything
 // a tenant has added (ranked last, shown neutral).
 const SEVERITY_RANK: Partial<Record<Severity, number>> = { Critical: 0, High: 1, Medium: 2, Low: 3 }
-const SEVERITY_TONE: Partial<Record<Severity, 'neutral' | 'positive' | 'warning' | 'critical'>> = {
-  Critical: 'critical',
-  High: 'critical',
-  Medium: 'warning',
-  Low: 'neutral',
-}
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
@@ -117,7 +115,7 @@ function OnboardingChecklist({
           onClick={onDismiss}
           aria-label="Dismiss getting-started checklist"
           size="sm"
-          className="h-7 w-7 px-0"
+          className="size-8 px-0 max-md:size-11"
         >
           <X className="size-4" />
         </TactileButton>
@@ -151,9 +149,139 @@ function OnboardingChecklist({
   )
 }
 
+// Test case lifecycle -> palette slot. Colour follows the *entity* (a status
+// keeps its colour whichever statuses happen to exist), never its rank in the
+// current data. Slots are the first four of the validated categorical order.
+const STATUS_SLOT: Record<string, number> = { draft: 0, ready_for_review: 1, approved: 2, deprecated: 3 }
+const STATUS_ORDER = ['draft', 'ready_for_review', 'approved', 'deprecated']
+
+const TREND_RANGES = [
+  { value: 7, label: '7d' },
+  { value: 30, label: '30d' },
+  { value: 90, label: '90d' },
+]
+
+const ACTIVITY_PREVIEW = 8
+
+const chartTooltipStyle = {
+  background: 'var(--tactile-surface-raised)',
+  border: 'none',
+  borderRadius: 10,
+  boxShadow: 'var(--elevation-raised-sm)',
+  fontSize: 12,
+  color: 'var(--foreground)',
+}
+
+// ISO dates ("2026-11-15") parsed as local midnight so the label never
+// slips a day in timezones behind UTC.
+function parseDay(iso: string): Date {
+  return new Date(`${iso}T00:00:00`)
+}
+function shortDay(iso: string): string {
+  return parseDay(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+function longDay(iso: string): string {
+  return parseDay(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 31536000],
+  ['month', 2592000],
+  ['day', 86400],
+  ['hour', 3600],
+  ['minute', 60],
+]
+function relativeTime(iso: string): string {
+  const seconds = (Date.parse(iso) - Date.now()) / 1000
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  for (const [unit, size] of RELATIVE_UNITS) {
+    if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit)
+  }
+  return 'just now'
+}
+
+function severityDetail(openBySeverity: Record<string, number>): string {
+  return Object.entries(openBySeverity)
+    .sort(([a], [b]) => (SEVERITY_RANK[a as Severity] ?? 99) - (SEVERITY_RANK[b as Severity] ?? 99))
+    .map(([s, n]) => `${s}: ${n}`)
+    .join(' · ')
+}
+
+interface Kpi {
+  title: string
+  value: string | number
+  detail: string
+  href: string
+  /** A second, independent destination (e.g. "6 critical") kept as its own link. */
+  secondary?: { label: string; href: string; tone?: 'critical' }
+}
+
+// One tile = one stretched primary link (the title) plus an optional second
+// link. A real nested <a> inside an <a> is invalid, so the primary link's
+// ::after covers the card and the secondary link sits above it (z-10).
+function KpiTile({ kpi, index }: { kpi: Kpi; index: number }) {
+  return (
+    <EmbossedCard
+      className={cn('qth-animate-in relative h-full cursor-pointer', TILE_INTERACTIVE)}
+      style={{ animation: `qth-slide-in 0.25s ease-out ${index * 30}ms backwards` }}
+    >
+      <CardHeader>
+        <CardTitle>
+          <Link
+            to={kpi.href}
+            className="after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-[var(--ring)]"
+          >
+            {kpi.title}
+          </Link>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-1">
+        <p className="text-3xl font-semibold tabular-nums">{kpi.value}</p>
+        <p className="text-xs text-[var(--muted-foreground)]">{kpi.detail}</p>
+        {kpi.secondary && (
+          <Link
+            to={kpi.secondary.href}
+            className={cn(
+              'relative z-10 mt-1 inline-flex w-fit items-center rounded-md text-xs font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:min-h-11 max-md:text-sm',
+              kpi.secondary.tone === 'critical' ? 'text-[var(--status-serious)]' : 'text-[var(--link)]',
+            )}
+          >
+            {kpi.secondary.label} →
+          </Link>
+        )}
+      </CardContent>
+    </EmbossedCard>
+  )
+}
+
+function KpiSkeleton() {
+  return (
+    <EmbossedCard>
+      <CardHeader>
+        <Skeleton className="h-4 w-24" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-8 w-14" />
+        <Skeleton className="mt-2 h-3 w-24" />
+        <Skeleton className="mt-3 h-3 w-16" />
+      </CardContent>
+    </EmbossedCard>
+  )
+}
+
+function Section({ children }: { children: ReactNode }) {
+  return <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">{children}</div>
+}
+
 export function Dashboard() {
-  const isDark = prefersDark()
+  const [theme] = useThemePreference()
+  // The app's light/dark toggle (data-theme) is the source of truth -- the
+  // OS media query alone gave a light chart palette on a dark surface
+  // whenever the two disagreed.
+  const isDark = theme === 'dark'
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null)
+  const [trendDays, setTrendDays] = useState(30)
+  const [showAllActivity, setShowAllActivity] = useState(false)
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     try {
       return localStorage.getItem(ONBOARDING_DISMISSED_KEY) === '1'
@@ -161,14 +289,22 @@ export function Dashboard() {
       return false
     }
   })
-  const summaryQuery = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: fetchDashboardSummary })
-  const activityQuery = useQuery({ queryKey: ['dashboard', 'activity'], queryFn: fetchActivityStream })
-  const trendQuery = useQuery({ queryKey: ['dashboard', 'execution-trend'], queryFn: () => fetchExecutionTrend(30) })
+  // One retry (not the default three with back-off) so a failing API shows the
+  // error state with its Retry button within ~2s instead of ~7s of skeletons.
+  const summaryQuery = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: fetchDashboardSummary, retry: 1 })
+  const activityQuery = useQuery({ queryKey: ['dashboard', 'activity'], queryFn: fetchActivityStream, retry: 1 })
+  const trendQuery = useQuery({
+    queryKey: ['dashboard', 'execution-trend', trendDays],
+    queryFn: () => fetchExecutionTrend(trendDays),
+    placeholderData: keepPreviousData,
+    retry: 1,
+  })
   const statusQuery = useQuery({
     queryKey: ['dashboard', 'test-case-status'],
     queryFn: () => fetchAggregateReport('test_case_status', 'project'),
+    retry: 1,
   })
-  const defectsQuery = useQuery({ queryKey: ['dashboard', 'defects-all'], queryFn: () => listDefects() })
+  const defectsQuery = useQuery({ queryKey: ['dashboard', 'defects-all'], queryFn: () => listDefects(), retry: 1 })
 
   const summary = summaryQuery.data
 
@@ -183,45 +319,51 @@ export function Dashboard() {
         (SEVERITY_RANK[a.severity] ?? 99) - (SEVERITY_RANK[b.severity] ?? 99) ||
           b.created_at.localeCompare(a.created_at),
     )
-    .slice(0, 6)
+  const needsAttentionShown = needsAttention.slice(0, 6)
 
   const statusTotals = new Map<string, number>()
   for (const row of statusQuery.data?.rows ?? []) {
     statusTotals.set(row.value, (statusTotals.get(row.value) ?? 0) + row.count)
   }
-  const statusPieData = [...statusTotals.entries()].map(([status, count]) => ({
-    status: STATUS_LABELS[status] ?? status,
-    count,
-  }))
+  const statusPieData = [...statusTotals.entries()]
+    .map(([key, count]) => ({
+      key,
+      status: STATUS_LABELS[key] ?? key,
+      count,
+      color: categoricalColor(STATUS_SLOT[key] ?? STATUS_ORDER.length + 1, isDark),
+    }))
+    .sort((a, b) => {
+      const ai = STATUS_ORDER.indexOf(a.key)
+      const bi = STATUS_ORDER.indexOf(b.key)
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+    })
+  const statusTotal = statusPieData.reduce((sum, d) => sum + d.count, 0)
 
-  const kpis: { title: string; value: string | number; detail: string; href?: string }[] = summary
+  const trendPoints = trendQuery.data?.points ?? []
+  const passTotal = trendPoints.reduce((sum, p) => sum + p.pass_count, 0)
+  const failTotal = trendPoints.reduce((sum, p) => sum + p.fail_count, 0)
+  const passColor = categoricalColor(2, isDark)
+  const failColor = categoricalColor(7, isDark)
+
+  const openDefects = summary ? Object.values(summary.defects.open_by_severity).reduce((a, b) => a + b, 0) : 0
+  const kpis: Kpi[] = summary
     ? [
         {
-          title: 'Total Projects',
+          title: 'Projects',
           value: summary.projects.total,
-          detail: Object.entries(summary.projects.by_status).map(([s, n]) => `${s}: ${n}`).join(', '),
+          detail: Object.entries(summary.projects.by_status).map(([s, n]) => `${s}: ${n}`).join(' · ') || 'No projects yet',
           href: '/projects',
+          secondary: { label: `${summary.projects.active} active`, href: '/projects?status=Active' },
         },
         {
-          title: 'Active Projects',
-          value: summary.projects.active,
-          detail: 'Not yet completed',
-          href: '/projects?status=Active',
-        },
-        {
-          title: 'Total Test Cases',
+          title: 'Test Cases',
           value: summary.test_cases.total,
           detail: `${formatPercent(summary.test_cases.approved_ratio)} approved`,
           // `/test-cases` alone isn't a real route (test cases are always
           // scoped to a project or viewed via the cross-project
           // repository) -- `/test-repository` is that cross-project view.
           href: '/test-repository',
-        },
-        {
-          title: 'Approved Test Cases',
-          value: summary.test_cases.approved_count,
-          detail: `of ${summary.test_cases.total} total`,
-          href: '/test-repository?status=approved',
+          secondary: { label: `${summary.test_cases.approved_count} approved`, href: '/test-repository?status=approved' },
         },
         {
           title: 'Active Test Runs',
@@ -231,29 +373,23 @@ export function Dashboard() {
         },
         {
           title: 'Open Defects',
-          value: Object.values(summary.defects.open_by_severity).reduce((a, b) => a + b, 0),
-          detail: Object.entries(summary.defects.open_by_severity).map(([s, n]) => `${s}: ${n}`).join(', '),
+          value: openDefects,
+          detail: severityDetail(summary.defects.open_by_severity) || 'None open',
           href: '/defects',
-        },
-        {
-          title: 'Critical Defects',
-          value: summary.defects.critical_count,
-          detail: 'open, Critical severity',
-          href: '/defects?severity=Critical',
+          secondary:
+            summary.defects.critical_count > 0
+              ? { label: `${summary.defects.critical_count} critical`, href: '/defects?severity=Critical', tone: 'critical' }
+              : undefined,
         },
       ]
     : []
 
+  const activity = activityQuery.data ?? []
+  const activityShown = showAllActivity ? activity : activity.slice(0, ACTIVITY_PREVIEW)
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Dashboard</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Current testing status and project health at a glance.
-          </p>
-        </div>
-      </div>
+      <PageHeader title="Dashboard" description="Current testing status and project health at a glance." />
 
       {summary &&
         !onboardingDismissed &&
@@ -273,19 +409,25 @@ export function Dashboard() {
           />
         )}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {summaryQuery.isLoading &&
-          Array.from({ length: 8 }).map((_, i) => (
-            <EmbossedCard key={i}>
+      {/* Headline first: the pass-rate dial is the hero (two columns by two
+          rows on wide screens), four KPI tiles beside / below it. */}
+      <section aria-label="Key metrics" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {summaryQuery.isLoading && (
+          <>
+            <EmbossedCard className="col-span-2 lg:row-span-2">
               <CardHeader>
-                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-32" />
               </CardHeader>
-              <CardContent>
-                <Skeleton className="h-7 w-14" />
-                <Skeleton className="mt-2 h-3 w-20" />
+              <CardContent className="flex flex-col items-center gap-3">
+                <Skeleton className="size-40 rounded-full" />
+                <Skeleton className="h-3 w-40" />
               </CardContent>
             </EmbossedCard>
-          ))}
+            {Array.from({ length: 4 }).map((_, i) => (
+              <KpiSkeleton key={i} />
+            ))}
+          </>
+        )}
         {summaryQuery.isError && (
           <EmbossedCard className="col-span-2 lg:col-span-4">
             <CardContent>
@@ -293,49 +435,14 @@ export function Dashboard() {
             </CardContent>
           </EmbossedCard>
         )}
-        {kpis.map((kpi, i) => {
-          const card = (
-            <EmbossedCard
-              className={`qth-animate-in h-full ${kpi.href ? `cursor-pointer ${TILE_INTERACTIVE}` : ''}`}
-              style={{ animation: `qth-slide-in 0.25s ease-out ${i * 30}ms backwards` }}
-            >
-              <CardHeader>
-                <CardTitle>{kpi.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-semibold">{kpi.value}</p>
-                <p className="text-xs text-[var(--muted-foreground)]">{kpi.detail}</p>
-              </CardContent>
-            </EmbossedCard>
-          )
-          // An odd number of tiles would strand the last one half-width on a
-          // phone; let it span the row there.
-          const spanLast = i === kpis.length - 1 && kpis.length % 2 === 1 ? 'max-sm:col-span-2' : ''
-          return kpi.href ? (
-            <Link
-              key={kpi.title}
-              to={kpi.href}
-              className={`block rounded-xl ${spanLast} ${TILE_INTERACTIVE}`}
-              aria-label={`View ${kpi.title}`}
-            >
-              {card}
-            </Link>
-          ) : (
-            <div key={kpi.title} className={spanLast}>
-              {card}
-            </div>
-          )
-        })}
         {summary && (
-          <EmbossedCard
-            className="qth-animate-in h-full max-sm:order-first max-sm:col-span-2"
-            style={{ animation: `qth-slide-in 0.25s ease-out ${kpis.length * 30}ms backwards` }}
-          >
+          <EmbossedCard className="qth-animate-in col-span-2 flex flex-col lg:row-span-2">
             <CardHeader>
               <CardTitle>Execution Pass %</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col items-center gap-1 pt-0">
+            <CardContent className="flex flex-1 flex-col items-center justify-center gap-1 pb-5 pt-0 lg:pb-8">
               <GaugeDial
+                size="lg"
                 value={summary.test_runs.step_pass_percentage * 100}
                 label="Execution pass rate"
                 valueLabel={
@@ -343,27 +450,24 @@ export function Dashboard() {
                     ? 'n/a'
                     : formatPercent(summary.test_runs.step_pass_percentage)
                 }
-                detail={
-                  summary.test_runs.step_sample_size > 0 &&
-                  summary.test_runs.step_sample_size < THIN_SAMPLE_THRESHOLD
-                    ? `${Math.round(summary.test_runs.step_pass_percentage * summary.test_runs.step_sample_size)} of ${summary.test_runs.step_sample_size} steps passed`
-                    : undefined
-                }
               />
-              <p className="text-xs text-[var(--muted-foreground)]">
+              <p className="text-center text-xs text-[var(--muted-foreground)]">
                 {summary.test_runs.step_sample_size === 0
                   ? 'No executed steps yet'
                   : summary.test_runs.step_sample_size < THIN_SAMPLE_THRESHOLD
-                    ? 'small sample -- more executions will sharpen this'
-                    : 'across all executed steps'}
+                    ? `${Math.round(summary.test_runs.step_pass_percentage * summary.test_runs.step_sample_size)} of ${summary.test_runs.step_sample_size} steps passed (small sample, more executions will sharpen this)`
+                    : `${Math.round(summary.test_runs.step_pass_percentage * summary.test_runs.step_sample_size).toLocaleString()} of ${summary.test_runs.step_sample_size.toLocaleString()} executed steps passed`}
               </p>
             </CardContent>
           </EmbossedCard>
         )}
-      </div>
+        {kpis.map((kpi, i) => (
+          <KpiTile key={kpi.title} kpi={kpi} index={i + 1} />
+        ))}
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <EmbossedCard className="lg:col-span-1">
+      <Section>
+        <EmbossedCard>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="flex items-center gap-1.5">
               <AlertTriangle className="size-3.5 text-[var(--status-warning)]" />
@@ -389,73 +493,77 @@ export function Dashboard() {
               />
             )}
             <ul className="flex flex-col gap-2">
-              {needsAttention.map((d) => (
+              {needsAttentionShown.map((d) => (
                 <li key={d.id}>
                   <Link
                     to={`/defects/${d.id}`}
                     className="flex items-center justify-between gap-3 rounded-md border border-[var(--border)] px-3 py-2 text-sm transition-colors hover:bg-[var(--muted)] max-md:min-h-11"
                   >
                     <span className="min-w-0 truncate">{d.title}</span>
-                    <Badge tone={SEVERITY_TONE[d.severity] ?? 'neutral'} className="shrink-0">
+                    <Badge tone={levelTone(d.severity)} className="shrink-0">
                       {d.severity}
                     </Badge>
                   </Link>
                 </li>
               ))}
             </ul>
+            {needsAttention.length > needsAttentionShown.length && (
+              <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                Showing {needsAttentionShown.length} of {needsAttention.length} open Critical and High defects.
+              </p>
+            )}
           </CardContent>
         </EmbossedCard>
 
-        <EmbossedCard className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Test Case Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {statusQuery.isLoading ? (
-              <div className="h-56">
-                <ChartSkeleton />
-              </div>
-            ) : statusQuery.isError ? (
-              <ErrorState onRetry={() => statusQuery.refetch()} />
-            ) : statusPieData.length === 0 ? (
-              <EmptyState title="No test cases yet" description="Create your first test case to see a status breakdown here." />
-            ) : (
-              <div className="h-56">
+        <ChartPanel
+          title="Test Case Status"
+          summary={
+            statusPieData.length > 0
+              ? `Donut chart of ${statusTotal} test cases: ${statusPieData.map((d) => `${d.count} ${d.status}`).join(', ')}.`
+              : undefined
+          }
+          table={
+            statusPieData.length > 0
+              ? {
+                  columns: ['Status', 'Test cases', 'Share'],
+                  rows: statusPieData.map((d) => [d.status, d.count, formatPercent(d.count / statusTotal)]),
+                }
+              : undefined
+          }
+        >
+          {statusQuery.isLoading ? (
+            <ChartSkeleton />
+          ) : statusQuery.isError ? (
+            <ErrorState onRetry={() => statusQuery.refetch()} />
+          ) : statusPieData.length === 0 ? (
+            <EmptyState title="No test cases yet" description="Create your first test case to see a status breakdown here." />
+          ) : (
+            <div className="flex h-full flex-col gap-2">
+              <div className="relative min-h-0 flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <defs>
-                      {statusPieData.map((entry, i) => {
-                        const color = categoricalColor(i, isDark)
-                        return (
-                          // Radial highlight toward the top-left, matching the
-                          // app-wide emboss light-source convention -- gives
-                          // slices a domed look without introducing any hue
-                          // outside the validated categorical palette.
-                          <radialGradient key={entry.status} id={`pie-grad-${i}`} cx="35%" cy="30%" r="75%">
-                            <stop offset="0%" stopColor={color} stopOpacity={1} />
-                            <stop offset="100%" stopColor={color} stopOpacity={0.78} />
-                          </radialGradient>
-                        )
-                      })}
+                      {statusPieData.map((entry, i) => (
+                        // Radial highlight toward the top-left, matching the
+                        // app-wide emboss light-source convention -- gives
+                        // slices a domed look without introducing any hue
+                        // outside the validated categorical palette.
+                        <radialGradient key={entry.key} id={`pie-grad-${i}`} cx="35%" cy="30%" r="75%">
+                          <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                          <stop offset="100%" stopColor={entry.color} stopOpacity={0.78} />
+                        </radialGradient>
+                      ))}
                     </defs>
                     <Tooltip
-                      contentStyle={{
-                        background: 'var(--tactile-surface-raised)',
-                        border: 'none',
-                        borderRadius: 10,
-                        boxShadow: 'var(--elevation-raised-sm)',
-                        fontSize: 12,
-                        color: 'var(--foreground)',
-                      }}
+                      contentStyle={chartTooltipStyle}
                       formatter={(value, name) => [`${value} test case${value === 1 ? '' : 's'}`, name]}
                     />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Pie
                       data={statusPieData}
                       dataKey="count"
                       nameKey="status"
-                      innerRadius={44}
-                      outerRadius={78}
+                      innerRadius="58%"
+                      outerRadius="92%"
                       paddingAngle={2}
                       cornerRadius={3}
                       stroke="var(--tactile-surface)"
@@ -467,7 +575,7 @@ export function Dashboard() {
                     >
                       {statusPieData.map((entry, i) => (
                         <Cell
-                          key={entry.status}
+                          key={entry.key}
                           fill={`url(#pie-grad-${i})`}
                           style={{
                             filter:
@@ -479,59 +587,81 @@ export function Dashboard() {
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
+                >
+                  <span className="text-xl font-semibold tabular-nums leading-none">{statusTotal}</span>
+                  <span className="text-[11px] text-[var(--muted-foreground)]">test cases</span>
+                </div>
               </div>
-            )}
-          </CardContent>
-        </EmbossedCard>
+              <ChartLegend
+                items={statusPieData.map((d) => ({
+                  label: d.status,
+                  color: d.color,
+                  value: `${d.count} · ${formatPercent(d.count / statusTotal)}`,
+                }))}
+              />
+            </div>
+          )}
+        </ChartPanel>
 
-        <EmbossedCard className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Execution Trend (30 days)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {trendQuery.isLoading ? (
-              <div className="h-56">
-                <ChartSkeleton />
-              </div>
-            ) : trendQuery.isError ? (
-              <ErrorState onRetry={() => trendQuery.refetch()} />
-            ) : (trendQuery.data?.points.length ?? 0) === 0 ? (
-              <EmptyState title="No execution activity yet" description="Run a test to see pass/fail trends here." />
-            ) : (
-              <div className="h-56">
+        <ChartPanel
+          className="md:col-span-2 lg:col-span-1"
+          title="Execution Trend"
+          actions={
+            <RangeControl label="Trend range" value={trendDays} options={TREND_RANGES} onChange={setTrendDays} />
+          }
+          summary={
+            trendPoints.length > 0
+              ? `Line chart of test step results over the last ${trendDays} days: ${passTotal} passed and ${failTotal} failed.`
+              : undefined
+          }
+          table={
+            trendPoints.length > 0
+              ? {
+                  columns: ['Date', 'Pass', 'Fail'],
+                  rows: trendPoints.map((p) => [longDay(p.date), p.pass_count, p.fail_count]),
+                }
+              : undefined
+          }
+        >
+          {trendQuery.isLoading ? (
+            <ChartSkeleton />
+          ) : trendQuery.isError ? (
+            <ErrorState onRetry={() => trendQuery.refetch()} />
+          ) : trendPoints.length === 0 ? (
+            <EmptyState title="No execution activity yet" description="Run a test to see pass/fail trends here." />
+          ) : (
+            <div className="flex h-full flex-col gap-2">
+              <div className="min-h-0 flex-1">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendQuery.data?.points ?? []} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke={isDark ? '#2c2c2a' : '#e1e0d9'} />
+                  <LineChart data={trendPoints} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                     <XAxis
                       dataKey="date"
-                      minTickGap={24}
-                      tick={{ fontSize: 10, fill: isDark ? '#c3c2b7' : '#52514e' }}
-                      axisLine={{ stroke: isDark ? '#383835' : '#c3c2b7' }}
+                      minTickGap={32}
+                      tickFormatter={shortDay}
+                      tick={{ fontSize: 10, fill: 'var(--chart-axis-text)' }}
+                      axisLine={{ stroke: 'var(--chart-axis-line)' }}
                       tickLine={false}
                     />
                     <YAxis
                       allowDecimals={false}
-                      tick={{ fontSize: 10, fill: isDark ? '#c3c2b7' : '#52514e' }}
+                      tick={{ fontSize: 10, fill: 'var(--chart-axis-text)' }}
                       axisLine={false}
                       tickLine={false}
                     />
                     <Tooltip
-                      contentStyle={{
-                        background: 'var(--tactile-surface-raised)',
-                        border: 'none',
-                        borderRadius: 10,
-                        boxShadow: 'var(--elevation-raised-sm)',
-                        fontSize: 12,
-                        color: 'var(--foreground)',
-                      }}
-                      cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
+                      contentStyle={chartTooltipStyle}
+                      labelFormatter={(label) => longDay(String(label))}
+                      cursor={{ stroke: 'var(--chart-axis-line)', strokeWidth: 1 }}
                     />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Line
                       type="monotone"
                       dataKey="pass_count"
                       name="Pass"
-                      stroke={categoricalColor(2, isDark)}
+                      stroke={passColor}
                       strokeWidth={2.5}
                       dot={false}
                       activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
@@ -542,7 +672,7 @@ export function Dashboard() {
                       type="monotone"
                       dataKey="fail_count"
                       name="Fail"
-                      stroke={categoricalColor(7, isDark)}
+                      stroke={failColor}
                       strokeWidth={2.5}
                       dot={false}
                       activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
@@ -552,10 +682,16 @@ export function Dashboard() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-            )}
-          </CardContent>
-        </EmbossedCard>
-      </div>
+              <ChartLegend
+                items={[
+                  { label: 'Pass', color: passColor, value: passTotal.toLocaleString() },
+                  { label: 'Fail', color: failColor, value: failTotal.toLocaleString() },
+                ]}
+              />
+            </div>
+          )}
+        </ChartPanel>
+      </Section>
 
       <EmbossedCard>
         <CardHeader>
@@ -570,46 +706,53 @@ export function Dashboard() {
             </div>
           )}
           {activityQuery.isError && <ErrorState onRetry={() => activityQuery.refetch()} />}
+          {!activityQuery.isLoading && !activityQuery.isError && activity.length === 0 && (
+            <EmptyState title="No activity yet" description="Actions across the tenant will show up here." />
+          )}
           <ul className="flex flex-col gap-2 text-sm">
-            {!activityQuery.isLoading && activityQuery.data?.length === 0 && (
-              <li>
-                <EmptyState title="No activity yet" description="Actions across the tenant will show up here." />
-              </li>
-            )}
-            {activityQuery.data?.map((entry, i) => {
+            {activityShown.map((entry, i) => {
               const entityRoute = ENTITY_ROUTES[entry.entity_type]
               const body = (
                 <span>
                   <span className="font-medium">{entry.user_name ?? 'System'}</span>{' '}
-                  <span className="text-[var(--muted-foreground)]">{humanizeActionCode(entry.action)}</span>{' '}
-                  <span className="text-[var(--muted-foreground)]">
-                    ({humanizeActionCode(entry.entity_type)})
-                  </span>
+                  <span className="text-[var(--muted-foreground)]">{humanizeActionCode(entry.action)}</span>
                 </span>
               )
               return (
                 <li
                   key={i}
-                  className="flex flex-col gap-0.5 border-b border-[var(--border)] pb-2 last:border-0 sm:flex-row sm:justify-between sm:gap-4"
+                  className="flex flex-col gap-0.5 border-b border-[var(--border)] pb-2 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                 >
                   {entityRoute ? (
                     <Link
                       to={`${entityRoute}/${entry.entity_id}`}
                       className="min-w-0 break-words hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
-                      title="View this item"
                     >
                       {body}
                     </Link>
                   ) : (
                     body
                   )}
-                  <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
-                    {new Date(entry.created_at).toLocaleString()}
+                  <span className="flex shrink-0 items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                    <Badge tone="neutral">{humanizeActionCode(entry.entity_type)}</Badge>
+                    <time dateTime={entry.created_at} title={new Date(entry.created_at).toLocaleString()}>
+                      {relativeTime(entry.created_at)}
+                    </time>
                   </span>
                 </li>
               )
             })}
           </ul>
+          {activity.length > ACTIVITY_PREVIEW && (
+            <button
+              type="button"
+              aria-expanded={showAllActivity}
+              onClick={() => setShowAllActivity((v) => !v)}
+              className="mt-2 inline-flex items-center rounded-md text-sm text-[var(--link)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:min-h-11"
+            >
+              {showAllActivity ? 'Show fewer' : `Show all ${activity.length}`}
+            </button>
+          )}
         </CardContent>
       </EmbossedCard>
     </div>

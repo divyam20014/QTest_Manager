@@ -63,3 +63,23 @@ export function CardSkeleton({ lines = 2 }: { lines?: number }) {
     </div>
   )
 }
+
+/** Full-page skeleton for a detail screen (header + two cards) shown while
+ * its record loads, instead of a bare "Loading…" line. Announced once to
+ * assistive tech. */
+export function DetailSkeleton() {
+  return (
+    <div role="status" aria-live="polite" className="flex flex-col gap-4">
+      <span className="sr-only">Loading</span>
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-7 w-64 max-w-full" />
+      </div>
+      <Skeleton className="h-28 w-full" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    </div>
+  )
+}

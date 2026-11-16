@@ -18,7 +18,11 @@ import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DetailSkeleton } from '@/components/ui/skeleton'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
@@ -28,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { FormError } from '@/components/ui/form-field'
 
 const REQUIREMENT_HISTORY_ACTION_LABEL: Record<string, string> = {
   'requirement.created': 'Requirement created',
@@ -89,23 +94,21 @@ export function RequirementDetail() {
       showToast('error', err instanceof ApiError ? err.message : 'Could not delete this requirement'),
   })
 
-  if (requirementQuery.isLoading) {
-    return <p className="text-sm text-[var(--muted-foreground)]">Loading…</p>
-  }
-  if (requirementQuery.isError || !requirementQuery.data) {
-    return <p className="text-sm text-[var(--destructive)]">Requirement not found.</p>
-  }
+  const { ask, dialog: confirmDialog } = useConfirm()
+
+  if (requirementQuery.isLoading) return <DetailSkeleton />
+  if (requirementQuery.isError) return <ErrorState message="Could not load this requirement." onRetry={() => requirementQuery.refetch()} />
+  if (!requirementQuery.data) return <EmptyState title="Requirement not found" description="It may have been deleted, or you may not have access to it." />
 
   const req = requirementQuery.data
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="min-w-0 break-words text-lg font-semibold">{req.title}</h1>
-          <Badge tone="neutral">v{req.version_number}</Badge>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader
+        title={req.title}
+        meta={<Badge tone="neutral">v{req.version_number}</Badge>}
+        actions={
+          <>
           <Button variant="outline" size="sm" onClick={() => setAnalyzeOpen(true)}>
             Analyze Impact with AI
           </Button>
@@ -121,14 +124,24 @@ export function RequirementDetail() {
                 variant="destructive"
                 size="sm"
                 disabled={deleteMutation.isPending}
-                onClick={() => deleteMutation.mutate()}
+                onClick={() =>
+                  ask({
+                    title: 'Delete this requirement?',
+                    description: `“${req.title}” is permanently deleted along with its version history and its ${req.linked_test_cases.length} link${req.linked_test_cases.length === 1 ? '' : 's'} to test cases. The test cases themselves are kept, but traceability coverage for them changes. This cannot be undone.`,
+                    confirmLabel: 'Delete requirement',
+                    run: () => deleteMutation.mutateAsync(),
+                  })
+                }
               >
                 Delete
               </Button>
             </>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
+
+      {confirmDialog}
 
       <Card>
         <CardHeader>
@@ -159,7 +172,7 @@ export function RequirementDetail() {
               No test cases linked yet — this requirement is not covered.
             </p>
           ) : (
-            <table className="w-full text-sm">
+            <table aria-label="Linked test cases" className="w-full text-sm">
               <tbody>
                 {req.linked_test_cases.map((lt) => (
                   <tr key={lt.test_case_id} className="border-t border-[var(--border)]">
@@ -270,7 +283,7 @@ function AnalyzeChangeDialog({
           which linked test cases may need a human to re-review them. This only surfaces
           suggestions — it never edits the requirement or any test case.
         </p>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         {result && (
           <div className="flex flex-col gap-2">
             <p className="text-xs text-[var(--muted-foreground)]">
@@ -371,7 +384,7 @@ function GenerateWithAIDialog({
             ))}
           </Select>
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         {result && (
           <p className="text-xs text-[var(--status-good)]">
             Created {result.items.length} draft test case{result.items.length === 1 ? '' : 's'}{' '}
@@ -439,7 +452,7 @@ function EditRequirementDialog({
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
@@ -515,7 +528,7 @@ function LinkTestCaseDialog({
             ))}
           </Select>
         </div>
-        {serverError && <p className="text-xs text-[var(--destructive)]">{serverError}</p>}
+        <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel

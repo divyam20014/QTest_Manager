@@ -11,6 +11,7 @@ import {
 import { ApiError } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/lib/toast'
 
@@ -21,6 +22,7 @@ import { useToast } from '@/lib/toast'
 export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const { ask, dialog: confirmDialog } = useConfirm()
   const queryKey = ['test-data-sets', testCaseId]
   const [newSetName, setNewSetName] = useState('')
   const [rowDrafts, setRowDrafts] = useState<Record<string, { name: string; json: string }>>({})
@@ -45,6 +47,7 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
       queryClient.invalidateQueries({ queryKey })
       showToast('success', 'Data set deleted.')
     },
+    onError: () => showToast('error', 'Could not delete that data set.'),
   })
 
   const addRowMutation = useMutation({
@@ -66,7 +69,9 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
     mutationFn: (rowId: string) => deleteDataSetRow(rowId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey })
+      showToast('success', 'Row removed.')
     },
+    onError: () => showToast('error', 'Could not remove that row.'),
   })
 
   return (
@@ -79,9 +84,11 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 text-sm">
+        {confirmDialog}
         <div className="flex gap-2">
           <Input
             placeholder="New data set name (e.g. Login edge cases)"
+            aria-label="New data set name"
             value={newSetName}
             onChange={(e) => setNewSetName(e.target.value)}
           />
@@ -98,7 +105,18 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
           <div key={ds.id} className="rounded-md border border-[var(--border)] p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-medium">{ds.name}</span>
-              <Button variant="outline" size="sm" onClick={() => deleteSetMutation.mutate(ds.id)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  ask({
+                    title: `Delete data set “${ds.name}”?`,
+                    description: `The set and its ${ds.rows.length} row${ds.rows.length === 1 ? '' : 's'} are deleted. Runs that already used them keep their results. This cannot be undone.`,
+                    confirmLabel: 'Delete set',
+                    run: () => deleteSetMutation.mutateAsync(ds.id),
+                  })
+                }
+              >
                 Delete Set
               </Button>
             </div>
@@ -106,12 +124,23 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
               {ds.rows.map((row) => (
                 <li
                   key={row.id}
-                  className="flex items-center justify-between gap-2 rounded bg-[var(--muted)] px-2 py-1"
+                  className="flex items-center justify-between gap-2 rounded-md bg-[var(--muted)] px-2 py-1"
                 >
                   <span className="font-mono text-xs">
                     {row.name}: {JSON.stringify(row.data)}
                   </span>
-                  <Button variant="ghost" size="sm" onClick={() => deleteRowMutation.mutate(row.id)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      ask({
+                        title: `Remove row “${row.name}”?`,
+                        description: 'The row is removed from this data set. This cannot be undone.',
+                        confirmLabel: 'Remove row',
+                        run: () => deleteRowMutation.mutateAsync(row.id),
+                      })
+                    }
+                  >
                     Remove
                   </Button>
                 </li>
@@ -123,6 +152,7 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
             <div className="flex gap-2">
               <Input
                 placeholder="Row name"
+                aria-label={`Row name for ${ds.name}`}
                 className="w-32"
                 value={rowDrafts[ds.id]?.name ?? ''}
                 onChange={(e) =>
@@ -134,6 +164,7 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
               />
               <Input
                 placeholder='{"username": "admin", "password": "wrong"}'
+                aria-label={`Row values (JSON) for ${ds.name}`}
                 value={rowDrafts[ds.id]?.json ?? ''}
                 onChange={(e) =>
                   setRowDrafts((prev) => ({

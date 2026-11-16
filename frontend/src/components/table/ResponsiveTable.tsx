@@ -62,7 +62,7 @@ export interface RowSelection<T> {
  * whole card so the entire card is one big tap target, while the selection
  * checkbox and action buttons (z-10) stay independently tappable. */
 export const CARD_LINK_CLASS =
-  'block break-words py-1 text-base font-medium leading-snug after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none after:focus-visible:outline after:focus-visible:outline-2 after:focus-visible:outline-[var(--ring)]'
+  'flex min-h-11 items-center break-words py-1 text-base font-medium leading-snug after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none after:focus-visible:outline after:focus-visible:outline-2 after:focus-visible:outline-[var(--ring)]'
 
 interface ResponsiveTableProps<T> {
   rows: T[]
@@ -105,14 +105,26 @@ function DesktopTable<T>({
   state,
   stateCellClassName,
   loading,
+  label,
   className,
 }: ResponsiveTableProps<T>) {
   const visible = columns.filter((c) => !prefs || prefs.isVisible(c.key))
   const colCount = visible.length + (selection ? 1 : 0) + (rowActions ? 1 : 0)
+  const scrollInside = rows.length > 25 && !state && !loading
 
   return (
-    <div className={cn('overflow-x-auto rounded-lg border border-[var(--border)]', className)}>
-      <table className="w-full text-sm">
+    <div
+      className={cn(
+        'overflow-x-auto rounded-lg border border-[var(--border)]',
+        // Long tables scroll inside their own box so the header row stays
+        // visible (sticky only works against the scrolling ancestor). A
+        // scrollable region must be reachable by keyboard.
+        scrollInside && 'max-h-[70svh] overflow-y-auto',
+        className,
+      )}
+      {...(scrollInside ? { tabIndex: 0, role: 'region', 'aria-label': `${label} (scrollable)` } : {})}
+    >
+      <table aria-label={label} className="w-full text-sm">
         <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
           <tr>
             {selection && (
@@ -251,7 +263,7 @@ function CardList<T>({
             <li
               key={id}
               className={cn(
-                'qth-raised-sm relative rounded-xl border bg-[var(--background)] p-3',
+                'qth-card qth-raised-sm relative rounded-xl border bg-[var(--background)] p-3',
                 isSelected ? 'border-[var(--ring)]' : 'border-[var(--border)]',
               )}
             >
