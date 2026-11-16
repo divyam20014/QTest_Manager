@@ -152,7 +152,7 @@ export function RequirementsList() {
         })}
         state={
           requirementsQuery.isError ? (
-            <ErrorState onRetry={() => requirementsQuery.refetch()} />
+            <ErrorState error={requirementsQuery.error} onRetry={() => requirementsQuery.refetch()} />
           ) : !requirementsQuery.isLoading && requirementsQuery.data?.items.length === 0 ? (
             <EmptyState
               title="No requirements yet"

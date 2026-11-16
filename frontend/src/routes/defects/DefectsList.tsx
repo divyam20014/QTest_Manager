@@ -363,7 +363,7 @@ export function DefectsList() {
         }
         state={
           defectsQuery.isError ? (
-            <ErrorState onRetry={() => defectsQuery.refetch()} />
+            <ErrorState error={defectsQuery.error} onRetry={() => defectsQuery.refetch()} />
           ) : !defectsQuery.isLoading && defectsQuery.data?.length === 0 ? (
             <EmptyState
               title={status || severity || reportedBy || createdFrom || createdTo ? 'No defects match your filters' : 'No defects yet'}

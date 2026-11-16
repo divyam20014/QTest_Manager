@@ -19,7 +19,7 @@ Live tracker for the UI/UX programme. Update after every phase.
 
 ## Issues
 
-39 logged (0 Critical, 5 High, 16 Medium, 18 Low). 36 fixed, 1 partially addressed (UX-008 Repository rows), 2 open (UX-030 admin screens opened by direct URL by a Manager or Tester, needs a decision; UX-039 Reports mixes two card styles). Phase G fixed UX-007, 013, 016, 021 and 028 and found and fixed seven new issues (UX-031 to UX-037). Phase H found UX-038 (fixed) and UX-039 (open) by viewing screenshots. Full table in the audit report.
+39 logged (0 Critical, 5 High, 16 Medium, 18 Low). 39 fixed after the follow-up that closed the last three (UX-008 Repository requests and rows, UX-030 admin screens opened by direct URL, UX-039 Reports card styles); the limits of those three fixes are in the audit report. Before the follow-up: 36 fixed, 1 partial, 2 open. Phase G fixed UX-007, 013, 016, 021 and 028 and found and fixed seven new issues (UX-031 to UX-037). Phase H found UX-038 (fixed) and UX-039 (open) by viewing screenshots. Full table in the audit report.
 
 | ID | Sev | Short name | Status | Phase |
 |---|---|---|---|---|
@@ -30,7 +30,7 @@ Live tracker for the UI/UX programme. Update after every phase.
 | UX-005 | Medium | Destructive button contrast in dark mode | **Fixed** (Button in Phase B; NotificationBell badge in Phase E) | B / E |
 | UX-006 | Medium | Account menu label mismatch | **Fixed** (Phase C) | C |
 | UX-007 | Medium | Single 1.29 MB bundle | **Fixed** (Phase G: lazy routes, Recharts after first paint; 1,318 to about 534 KB initial JS) | G |
-| UX-008 | Medium | Repository renders every row | **Partial** (Phase E: DOM bounded by what has been loaded, 50 per project to start; still one request per project and no virtualisation) | E |
+| UX-008 | Medium | Repository renders every row | **Fixed** (follow-up: lazy project groups, empty projects skipped, debounced search, newest-first requests; 5 → 1 test-case requests and 4,033 → 1,115 DOM nodes on the demo tenant; filtered views still ask every non-empty project, no row windowing) | E, follow-up |
 | UX-009 | Medium | Toasts overlap mobile tab bar | **Fixed** (Phase C) | C |
 | UX-010 | Medium | Hand-built page headers | **Fixed** (Phase C; 3 deliberate exceptions) | C |
 | UX-011 | Medium | 14 status-tone maps | **Fixed** (Phase E: shared `lib/statusTones.ts` for the level scale, run-case status and verdict; state badges use `StatusBadge`) | E |
@@ -52,7 +52,7 @@ Live tracker for the UI/UX programme. Update after every phase.
 | UX-027 | Low | Native `title` tooltips | **Fixed** (Phase F: the 8 native-element `title=` attributes are gone — Tooltip, an accessible name, or removed where the text was already visible) | F |
 | UX-028 | Low | App vs marketing font | **Fixed** (Phase G: Inter Variable, self-hosted) | G |
 | UX-029 | Low | Duplicated dark tokens | **Fixed** (guarded) | B |
-| UX-030 | Medium | Admin screens by direct URL show a 403 load error to Manager/Tester | Open (needs a decision) | – |
+| UX-030 | Medium | Admin screens by direct URL show a 403 load error to Manager/Tester | **Fixed** (follow-up: `NoAccess` screen, shared `lib/routeAccess.ts`, gate before any data request, 403 on primary data shows the same message and is not retried) | follow-up |
 | UX-031 | Medium | Notifications button label omitted the unread count | **Fixed** (Phase G) | G |
 | UX-032 | Low | Tester screens requested `/users` and got 403 plus retries | **Fixed** (Phase G) | G |
 | UX-033 | Low | Sign-in, sign-up and invite pages had no `<main>` landmark | **Fixed** (Phase G) | G |
@@ -61,7 +61,7 @@ Live tracker for the UI/UX programme. Update after every phase.
 | UX-036 | Low | Chart animation ignored reduced motion | **Fixed** (Phase G) | G |
 | UX-037 | Low | Tab could leave the discard prompt | **Fixed** (Phase G) | G |
 | UX-038 | Low | "Add Set" button wrapped onto two lines in Test Data Sets | **Fixed** (Phase H) | H |
-| UX-039 | Low | Reports mixes a plain card with tactile chart panels | Open (needs its own check) | – |
+| UX-039 | Low | Reports mixes a plain card with tactile chart panels | **Fixed** (follow-up: all Reports content panels tactile; Distribution and Aggregate are `ChartPanel`s) | follow-up |
 
 ## Phase H — verification
 
@@ -391,3 +391,12 @@ No code-side schema, backend or auth changes. The e2e runs created more throwawa
 - The e2e runs created more throwaway tenants (named like "MobileShell …") in the development database.
 - The sweep and probes signed in as the Meridian demo admin many times, adding audit-log entries and sessions.
 - No schema, migration or backend change.
+
+
+## Follow-up: UX-008, UX-030, UX-039
+
+Frontend only; no backend, API, database, authentication or permission-logic change.
+
+- **UX-030:** `components/NoAccess.tsx`, `lib/routeAccess.ts` (single definition of restricted routes, read by the sidebar, the mobile More sheet, the command palette and the gate in `AppShell`), `ApiError.status` + `isForbidden()`, `ErrorState error=` (11 call sites), no retry on 403 (`main.tsx`). Tests: `e2e/no-access-and-repository.spec.ts` (Tester, Manager and Admin on a throwaway tenant; a mocked 403 on a defect page).
+- **UX-039:** `Reporting.tsx`, `QAManagerIntelligenceCard.tsx`, `ChartPanel` (`controls`, `footer` slots).
+- **UX-008:** `TestRepository.tsx` (project groups, lazy open, skip empty projects, `-created_at`, per-group Select all, selection dropped when a group closes, Project column hidden inside groups), `lib/useDebouncedValue.ts`. Test: the third case in `e2e/no-access-and-repository.spec.ts` (mocked 3-project tenant: only the open group is requested; empty project never; debounce sends one burst; Select all is per group; Load more).

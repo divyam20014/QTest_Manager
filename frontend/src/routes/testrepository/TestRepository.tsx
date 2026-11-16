@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -29,13 +30,20 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { FilterBar } from '@/components/table/FilterBar'
-import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
+import {
+  CARD_LINK_CLASS,
+  ResponsiveTable,
+  type ResponsiveColumn,
+  type RowSelection,
+} from '@/components/table/ResponsiveTable'
 import { useRowContextMenu, type RowContextMenuItem } from '@/components/table/RowContextMenu'
 import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
 import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
 import { TestCaseForm, type TestCaseFormValues } from '@/routes/testcases/TestCaseForm'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { cn } from '@/lib/utils'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
 
 const REPO_COLUMNS: TableColumnDef[] = [
@@ -85,13 +93,26 @@ async function runNextAction(tc: TestCase): Promise<void> {
 
 // Cross-project repository view (BRD: "advanced filters, bulk selection,
 // inline actions and quick test case creation"). No tenant-wide
-// /test-cases endpoint exists on the backend -- each project's test cases
-// are fetched (server-side filtered by the same search/status/priority
-// params TestCasesList already uses) and merged client-side here, tagged
-// with their project. Bulk/inline actions call the same existing
-// single-item endpoints TestCasesList already uses, one call per selected
-// row (Promise.allSettled) -- no new bulk backend endpoint, fine at this
-// tenant's realistic project/case counts.
+// /test-cases endpoint exists on the backend, so each project's cases are
+// fetched one request per project (server-side filtered by the same
+// search/status/priority params TestCasesList already uses), newest first.
+//
+// UX-008: that fan-out used to run for every project on every load and
+// render every row. Now:
+//  - projects the list already says are empty (`test_case_count`, which is
+//    exact) are never requested;
+//  - with "All projects", each project is a collapsible group listed with its
+//    case count, and only an open group is fetched and rendered -- the first
+//    one starts open. While a search/status/priority filter is active every
+//    group opens, because the filter has to be answered by each project (there
+//    is no cross-project endpoint); groups with no match then disappear;
+//  - the search box is debounced, so typing no longer sends a request per
+//    keystroke per project;
+//  - a single project (a project filter, or a tenant with one non-empty
+//    project) is the same flat list as before.
+// Bulk/inline actions call the same existing single-item endpoints
+// TestCasesList already uses, one call per selected row (Promise.allSettled)
+// -- no new bulk backend endpoint, fine at this tenant's realistic counts.
 export function TestRepository() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -119,11 +140,19 @@ export function TestRepository() {
   // Pages beyond the first, per project (see PAGE_SIZE).
   const [extra, setExtra] = useState<Record<string, { page: number; items: TestCase[] }>>({})
   const [loadingMore, setLoadingMore] = useState(false)
-  const filterSignature = JSON.stringify([search, status, priority, projectId])
+  // The box keeps the live value (typing stays instant); requests use this one.
+  const debouncedSearch = useDebouncedValue(search, 300)
+  // Open/closed groups the user chose themselves (see the header comment for
+  // the defaults).
+  const [toggled, setToggled] = useState<Record<string, boolean>>({})
+  const filterSignature = JSON.stringify([debouncedSearch, status, priority, projectId])
   const filterSignatureRef = useRef(filterSignature)
   filterSignatureRef.current = filterSignature
   useEffect(() => {
     setExtra({})
+    // A new search/filter starts from the default open/closed state, so a group
+    // the user collapsed earlier cannot hide the results of the new filter.
+    setToggled({})
   }, [filterSignature])
 
   // Phase 2: the command palette's "Create Test Case" quick action
@@ -176,18 +205,37 @@ export function TestRepository() {
   })
 
   const projects = projectsQuery.data?.items ?? []
-  const targetProjects = projectId ? projects.filter((p) => p.id === projectId) : projects
+  // A project the list reports as empty has nothing to fetch or show. (An
+  // explicit project filter always keeps that project, so "No test cases
+  // match" still appears for it.)
+  const targetProjects = projectId
+    ? projects.filter((p) => p.id === projectId)
+    : projects.filter((p) => (p.test_case_count ?? 1) > 0)
+  const grouped = targetProjects.length > 1
+  // A filter that has to be answered by every project opens every group.
+  const filtersActive = Boolean(debouncedSearch || status || priority)
+  const firstProjectId = targetProjects[0]?.id
+  function isOpen(id: string): boolean {
+    if (!grouped) return true
+    return toggled[id] ?? (filtersActive || id === firstProjectId)
+  }
 
   const perProjectQueries = useQueries({
     queries: targetProjects.map((project) => ({
-      queryKey: ['test-repository', project.id, { search, status, priority }],
+      queryKey: ['test-repository', project.id, { search: debouncedSearch, status, priority }],
       queryFn: () =>
-        listTestCases(project.id, { search, status, priority, page_size: PAGE_SIZE }).then((r) => ({
+        listTestCases(project.id, {
+          search: debouncedSearch,
+          status,
+          priority,
+          sort: '-created_at',
+          page_size: PAGE_SIZE,
+        }).then((r) => ({
           project,
           items: r.items,
           total: r.total,
         })),
-      enabled: targetProjects.length > 0,
+      enabled: isOpen(project.id),
     })),
   })
 
@@ -196,33 +244,76 @@ export function TestRepository() {
     [usersQuery.data],
   )
 
-  const isLoading = perProjectQueries.some((q) => q.isLoading)
-  const failedCount = perProjectQueries.filter((q) => q.isError).length
-  const allRows: { project: Project; case: TestCase }[] = perProjectQueries
-    .flatMap((q) => {
-      if (!q.data) return []
-      const seen = new Set<string>()
-      return [...q.data.items, ...(extra[q.data.project.id]?.items ?? [])]
-        .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
-        .map((c) => ({ project: q.data!.project, case: c }))
-    })
-    .sort((a, b) => b.case.created_at.localeCompare(a.case.created_at))
-  // How much of what the server holds is on screen.
-  const totalAvailable = perProjectQueries.reduce((sum, q) => sum + (q.data?.total ?? 0), 0)
-  const hasMore = allRows.length < totalAvailable
+  type Row = { project: Project; case: TestCase }
+  interface RepoGroup {
+    project: Project
+    open: boolean
+    loading: boolean
+    failed: boolean
+    /** Loaded cases (first page + "Load more" pages), de-duplicated, newest first. */
+    loaded: TestCase[]
+    /** Server-side matching total once loaded. */
+    total: number | undefined
+    /** Rows on screen (deprecated ones hidden unless asked for). */
+    rows: Row[]
+    hiddenDeprecated: number
+  }
+  const groups: RepoGroup[] = targetProjects.map((project, i) => {
+    const q = perProjectQueries[i]
+    const open = isOpen(project.id)
+    const seen = new Set<string>()
+    const loaded = q?.data
+      ? [...q.data.items, ...(extra[project.id]?.items ?? [])]
+          .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+          .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      : []
+    const shown = loaded.filter(
+      (c) => showDeprecated || status === 'deprecated' || c.status !== 'deprecated',
+    )
+    return {
+      project,
+      open,
+      loading: open && !!q?.isLoading,
+      failed: open && !!q?.isError,
+      loaded,
+      total: q?.data?.total,
+      rows: open ? shown.map((c) => ({ project, case: c })) : [],
+      hiddenDeprecated: open ? loaded.length - shown.length : 0,
+    }
+  })
+  // With a filter on, a project that answered "no matches" is not worth a header.
+  const visibleGroups = groups.filter((g) => !(filtersActive && g.total === 0 && !g.failed))
+  const openGroups = visibleGroups.filter((g) => g.open)
+
+  const isLoading = projectsQuery.isLoading || openGroups.some((g) => g.loading)
+  const failedCount = openGroups.filter((g) => g.failed).length
+  // Everything on screen -- the rows bulk actions and Select all work on.
+  const rows: Row[] = openGroups.flatMap((g) => g.rows)
+  const hiddenDeprecatedCount = openGroups.reduce((n, g) => n + g.hiddenDeprecated, 0)
+  // How much of what the server holds, in the open groups, is on screen.
+  const totalAvailable = openGroups.reduce((sum, g) => sum + (g.total ?? 0), 0)
+  const remaining = openGroups.reduce(
+    (sum, g) => sum + (g.total === undefined ? 0 : Math.max(0, g.total - g.loaded.length)),
+    0,
+  )
+  const hasMore = remaining > 0
 
   async function loadMore() {
     const signature = filterSignatureRef.current
     setLoadingMore(true)
-    const targets = perProjectQueries
-      .map((q) => q.data)
-      .filter((d): d is NonNullable<typeof d> => !!d)
-      .filter((d) => d.items.length + (extra[d.project.id]?.items.length ?? 0) < d.total)
+    const targets = openGroups.filter((g) => g.total !== undefined && g.loaded.length < g.total)
     const results = await Promise.allSettled(
-      targets.map(async (d) => {
-        const page = (extra[d.project.id]?.page ?? 1) + 1
-        const r = await listTestCases(d.project.id, { search, status, priority, page_size: PAGE_SIZE, page })
-        return { id: d.project.id, page, items: r.items }
+      targets.map(async (g) => {
+        const page = (extra[g.project.id]?.page ?? 1) + 1
+        const r = await listTestCases(g.project.id, {
+          search: debouncedSearch,
+          status,
+          priority,
+          sort: '-created_at',
+          page_size: PAGE_SIZE,
+          page,
+        })
+        return { id: g.project.id, page, items: r.items }
       }),
     )
     setLoadingMore(false)
@@ -242,16 +333,25 @@ export function TestRepository() {
       showToast('error', 'Some test cases could not be loaded. Try “Load more” again.')
     }
   }
-  const rows = allRows.filter(
-    (r) => showDeprecated || status === 'deprecated' || r.case.status !== 'deprecated',
-  )
-  const hiddenDeprecatedCount = allRows.length - rows.length
+
+  function toggleGroup(id: string) {
+    const willOpen = !isOpen(id)
+    setToggled((prev) => ({ ...prev, [id]: willOpen }))
+    if (!willOpen) {
+      // Rows that are no longer on screen must not stay selected: bulk actions
+      // only ever act on what the user can see.
+      const hidden = new Set((groups.find((g) => g.project.id === id)?.loaded ?? []).map((c) => c.id))
+      setSelected((prev) => new Set([...prev].filter((cid) => !hidden.has(cid))))
+    }
+  }
 
   function invalidateRepository() {
     // Back to the first page: rows loaded by "Load more" may have been deleted
     // or changed, and the refetch only covers the first page of each project.
     setExtra({})
     queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'test-repository' })
+    // The per-project counts decide which projects are requested at all.
+    queryClient.invalidateQueries({ queryKey: ['projects', 'all'] })
   }
 
   // Deprecating is one-way (there is no "un-deprecate"), so it is confirmed;
@@ -287,8 +387,25 @@ export function TestRepository() {
     })
   }
 
-  function toggleAll() {
-    setSelected((prev) => (prev.size === rows.length ? new Set() : new Set(rows.map((r) => r.case.id))))
+  // Select all works on one group's on-screen rows (the whole list when there is
+  // a single group), so a header checkbox never selects rows it cannot see.
+  function selectionFor(groupRows: Row[]): RowSelection<Row> {
+    const ids = new Set(groupRows.map((r) => r.case.id))
+    return {
+      selected: new Set([...selected].filter((id) => ids.has(id))),
+      onToggle: toggleRow,
+      onToggleAll: () =>
+        setSelected((prev) => {
+          const next = new Set(prev)
+          const allIn = groupRows.length > 0 && groupRows.every((r) => prev.has(r.case.id))
+          for (const id of ids) {
+            if (allIn) next.delete(id)
+            else next.add(id)
+          }
+          return next
+        }),
+      label: (r) => `Select ${r.case.title}`,
+    }
   }
 
   const inlineActionMutation = useMutation({
@@ -349,7 +466,6 @@ export function TestRepository() {
   const selectedRows = rows.filter((r) => selected.has(r.case.id))
 
   // One definition feeds the desktop table and the phone cards (ResponsiveTable).
-  type Row = { project: Project; case: TestCase }
   const tableColumns: ResponsiveColumn<Row>[] = [
     {
       key: 'title',
@@ -403,6 +519,74 @@ export function TestRepository() {
     },
     { key: 'steps', header: 'Steps', cell: ({ case: tc }) => tc.steps.length },
   ]
+
+  // One definition feeds every table: the flat list, and each open project group.
+  function renderTable(
+    groupRows: Row[],
+    { label, loading, hiddenDeprecated }: { label: string; loading: boolean; hiddenDeprecated: number },
+  ) {
+    return (
+      <ResponsiveTable
+        label={label}
+        className="bg-[var(--background)]"
+        rows={groupRows}
+        rowKey={(r) => r.case.id}
+        // The group header already names the project, so the column would only repeat it.
+        columns={grouped ? tableColumns.filter((c) => c.key !== 'project') : tableColumns}
+        prefs={columnPrefs}
+        loading={loading}
+        stateCellClassName="px-4 py-6 text-center text-[var(--muted-foreground)]"
+        state={
+          !loading && groupRows.length === 0
+            ? hiddenDeprecated > 0
+              ? `No test cases match these filters — ${hiddenDeprecated} deprecated case${hiddenDeprecated === 1 ? '' : 's'} hidden, check "Show deprecated".`
+              : 'No test cases match these filters.'
+            : undefined
+        }
+        selection={selectionFor(groupRows)}
+        onRowContextMenu={(e, { case: tc }) => {
+          const nextAction = NEXT_ACTION[tc.status]
+          const contextItems: RowContextMenuItem[] = [
+            { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
+            ...(nextAction
+              ? [{ label: nextAction.label, onSelect: () => advance(tc) }]
+              : []),
+            ...(tc.status === 'draft'
+              ? [{ label: 'Delete', destructive: true, onSelect: () => confirmDelete(tc) }]
+              : []),
+          ]
+          rowMenu.openAt(e, contextItems)
+        }}
+        rowActions={({ case: tc }) => {
+          const nextAction = NEXT_ACTION[tc.status]
+          return (
+            <div className="flex justify-end gap-1.5">
+              {nextAction && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={inlineActionMutation.isPending}
+                  onClick={() => advance(tc)}
+                >
+                  {nextAction.label}
+                </Button>
+              )}
+              {tc.status === 'draft' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => confirmDelete(tc)}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
+          )
+        }}
+      />
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -572,76 +756,55 @@ export function TestRepository() {
       )}
       {bulkMessage && <p className="text-xs text-[var(--muted-foreground)]">{bulkMessage}</p>}
 
-      <ResponsiveTable
-        label="Test cases"
-        className="bg-[var(--background)]"
-        rows={rows}
-        rowKey={(r) => r.case.id}
-        columns={tableColumns}
-        prefs={columnPrefs}
-        loading={isLoading}
-        stateCellClassName="px-4 py-6 text-center text-[var(--muted-foreground)]"
-        state={
-          !isLoading && rows.length === 0
-            ? hiddenDeprecatedCount > 0
-              ? `No test cases match these filters — ${hiddenDeprecatedCount} deprecated case${hiddenDeprecatedCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
-              : 'No test cases match these filters.'
-            : undefined
-        }
-        selection={{
-          selected,
-          onToggle: toggleRow,
-          onToggleAll: toggleAll,
-          label: (r) => `Select ${r.case.title}`,
-        }}
-        onRowContextMenu={(e, { case: tc }) => {
-          const nextAction = NEXT_ACTION[tc.status]
-          const contextItems: RowContextMenuItem[] = [
-            { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
-            ...(nextAction
-              ? [{ label: nextAction.label, onSelect: () => advance(tc) }]
-              : []),
-            ...(tc.status === 'draft'
-              ? [{ label: 'Delete', destructive: true, onSelect: () => confirmDelete(tc) }]
-              : []),
-          ]
-          rowMenu.openAt(e, contextItems)
-        }}
-        rowActions={({ case: tc }) => {
-          const nextAction = NEXT_ACTION[tc.status]
-          return (
-            <div className="flex justify-end gap-1.5">
-              {nextAction && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={inlineActionMutation.isPending}
-                  onClick={() => advance(tc)}
-                >
-                  {nextAction.label}
-                </Button>
-              )}
-              {tc.status === 'draft' && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={deleteMutation.isPending}
-                  onClick={() => confirmDelete(tc)}
-                >
-                  Delete
-                </Button>
-              )}
-            </div>
-          )
-        }}
-      />
+      {!grouped || visibleGroups.length === 0 ? (
+        renderTable(rows, { label: 'Test cases', loading: isLoading, hiddenDeprecated: hiddenDeprecatedCount })
+      ) : (
+        <div className="flex flex-col gap-3">
+          {visibleGroups.map((g) => {
+            const id = g.project.id
+            const count =
+              g.total !== undefined && filtersActive
+                ? `${g.total} matching`
+                : `${g.project.test_case_count} test case${g.project.test_case_count === 1 ? '' : 's'}`
+            return (
+              <section key={id} className="flex flex-col gap-2">
+                <h2 className="text-sm">
+                  <button
+                    type="button"
+                    aria-expanded={g.open}
+                    aria-controls={`repo-group-${id}`}
+                    onClick={() => toggleGroup(id)}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left font-medium hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+                  >
+                    <ChevronRight
+                      aria-hidden="true"
+                      className={cn('size-4 shrink-0 transition-transform motion-reduce:transition-none', g.open && 'rotate-90')}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{g.project.name}</span>
+                    <span className="shrink-0 text-xs font-normal text-[var(--muted-foreground)]">{count}</span>
+                  </button>
+                </h2>
+                {g.open && (
+                  <div id={`repo-group-${id}`}>
+                    {renderTable(g.rows, {
+                      label: `Test cases in ${g.project.name}`,
+                      loading: g.loading,
+                      hiddenDeprecated: g.hiddenDeprecated,
+                    })}
+                  </div>
+                )}
+              </section>
+            )
+          })}
+        </div>
+      )}
       {rowMenu.menu}
       {confirmDialog}
 
       {failedCount > 0 && (
         <div className="rounded-md border border-[var(--border)] bg-[var(--background)]">
           <ErrorState
-            message={`${failedCount} of ${targetProjects.length} project${targetProjects.length === 1 ? '' : 's'} could not be loaded, so the list below is incomplete.`}
+            message={`${failedCount} of ${openGroups.length} project${openGroups.length === 1 ? '' : 's'} could not be loaded, so the list below is incomplete.`}
             onRetry={invalidateRepository}
           />
         </div>
@@ -651,8 +814,9 @@ export function TestRepository() {
         <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--muted-foreground)]">
           <p>
             {rows.length} test case{rows.length === 1 ? '' : 's'} shown
-            {hasMore ? ` of ${totalAvailable} matching` : ''} across {targetProjects.length} project
-            {targetProjects.length === 1 ? '' : 's'}
+            {grouped
+              ? ` from ${openGroups.length} of ${visibleGroups.length} projects${hasMore ? ` · ${remaining} more in the open projects` : ''}`
+              : `${hasMore ? ` of ${totalAvailable} matching` : ''} across ${targetProjects.length} project${targetProjects.length === 1 ? '' : 's'}`}
             {selectedRows.length > 0 ? ` · ${selectedRows.length} selected` : ''}.
           </p>
           {hasMore && (
@@ -663,7 +827,7 @@ export function TestRepository() {
               onClick={() => void loadMore()}
               className="max-md:flex-1"
             >
-              {loadingMore ? 'Loading…' : `Load more (${totalAvailable - allRows.length} remaining)`}
+              {loadingMore ? 'Loading…' : `Load more (${remaining} remaining)`}
             </Button>
           )}
         </div>

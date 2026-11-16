@@ -3,10 +3,10 @@ import { Bug, ClipboardList, FileStack, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { isAdmin, isManagerOrAbove } from '@/api/auth'
 import { search as searchApi, type SearchResultEntry, type SearchResultType } from '@/api/search'
 import { NAV_SECTIONS } from '@/routes/AppShell'
 import { useAuth } from '@/lib/auth'
+import { canAccessPath } from '@/lib/routeAccess'
 import { cn } from '@/lib/utils'
 
 const TYPE_ICON: Record<SearchResultType, typeof FileStack> = {
@@ -92,10 +92,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const out: { label: string; sublabel: string; path: string }[] = []
     for (const section of NAV_SECTIONS) {
       for (const item of section.items) {
-        const visible = item.allowedRoles?.includes('manager-or-above')
-          ? isManagerOrAbove(user)
-          : !item.adminOnly || isAdmin(user)
-        if (!visible) continue
+        if (!canAccessPath(user, item.to)) continue
         out.push({ label: item.label, sublabel: section.label, path: item.to })
       }
     }

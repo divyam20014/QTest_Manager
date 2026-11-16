@@ -189,3 +189,10 @@ Page headers (Phase C), the Dashboard (Phase D), status colours and chart colour
 - **Control heights:** `Button` default 36px, `sm` 32px (toolbar and row actions), inputs 36px; link-buttons use `buttonVariants()`. The two 28px row selects were raised to 32px.
 - **Tables:** `ResponsiveTable` names its `<table>`; long tables keep a sticky header by scrolling inside a region; phone cards (`.qth-card`) make inner links and buttons 44px and lift them above the stretched title link.
 - **Tooltips:** the remaining native `title=` hints were replaced (`Tooltip`, an accessible name, or removed where the text was already visible).
+
+
+## Access states and Reports panels (follow-up)
+
+- **Restricted routes:** `lib/routeAccess.ts` is the one list of screens that need more than a signed-in session (`admin` or `manager-or-above`). Add a route there and the sidebar, the mobile More sheet, the command palette and the route gate all follow. The API still enforces access; this only decides what the UI shows.
+- **No access:** `components/NoAccess.tsx` (`variant="page"` for the gate, `"inline"` inside a screen). Give a query's `error` to `ErrorState` for a screen's main data and a 403 shows the same message instead of "Couldn't load this". 403s are never retried.
+- **Chart-first screens:** on Reports every content panel is tactile (`ChartPanel`, or `EmbossedCard` for stat blocks); the Filters card is a plain control bar. `ChartPanel` takes optional `controls` (a control row under the title) and `footer` (content under the chart).

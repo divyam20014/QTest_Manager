@@ -211,7 +211,7 @@ export function AuditLogs() {
         </div>
       ) : logsQuery.isError ? (
         <div className="rounded-lg border border-[var(--border)] bg-[var(--background)]">
-          <ErrorState message="The audit log could not be loaded." onRetry={() => logsQuery.refetch()} />
+          <ErrorState message="The audit log could not be loaded." error={logsQuery.error} onRetry={() => logsQuery.refetch()} />
         </div>
       ) : isMobile ? (
         <ul aria-label="Audit log entries" className="flex flex-col gap-3">

@@ -155,7 +155,7 @@ export function TestCaseDetail() {
 
   const testCase = caseQuery.data
   if (caseQuery.isLoading) return <DetailSkeleton />
-  if (caseQuery.isError) return <ErrorState message="Could not load this test case." onRetry={() => caseQuery.refetch()} />
+  if (caseQuery.isError) return <ErrorState message="Could not load this test case." error={caseQuery.error} onRetry={() => caseQuery.refetch()} />
   if (!testCase) return <EmptyState title="Test case not found" description="It may have been deleted, or you may not have access to it." />
 
   const canApprove = isManagerOrAbove(user)

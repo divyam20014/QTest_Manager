@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { AlertTriangle, Inbox } from 'lucide-react'
 
+import { isForbidden } from '@/api/client'
+import { NoAccess } from '@/components/NoAccess'
 import { Button } from '@/components/ui/button'
 
 /** Shared "nothing to show" block, distinct from the error state below --
@@ -29,8 +31,21 @@ export function EmptyState({
 
 /** Shared "the fetch itself failed" block -- distinct from EmptyState so
  * a network/server error never looks identical to "there's genuinely
- * nothing here yet". Always offers a retry. */
-export function ErrorState({ message, onRetry }: { message?: string; onRetry: () => void }) {
+ * nothing here yet". Always offers a retry.
+ *
+ * Pass the query's `error` for a screen's primary data: when the API refused
+ * it with 403 the user is not allowed to see this, so retrying would only
+ * repeat the refusal and the "No access" block is shown instead. */
+export function ErrorState({
+  message,
+  onRetry,
+  error,
+}: {
+  message?: string
+  onRetry: () => void
+  error?: unknown
+}) {
+  if (isForbidden(error)) return <NoAccess variant="inline" />
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
       <AlertTriangle className="size-7 text-[var(--status-serious)]" />

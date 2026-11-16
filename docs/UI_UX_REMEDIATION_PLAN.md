@@ -75,7 +75,7 @@ Outcome: see `UI_UX_IMPLEMENTATION_STATUS.md` ("Phase F"). UX-015, 017, 019, 020
 | Control heights on one scale; `FormField` on three more forms; Runs overview paged; `TactileButton` hero-only | UX-013, 016, 021 | Done |
 | Keyboard pass: tabs arrow keys, discard-prompt focus containment | UX-035, UX-037 | Done |
 | Reduced motion for chart animation and a global CSS catch-all | UX-036 | Done |
-| Manager and Tester audit | UX-030 to UX-032 | 2 fixed, 1 open (needs a decision) |
+| Manager and Tester audit | UX-030 to UX-032 | 3 fixed (UX-030 in the follow-up) |
 | Production measurements; Dashboard layout shift | UX-034 | CLS 0.10 → 0.024 |
 | Real-device and screen-reader checks | – | **Not done** (needs a device lab or you) |
 
@@ -94,3 +94,8 @@ Outcome: see `UI_UX_IMPLEMENTATION_STATUS.md` ("Phase H — verification" and "F
 
 - A cross-project test-case endpoint would replace the one-request-per-project pattern in Test Repository (UX-008).
 - Totals/pagination metadata on any list that currently returns a bare array would let the UI show "N of M".
+
+
+## Follow-up (after Phase H)
+
+UX-008, UX-030 and UX-039 were the last three open items and are now fixed (frontend only). Details and the measured results are in the audit report rows and in `UI_UX_IMPLEMENTATION_STATUS.md`. What is left is not an audit issue but a limit: a cross-project test-case endpoint (backend change, not done) would remove the per-project requests that filtered Test Repository views still make.

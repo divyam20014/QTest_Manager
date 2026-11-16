@@ -407,7 +407,7 @@ export function Dashboard() {
         {summaryQuery.isError && (
           <EmbossedCard className="col-span-2 lg:col-span-4">
             <CardContent>
-              <ErrorState onRetry={() => summaryQuery.refetch()} />
+              <ErrorState error={summaryQuery.error} onRetry={() => summaryQuery.refetch()} />
             </CardContent>
           </EmbossedCard>
         )}

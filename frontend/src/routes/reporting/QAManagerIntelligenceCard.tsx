@@ -7,7 +7,8 @@ import {
 } from '@/api/reporting'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmbossedCard } from '@/components/ui/EmbossedCard'
 
 // PV-7.1/7.2/7.4: the underlying metrics for one project, not one blended
 // score -- a QA manager deciding release go/no-go needs completion, pass
@@ -32,7 +33,7 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
 
   return (
     <div className="grid gap-4 md:grid-cols-3">
-      <Card>
+      <EmbossedCard>
         <CardHeader>
           <CardTitle>Release Readiness</CardTitle>
         </CardHeader>
@@ -70,9 +71,9 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
             </div>
           )}
         </CardContent>
-      </Card>
+      </EmbossedCard>
 
-      <Card>
+      <EmbossedCard>
         <CardHeader>
           <CardTitle>Workload</CardTitle>
         </CardHeader>
@@ -95,9 +96,9 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
             </ul>
           )}
         </CardContent>
-      </Card>
+      </EmbossedCard>
 
-      <Card>
+      <EmbossedCard>
         <CardHeader>
           <CardTitle>Flaky Tests</CardTitle>
         </CardHeader>
@@ -117,7 +118,7 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
             </ul>
           )}
         </CardContent>
-      </Card>
+      </EmbossedCard>
     </div>
   )
 }

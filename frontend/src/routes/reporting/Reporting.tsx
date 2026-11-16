@@ -34,6 +34,7 @@ import { listUsers } from '@/api/users'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartPanel } from '@/components/ui/ChartPanel'
+import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
@@ -95,7 +96,6 @@ export function Reporting() {
   const [metric, setMetric] = useState<Metric>('run_status')
   const [groupBy, setGroupBy] = useState<GroupBy>('project')
   const [chartType, setChartType] = useState<'bar' | 'pie' | 'line'>('bar')
-  const [aggView, setAggView] = useState<'chart' | 'table'>('chart')
   const [projectId, setProjectId] = useState('')
   const [domain, setDomain] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
@@ -307,61 +307,83 @@ export function Reporting() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Project &amp; Test Case Distribution by Domain</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {domainQuery.isLoading ? (
-            <div className="h-72"><ChartSkeleton /></div>
-          ) : domainQuery.isError ? (
-            <ErrorState onRetry={() => domainQuery.refetch()} />
-          ) : (domainQuery.data ?? []).length === 0 ? (
-            <EmptyState title="No domain data yet" description="Create a project with a domain to see this breakdown." />
-          ) : (
-          <>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={domainQuery.data ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-                <XAxis
-                  dataKey="domain"
-                  tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
-                  axisLine={{ stroke: 'var(--chart-axis-line)' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={28}
-                />
-                <Tooltip
-                  contentStyle={chartTooltipStyle}
-                />
-                <Bar isAnimationActive={!reduceMotion} dataKey="project_count" name="Projects" fill={isDark ? CATEGORICAL_DARK[0] : SEQUENTIAL_BLUE_LIGHT} radius={[4, 4, 0, 0]} maxBarSize={48} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {domainQuery.data?.map((d) => (
-              <div key={d.domain} className="rounded-md border border-[var(--border)] p-3 text-sm">
-                <p className="font-medium">{d.domain}</p>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {d.test_case_count} test cases · {Math.round(d.approved_percentage)}% approved
-                </p>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  {d.open_defect_count} open defects · {Math.round(d.pass_percentage)}% pass rate
-                </p>
-              </div>
-            ))}
-          </div>
-          </>
-          )}
-        </CardContent>
-      </Card>
+      <ChartPanel
+        title="Project &amp; Test Case Distribution by Domain"
+        bodyClassName="h-72"
+        summary={
+          domainQuery.data?.length
+            ? `Bar chart of projects per domain: ${domainQuery.data.map((d) => `${d.domain} ${d.project_count}`).join(', ')}.`
+            : undefined
+        }
+        table={
+          domainQuery.data?.length
+            ? {
+                columns: ['Domain', 'Projects', 'Test cases', 'Approved %', 'Open defects', 'Pass rate %'],
+                rows: domainQuery.data.map((d) => [
+                  d.domain,
+                  d.project_count,
+                  d.test_case_count,
+                  Math.round(d.approved_percentage),
+                  d.open_defect_count,
+                  Math.round(d.pass_percentage),
+                ]),
+              }
+            : undefined
+        }
+        footer={
+          domainQuery.data?.length ? (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {domainQuery.data.map((d) => (
+                <div key={d.domain} className="rounded-md border border-[var(--border)] p-3 text-sm">
+                  <p className="font-medium">{d.domain}</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {d.test_case_count} test cases · {Math.round(d.approved_percentage)}% approved
+                  </p>
+                  <p className="text-xs text-[var(--muted-foreground)]">
+                    {d.open_defect_count} open defects · {Math.round(d.pass_percentage)}% pass rate
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : undefined
+        }
+      >
+        {domainQuery.isLoading ? (
+          <ChartSkeleton />
+        ) : domainQuery.isError ? (
+          <ErrorState onRetry={() => domainQuery.refetch()} />
+        ) : (domainQuery.data ?? []).length === 0 ? (
+          <EmptyState title="No domain data yet" description="Create a project with a domain to see this breakdown." />
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={domainQuery.data ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
+              <XAxis
+                dataKey="domain"
+                tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
+                axisLine={{ stroke: 'var(--chart-axis-line)' }}
+                tickLine={false}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fontSize: 12, fill: 'var(--chart-axis-text)' }}
+                axisLine={false}
+                tickLine={false}
+                width={28}
+              />
+              <Tooltip contentStyle={chartTooltipStyle} />
+              <Bar
+                isAnimationActive={!reduceMotion}
+                dataKey="project_count"
+                name="Projects"
+                fill={isDark ? CATEGORICAL_DARK[0] : SEQUENTIAL_BLUE_LIGHT}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={48}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartPanel>
 
       <ChartPanel
         title="Execution Trends (last 30 days)"
@@ -448,7 +470,7 @@ export function Reporting() {
           )}
       </ChartPanel>
 
-      <Card>
+      <EmbossedCard>
         <CardHeader>
           <CardTitle>Defect Aging &amp; SLA</CardTitle>
         </CardHeader>
@@ -494,12 +516,12 @@ export function Reporting() {
             </>
           )}
         </CardContent>
-      </Card>
+      </EmbossedCard>
 
       {projectId ? (
         <QAManagerIntelligenceCard projectId={projectId} />
       ) : (
-        <Card>
+        <EmbossedCard>
           <CardHeader>
             <CardTitle>QA Manager Intelligence</CardTitle>
           </CardHeader>
@@ -508,15 +530,31 @@ export function Reporting() {
               Select a project above to see release readiness, workload, and flaky-test trends.
             </p>
           </CardContent>
-        </Card>
+        </EmbossedCard>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Aggregate Report</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-2 flex flex-wrap gap-3">
+      <ChartPanel
+        title="Aggregate Report"
+        bodyClassName="h-80"
+        summary={
+          aggregateData.length
+            ? `${chartType} chart of ${METRICS.find((m) => m.value === metric)?.label ?? metric} grouped by ${groupBy}, ${aggregateData.length} groups.`
+            : undefined
+        }
+        table={
+          aggregateData.length
+            ? {
+                columns: ['Group', ...valueOrder],
+                rows: aggregateData.map((row) => [
+                  String(row.group_label),
+                  ...valueOrder.map((v) => Number(row[v]) || 0),
+                ]),
+              }
+            : undefined
+        }
+        controls={
+          <>
+            <div className="mb-2 flex flex-wrap gap-3">
             <Select
               aria-label="Metric"
               value={metric}
@@ -551,59 +589,22 @@ export function Reporting() {
               <option value="pie">Pie / donut</option>
               <option value="line">Line chart</option>
             </Select>
-            <button
-              type="button"
-              aria-pressed={aggView === 'table'}
-              onClick={() => setAggView(aggView === 'table' ? 'chart' : 'table')}
-              className="inline-flex items-center rounded-md px-1.5 text-sm text-[var(--link)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:min-h-11"
-            >
-              {aggView === 'table' ? 'View as chart' : 'View as table'}
-            </button>
-          </div>
-          {groupBy === 'assignee' && (
-            <p className="mb-4 text-xs text-[var(--muted-foreground)]">{ASSIGNEE_HINTS[metric]}</p>
-          )}
-
-          {aggregateQuery.isLoading ? (
-            <div className="h-80"><ChartSkeleton /></div>
-          ) : aggregateQuery.isError ? (
-            <ErrorState onRetry={() => aggregateQuery.refetch()} />
-          ) : aggregateData.length === 0 ? (
-            <EmptyState title="No data for this combination" description="Try a different metric, group-by, or widen the date range." />
-          ) : aggView === 'table' ? (
-            <div className="max-h-80 overflow-auto">
-              <table className="w-full text-left text-sm">
-                <caption className="sr-only">Aggregate report data</caption>
-                <thead className="sticky top-0 bg-[var(--background)]">
-                  <tr>
-                    <th scope="col" className="px-2 py-1.5 font-medium text-[var(--muted-foreground)]">
-                      Group
-                    </th>
-                    {valueOrder.map((v) => (
-                      <th key={v} scope="col" className="px-2 py-1.5 font-medium text-[var(--muted-foreground)]">
-                        {v}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {aggregateData.map((row) => (
-                    <tr key={String(row.group_label)} className="border-t border-[var(--border)]">
-                      <th scope="row" className="px-2 py-1.5 font-normal">
-                        {String(row.group_label)}
-                      </th>
-                      {valueOrder.map((v) => (
-                        <td key={v} className="px-2 py-1.5 tabular-nums">
-                          {Number(row[v]) || 0}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
+            {groupBy === 'assignee' && (
+            <p className="mb-4 text-xs text-[var(--muted-foreground)]">{ASSIGNEE_HINTS[metric]}</p>
+            )}
+
+          </>
+        }
+      >
+        {aggregateQuery.isLoading ? (
+          <ChartSkeleton />
+        ) : aggregateQuery.isError ? (
+          <ErrorState onRetry={() => aggregateQuery.refetch()} />
+        ) : aggregateData.length === 0 ? (
+          <EmptyState title="No data for this combination" description="Try a different metric, group-by, or widen the date range." />
           ) : chartType === 'bar' ? (
-            <div className="h-80">
+            <div className="h-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={aggregateData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
@@ -639,7 +640,7 @@ export function Reporting() {
               </ResponsiveContainer>
             </div>
           ) : chartType === 'pie' ? (
-            <div className="h-80">
+            <div className="h-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Tooltip
@@ -655,7 +656,7 @@ export function Reporting() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-80">
+            <div className="h-full">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={aggregateData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
@@ -692,8 +693,7 @@ export function Reporting() {
               </ResponsiveContainer>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </ChartPanel>
     </div>
   )
 }

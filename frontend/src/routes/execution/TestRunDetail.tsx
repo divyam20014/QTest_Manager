@@ -106,7 +106,7 @@ export function TestRunDetail() {
 
   const run = runQuery.data
   if (runQuery.isLoading) return <DetailSkeleton />
-  if (runQuery.isError) return <ErrorState message="Could not load this test run." onRetry={() => runQuery.refetch()} />
+  if (runQuery.isError) return <ErrorState message="Could not load this test run." error={runQuery.error} onRetry={() => runQuery.refetch()} />
   if (!run) return <EmptyState title="Test run not found" description="It may have been deleted, or you may not have access to it." />
 
   const canManage = isManagerOrAbove(user)

@@ -32,8 +32,9 @@ import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { MobileTabBar, MoreSheet } from '@/components/MobileNav'
+import { NoAccess } from '@/components/NoAccess'
 import { UserMenu } from '@/components/UserMenu'
-import { isAdmin, isManagerOrAbove } from '@/api/auth'
+import { canAccessPath } from '@/lib/routeAccess'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 
@@ -45,16 +46,6 @@ interface NavItem {
   // UX-025: the item leaves the shell (a print-optimised page), so it opens
   // in a new tab and says so.
   newTab?: boolean
-  adminOnly?: boolean
-  // Gap-closure pass (ADR-057): Environments is adminOnly by default but
-  // also gated at the API by `environment.manage`, which Managers also
-  // hold -- `allowedRoles` overrides adminOnly's single-role check for
-  // items where more than one role should see the nav entry.
-  // Pass 2: the only current use is "manager-or-above", so this now checks
-  // the same permission-based helper every other admin/manager gate in the
-  // app uses (ADR-059) instead of a role-name array a custom role could
-  // never match.
-  allowedRoles?: 'manager-or-above'[]
 }
 
 interface NavSection {
@@ -66,9 +57,9 @@ export type { NavItem, NavSection }
 
 // Information architecture per the product's enterprise-QA-platform
 // redesign brief: grouped sections (Workspace / Test Management /
-// Analytics / Administration) rather than a flat list. Administration
-// items are filtered to Admin-only below (audit.view/user.manage are both
-// Admin-only permissions), matching the prior flat nav's gating.
+// Analytics / Administration) rather than a flat list. Which items a role
+// sees is not stored here: lib/routeAccess.ts is the single definition, shared
+// with the route gate, so the menu and the URL can never disagree.
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Workspace',
@@ -96,17 +87,11 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Administration',
     items: [
-      { to: '/admin/users', label: 'Users & Roles', icon: Users, adminOnly: true },
-      { to: '/admin/roles', label: 'Roles & Permissions', icon: KeyRound, adminOnly: true },
-      { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText, adminOnly: true },
-      {
-        to: '/admin/environments',
-        label: 'Environments',
-        icon: Layers,
-        adminOnly: true,
-        allowedRoles: ['manager-or-above'],
-      },
-      { to: '/settings', label: 'Settings', icon: SettingsIcon, adminOnly: true },
+      { to: '/admin/users', label: 'Users & Roles', icon: Users },
+      { to: '/admin/roles', label: 'Roles & Permissions', icon: KeyRound },
+      { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText },
+      { to: '/admin/environments', label: 'Environments', icon: Layers },
+      { to: '/settings', label: 'Settings', icon: SettingsIcon },
     ],
   },
 ]
@@ -269,12 +254,7 @@ export function AppShell() {
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => {
-      if (item.allowedRoles?.includes('manager-or-above')) {
-        return isManagerOrAbove(user)
-      }
-      return !item.adminOnly || isAdmin(user)
-    }),
+    items: section.items.filter((item) => canAccessPath(user, item.to)),
   })).filter((section) => section.items.length > 0)
 
   return (
@@ -384,7 +364,10 @@ export function AppShell() {
         </header>
         <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-6">
           <RouteBoundary resetKey={location.pathname}>
-            <Outlet />
+            {/* Restricted screens are blocked here, before the route element
+                renders, so a user who may not open one never downloads it or
+                fires its data requests. The API still enforces access. */}
+            {user && !canAccessPath(user, location.pathname) ? <NoAccess /> : <Outlet />}
           </RouteBoundary>
         </main>
       </div>

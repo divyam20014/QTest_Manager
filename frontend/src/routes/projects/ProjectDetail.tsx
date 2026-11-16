@@ -138,7 +138,7 @@ export function ProjectDetail() {
 
   const project = projectQuery.data
   if (projectQuery.isLoading) return <DetailSkeleton />
-  if (projectQuery.isError) return <ErrorState message="Could not load this project." onRetry={() => projectQuery.refetch()} />
+  if (projectQuery.isError) return <ErrorState message="Could not load this project." error={projectQuery.error} onRetry={() => projectQuery.refetch()} />
   if (!project) return <EmptyState title="Project not found" description="It may have been deleted, or you may not have access to it." />
 
   const formValues: ProjectFormValues = {

@@ -176,7 +176,7 @@ export function ExecutionConsole() {
     )
   }
   if (stepsQuery.isError) {
-    return <ErrorState onRetry={() => stepsQuery.refetch()} />
+    return <ErrorState error={stepsQuery.error} onRetry={() => stepsQuery.refetch()} />
   }
 
   // The next case in this run that still needs work (after this one, else the

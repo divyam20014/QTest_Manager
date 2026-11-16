@@ -28,6 +28,8 @@ export interface ChartLegendItem {
 export function ChartPanel({
   title,
   actions,
+  controls,
+  footer,
   summary,
   table,
   children,
@@ -36,6 +38,11 @@ export function ChartPanel({
 }: {
   title: ReactNode
   actions?: ReactNode
+  /** Full-width control row between the header and the chart (e.g. metric /
+   * group-by selects). Stays visible in the table view too. */
+  controls?: ReactNode
+  /** Content under the chart body (e.g. per-category summary tiles). */
+  footer?: ReactNode
   /** Sentence announced to screen readers, e.g. "Line chart, last 30 days: 312 passes and 41 failures." */
   summary?: string
   /** Omit while loading / empty / error so no empty table is offered. */
@@ -68,6 +75,7 @@ export function ChartPanel({
         </div>
       </CardHeader>
       <CardContent>
+        {controls}
         {summary && <p className="sr-only">{summary}</p>}
         <div id={tableId} className={cn(bodyClassName, showTable && 'overflow-auto')}>
           {showTable ? (
@@ -104,6 +112,7 @@ export function ChartPanel({
             children
           )}
         </div>
+        {footer}
       </CardContent>
     </EmbossedCard>
   )

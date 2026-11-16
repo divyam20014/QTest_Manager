@@ -178,7 +178,7 @@ export function DefectDetail() {
 
   const defect = defectQuery.data
   if (defectQuery.isLoading) return <DetailSkeleton />
-  if (defectQuery.isError) return <ErrorState message="Could not load this defect." onRetry={() => defectQuery.refetch()} />
+  if (defectQuery.isError) return <ErrorState message="Could not load this defect." error={defectQuery.error} onRetry={() => defectQuery.refetch()} />
   if (!defect) return <EmptyState title="Defect not found" description="It may have been deleted, or you may not have access to it." />
 
   const currentIndex = STATUS_ORDER.indexOf(defect.status)

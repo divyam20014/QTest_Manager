@@ -97,7 +97,7 @@ export function RequirementDetail() {
   const { ask, dialog: confirmDialog } = useConfirm()
 
   if (requirementQuery.isLoading) return <DetailSkeleton />
-  if (requirementQuery.isError) return <ErrorState message="Could not load this requirement." onRetry={() => requirementQuery.refetch()} />
+  if (requirementQuery.isError) return <ErrorState message="Could not load this requirement." error={requirementQuery.error} onRetry={() => requirementQuery.refetch()} />
   if (!requirementQuery.data) return <EmptyState title="Requirement not found" description="It may have been deleted, or you may not have access to it." />
 
   const req = requirementQuery.data

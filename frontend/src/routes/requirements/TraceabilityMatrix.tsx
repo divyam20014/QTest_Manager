@@ -179,7 +179,7 @@ export function TraceabilityMatrix() {
         stateCellClassName="px-4"
         state={
           matrixQuery.isError ? (
-            <ErrorState onRetry={() => matrixQuery.refetch()} />
+            <ErrorState error={matrixQuery.error} onRetry={() => matrixQuery.refetch()} />
           ) : !matrixQuery.isLoading && report?.entries.length === 0 ? (
             <EmptyState
               title="No requirements yet"
