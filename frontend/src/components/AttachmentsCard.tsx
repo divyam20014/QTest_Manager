@@ -65,6 +65,10 @@ function AttachmentThumbnail({ attachment }: { attachment: Attachment }) {
     <img
       src={objectUrl}
       alt=""
+      width={40}
+      height={40}
+      loading="lazy"
+      decoding="async"
       className="size-10 shrink-0 rounded-md border border-[var(--border)] object-cover"
     />
   )

@@ -890,7 +890,7 @@ function BrandingForm({ initial }: { initial: TenantBranding }) {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="brand-logo">Logo</Label>
             {initial.has_logo && (
-              <img src={getLogoUrl()} alt="Organization logo" className="h-10 w-auto" />
+              <img src={getLogoUrl()} alt="Organization logo" height={40} decoding="async" className="h-10 w-auto" />
             )}
             <input
               id="brand-logo"

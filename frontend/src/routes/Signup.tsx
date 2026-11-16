@@ -37,7 +37,7 @@ export function Signup() {
   const error = signupMutation.error instanceof ApiError ? signupMutation.error.message : null
 
   return (
-    <div className="flex min-h-svh items-center justify-center p-4">
+    <main id="main-content" className="flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-base text-[var(--foreground)]">
@@ -124,6 +124,6 @@ export function Signup() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </main>
   )
 }

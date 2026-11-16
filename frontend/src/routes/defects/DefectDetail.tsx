@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
 import { ROOT_CAUSE_LABEL, ROOT_CAUSES, STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
@@ -102,7 +103,8 @@ export function DefectDetail() {
   // tenant-wide list is a simpler v1 (no dedicated "list project members"
   // endpoint exists yet) -- a non-member selection is rejected by the
   // server with a clear error rather than silently allowed.
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
 
   const updateMutation = useMutation({
     mutationFn: (req: Parameters<typeof updateDefect>[1]) => updateDefect(defectId!, req),

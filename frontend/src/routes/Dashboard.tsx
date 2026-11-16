@@ -1,19 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Check, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import {
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 
 import { fetchActivityStream, fetchAggregateReport, fetchDashboardSummary, fetchExecutionTrend } from '@/api/reporting'
 import { listDefects, type Severity } from '@/api/defects'
@@ -27,7 +15,9 @@ import { GaugeDial } from '@/components/ui/GaugeDial'
 import { ChartSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { TactileButton } from '@/components/ui/TactileButton'
 import { humanizeActionCode } from '@/lib/labels'
+import { longDay } from '@/routes/dashboardFormat'
 import { levelTone } from '@/lib/statusTones'
+import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
 import { cn } from '@/lib/utils'
 import { categoricalColor } from '@/routes/reporting/palette'
@@ -163,26 +153,9 @@ const TREND_RANGES = [
 
 const ACTIVITY_PREVIEW = 8
 
-const chartTooltipStyle = {
-  background: 'var(--tactile-surface-raised)',
-  border: 'none',
-  borderRadius: 10,
-  boxShadow: 'var(--elevation-raised-sm)',
-  fontSize: 12,
-  color: 'var(--foreground)',
-}
-
-// ISO dates ("2026-11-15") parsed as local midnight so the label never
-// slips a day in timezones behind UTC.
-function parseDay(iso: string): Date {
-  return new Date(`${iso}T00:00:00`)
-}
-function shortDay(iso: string): string {
-  return parseDay(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-function longDay(iso: string): string {
-  return parseDay(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-}
+// Recharts is heavy: load it only once the Dashboard has rendered its headline content.
+const StatusDonutChart = lazy(() => import('@/routes/dashboardCharts').then((m) => ({ default: m.StatusDonutChart })))
+const TrendLineChart = lazy(() => import('@/routes/dashboardCharts').then((m) => ({ default: m.TrendLineChart })))
 
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['year', 31536000],
@@ -254,9 +227,12 @@ function KpiTile({ kpi, index }: { kpi: Kpi; index: number }) {
   )
 }
 
+// The skeleton reserves the loaded height of the headline row (measured: hero
+// 290/320px, tiles 192/156/178px at phone/tablet/desktop) so the sections below
+// do not jump down when the summary arrives.
 function KpiSkeleton() {
   return (
-    <EmbossedCard>
+    <EmbossedCard className="min-h-[192px] sm:min-h-[156px] lg:min-h-[178px]">
       <CardHeader>
         <Skeleton className="h-4 w-24" />
       </CardHeader>
@@ -275,11 +251,11 @@ function Section({ children }: { children: ReactNode }) {
 
 export function Dashboard() {
   const [theme] = useThemePreference()
+  const reduceMotion = usePrefersReducedMotion()
   // The app's light/dark toggle (data-theme) is the source of truth -- the
   // OS media query alone gave a light chart palette on a dark surface
   // whenever the two disagreed.
   const isDark = theme === 'dark'
-  const [activePieIndex, setActivePieIndex] = useState<number | null>(null)
   const [trendDays, setTrendDays] = useState(30)
   const [showAllActivity, setShowAllActivity] = useState(false)
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
@@ -414,7 +390,7 @@ export function Dashboard() {
       <section aria-label="Key metrics" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {summaryQuery.isLoading && (
           <>
-            <EmbossedCard className="col-span-2 lg:row-span-2">
+            <EmbossedCard className="col-span-2 min-h-[290px] sm:min-h-[320px] lg:row-span-2 lg:min-h-0">
               <CardHeader>
                 <Skeleton className="h-4 w-32" />
               </CardHeader>
@@ -540,53 +516,9 @@ export function Dashboard() {
           ) : (
             <div className="flex h-full flex-col gap-2">
               <div className="relative min-h-0 flex-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <defs>
-                      {statusPieData.map((entry, i) => (
-                        // Radial highlight toward the top-left, matching the
-                        // app-wide emboss light-source convention -- gives
-                        // slices a domed look without introducing any hue
-                        // outside the validated categorical palette.
-                        <radialGradient key={entry.key} id={`pie-grad-${i}`} cx="35%" cy="30%" r="75%">
-                          <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
-                          <stop offset="100%" stopColor={entry.color} stopOpacity={0.78} />
-                        </radialGradient>
-                      ))}
-                    </defs>
-                    <Tooltip
-                      contentStyle={chartTooltipStyle}
-                      formatter={(value, name) => [`${value} test case${value === 1 ? '' : 's'}`, name]}
-                    />
-                    <Pie
-                      data={statusPieData}
-                      dataKey="count"
-                      nameKey="status"
-                      innerRadius="58%"
-                      outerRadius="92%"
-                      paddingAngle={2}
-                      cornerRadius={3}
-                      stroke="var(--tactile-surface)"
-                      strokeWidth={2}
-                      isAnimationActive
-                      animationDuration={500}
-                      onMouseEnter={(_, i) => setActivePieIndex(i)}
-                      onMouseLeave={() => setActivePieIndex(null)}
-                    >
-                      {statusPieData.map((entry, i) => (
-                        <Cell
-                          key={entry.key}
-                          fill={`url(#pie-grad-${i})`}
-                          style={{
-                            filter:
-                              activePieIndex === i ? 'drop-shadow(0 4px 7px rgba(0, 0, 0, 0.35))' : undefined,
-                            transition: 'filter 150ms ease-out',
-                          }}
-                        />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+                <Suspense fallback={<ChartSkeleton />}>
+                  <StatusDonutChart data={statusPieData} reduceMotion={reduceMotion} />
+                </Suspense>
                 <div
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
@@ -635,52 +567,14 @@ export function Dashboard() {
           ) : (
             <div className="flex h-full flex-col gap-2">
               <div className="min-h-0 flex-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendPoints} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-                    <XAxis
-                      dataKey="date"
-                      minTickGap={32}
-                      tickFormatter={shortDay}
-                      tick={{ fontSize: 10, fill: 'var(--chart-axis-text)' }}
-                      axisLine={{ stroke: 'var(--chart-axis-line)' }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      allowDecimals={false}
-                      tick={{ fontSize: 10, fill: 'var(--chart-axis-text)' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      contentStyle={chartTooltipStyle}
-                      labelFormatter={(label) => longDay(String(label))}
-                      cursor={{ stroke: 'var(--chart-axis-line)', strokeWidth: 1 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="pass_count"
-                      name="Pass"
-                      stroke={passColor}
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
-                      isAnimationActive
-                      animationDuration={500}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="fail_count"
-                      name="Fail"
-                      stroke={failColor}
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
-                      isAnimationActive
-                      animationDuration={500}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                <Suspense fallback={<ChartSkeleton />}>
+                  <TrendLineChart
+                    points={trendPoints}
+                    passColor={passColor}
+                    failColor={failColor}
+                    reduceMotion={reduceMotion}
+                  />
+                </Suspense>
               </div>
               <ChartLegend
                 items={[

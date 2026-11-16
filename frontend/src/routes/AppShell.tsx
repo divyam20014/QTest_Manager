@@ -297,7 +297,7 @@ export function AppShell() {
         <div className="flex items-center justify-between gap-2 px-4 py-4">
           <div className="flex min-w-0 items-center gap-2">
             {branding?.has_logo ? (
-              <img src={getLogoUrl()} alt="" className="size-7 shrink-0 rounded-md object-contain" />
+              <img src={getLogoUrl()} alt="" width={28} height={28} decoding="async" className="size-7 shrink-0 rounded-md object-contain" />
             ) : (
               <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-accent)] text-sm font-bold text-[var(--sidebar-bg)]">
                 Q
@@ -353,7 +353,7 @@ export function AppShell() {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] xl:flex"
+              className="hidden items-center gap-1.5 h-8 rounded-md border border-[var(--border)] px-2.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] xl:flex"
             >
               <span>Jump to…</span>
               <kbd className="rounded-md border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[11px]">

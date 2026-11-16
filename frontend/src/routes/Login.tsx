@@ -187,7 +187,7 @@ export function Login() {
   const codeError = verifyMutation.error instanceof ApiError ? verifyMutation.error.message : null
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center p-4">
+    <main id="main-content" className="flex min-h-svh flex-col items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-base text-[var(--foreground)]">QTestHub</CardTitle>
@@ -362,6 +362,6 @@ export function Login() {
           Platform Administrator sign-in
         </a>
       </p>
-    </div>
+    </main>
   )
 }

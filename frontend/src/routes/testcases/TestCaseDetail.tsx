@@ -44,6 +44,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { isAdmin, isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { STATUS_DISPLAY } from './statusDisplay'
@@ -72,7 +73,8 @@ export function TestCaseDetail() {
     queryFn: () => listTestCaseVersions(testCaseId!),
     enabled: !!testCaseId,
   })
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
   const modulesQuery = useQuery({
     queryKey: ['test-modules', caseQuery.data?.project_id],
     queryFn: () => listModules(caseQuery.data!.project_id),

@@ -1,6 +1,6 @@
 # QTestHub UI/UX Remediation Plan
 
-Maps every issue in `UI_UX_AUDIT_REPORT.md` to a phase. Phases A, B, C, D and E are complete. Each remaining phase ends with a report and waits for approval before the next begins (decision recorded in `UI_UX_IMPLEMENTATION_STATUS.md`).
+Maps every issue in `UI_UX_AUDIT_REPORT.md` to a phase. Phases A to H are complete. Each phase ended with a report and waited for approval before the next began (decision recorded in `UI_UX_IMPLEMENTATION_STATUS.md`).
 
 **Standing constraints (all phases):** no backend, API, database, migration, authentication or RBAC changes; no removed features; no fake data; no new dependencies without a compelling reason; the tactile identity stays; the marketing site keeps its own palette; existing tests must keep passing. If a fix needs a backend change, it is documented here instead of implemented.
 
@@ -66,23 +66,27 @@ Outcome: see `UI_UX_IMPLEMENTATION_STATUS.md` ("Phase F"). UX-015, 017, 019, 020
 | `Tooltip` replaces `title=` where the text matters | UX-027 |
 | Form standard: required markers, helper text, error placement, preserved input on failure, no double submit | – |
 
-## Phase G — Responsive, accessibility and performance
+## Phase G — Responsive, accessibility and performance (done)
 
-| Work | Issues |
-|---|---|
-| Route-level code splitting (`React.lazy`) for admin, reporting, platform admin, detail screens, Recharts; check the production bundle | UX-007 |
-| Re-run the full 414-load sweep, axe on all routes, keyboard-only pass, reduced-motion pass | – |
-| Decide the app font (system vs Inter) | UX-028 |
-| Real-device and screen-reader checks (needs the user or a device lab) | – |
+| Work | Issues | Result |
+|---|---|---|
+| Route-level code splitting, Dashboard charts as a lazy chunk, error boundary with reload for a failed chunk | UX-007 | Initial JS 1,318 KB → about 534 KB (360 → 166 KB gzip) |
+| Inter as the app font (self-hosted, metric-matched fallback, preloaded) | UX-028 | Done; no overflow in the sweep |
+| Control heights on one scale; `FormField` on three more forms; Runs overview paged; `TactileButton` hero-only | UX-013, 016, 021 | Done |
+| Keyboard pass: tabs arrow keys, discard-prompt focus containment | UX-035, UX-037 | Done |
+| Reduced motion for chart animation and a global CSS catch-all | UX-036 | Done |
+| Manager and Tester audit | UX-030 to UX-032 | 2 fixed, 1 open (needs a decision) |
+| Production measurements; Dashboard layout shift | UX-034 | CLS 0.10 → 0.024 |
+| Real-device and screen-reader checks | – | **Not done** (needs a device lab or you) |
 
-## Phase H — Regression and final verification
+## Phase H — Regression and final verification (DONE 2026-11-16)
 
-Full unit, lint, typecheck, production build, all e2e specs one at a time, before/after screenshots viewed, role matrix, updated report and status files.
+Outcome: see `UI_UX_IMPLEMENTATION_STATUS.md` ("Phase H — verification" and "Final summary") and the audit report ("Phase H measurements"). Typecheck, lint (the same 7 warnings), unit tests (10), production build, backend `pytest` (683 passed, 1 known timing flake) and every e2e spec (45 of 45, one at a time) pass; the 414-load sweep and 92 axe scans are clean; about 60 screenshots were viewed by eye, which found UX-038 (fixed) and UX-039 (open). Deviations: UX-030 (admin URLs by direct link) was deliberately not implemented, because you did not answer the question; it stays a recommendation. Not done: real devices, touch, screen readers.
 
 ## Decisions needed from the user
 
 1. **Project deletion:** require typing the project name (recommended) or a plain confirm?
-2. **App font:** keep the system font stack or switch the app to Inter to match the marketing site?
+2. **App font:** answered — switch to Inter (done in Phase G).
 3. **Repository pagination style:** numbered pages or "Load more"?
 4. **Roles to audit:** confirm Manager and Tester seeded accounts may be used in Phase E.
 

@@ -24,3 +24,9 @@ export function useMediaQuery(query: string): boolean {
 export function useIsMobile(): boolean {
   return useMediaQuery(MOBILE_QUERY)
 }
+
+/** True when the user asked the OS/browser for reduced motion. CSS handles CSS
+ * animation; this is for JS-driven animation (Recharts) which CSS can't reach. */
+export function usePrefersReducedMotion(): boolean {
+  return useMediaQuery('(prefers-reduced-motion: reduce)')
+}

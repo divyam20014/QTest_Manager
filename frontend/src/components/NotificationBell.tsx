@@ -79,13 +79,14 @@ export function NotificationBell() {
   }
 
   const unreadCount = unreadQuery.data?.count ?? 0
+  const unreadLabel = unreadCount > 9 ? '9+' : String(unreadCount)
 
   return (
     <div ref={ref} className="relative">
       <Button
         variant="ghost"
         size="sm"
-        aria-label="Notifications"
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadLabel} unread` : 'Notifications'}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="relative max-md:min-w-11"
@@ -93,7 +94,7 @@ export function NotificationBell() {
         <Bell className="size-4" />
         {unreadCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-[var(--destructive)] text-[11px] font-medium text-[var(--destructive-foreground)]">
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {unreadLabel}
           </span>
         )}
       </Button>

@@ -44,7 +44,7 @@ export function ColumnVisibilityMenu({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="true"
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+        className="inline-flex items-center h-8 gap-1.5 rounded-md border border-[var(--border)] px-2.5 text-xs max-md:min-h-11 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
       >
         <Columns3 className="size-3.5" />
         Columns

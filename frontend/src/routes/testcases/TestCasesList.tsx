@@ -33,6 +33,7 @@ import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 import { ImportDialog } from './ImportDialog'
 import { SharedStepsDialog } from './SharedStepsDialog'
 import { TemplatesDialog } from './TemplatesDialog'
@@ -116,7 +117,8 @@ export function TestCasesList() {
     queryFn: () => getProject(projectId!),
     enabled: !!projectId,
   })
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
   const modulesQuery = useQuery({
     queryKey: ['test-modules', projectId],
     queryFn: () => listModules(projectId!),

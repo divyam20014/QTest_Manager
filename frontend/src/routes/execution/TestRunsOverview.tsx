@@ -8,7 +8,10 @@ import { FilterBar } from '@/components/table/FilterBar'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
+
+const RUNS_PAGE_SIZE = 50
 
 type OverviewRow = { project: Project; run: TestRunSummary }
 
@@ -97,6 +100,14 @@ export function TestRunsOverview() {
     .filter((r) => !activeOnly || !r.run.finished_at)
     .sort((a, b) => b.run.created_at.localeCompare(a.run.created_at))
 
+  // Every project's runs are fetched, so page the merged list on the client
+  // (50 per page) to keep the DOM small; resets when a filter changes.
+  const filterKey = `${projectId}|${activeOnly}`
+  const [paging, setPaging] = useState({ key: filterKey, page: 1 })
+  const totalPages = Math.max(1, Math.ceil(rows.length / RUNS_PAGE_SIZE))
+  const page = Math.min(paging.key === filterKey ? paging.page : 1, totalPages)
+  const pageRows = rows.slice((page - 1) * RUNS_PAGE_SIZE, page * RUNS_PAGE_SIZE)
+
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Test Runs" description="Test runs across every project you can see." />
@@ -132,7 +143,7 @@ export function TestRunsOverview() {
 
       <ResponsiveTable
         label="Test runs"
-        rows={rows}
+        rows={pageRows}
         rowKey={(r) => r.run.id}
         columns={OVERVIEW_COLUMNS}
         loading={isLoading}
@@ -145,6 +156,15 @@ export function TestRunsOverview() {
           ) : undefined
         }
       />
+      {rows.length > RUNS_PAGE_SIZE && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={rows.length}
+          noun="run"
+          onPageChange={(next) => setPaging({ key: filterKey, page: next })}
+        />
+      )}
     </div>
   )
 }

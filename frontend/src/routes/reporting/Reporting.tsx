@@ -43,7 +43,9 @@ import { ChartSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { pivotAggregateRows } from './aggregate'
+import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 import { categoricalColor, CATEGORICAL_DARK, SEQUENTIAL_BLUE_LIGHT } from './palette'
 import { QAManagerIntelligenceCard } from './QAManagerIntelligenceCard'
 
@@ -105,6 +107,7 @@ export function Reporting() {
   // dark and the OS on light the charts used to draw the light palette on a
   // dark card.
   const [theme] = useThemePreference()
+  const reduceMotion = usePrefersReducedMotion()
   const isDark = theme === 'dark'
 
   // Pass 4 (ADR-065): a deep link from Project Detail's "Release Readiness"
@@ -120,7 +123,8 @@ export function Reporting() {
   }, [])
 
   const projectsQuery = useQuery({ queryKey: ['projects', 'all'], queryFn: () => listProjects({ page_size: 100 }) })
-  const usersQuery = useQuery({ queryKey: ['users', 'all'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users', 'all'], queryFn: listUsers, enabled: canListUsers })
   // Gap-closure pass (ADR-057): this filter targets test case priority
   // (the "priority" metric is "Test Case Priority"), so it reads the same
   // tenant-configured value set TestCasesList/TestCaseForm use, instead
@@ -336,7 +340,7 @@ export function Reporting() {
                 <Tooltip
                   contentStyle={chartTooltipStyle}
                 />
-                <Bar dataKey="project_count" name="Projects" fill={isDark ? CATEGORICAL_DARK[0] : SEQUENTIAL_BLUE_LIGHT} radius={[4, 4, 0, 0]} maxBarSize={48} />
+                <Bar isAnimationActive={!reduceMotion} dataKey="project_count" name="Projects" fill={isDark ? CATEGORICAL_DARK[0] : SEQUENTIAL_BLUE_LIGHT} radius={[4, 4, 0, 0]} maxBarSize={48} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -393,9 +397,9 @@ export function Reporting() {
                     contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="pass_count" name="Pass" stroke={categoricalColor(2, isDark)} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="fail_count" name="Fail" stroke={categoricalColor(7, isDark)} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="ignore_count" name="Ignored" stroke={categoricalColor(3, isDark)} strokeWidth={2} dot={false} />
+                  <Line isAnimationActive={!reduceMotion} type="monotone" dataKey="pass_count" name="Pass" stroke={categoricalColor(2, isDark)} strokeWidth={2} dot={false} />
+                  <Line isAnimationActive={!reduceMotion} type="monotone" dataKey="fail_count" name="Fail" stroke={categoricalColor(7, isDark)} strokeWidth={2} dot={false} />
+                  <Line isAnimationActive={!reduceMotion} type="monotone" dataKey="ignore_count" name="Ignored" stroke={categoricalColor(3, isDark)} strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -436,8 +440,8 @@ export function Reporting() {
                     contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="opened_count" name="Opened" stroke={categoricalColor(7, isDark)} strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="closed_count" name="Closed" stroke={categoricalColor(2, isDark)} strokeWidth={2} dot={false} />
+                  <Line isAnimationActive={!reduceMotion} type="monotone" dataKey="opened_count" name="Opened" stroke={categoricalColor(7, isDark)} strokeWidth={2} dot={false} />
+                  <Line isAnimationActive={!reduceMotion} type="monotone" dataKey="closed_count" name="Closed" stroke={categoricalColor(2, isDark)} strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -622,6 +626,7 @@ export function Reporting() {
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   {valueOrder.map((value, i) => (
                     <Bar
+                      isAnimationActive={!reduceMotion}
                       key={value}
                       dataKey={value}
                       name={value}
@@ -641,7 +646,7 @@ export function Reporting() {
                     contentStyle={chartTooltipStyle}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Pie data={pieData} dataKey="count" nameKey="value" innerRadius={60} outerRadius={110} paddingAngle={2}>
+                  <Pie isAnimationActive={!reduceMotion} data={pieData} dataKey="count" nameKey="value" innerRadius={60} outerRadius={110} paddingAngle={2}>
                     {pieData.map((entry, i) => (
                       <Cell key={entry.value} fill={categoricalColor(i, isDark)} stroke="var(--tactile-surface-raised)" />
                     ))}
@@ -673,6 +678,7 @@ export function Reporting() {
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   {valueOrder.map((value, i) => (
                     <Line
+                      isAnimationActive={!reduceMotion}
                       key={value}
                       type="monotone"
                       dataKey={value}

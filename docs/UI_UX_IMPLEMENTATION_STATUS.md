@@ -2,7 +2,7 @@
 
 Live tracker for the UI/UX programme. Update after every phase.
 
-**Decisions on record:** keep and formalise the tactile identity (not a flat redesign); proceed phase by phase with approval between phases. Last updated 2026-11-16 (Phase F).
+**Decisions on record:** keep and formalise the tactile identity (not a flat redesign); proceed phase by phase with approval between phases. Last updated 2026-11-16 (Phase H, final).
 
 ## Phases
 
@@ -14,12 +14,12 @@ Live tracker for the UI/UX programme. Update after every phase.
 | D | Dashboard | **Done** — see "Phase D — what was built" |
 | E | Module-by-module modernisation | **Done** — see "Phase E — what was built" |
 | F | Forms, tables, dialogs, interactions | **Done** — see "Phase F — what was built" |
-| G | Responsive, accessibility, performance | Not started |
-| H | Regression and final verification | Not started |
+| G | Responsive, accessibility, performance | **Done** — see "Phase G — what was built" |
+| H | Regression and final verification | **Done** — see "Phase H — verification" and "Final summary" |
 
 ## Issues
 
-29 logged (0 Critical, 4 High, 13 Medium, 12 Low). 23 fixed (2 in Phase B, 8 in Phase C, 1 in Phase D, 6 in Phase E, 6 in Phase F), 4 partially addressed, 2 open (UX-007 bundle size and UX-028 font decision, both Phase G). Full table in the audit report.
+39 logged (0 Critical, 5 High, 16 Medium, 18 Low). 36 fixed, 1 partially addressed (UX-008 Repository rows), 2 open (UX-030 admin screens opened by direct URL by a Manager or Tester, needs a decision; UX-039 Reports mixes two card styles). Phase G fixed UX-007, 013, 016, 021 and 028 and found and fixed seven new issues (UX-031 to UX-037). Phase H found UX-038 (fixed) and UX-039 (open) by viewing screenshots. Full table in the audit report.
 
 | ID | Sev | Short name | Status | Phase |
 |---|---|---|---|---|
@@ -29,29 +29,136 @@ Live tracker for the UI/UX programme. Update after every phase.
 | UX-004 | High | Execution "Pass" button contrast 3.49 : 1 | **Fixed** (Phase E: `success` button variant, 5.48 : 1 light; dark text on light green in dark mode; axe clean) | E |
 | UX-005 | Medium | Destructive button contrast in dark mode | **Fixed** (Button in Phase B; NotificationBell badge in Phase E) | B / E |
 | UX-006 | Medium | Account menu label mismatch | **Fixed** (Phase C) | C |
-| UX-007 | Medium | Single 1.29 MB bundle | Open | G |
+| UX-007 | Medium | Single 1.29 MB bundle | **Fixed** (Phase G: lazy routes, Recharts after first paint; 1,318 to about 534 KB initial JS) | G |
 | UX-008 | Medium | Repository renders every row | **Partial** (Phase E: DOM bounded by what has been loaded, 50 per project to start; still one request per project and no virtualisation) | E |
 | UX-009 | Medium | Toasts overlap mobile tab bar | **Fixed** (Phase C) | C |
 | UX-010 | Medium | Hand-built page headers | **Fixed** (Phase C; 3 deliberate exceptions) | C |
 | UX-011 | Medium | 14 status-tone maps | **Fixed** (Phase E: shared `lib/statusTones.ts` for the level scale, run-case status and verdict; state badges use `StatusBadge`) | E |
 | UX-012 | Medium | 96 hard-coded colours | **Fixed** (Phase E: 0 left in 5 files; 2 deliberate remain: the brand-colour input default in Settings and the print stylesheet) | D / E |
-| UX-013 | Medium | Control height mix | **Partial** (Phase F: the 28px inputs are gone (row selects are 32px), link-buttons use `buttonVariants`, the `h-6` Save/Cancel buttons are standard `sm`. Measured at 1280: buttons 32px ×363, 36px ×14, 38px ×6, 30px ×5, plus 16–24px inline text buttons — not fully unified; I did not hunt every one-off) | F |
+| UX-013 | Medium | Control height mix | **Fixed** (Phase G: one scale 32 / 36 / 40px, 44px on phones; the 30px and 38px stragglers are on it) | F / G |
 | UX-014 | Medium | Missing error/loading states | **Fixed** for the screens audited (detail pages, Audit Logs, Execution Overview, Repository, Settings cards); list pages elsewhere unchanged | E |
 | UX-015 | Medium | Unlabeled data tables | **Fixed** (Phase F: `ResponsiveTable` names its `<table>`; Audit Logs, both Roles tables and Requirement Detail named; 12 of 12 desktop tables named in the sweep) | F |
-| UX-016 | Medium | Three pagination patterns | **Partial** ("Load more" on Repository and Audit Logs; numbered pages elsewhere; Defects now pages on the client, 50 per page (the API still returns every defect); Runs overview still unpaged) | E / F |
+| UX-016 | Medium | Three pagination patterns | **Fixed** (Phase G: Runs overview paged; decision recorded: numbered pages for lists, "Load more" for Repository and Audit Logs) | E / G |
 | UX-017 | Medium | Small inner links on phone cards | **Fixed** (Phase F: links and buttons inside a card are 44px and sit above the stretched title link; traceability count links and the Dashboard range buttons too. The Dashboard KPI tile title links are 19px but stretched over the whole tile, so the tile is the target) | F |
 | UX-018 | Low | Toast accessibility | **Fixed** (Phase C) | C |
 | UX-019 | Low | Radius mix | **Fixed** (Phase F: bare `rounded` / `rounded-sm` → scale; guard test keeps it at 0) | F |
 | UX-020 | Low | Type-size mix, 10px text | **Fixed** (Phase F: all `text-[10px]` → 11px; guard test keeps it at 0. Other sizes already map onto the scale's utilities) | F |
-| UX-021 | Low | Two button systems | **Partial** (Phase F: six hand-styled link-buttons → `buttonVariants()`; the AI assistant suggestion chips and the shell's "Jump to…" hint are deliberately custom) | F |
+| UX-021 | Low | Two button systems | **Fixed** (Phase G: `TactileButton` is Dashboard-hero only) | F / G |
 | UX-022 | Low | Placeholder-only inputs | **Fixed** (Phase F: 14 inputs now have accessible names; unlabeled fields 5 → 0 in the sweep. Also found a real bug: custom-field inputs were never linked to their labels) | F |
 | UX-023 | Low | Heading level skips | **Fixed** (Phase C) | C |
 | UX-024 | Low | Sidebar duplicates | **Fixed** (Phase C) | C |
 | UX-025 | Low | Compliance print outside shell | **Fixed** (Phase C: opens in a new tab) | C |
 | UX-026 | Low | Dashboard KPI empty space | **Fixed** (Phase D) | D |
 | UX-027 | Low | Native `title` tooltips | **Fixed** (Phase F: the 8 native-element `title=` attributes are gone — Tooltip, an accessible name, or removed where the text was already visible) | F |
-| UX-028 | Low | App vs marketing font | Open (decision) | G |
+| UX-028 | Low | App vs marketing font | **Fixed** (Phase G: Inter Variable, self-hosted) | G |
 | UX-029 | Low | Duplicated dark tokens | **Fixed** (guarded) | B |
+| UX-030 | Medium | Admin screens by direct URL show a 403 load error to Manager/Tester | Open (needs a decision) | – |
+| UX-031 | Medium | Notifications button label omitted the unread count | **Fixed** (Phase G) | G |
+| UX-032 | Low | Tester screens requested `/users` and got 403 plus retries | **Fixed** (Phase G) | G |
+| UX-033 | Low | Sign-in, sign-up and invite pages had no `<main>` landmark | **Fixed** (Phase G) | G |
+| UX-034 | Medium | Dashboard skeleton shorter than content (CLS 0.10) | **Fixed** (Phase G: CLS 0.024) | G |
+| UX-035 | High | Inactive tabs unreachable by keyboard | **Fixed** (Phase G) | G |
+| UX-036 | Low | Chart animation ignored reduced motion | **Fixed** (Phase G) | G |
+| UX-037 | Low | Tab could leave the discard prompt | **Fixed** (Phase G) | G |
+| UX-038 | Low | "Add Set" button wrapped onto two lines in Test Data Sets | **Fixed** (Phase H) | H |
+| UX-039 | Low | Reports mixes a plain card with tactile chart panels | Open (needs its own check) | – |
+
+## Phase H — verification
+
+Verify-and-document phase; no new features. One small fix: UX-038 (`TestDataSetsCard.tsx`, two `className`s). A new spec, `frontend/e2e/phase-h.spec.ts` (4 tests), covers keyboard-only flows and session handling.
+
+- **Typecheck** (`tsc -b`) clean. **Lint** 7 warnings, the same 7 as before the programme (fast-refresh export warnings in `RowContextMenu`, `toast`, `auth`, `button`, `AppShell`, `TactileButton`, and one `exhaustive-deps` in `ExecutionConsole`). **Unit tests** 10/10 (2 files, including the design-system guard tests). **Production build** passes.
+- **Backend `pytest`**, run once and not interrupted: 683 passed, 1 failed (27 min 32 s). The failure is `test_bulk_import_2000_rows_under_2_5_seconds`, the known load-sensitive timing test (GAP-69). No backend file was touched by this programme.
+- **E2E**, every spec, one Playwright process at a time, 41 of 41 passing before the Phase H spec and 45 of 45 with it: phase-g 6, accessibility 4, smoke 6, mobile-shell 1, mobile-components 1, mobile-screens 2, shell-phase-c 3, dashboard-phase-d 3, modules-phase-e 3, forms-phase-f 4, journeys 1 to 4 (2, 1, 1, 2), tier3-features 1, reliability 1, phase-h 4. After the UX-038 fix, typecheck, lint, unit tests, accessibility, journey2 and tier3-features were re-run and pass. The two long specs ran with a 180 s per-test timeout; nothing hung. (My first draft of two `phase-h` tests failed because of mistakes in the test itself, a wrong role for the Logout button and pressing `p` before the steps had loaded; neither was an app defect, and both were corrected.)
+- **Sweep** 414 loads: overflow 0, console and HTTP errors 0, axe 92 of 92 clean, unlabeled fields 0, heading skips 0, unnamed icon buttons 0.
+- **Screenshots**: about 60 viewed by eye (list in the audit report, "Phase H measurements"); found UX-038 and UX-039.
+- **Roles, marketing site, Lighthouse, production timings**: see the audit report. Highlights: `/login` accessibility 100 (was 97), marketing home performance 51 (was 41, not in scope), Dashboard unthrottled LCP 552 ms.
+
+### Not verified (Phase H)
+
+- No real device, touch, or screen reader. Keyboard behaviour was driven with Playwright key presses, not by a person.
+- The **I** (Ignore) shortcut was not pressed; the P and F shortcuts and the "type pif in a field" guard were.
+- A session that expires mid-use without a reload was not tested (cookie cleared, then reload was).
+- Role checks on the demo tenant were navigation and read-only GETs; Manager and Tester were not driven through create, edit or delete flows.
+- Screens measured but not viewed by eye: Requirements, Traceability, Test Cases list, Project Detail, Runs, Run Detail, Defect Detail, Requirement Detail, Execution overview, Environments, Account, Platform Admin (at most widths).
+- The lead form was not submitted; file upload, CSV export and CSV import were exercised only by the existing e2e specs, not re-tested by hand.
+- The signed-in app was not scored by Lighthouse (it needs a session); timings are single runs on a loaded machine.
+- The destructive-action confirmations: 3 of 26 are covered by e2e tests; the rest by type check and the shared hook.
+
+### Dev data changes (Phase H)
+
+No schema, backend or auth changes. The dev database holds about 358 tenants, of which about 348 are throwaway e2e tenants (names ending in an epoch-millisecond suffix, for example "PhaseH ..."); the Phase H spec runs created 8 of them and the full e2e chain created the rest of this round. The platform API has no delete, so they remain (four stale "J4TesterGate" ones are suspended). One marketing lead ("Priya Nair (mobile check)") from the mobile work is still there. The sweeps and role checks signed in as the Meridian demo Admin, Manager and Tester (audit-log entries) and only read. The Execution Console timer on step 1 of one pending demo case (started during the Phase C screenshots) is still running, which is why the Console shows a very large "elapsed" figure; recording a verdict on that step stops it, and nothing was changed here. The `owner@qtesthub.local` platform admin password is `Sup3rSecret1Pass` (set by the e2e seeding in the mobile phases).
+
+## Final summary (the brief's 18 deliverables)
+
+1. **Audit report:** `docs/UI_UX_AUDIT_REPORT.md` (method, route inventory, issue table, measurements); plan: `UI_UX_REMEDIATION_PLAN.md`; this tracker; `DESIGN_SYSTEM.md`.
+2. **Issues identified:** 39 (UX-001 to UX-039), each with ID, module, page, severity, category, fix and status in the audit report.
+3. **By severity:** Critical 0; High 5 (5 fixed); Medium 16 (14 fixed, 1 partial, 1 open); Low 18 (17 fixed, 1 open). Total 36 fixed, 1 partial, 2 open.
+4. **Design-system changes:** colour, type, spacing, radius, elevation, z-index and motion tokens consolidated in `index.css` with the tactile tokens kept; info and chart colours; `--destructive-foreground`; Inter Variable as the app font (self-hosted, metric-matched fallback); status-tone maps unified in `lib/statusTones.ts`; guard tests in `designSystem.test.ts` (light/dark token parity, hard-coded-colour ratchet, radius and 10px-text bans); a dev-only catalogue at `/_design-system`; `DESIGN_SYSTEM.md`.
+5. **Components created:** `PageHeader`, `StatusBadge`, `ConfirmDialog` and `useConfirm`, `Pagination`, `Tooltip`, `ChartPanel`, `FormField` and `FormError`, `RouteBoundary`, `lazyRoute`, `dirtyForm` (discard guard), `useCanListUsers`, `dashboardCharts`. **Improved:** `Button` (success variant, size scale), `Badge` (info), `Dialog` and `Drawer` (discard guard, focus containment), `Tabs` (WAI-ARIA keyboard), `Toast` (alerts, pause, dismiss), `Breadcrumbs`, `UserMenu`, `NotificationBell`, `CardTitle` (heading level), `ResponsiveTable` (named tables, 44px card links), `Input` and `Select` (invalid state).
+6. **Modules redesigned:** the shell (header, sidebar, breadcrumbs, toasts) and a `PageHeader` on every signed-in screen; Dashboard (hero gauge, four KPIs, chart panels, states); Execution Console (contrast, shortcut guard, next case); Test Repository (Load more with totals); Reports (tokens, theme toggle, table view); Roles & Permissions (filter, expand/collapse); Audit Logs (Load more); Runs overview and Defects (client paging); the forms (Project, Test Case, Requirement, Defect, Environments); 26 destructive actions confirmed.
+7. **Files created (this programme):** in commit `a486984`: 4 docs, 4 e2e specs (`shell-phase-c`, `dashboard-phase-d`, `modules-phase-e`, `forms-phase-f`), and under `frontend/src`: `components/RouteBoundary.tsx`, `components/ui/{ChartPanel,PageHeader,StatusBadge,confirm-dialog,dirtyForm,form-field,pagination,tooltip,useConfirm}`, `lib/{lazyRoute,statusTones}.ts`, `test/designSystem.test.ts`. Not yet committed: `e2e/phase-g.spec.ts`, `e2e/phase-h.spec.ts`, `src/lib/useCanListUsers.ts`, `src/routes/dashboardCharts.tsx`, `src/routes/dashboardFormat.ts`.
+8. **Files modified:** commit `a486984` changed 95 files in total (+4,761 / -1,195), 74 of them modified; the working tree now holds a further 34 modified files (+385 / -294) from Phase G and Phase H, listed under "Files modified (Phase G)" below plus `TestDataSetsCard.tsx` and the docs.
+9. **Responsive verification:** 23 routes x 9 widths (1920 to 375px) x light and dark = 414 loads, 0 overflow; tablet header overflow (UX-001) fixed; about 60 screenshots viewed; Manager and Tester audited at 1280 and 390px. Not done: real devices.
+10. **Accessibility:** axe 92 of 92 scans clean (WCAG 2.0/2.1 A and AA), Lighthouse `/login` 100 and marketing home 100; contrast fixes (Pass button, dark destructive, Active badge); named tables, labelled fields, heading order, `<main>` landmarks, tab arrow keys, discard-prompt focus containment, toast alerts, reduced-motion for CSS and charts. Not done: screen reader testing.
+11. **Performance:** initial JS 1,318 KB to about 534 KB (360 to about 166 KB gzip) through lazy routes and a lazy chart library; Dashboard CLS 0.10 to 0.024; Runs overview and Defects paged on the client; thumbnails lazy. Throttled LCP is still 4.6 to 4.9 s on the heavy screens (a loaded machine; not a budget-checked number).
+12. **Functional regression:** 45 e2e tests across 17 specs pass (login, navigation, create/edit/delete, execution, defects, roles, settings, mobile, accessibility); keyboard-only and session flows pass; role visibility and API enforcement checked for Admin, Manager and Tester; marketing site intact. Backend `pytest` 683 passed, 1 known timing flake.
+13. **Unit tests:** 10 of 10 pass.
+14. **Lint:** 7 warnings, all present before the programme; no errors.
+15. **TypeScript:** `tsc -b` clean.
+16. **Production build:** passes (about 8 s for `vite build`, 18 s with `tsc -b`); 80+ chunks; initial JS about 534 KB.
+17. **Remaining known issues:** UX-030 (admin URLs show a load error to Manager and Tester; recommendation: a "You do not have access" screen using the same permission codes as the API, a frontend-only change that you have not decided on); UX-039 (Reports card styles); UX-008 (Repository still one request per project and no row virtualisation; Defects API and Runs overview still return everything); `FormField` is on about 5 of 15 forms; marketing home Lighthouse performance 51 (LCP 5.9 s, TBT 1.0 s); no real-device, touch or screen-reader testing; the **I** shortcut and mid-session expiry are untested; the known load-sensitive `test_bulk_import_2000_rows` backend timing test.
+18. **Recommended future improvements:** test on real phones, tablets and with a screen reader (VoiceOver, NVDA); a visual-regression baseline (Playwright screenshots) now the shell is stable; a CI performance budget (bundle and CSS size) next to the design-token tests; a cross-project test-case endpoint and list totals so the Repository can page properly and drop the request-per-project pattern; the UX-030 route guard; virtualisation for very large lists; move the Reports distribution chart into `ChartPanel` (UX-039); roll `FormField` out to the remaining forms; improve the marketing home's LCP and blocking time; delete throwaway e2e tenants through a platform cleanup tool.
+
+## Phase G — what was built
+
+**Font (UX-028).** The app now uses Inter Variable, self-hosted from `@fontsource-variable/inter` (already a dependency; no CDN). `--font-sans` is `"Inter Variable", "Inter Fallback", system-ui, …`; "Inter Fallback" is a local Arial with `size-adjust: 107.4%` and matched ascent/descent so the swap does not move layout. The latin file (48 KB) is preloaded from `index.html` (Vite rewrites it to the hashed asset). The marketing site was already Inter and is unchanged.
+
+**Code splitting (UX-007).** `App.tsx` loads every signed-in screen with `lazyRoute()` (`lib/lazyRoute.ts`: `React.lazy` for a named export, plus one automatic reload if a chunk 404s after a deploy, guarded against loops). `RouteBoundary` (`components/RouteBoundary.tsx`) is a Suspense fallback (the design-system `DetailSkeleton`) plus an error boundary with a retry state; it wraps the router and the shell's `<Outlet>`, so the sidebar and header stay put while a screen loads. The Dashboard's two Recharts charts moved to `routes/dashboardCharts.tsx`, loaded lazily behind a chart skeleton, so the gauge, KPI tiles and activity list render without the 386 KB chart library. The design catalogue is still dev-only.
+
+**Dashboard layout shift (UX-034).** The loading skeleton now reserves the measured loaded height of the headline row.
+
+**Keyboard and focus (UX-035, UX-037).** `Tabs` implements the WAI-ARIA pattern (ArrowLeft/Right with wrap, Home, End, `aria-controls`, a labelled panel). While the discard prompt is open the form and close button are `inert`, the focus trap ignores inert elements, and "Keep editing" returns focus to where it was.
+
+**Reduced motion (UX-036).** `usePrefersReducedMotion()` switches off Recharts animation on the Dashboard and Reports; `index.css` has a catch-all that flattens any remaining CSS animation, transition and smooth scroll.
+
+**Control heights (UX-013).** Column and Saved-filter menu triggers are 32px (`h-8`), page tabs 40px (`h-10`), the "Jump to…" button 32px, the quick-defect mode tabs 36px. The sweep finds no other button height between 28 and 44px at 1280px.
+
+**Forms and lists.** `FormField` replaced hand-built rows in the New Requirement dialog, the New Defect dialog and the Environments form (required markers, helper text, error wiring); the two dialogs also report unsaved edits to the discard guard (`ReportDirty` in `dirtyForm.ts`, for forms whose state lives outside the overlay). The New Requirement title now says "At least 5 characters", where the button used to stay disabled without a reason. Runs overview pages on the client (50 per page).
+
+**Manager and Tester audit.** Found and fixed UX-031 (the Notifications label) and UX-032 (a guaranteed 403 on `/users`, now skipped through `useCanListUsers()` on nine screens); UX-030 (admin screens by direct URL) is open.
+
+**Images and landmarks.** Attachment thumbnails are lazy with width/height; the logo images have dimensions; the marketing screenshots (60–175 KB each) were already lazy. Login, Sign-up and Accept-invite have a `<main>` landmark (UX-033).
+
+### Files created (Phase G)
+
+`frontend/src/components/RouteBoundary.tsx`, `lib/lazyRoute.ts`, `lib/useCanListUsers.ts`, `routes/dashboardCharts.tsx`, `routes/dashboardFormat.ts`, `e2e/phase-g.spec.ts`.
+
+### Files modified (Phase G)
+
+`index.html`, `main.tsx`, `index.css`, `App.tsx`, `routes/AppShell.tsx`, `routes/Dashboard.tsx`, `routes/reporting/Reporting.tsx`, `components/ui/dialog.tsx`, `tabs.tsx`, `useOverlayBehavior.ts`, `dirtyForm.ts`, `lib/useMediaQuery.ts`, `components/NotificationBell.tsx`, `components/table/ColumnVisibilityMenu.tsx`, `SavedFiltersMenu.tsx`, `components/AttachmentsCard.tsx`, `routes/requirements/RequirementsList.tsx`, `routes/defects/DefectsList.tsx`, `DefectDetail.tsx`, `routes/execution/TestRunsOverview.tsx`, `TestRunDetail.tsx`, `DefectQuickCreateDialog.tsx`, `routes/admin/Environments.tsx`, `AuditLogs.tsx`, `Settings.tsx`, `routes/testcases/TestCaseDetail.tsx`, `TestCasesList.tsx`, `routes/testrepository/TestRepository.tsx`, `components/CommentsCard.tsx`, `routes/Login.tsx`, `Signup.tsx`, `AcceptInvite.tsx`; the four docs.
+
+## Verification — Phase G
+
+- Typecheck clean; lint 7 warnings (the same 7); unit tests 10/10; production build passes.
+- E2E, one Playwright process at a time, on the final code: phase-g 6/6 (new), accessibility 4/4, smoke 6/6, mobile-shell, mobile-components, mobile-screens (2), shell-phase-c 3/3, dashboard-phase-d 3/3, modules-phase-e 3/3, forms-phase-f 4/4, journeys 1–4 (2, 1, 1, 2), tier3-features and reliability: 41 tests, all passing. (The sweeps and role audits are separate scripts, not Playwright tests.)
+- Sweep (Meridian demo tenant, Admin): 23 routes × 9 widths × light and dark = 414 loads. Overflow 0, console and HTTP errors 0, 92 of 92 axe scans clean, unlabeled fields 0, heading skips 0. The sweep hung twice and was resumed in pieces (see the audit report).
+- Manager and Tester (read-only): 22 routes × 2 widths each, 0 overflow, 0 axe violations.
+- Production build measurements and Lighthouse numbers are in the audit report (Phase G measurements). Screenshots were taken for the sweep but not all were viewed; the Dashboard skeleton fix was verified by measuring skeleton and loaded heights at four widths.
+
+## Not verified / limitations (Phase G)
+
+- No real device, touch, or screen reader. Keyboard behaviour was tested through Playwright key presses (tabs, discard prompt), not a full keyboard-only walkthrough of every flow.
+- The signed-in app was not scored by Lighthouse (needs a session); timings come from Playwright on a loaded machine. Lighthouse was run only on `/login` (before the `<main>` fix; not re-run) and the marketing home (performance 41, outside this programme's scope).
+- Repository still renders every loaded row (UX-008); no virtualisation. Defects and Runs overview page on the client, so the API still sends everything.
+- `FormField` is now on 5 of roughly 15 forms; the rest use `FormError` and labels.
+- UX-030 is open. Names of users a Tester cannot list still fall back to ids (backend: no member-name endpoint for that role).
+- The discard-prompt focus test covers the Project dialog; the Test Case drawer and the two new dialogs use the same code without their own test.
+- The two new dialog conversions (New Requirement, New Defect) and the Environments form are covered by existing e2e specs only where those specs exercise them; there is no new spec for them.
+
+## Dev data changes (Phase G)
+
+No schema, backend or auth changes. The e2e runs created more throwaway "PhaseG" tenants. The sweeps and role audits signed in as the Meridian demo Admin, Manager and Tester (audit-log entries) and only read. The earlier Execution Console timer on step 1 of one demo case is unchanged.
 
 ## Phase F — what was built
 

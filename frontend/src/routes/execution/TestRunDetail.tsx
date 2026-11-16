@@ -35,6 +35,7 @@ import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
 
 
@@ -50,7 +51,8 @@ export function TestRunDetail() {
   const { ask, dialog: confirmDialog } = useConfirm()
 
   const runQuery = useQuery({ queryKey: ['test-runs', 'detail', runId], queryFn: () => getTestRun(runId!), enabled: !!runId })
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['test-runs', 'detail', runId] })

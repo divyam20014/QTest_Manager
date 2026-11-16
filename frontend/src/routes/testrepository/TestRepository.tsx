@@ -35,6 +35,7 @@ import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
 import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
 import { TestCaseForm, type TestCaseFormValues } from '@/routes/testcases/TestCaseForm'
 import { useToast } from '@/lib/toast'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
 
 const REPO_COLUMNS: TableColumnDef[] = [
@@ -166,7 +167,8 @@ export function TestRepository() {
     queryKey: ['projects', 'all'],
     queryFn: () => listProjects({ page_size: 100 }),
   })
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
   const createModulesQuery = useQuery({
     queryKey: ['test-modules', createProjectId],
     queryFn: () => listModules(createProjectId),

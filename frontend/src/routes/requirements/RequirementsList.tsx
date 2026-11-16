@@ -18,13 +18,13 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { useUrlFilters } from '@/lib/useUrlFilters'
-import { FormError } from '@/components/ui/form-field'
+import { FormError, FormField } from '@/components/ui/form-field'
+import { ReportDirty } from '@/components/ui/dirtyForm'
 import { useNavigate } from 'react-router-dom'
 
 const PAGE_SIZE = 20
@@ -217,18 +217,15 @@ function NewRequirementDialog({
   return (
     <Dialog open={open} onClose={onClose} title="New Requirement">
       <div className="flex flex-col gap-3 text-sm">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="requirement-title">Title</Label>
-          <Input id="requirement-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="requirement-description">Description</Label>
-          <Textarea
-            id="requirement-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
+        <ReportDirty dirty={title !== '' || description !== ''} />
+        <FormField id="requirement-title" label="Title" required helper="At least 5 characters.">
+          {(field) => <Input {...field} value={title} onChange={(e) => setTitle(e.target.value)} />}
+        </FormField>
+        <FormField id="requirement-description" label="Description">
+          {(field) => (
+            <Textarea {...field} value={description} onChange={(e) => setDescription(e.target.value)} />
+          )}
+        </FormField>
         <FormError>{error}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>

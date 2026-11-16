@@ -55,7 +55,7 @@ Each has a foreground and a tinted background. Never reuse them as chart series 
 
 ## 3. Typography
 
-Font: system UI stack (`system-ui, "Segoe UI", Roboto, sans-serif`) at a 15px base. Inter is used only on the marketing site.
+Font: **Inter Variable**, self-hosted from `@fontsource-variable/inter` (imported once in `main.tsx`; no external font CDN), at a 15px base. The token is `--font-sans: "Inter Variable", "Inter Fallback", system-ui, "Segoe UI", Roboto, sans-serif`. "Inter Fallback" is a local Arial face with `size-adjust: 107.4%` and matched ascent/descent so the swap from fallback to Inter does not move layout; `font-display: swap` comes from the fontsource face, and the latin subset (about 48 KB) is preloaded from `index.html`. Other subsets download only when a page needs those characters. The marketing site uses the same font family. Use the token (`var(--font-sans)`), never a hard-coded font stack.
 
 | Role | Class | Size / line / weight | Tailwind equivalent |
 |---|---|---|---|
@@ -75,7 +75,7 @@ The classes sit in `@layer components`, so a Tailwind utility on the same elemen
 ## 4. Spacing, radius, elevation, motion, layers
 
 - **Spacing:** Tailwind's 4px scale. Page gutter 16px (`p-4`) below `md`, 24px (`p-6`) from `md`. Stack page sections with `gap-4`. Tokens: `--space-1…--space-10`, `--page-gutter`.
-- **Control height:** 36px (`--control-height`), small 32px, **44px on phones** (`max-md:`).
+- **Control height:** one scale — small 32px (toolbar and row actions, menu triggers), default 36px (inputs, header actions), large 40px (page tabs), **44px on phones** (`max-md:`). Anything else (30px, 38px) is a defect; the Phase G sweep found none on any route at 1280px.
 - **Radius:** `--radius-control` 6px (buttons, inputs, tabs) · `--radius-card` 8px (cards, tables, menus) · `--radius-panel` 12px (dialogs, embossed cards) · `--radius-sheet` 16px (phone sheets) · `--radius-pill` (badges).
 - **Elevation:** `qth-raised-sm|md|lg`, `qth-pressed-sm|md`, `qth-texture`. Light source is fixed top-left. Flat `Card` uses `shadow-sm`.
 - **Motion:** `--motion-fast` 120ms, `--motion-base` 150ms, `--motion-slow` 200ms, `--ease-standard`. All collapse to 0 under `prefers-reduced-motion`; use `motion-reduce:` on any new transition. Animate only to explain a state change.
@@ -160,7 +160,7 @@ The classes sit in `@layer components`, so a Tailwind utility on the same elemen
 
 ## 10. Known gaps (tracked in `docs/UI_UX_AUDIT_REPORT.md`)
 
-Page headers (Phase C), the Dashboard (Phase D), status colours and chart colours (Phase E), and radius, type, control heights, table names, input labels and form errors (Phase F) are migrated. `FormField` is adopted on the Project and Test Case forms; the other forms (Settings, user invite, requirements, defects, auth screens) still hand-build their rows and only use `FormError` — move them across when they are next touched. Row-level controls (`h-8`) and small inline text links are the remaining places where control height is a deliberate exception. Not done: dirty-form protection for dialogs whose forms don't use react-hook-form, and server-side paging for Defects and the Runs overview (needs a backend change; Defects pages on the client in 50s).
+Page headers (Phase C), the Dashboard (Phase D), status colours and chart colours (Phase E), and radius, type, control heights, table names, input labels and form errors (Phase F) are migrated. `FormField` is adopted on the Project and Test Case forms; the other forms (Settings, user invite, requirements, defects, auth screens) still hand-build their rows and only use `FormError` — move them across when they are next touched. Row-level controls (`h-8`) and small inline text links are the remaining places where control height is a deliberate exception. Phase G: dirty-form protection also covers dialogs whose state lives in a parent (`ReportDirty`); Defects and the Runs overview page on the client in 50s (server-side paging would need a backend change); control heights are on one scale.
 
 
 ## Phase E additions
@@ -171,6 +171,16 @@ Page headers (Phase C), the Dashboard (Phase D), status colours and chart colour
 - **`Label required`**: the one required-field marker.
 - **`DetailSkeleton`**, `ErrorState`, `EmptyState`: the loading, failure and not-found states of a detail screen.
 - **Overlays stack**: `useOverlayBehavior` lets only the topmost overlay handle Escape and Tab, so a confirmation can open from inside a dialog.
+
+## Phase G additions
+
+- **`lazyRoute()` and `RouteBoundary`:** how every signed-in screen is loaded. New screens are added with `lazyRoute(() => import('...'), 'Name')` in `App.tsx`; do not import a screen statically. `RouteBoundary` gives a skeleton while it loads and a retry state if it fails.
+- **`usePrefersReducedMotion()`:** for JS-driven animation (Recharts `isAnimationActive`). CSS animation is already flattened by the reduced-motion rule in `index.css`.
+- **`useCanListUsers()`:** gate for any screen that only needs `GET /users` to resolve names.
+- **`ReportDirty`:** use when the form state lives outside the Dialog/Drawer that contains the form.
+- **`Tabs`:** arrow keys, Home and End work; keep using it rather than a hand-built tab strip.
+- **Font:** `--font-sans` (Inter Variable with a metric-matched fallback); see Typography.
+- **Skeletons that precede layout must reserve the loaded height** (see the Dashboard headline row); a skeleton shorter than its content is a layout-shift bug.
 
 ## Phase F additions
 

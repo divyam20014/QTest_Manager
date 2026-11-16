@@ -48,7 +48,7 @@ export function useOverlayBehavior(
       const panel = panelRef.current
       if (!panel) return
       const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-        (el) => el.offsetParent !== null,
+        (el) => el.offsetParent !== null && !el.closest('[inert]'),
       )
       if (focusable.length === 0) return
 

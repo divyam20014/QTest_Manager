@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/select'
 import { humanizeActionCode, humanizeKey } from '@/lib/labels'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 
 // GAP-91 item 2: URL-persisted filters + chips, same pattern as
 // Test Cases/Defects. `GET /audit-logs` is limit/offset paginated
@@ -36,7 +37,8 @@ export function AuditLogs() {
   const [verifyRequested, setVerifyRequested] = useState(false)
   const isMobile = useIsMobile()
 
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
 
   const filters = {
     action: action || undefined,

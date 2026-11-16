@@ -28,6 +28,7 @@ function useScrollLock(active: boolean) {
 
 function useDirtyGuard(onClose: () => void) {
   const dirtyRef = useRef(false)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
   const [confirming, setConfirming] = useState(false)
   const setDirty = useCallback((dirty: boolean) => {
     dirtyRef.current = dirty
@@ -37,15 +38,24 @@ function useDirtyGuard(onClose: () => void) {
       setConfirming(false)
       return
     }
-    if (dirtyRef.current) setConfirming(true)
-    else onClose()
+    if (dirtyRef.current) {
+      returnFocusRef.current = document.activeElement as HTMLElement | null
+      setConfirming(true)
+    } else onClose()
   }, [confirming, onClose])
   const discard = useCallback(() => {
     setConfirming(false)
     dirtyRef.current = false
     onClose()
   }, [onClose])
-  return { setDirty, confirming, requestClose, keepEditing: () => setConfirming(false), discard }
+  // Keep editing: hand focus back to where the user was (the prompt unmounts,
+  // which would otherwise drop focus to <body>).
+  const keepEditing = useCallback(() => {
+    setConfirming(false)
+    const target = returnFocusRef.current
+    window.setTimeout(() => target?.focus?.(), 0)
+  }, [])
+  return { setDirty, confirming, requestClose, keepEditing, discard }
 }
 
 function DiscardPrompt({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: () => void }) {
@@ -60,7 +70,9 @@ function DiscardPrompt({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: (
         <h3 id="qth-discard-title" className="text-sm font-semibold">
           Discard unsaved changes?
         </h3>
-        <p className="text-sm text-[var(--muted-foreground)]">Your edits have not been saved and will be lost.</p>
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Your edits have not been saved and will be lost.
+        </p>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" autoFocus onClick={onKeep}>
             Keep editing
@@ -142,7 +154,9 @@ export function Dialog({
           'max-md:max-h-[92svh] max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl max-md:border-b-0 max-md:pb-[env(safe-area-inset-bottom)]',
           className,
         )}
-        style={{ animation: isMobile ? 'qth-sheet-in 0.2s ease-out' : 'qth-scale-in 0.16s ease-out' }}
+        style={{
+          animation: isMobile ? 'qth-sheet-in 0.2s ease-out' : 'qth-scale-in 0.16s ease-out',
+        }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -153,16 +167,22 @@ export function Dialog({
           type="button"
           onClick={guard.requestClose}
           aria-label="Close dialog"
+          inert={guard.confirming}
           className="absolute right-4 top-4 z-20 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:right-1.5 max-md:top-2 max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
         >
           <X className="size-4 max-md:size-5" />
         </button>
-        <div aria-hidden="true" className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[var(--border)] md:hidden" />
+        <div
+          aria-hidden="true"
+          className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[var(--border)] md:hidden"
+        />
         <h2 className="shrink-0 border-b border-[var(--border)] px-5 py-4 pr-10 text-sm font-semibold max-md:pr-14 max-md:text-base">
           {title}
         </h2>
         <DirtyContext.Provider value={guard.setDirty}>
-          <div className="overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
+          <div inert={guard.confirming} className="overflow-y-auto overscroll-contain px-5 py-5">
+            {children}
+          </div>
         </DirtyContext.Provider>
         {guard.confirming && <DiscardPrompt onKeep={guard.keepEditing} onDiscard={guard.discard} />}
       </div>
@@ -223,13 +243,17 @@ export function Drawer({
             type="button"
             onClick={guard.requestClose}
             aria-label="Close panel"
+            inert={guard.confirming}
             className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
           >
             <X className="size-4" />
           </button>
         </div>
         <DirtyContext.Provider value={guard.setDirty}>
-          <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-5 max-md:px-4 max-md:pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+          <div
+            inert={guard.confirming}
+            className="flex-1 overflow-y-auto overscroll-contain px-6 py-5 max-md:px-4 max-md:pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
+          >
             {children}
           </div>
         </DirtyContext.Provider>

@@ -94,6 +94,7 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
           />
           <Button
             size="sm"
+            className="shrink-0 whitespace-nowrap"
             disabled={!newSetName.trim() || createSetMutation.isPending}
             onClick={() => createSetMutation.mutate(newSetName.trim())}
           >
@@ -176,6 +177,7 @@ export function TestDataSetsCard({ testCaseId }: { testCaseId: string }) {
               <Button
                 size="sm"
                 variant="outline"
+                className="shrink-0 whitespace-nowrap"
                 disabled={!rowDrafts[ds.id]?.name || addRowMutation.isPending}
                 onClick={() => {
                   const draft = rowDrafts[ds.id]

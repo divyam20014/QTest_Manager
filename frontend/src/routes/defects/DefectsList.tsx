@@ -15,7 +15,6 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
@@ -28,7 +27,9 @@ import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/componen
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useUrlFilters } from '@/lib/useUrlFilters'
-import { FormError } from '@/components/ui/form-field'
+import { useCanListUsers } from '@/lib/useCanListUsers'
+import { FormError, FormField } from '@/components/ui/form-field'
+import { ReportDirty } from '@/components/ui/dirtyForm'
 import { DefectImportDialog } from './DefectImportDialog'
 import { STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
@@ -181,7 +182,8 @@ export function DefectsList() {
     queryKey: ['projects', 'all-for-filter'],
     queryFn: () => listProjects({ page_size: 100, sort: 'name' }),
   })
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
   const severitiesQuery = useQuery({
     queryKey: ['field-options', 'defect_severity'],
     queryFn: () => listFieldOptions('defect_severity'),
@@ -446,57 +448,49 @@ function NewDefectDialog({
   return (
     <Dialog open={open} onClose={onClose} title="New Defect">
       <div className="flex flex-col gap-3 text-sm">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="new-defect-project">Project</Label>
-          <Select id="new-defect-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">Select a project…</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="new-defect-title">Title</Label>
-          <Input id="new-defect-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="new-defect-severity">Severity</Label>
-          <Select
-            id="new-defect-severity"
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as Severity)}
-          >
-            {(severitiesQuery.data ?? []).map((s) => (
-              <option key={s.code} value={s.code}>
-                {s.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="new-defect-priority">Priority</Label>
-          <Select
-            id="new-defect-priority"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as Priority)}
-          >
-            {(prioritiesQuery.data ?? []).map((p) => (
-              <option key={p.code} value={p.code}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="new-defect-description">Description</Label>
-          <Textarea
-            id="new-defect-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
+        <ReportDirty dirty={projectId !== '' || title !== '' || description !== ''} />
+        <FormField id="new-defect-project" label="Project" required>
+          {(field) => (
+            <Select {...field} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">Select a project…</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+        <FormField id="new-defect-title" label="Title" required>
+          {(field) => <Input {...field} value={title} onChange={(e) => setTitle(e.target.value)} />}
+        </FormField>
+        <FormField id="new-defect-severity" label="Severity">
+          {(field) => (
+            <Select {...field} value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
+              {(severitiesQuery.data ?? []).map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+        <FormField id="new-defect-priority" label="Priority">
+          {(field) => (
+            <Select {...field} value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
+              {(prioritiesQuery.data ?? []).map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+        <FormField id="new-defect-description" label="Description">
+          {(field) => (
+            <Textarea {...field} value={description} onChange={(e) => setDescription(e.target.value)} />
+          )}
+        </FormField>
         <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>

@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
+import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
 
 // Phase 8 (AI/SaaS vision roadmap, GAP-74): reuses the exact same
@@ -34,7 +35,8 @@ export function CommentsPanel({
   const { ask, dialog: confirmDialog } = useConfirm()
 
   const commentsQuery = useQuery({ queryKey, queryFn: () => listComments(ownerType, ownerId) })
-  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers })
+  const canListUsers = useCanListUsers()
+  const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
 
   const createMutation = useMutation({
     mutationFn: () => createComment(ownerType, ownerId, body, mentionedUserIds),

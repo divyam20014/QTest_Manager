@@ -14,3 +14,10 @@ export function useReportDirty(dirty: boolean) {
     return () => report?.(false)
   }, [report, dirty])
 }
+
+/** Render inside a Dialog/Drawer when the form state lives in a parent that sits
+ * outside the overlay (so `useReportDirty` can't be called there directly). */
+export function ReportDirty({ dirty }: { dirty: boolean }): null {
+  useReportDirty(dirty)
+  return null
+}

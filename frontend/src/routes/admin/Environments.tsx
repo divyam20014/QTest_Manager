@@ -8,9 +8,8 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useToast } from '@/lib/toast'
-import { FormError } from '@/components/ui/form-field'
+import { FormError, FormField } from '@/components/ui/form-field'
 
 // Tier 2 (PV-8.1): tenant-wide Environments (Staging/Production/etc.),
 // shared across projects -- distinct from project-scoped Builds/Releases,
@@ -97,24 +96,21 @@ export function Environments() {
               createMutation.mutate()
             }}
           >
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor="env-name">Name</Label>
-              <Input
-                id="env-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Staging"
-              />
-            </div>
-            <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor="env-description">Description</Label>
-              <Input
-                id="env-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional"
-              />
-            </div>
+            <FormField id="env-name" label="Name" required className="flex-1">
+              {(field) => (
+                <Input {...field} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Staging" />
+              )}
+            </FormField>
+            <FormField id="env-description" label="Description" className="flex-1">
+              {(field) => (
+                <Input
+                  {...field}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Optional"
+                />
+              )}
+            </FormField>
             <Button type="submit" size="sm" disabled={!name || createMutation.isPending}>
               Add Environment
             </Button>

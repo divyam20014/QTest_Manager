@@ -148,14 +148,14 @@ function DefectQuickCreateForm({
           <button
             type="button"
             onClick={() => setMode('new')}
-            className={`border-b-2 px-3 py-1.5 text-xs ${mode === 'new' ? 'border-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted-foreground)]'}`}
+            className={`inline-flex h-9 items-center border-b-2 px-3 text-xs ${mode === 'new' ? 'border-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted-foreground)]'}`}
           >
             Create New
           </button>
           <button
             type="button"
             onClick={() => setMode('existing')}
-            className={`border-b-2 px-3 py-1.5 text-xs ${mode === 'existing' ? 'border-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted-foreground)]'}`}
+            className={`inline-flex h-9 items-center border-b-2 px-3 text-xs ${mode === 'existing' ? 'border-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted-foreground)]'}`}
           >
             Link Existing Defect
           </button>
