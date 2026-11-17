@@ -33,7 +33,7 @@ sequenceDiagram
             SVC->>DB: INSERT mfa_challenges (code_hash, expires_at)
             Note over SVC: MFA_DELIVERY_MODE=simulated:<br/>code returned in response.<br/>=real: emailed via SMTP (app/core/mfa.py)
             SVC-->>API: session_row, debug_code (simulated only)
-            API-->>FE: Set-Cookie qth_session; {mfa_required:true, debug_code?}
+            API-->>FE: Set-Cookie qth_session, body {mfa_required:true, debug_code?}
         end
     end
     FE->>U: Show MFA code entry screen
@@ -48,7 +48,7 @@ sequenceDiagram
         SVC->>DB: UPDATE sessions SET mfa_verified=true
         SVC->>DB: UPDATE mfa_challenges SET verified_at=now()
         SVC-->>API: session_row
-        API-->>FE: Set-Cookie qth_session (refreshed); {verified:true}
+        API-->>FE: Set-Cookie qth_session (refreshed), body {verified:true}
     end
     FE->>API: GET /api/v1/auth/me
     API->>API: get_current_context (parse cookie, resolve SessionContext)
@@ -80,7 +80,7 @@ sequenceDiagram
     alt SSO enabled
         FE->>U: window.location.href = /auth/sso/{tenant_id}/login (full redirect)
         U->>API: GET /api/v1/auth/sso/{tenant_id}/login
-        API->>SVC: get_config(tenant_id); build_authorization_url()
+        API->>SVC: get_config(tenant_id), build_authorization_url()
         API->>API: generate random state, set httponly qth_sso_state cookie
         API-->>U: 302 Redirect to IdP authorization_endpoint
         U->>IdP: Authenticate (IdP's own login UI)
@@ -96,7 +96,7 @@ sequenceDiagram
         end
         SVC->>DB: INSERT sessions (mfa_verified=true - IdP already authenticated)
         SVC-->>API: session_row
-        API-->>U: Set-Cookie qth_session; 302 Redirect to "/"; delete qth_sso_state
+        API-->>U: Set-Cookie qth_session, 302 Redirect to "/", delete qth_sso_state
         U->>FE: Load SPA at "/"
         FE->>API: GET /api/v1/auth/me
         API-->>FE: session context
@@ -399,7 +399,7 @@ sequenceDiagram
     FE->>API: POST /test-cases/import/mapped (file, mapping JSON)
     API->>API: require_permission(testcase.bulk_import_export)
     API->>SVC: import_test_cases_mapped(tenant_id, role_code, user_id, csv_text, mapping)
-    SVC->>SVC: materialize all rows up front;\nreject whole file if rows > csv_import_max_rows (2000)
+    SVC->>SVC: materialize all rows up front, then reject whole file if rows > csv_import_max_rows (2000)
     SVC->>DB: preload existing (project_id, title_lower) pairs
     loop for each row
         SVC->>SVC: validate required fields, detect in-batch duplicate title
@@ -412,7 +412,7 @@ sequenceDiagram
     SVC->>DB: INSERT audit_logs (action=test_case.bulk_imported)
     SVC-->>API: ImportReport {created_count, errors[]}
     API-->>FE: 200 OK
-    FE->>U: Show results; "Download Error Report (CSV)" if any errors
+    FE->>U: Show results, and "Download Error Report (CSV)" if any errors
 ```
 
 **Notes**: the TestRail/Zephyr/Jira preset mappings are fuzzy-matched suggestions, explicitly labeled in the UI as unverified against a real export from those tools (no real accounts/files were available in this environment to validate against).

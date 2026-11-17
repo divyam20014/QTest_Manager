@@ -71,7 +71,7 @@ export function MobileTabBar({
   return (
     <nav
       aria-label="Primary"
-      className="qth-raised-md fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--tactile-surface-raised)] md:hidden"
+      className="qth-shell-chrome qth-raised-md fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--tactile-surface-raised)] md:hidden"
       style={{
         ...SAFE_BOTTOM,
         paddingLeft: 'env(safe-area-inset-left)',
@@ -168,7 +168,7 @@ export function MoreSheet({
     <>
       {open && (
         <div
-          className="qth-animate-in fixed inset-0 z-50 flex items-end bg-black/40 backdrop-blur-[1px] md:hidden"
+          className="qth-shell-chrome qth-animate-in fixed inset-0 z-50 flex items-end bg-black/40 backdrop-blur-[1px] md:hidden"
           style={{ animation: 'qth-fade-in 0.15s ease-out' }}
           onClick={onClose}
           role="presentation"

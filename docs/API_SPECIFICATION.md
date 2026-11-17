@@ -18,8 +18,8 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Platform Administration (no tenant context)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| POST | /platform/tenants | Create tenant + first Admin user (ADR-008); every new tenant is seeded with a default Trial subscription (ADR-053) | platform_owner |
-| GET | /platform/tenants | List tenants | platform_owner |
+| POST | /platform/tenants | Create tenant + first Admin user (ADR-008); every new tenant is seeded with a default Trial subscription (ADR-053); optional `primary_domain` (Motor/Health/Travel/Life/Property/Other, else 422; ADR-073) | platform_owner |
+| GET | /platform/tenants | List tenants (each includes `primary_domain`, ADR-073) | platform_owner |
 | PATCH | /platform/tenants/{id}/status | approve/suspend tenant | platform_owner |
 | GET | /platform/plans | list the subscription-plan catalog (Tier 1, ADR-053) | platform_owner |
 | GET | /platform/tenants/{id}/subscription | view a tenant's current subscription | platform_owner |
@@ -28,6 +28,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Authentication (FR-AUTH)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
+| POST | /auth/signup | public self-service signup (ADR-064): creates the tenant, its first Admin and a sample project; rate-limited 5/hour per IP; the Admin still signs in through login + MFA. Optional `primary_domain` (Motor/Health/Travel/Life/Property/Other; any other value is a 422) pre-selects the Domain of new projects (BRD FR-AUTH-04, ADR-073) | public (unauthenticated) |
 | POST | /auth/login | tenant_id+email+password → MFA challenge issued (ADR-017); rate-limited 10/min per client IP (ADR-030, GAP-16); rejects non-`approved` tenants with 403 (ADR-032) | any |
 | POST | /auth/mfa/verify | 6-digit code → session cookie issued; rate-limited 10/min per client IP (ADR-030) | any (interim handshake) |
 | POST | /auth/logout | revoke session | authenticated |
@@ -178,10 +179,10 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /audit-logs | filterable (action, entity_type, entity_id, user_id, date_from, date_to), paginated (max 200/page), full record incl. metadata/prev_hash (ADR-029, ADR-039), read-only | admin (`audit.view`) |
 | GET | /audit-logs/export | CSV export of the full (unpaginated, capped at 50k rows) filtered audit trail — same filters as the list endpoint (ADR-039) | admin (`audit.view`) |
 | GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side; returns valid/checked_count/broken_at_id (ADR-029) | admin (`audit.view`) |
-| GET | /settings | tenant self-service settings (`default_currency_code`, `default_timezone`, `ai_enabled`, `ai_provider`, `ai_api_key_configured`, `ip_allowlist`) (AI/SaaS roadmap Phase 1/3, ADR-043/ADR-045, GAP-80/GAP-72; `ip_allowlist` is Tier 4, ADR-054, PV-11.3) | admin (`tenant.settings.manage`) |
-| PATCH | /settings | update tenant settings; partial updates supported, audit-logged (`tenant.settings_updated`); `ai_api_key` is write-only (never returned), `""` clears it; enabling AI requires a key already configured; `ip_allowlist` is a full replace (CIDR list, `[]` clears it) | admin (`tenant.settings.manage`) |
+| GET | /settings | tenant self-service settings (`default_currency_code`, `default_timezone`, `ai_enabled`, `ai_provider`, `ai_api_key_configured`, `ip_allowlist`, `primary_domain`) (AI/SaaS roadmap Phase 1/3, ADR-043/ADR-045, GAP-80/GAP-72; `ip_allowlist` is Tier 4, ADR-054, PV-11.3) | admin (`tenant.settings.manage`) |
+| PATCH | /settings | update tenant settings; partial updates supported, audit-logged (`tenant.settings_updated`); `ai_api_key` is write-only (never returned), `""` clears it; enabling AI requires a key already configured; `ip_allowlist` is a full replace (CIDR list, `[]` clears it); `primary_domain` (ADR-073): send a value to set it, `null` to clear it, omit it to leave it unchanged (an unknown value is a 422); the change is recorded in the audit event as `{from, to}` | admin (`tenant.settings.manage`) |
 | GET | /settings/subscription | read-only view of the tenant's current plan/status/seat count — assignment is platform-admin-only (Tier 1, ADR-053) | admin (`tenant.settings.manage`) |
-| GET | /settings/branding | tenant branding (`display_name`, `primary_color`, `has_logo`) (Tier 4, ADR-054, PV-11.4) | all (authenticated) |
+| GET | /settings/branding | tenant branding (`display_name`, `primary_color`, `has_logo`, `primary_domain`) (Tier 4, ADR-054, PV-11.4; `primary_domain` added by ADR-073 because every member's New Project form reads it) | all (authenticated) |
 | PUT | /settings/branding | update display name/primary color | admin (`tenant.settings.manage`) |
 | POST | /settings/branding/logo | multipart upload of a PNG/JPEG/SVG/WebP logo (2MB cap), stored via the Tier 1 storage abstraction | admin (`tenant.settings.manage`) |
 | GET | /settings/branding/logo | stream the uploaded logo bytes | all (authenticated) |

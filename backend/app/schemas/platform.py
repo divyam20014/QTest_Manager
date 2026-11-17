@@ -1,9 +1,14 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
 from app.schemas.common import StrongPassword
+
+# BRD gap Phase 4 / ADR-073 (FR-AUTH-04): the five insurance project domains
+# plus "Other" (another or several domains). Optional everywhere.
+TenantPrimaryDomain = Literal["Motor", "Health", "Travel", "Life", "Property", "Other"]
 
 
 class TenantCreateRequest(BaseModel):
@@ -14,6 +19,7 @@ class TenantCreateRequest(BaseModel):
     # Tier 4 / ADR-054 (PV-11.6): data residency readiness metadata only --
     # no per-region deployment topology exists yet, see docs/DATA_RESIDENCY.md.
     data_region: str = "us"
+    primary_domain: TenantPrimaryDomain | None = None
 
 
 class TenantOut(BaseModel):
@@ -23,6 +29,7 @@ class TenantOut(BaseModel):
     default_currency_code: str
     default_timezone: str
     data_region: str
+    primary_domain: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -1,4 +1,5 @@
 import { API_BASE_URL, apiFetch } from '@/api/client'
+import type { TenantDomain } from '@/api/projects'
 
 export interface TenantSettings {
   default_currency_code: string
@@ -7,6 +8,7 @@ export interface TenantSettings {
   ai_provider: string
   ai_api_key_configured: boolean
   ip_allowlist: string[]
+  primary_domain: TenantDomain | null
 }
 
 export interface TenantSettingsUpdateRequest {
@@ -15,6 +17,8 @@ export interface TenantSettingsUpdateRequest {
   ai_enabled?: boolean
   ai_api_key?: string
   ip_allowlist?: string[]
+  // Omit to leave unchanged; null clears it.
+  primary_domain?: TenantDomain | null
 }
 
 export function getSettings(): Promise<TenantSettings> {
@@ -30,6 +34,8 @@ export interface TenantBranding {
   display_name: string | null
   primary_color: string | null
   has_logo: boolean
+  // Readable by every member: pre-selects the Domain of a new project.
+  primary_domain: TenantDomain | null
 }
 
 export interface TenantBrandingUpdateRequest {

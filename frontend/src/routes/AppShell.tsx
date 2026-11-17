@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   BarChart3,
+  BookOpen,
   Bug,
   Building2,
   ClipboardList,
@@ -83,6 +84,13 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: '/reporting', label: 'Reports', icon: BarChart3 },
       { to: '/reporting/print', label: 'Compliance Reports', icon: ShieldCheck, newTab: true },
     ],
+  },
+  {
+    // BRD gap Phase 4 (FR-BRD-01): the in-app documentation viewer. Open to
+    // every signed-in user; which documents it lists depends on the role
+    // (routes/docs/docsManifest.ts), so it needs no entry in routeAccess.ts.
+    label: 'Help',
+    items: [{ to: '/brd', label: 'Documentation', icon: BookOpen }],
   },
   {
     label: 'Administration',
@@ -267,6 +275,7 @@ export function AppShell() {
       </a>
       <aside
         className={cn(
+          'qth-shell-chrome',
           // Mobile redesign Phase 1: below md the sidebar is replaced by the
           // bottom tab bar + More sheet (components/MobileNav.tsx).
           'hidden w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] md:static md:flex md:transition-[width] md:duration-200 motion-reduce:md:transition-none',
@@ -324,7 +333,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:h-14 md:px-6 md:py-0">
+        <header className="qth-shell-chrome flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:h-14 md:px-6 md:py-0">
           <div className="flex min-w-0 items-center gap-2">
             <Breadcrumbs />
           </div>

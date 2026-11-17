@@ -1,6 +1,23 @@
 import { apiFetch } from '@/api/client'
 
 export type Domain = 'Motor' | 'Health' | 'Travel' | 'Life' | 'Property'
+
+// BRD gap Phase 4 / ADR-073 (FR-AUTH-04): an organisation's optional primary
+// insurance domain -- the five project domains plus "Other" (another or
+// several). It only pre-selects a new project's Domain; it never restricts it.
+export const TENANT_DOMAINS = ['Motor', 'Health', 'Travel', 'Life', 'Property', 'Other'] as const
+export type TenantDomain = (typeof TENANT_DOMAINS)[number]
+
+export function tenantDomainLabel(domain: TenantDomain): string {
+  return domain === 'Other' ? 'Other / multiple' : domain
+}
+
+/** The project Domain a tenant's primary domain maps to, or null for "Other"/unset. */
+export function projectDomainFor(primary: string | null | undefined): Domain | null {
+  return primary && primary !== 'Other' && (TENANT_DOMAINS as readonly string[]).includes(primary)
+    ? (primary as Domain)
+    : null
+}
 export type Priority = 'Low' | 'Medium' | 'High' | 'Critical'
 export type ProjectStatus = 'On Track' | 'At Risk' | 'Delayed' | 'Completed'
 

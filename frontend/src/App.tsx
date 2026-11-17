@@ -39,6 +39,7 @@ const Reporting = lazyRoute(() => import('@/routes/reporting/Reporting'), 'Repor
 const TestRepository = lazyRoute(() => import('@/routes/testrepository/TestRepository'), 'TestRepository')
 const TestCaseDetail = lazyRoute(() => import('@/routes/testcases/TestCaseDetail'), 'TestCaseDetail')
 const TestCasesList = lazyRoute(() => import('@/routes/testcases/TestCasesList'), 'TestCasesList')
+const DocsViewer = lazyRoute(() => import('@/routes/docs/DocsViewer'), 'DocsViewer')
 
 // Design-system catalogue: dev server only. import.meta.env.DEV is replaced by
 // a literal false in production builds, so this chunk is never emitted there.
@@ -97,6 +98,8 @@ export function App() {
           <Route path="/admin/environments" element={<Environments />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/account" element={<MyAccount />} />
+          <Route path="/brd" element={<DocsViewer />} />
+          <Route path="/brd/:docId" element={<DocsViewer />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

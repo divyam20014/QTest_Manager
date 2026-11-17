@@ -16,7 +16,7 @@ sequenceDiagram
     alt SSO enabled
         FE->>U: window.location.href = /auth/sso/{tenant_id}/login (full redirect)
         U->>API: GET /api/v1/auth/sso/{tenant_id}/login
-        API->>SVC: get_config(tenant_id); build_authorization_url()
+        API->>SVC: get_config(tenant_id), build_authorization_url()
         API->>API: generate random state, set httponly qth_sso_state cookie
         API-->>U: 302 Redirect to IdP authorization_endpoint
         U->>IdP: Authenticate (IdP's own login UI)
@@ -32,7 +32,7 @@ sequenceDiagram
         end
         SVC->>DB: INSERT sessions (mfa_verified=true - IdP already authenticated)
         SVC-->>API: session_row
-        API-->>U: Set-Cookie qth_session; 302 Redirect to "/"; delete qth_sso_state
+        API-->>U: Set-Cookie qth_session, 302 Redirect to "/", delete qth_sso_state
         U->>FE: Load SPA at "/"
         FE->>API: GET /api/v1/auth/me
         API-->>FE: session context

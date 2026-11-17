@@ -14,6 +14,11 @@ class Tenant(Base, UUIDPKMixin):
         CheckConstraint(
             "status in ('pending','approved','suspended','inactive')", name="ck_tenants_status"
         ),
+        CheckConstraint(
+            "primary_domain is null or primary_domain in "
+            "('Motor','Health','Travel','Life','Property','Other')",
+            name="ck_tenants_primary_domain",
+        ),
     )
 
     name: Mapped[str] = mapped_column(String, nullable=False)
@@ -38,6 +43,12 @@ class Tenant(Base, UUIDPKMixin):
     )
     ai_api_key_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # BRD gap Phase 4 / ADR-073 (FR-AUTH-04): the organisation's primary
+    # insurance domain, chosen (optionally) at signup. Purely a default for
+    # new projects' Domain field -- it never restricts which domains a
+    # project may use. NULL = not set; 'Other' = another or several domains.
+    primary_domain: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Tier 4 / ADR-054: tenant branding (PV-11.4), reusing Phase 1's
     # tenant-settings mechanism rather than inventing a second one.

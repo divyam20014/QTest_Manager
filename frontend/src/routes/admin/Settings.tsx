@@ -49,6 +49,8 @@ import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { TENANT_DOMAINS, tenantDomainLabel, type TenantDomain } from '@/api/projects'
 import { Label } from '@/components/ui/label'
 import { Tabs } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -655,6 +657,7 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
   const [currencyCode, setCurrencyCode] = useState(initial.default_currency_code)
   const [timezone, setTimezone] = useState(initial.default_timezone)
   const [allowlistText, setAllowlistText] = useState(initial.ip_allowlist.join('\n'))
+  const [primaryDomain, setPrimaryDomain] = useState<TenantDomain | ''>(initial.primary_domain ?? '')
   const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
@@ -662,6 +665,7 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
       updateSettings({
         default_currency_code: currencyCode,
         default_timezone: timezone,
+        primary_domain: primaryDomain || null,
         ip_allowlist: allowlistText
           .split('\n')
           .map((line) => line.trim())
@@ -669,6 +673,8 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(['settings'], data)
+      // The branding query carries the domain the New Project form reads.
+      queryClient.invalidateQueries({ queryKey: ['branding'] })
       showToast('success', 'Organization settings saved')
     },
     // No onError toast -- `serverError` below already renders this inline.
@@ -702,6 +708,25 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
         <Input id="default-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
         <p className="text-xs text-[var(--muted-foreground)]">
           IANA timezone name (e.g. UTC, Europe/London, Asia/Kolkata).
+        </p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="primary-domain">Primary Insurance Domain</Label>
+        <Select
+          id="primary-domain"
+          value={primaryDomain}
+          onChange={(e) => setPrimaryDomain(e.target.value as TenantDomain | '')}
+        >
+          <option value="">Not specified</option>
+          {TENANT_DOMAINS.map((d) => (
+            <option key={d} value={d}>
+              {tenantDomainLabel(d)}
+            </option>
+          ))}
+        </Select>
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Pre-selects the Domain when someone creates a new project. It never limits which
+          domains your projects can use.
         </p>
       </div>
       <div className="flex flex-col gap-1.5">

@@ -19,6 +19,7 @@ export interface Tenant {
   // Tier 4 / ADR-054: data residency readiness metadata only (PV-11.6) --
   // no per-region deployment topology exists yet.
   data_region: string
+  primary_domain: string | null
   created_at: string
 }
 
@@ -52,6 +53,7 @@ export interface TenantCreateRequest {
   admin_email: string
   admin_password: string
   data_region?: string
+  primary_domain?: string
 }
 
 async function platformFetch<T>(

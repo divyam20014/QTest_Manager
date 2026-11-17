@@ -12,6 +12,7 @@ PostgreSQL. All PKs are `UUID DEFAULT gen_random_uuid()` (pgcrypto/`uuid-ossp`).
 | status | TEXT NOT NULL CHECK IN ('pending','approved','suspended') | |
 | default_currency_code | CHAR(3) NOT NULL DEFAULT 'USD' | ADR-013 |
 | default_timezone | TEXT NOT NULL DEFAULT 'UTC' | ADR-013 |
+| primary_domain | TEXT NULL CHECK IN ('Motor','Health','Travel','Life','Property','Other') | BRD gap Phase 4, ADR-073 (migration `c9d0e1f2a3b4`). Optional primary insurance domain chosen at signup / in Settings; only pre-selects a new project's Domain, never restricts it. NULL = not set |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | |
 
 ### `platform_admins`

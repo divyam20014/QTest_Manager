@@ -392,7 +392,7 @@ erDiagram
     }
     SSO_CONFIGS {
         uuid id PK
-        uuid tenant_id FK UK
+        uuid tenant_id FK, UK
         bool enabled
         string issuer
         string client_id
@@ -422,7 +422,7 @@ erDiagram
     }
     SUBSCRIPTIONS {
         uuid id PK
-        uuid tenant_id FK UK
+        uuid tenant_id FK, UK
         uuid plan_id FK
         string status "trialing/active/past_due/canceled"
         int seat_count

@@ -47,6 +47,7 @@ def test_admin_can_read_and_update_settings(client: TestClient, platform_admin: 
         "ai_provider": "gemini",
         "ai_api_key_configured": False,
         "ip_allowlist": [],
+        "primary_domain": None,
     }
 
     updated = client.patch(

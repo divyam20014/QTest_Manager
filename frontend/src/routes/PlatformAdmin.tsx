@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CheckCircle2, Clock, PauseCircle, ShieldCheck, ShieldOff } from 'lucide-react'
 
 import { ApiError } from '@/api/client'
+import { TENANT_DOMAINS, tenantDomainLabel, type TenantDomain } from '@/api/projects'
 import {
   assignTenantSubscription,
   createPlatformAdmin,
@@ -258,6 +259,13 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
       ),
     },
     { key: 'status', header: 'Status', card: 'badge', cell: (t) => <StatusBadge status={t.status} /> },
+    {
+      key: 'domain',
+      header: 'Domain',
+      cardLabel: 'Insurance domain',
+      tdClassName: 'text-[var(--muted-foreground)]',
+      cell: (t) => t.primary_domain ?? '—',
+    },
     {
       key: 'region',
       header: 'Region',
@@ -539,6 +547,7 @@ function NewTenantDialog({
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
   const [dataRegion, setDataRegion] = useState('us')
+  const [primaryDomain, setPrimaryDomain] = useState<TenantDomain | ''>('')
   const { show: showToast } = useToast()
 
   const createMutation = useMutation({
@@ -549,6 +558,7 @@ function NewTenantDialog({
         admin_email: adminEmail,
         admin_password: adminPassword,
         data_region: dataRegion,
+        ...(primaryDomain ? { primary_domain: primaryDomain } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
@@ -557,6 +567,7 @@ function NewTenantDialog({
       setAdminEmail('')
       setAdminPassword('')
       setDataRegion('us')
+      setPrimaryDomain('')
       onClose()
       showToast('success', 'Tenant created')
     },
@@ -587,6 +598,21 @@ function NewTenantDialog({
               value={tenantName}
               onChange={(e) => setTenantName(e.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="tenant-domain">Insurance Domain (optional)</Label>
+            <Select
+              id="tenant-domain"
+              value={primaryDomain}
+              onChange={(e) => setPrimaryDomain(e.target.value as TenantDomain | '')}
+            >
+              <option value="">Not specified</option>
+              {TENANT_DOMAINS.map((d) => (
+                <option key={d} value={d}>
+                  {tenantDomainLabel(d)}
+                </option>
+              ))}
+            </Select>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="data-region">Data Region</Label>

@@ -20,7 +20,7 @@ sequenceDiagram
     FE->>API: POST /test-cases/import/mapped (file, mapping JSON)
     API->>API: require_permission(testcase.bulk_import_export)
     API->>SVC: import_test_cases_mapped(tenant_id, role_code, user_id, csv_text, mapping)
-    SVC->>SVC: materialize all rows up front;\nreject whole file if rows > csv_import_max_rows (2000)
+    SVC->>SVC: materialize all rows up front, then reject whole file if rows > csv_import_max_rows (2000)
     SVC->>DB: preload existing (project_id, title_lower) pairs
     loop for each row
         SVC->>SVC: validate required fields, detect in-batch duplicate title
@@ -33,4 +33,4 @@ sequenceDiagram
     SVC->>DB: INSERT audit_logs (action=test_case.bulk_imported)
     SVC-->>API: ImportReport {created_count, errors[]}
     API-->>FE: 200 OK
-    FE->>U: Show results; "Download Error Report (CSV)" if any errors
+    FE->>U: Show results, and "Download Error Report (CSV)" if any errors

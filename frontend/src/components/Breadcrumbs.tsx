@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
+import manifest from '@/content/docs/manifest.json'
 import { cn } from '@/lib/utils'
 
 // Maps a static path segment to a readable label. Dynamic segments (ids)
@@ -25,6 +26,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   'audit-logs': 'Audit Logs',
   settings: 'Settings',
   account: 'My Account',
+  brd: 'Documentation',
 }
 
 const ID_LABELS: Record<string, string> = {
@@ -59,7 +61,12 @@ export function Breadcrumbs() {
 
   const crumbs = segments.map((segment, index) => {
     const path = '/' + segments.slice(0, index + 1).join('/')
-    const label = isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment)
+    // /brd/:docId -- the document's own title (the viewer's manifest).
+    const docTitle =
+      segments[0] === 'brd' && index === 1 ? manifest.documents.find((d) => d.id === segment)?.title : undefined
+    const label =
+      docTitle ??
+      (isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
     return { path, label }
   })
 

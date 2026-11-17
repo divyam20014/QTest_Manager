@@ -36,6 +36,7 @@ function isId(segment: string) {
 
 export function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/accept-invite')) return 'Accept Invitation'
+  if (pathname === '/brd' || pathname.startsWith('/brd/')) return 'Documentation'
   if (EXACT_TITLES[pathname]) return EXACT_TITLES[pathname]
 
   const segments = pathname.split('/').filter(Boolean)

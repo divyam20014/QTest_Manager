@@ -3,11 +3,13 @@ import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { signup } from '@/api/auth'
+import { TENANT_DOMAINS, tenantDomainLabel, type TenantDomain } from '@/api/projects'
 import { ApiError } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { FormError } from '@/components/ui/form-field'
 
 // Pass 2 (ADR-064): public, unauthenticated -- creating the tenant IS the
@@ -20,6 +22,7 @@ export function Signup() {
   const [adminName, setAdminName] = useState('')
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
+  const [primaryDomain, setPrimaryDomain] = useState<TenantDomain | ''>('')
 
   const signupMutation = useMutation({
     mutationFn: () =>
@@ -28,6 +31,7 @@ export function Signup() {
         admin_name: adminName,
         admin_email: adminEmail,
         admin_password: adminPassword,
+        ...(primaryDomain ? { primary_domain: primaryDomain } : {}),
       }),
     onSuccess: () => {
       setTimeout(() => navigate('/login', { replace: true }), 1800)
@@ -71,6 +75,28 @@ export function Signup() {
                   required
                   minLength={3}
                 />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="signup-domain">
+                  Insurance Domain <span className="font-normal text-[var(--muted-foreground)]">(optional)</span>
+                </Label>
+                <Select
+                  id="signup-domain"
+                  value={primaryDomain}
+                  onChange={(e) => setPrimaryDomain(e.target.value as TenantDomain | '')}
+                  aria-describedby="signup-domain-help"
+                >
+                  <option value="">Not specified</option>
+                  {TENANT_DOMAINS.map((d) => (
+                    <option key={d} value={d}>
+                      {tenantDomainLabel(d)}
+                    </option>
+                  ))}
+                </Select>
+                <p id="signup-domain-help" className="text-xs text-[var(--muted-foreground)]">
+                  Your main line of insurance. It only pre-selects the domain on new projects, and
+                  you can change it later in Settings.
+                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="signup-name">Your Name</Label>

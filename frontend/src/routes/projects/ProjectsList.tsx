@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -7,12 +7,14 @@ import { ApiError } from '@/api/client'
 import {
   createProject,
   listProjects,
+  projectDomainFor,
   type Domain,
   type Priority,
   type Project,
   type ProjectCreateRequest,
   type ProjectStatus,
 } from '@/api/projects'
+import { getBranding } from '@/api/settings'
 import { listUsers } from '@/api/users'
 import { FilterBar } from '@/components/table/FilterBar'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
@@ -129,6 +131,15 @@ export function ProjectsList() {
 
   const canCreate = isManagerOrAbove(user)
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canCreate })
+  // BRD gap Phase 4 (FR-AUTH-04): the organisation's primary insurance domain
+  // pre-selects a new project's Domain. Same query key as the app shell, so
+  // it is normally already cached; "Other"/unset keeps the existing default.
+  const brandingQuery = useQuery({ queryKey: ['branding'], queryFn: getBranding, enabled: canCreate })
+  const tenantDomain = projectDomainFor(brandingQuery.data?.primary_domain)
+  const newProjectDefaults = useMemo<ProjectFormValues>(
+    () => ({ ...DEFAULT_VALUES, domain: tenantDomain ?? DEFAULT_VALUES.domain }),
+    [tenantDomain],
+  )
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
 
   const isMobile = useIsMobile()
@@ -368,7 +379,7 @@ export function ProjectsList() {
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Project">
         <ProjectForm
           inDialog
-          defaultValues={DEFAULT_VALUES}
+          defaultValues={newProjectDefaults}
           submitLabel="Create Project"
           isSubmitting={createMutation.isPending}
           serverError={createError}

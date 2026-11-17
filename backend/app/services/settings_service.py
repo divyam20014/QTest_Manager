@@ -31,6 +31,7 @@ def to_out(tenant: Tenant) -> TenantSettingsOut:
         ai_provider=tenant.ai_provider,
         ai_api_key_configured=tenant.ai_api_key_encrypted is not None,
         ip_allowlist=tenant.ip_allowlist or [],
+        primary_domain=tenant.primary_domain,
     )
 
 
@@ -87,6 +88,10 @@ def update_settings(
             changes["ip_allowlist"] = {"from": tenant.ip_allowlist, "to": new_allowlist}
             tenant.ip_allowlist = new_allowlist
 
+    if "primary_domain" in req.model_fields_set and req.primary_domain != tenant.primary_domain:
+        changes["primary_domain"] = {"from": tenant.primary_domain, "to": req.primary_domain}
+        tenant.primary_domain = req.primary_domain
+
     if changes:
         record_audit_event(
             db,
@@ -113,6 +118,7 @@ def get_branding(db: Session, tenant_id: UUID) -> TenantBrandingOut:
         display_name=tenant.brand_display_name,
         primary_color=tenant.brand_primary_color,
         has_logo=tenant.brand_logo_ref is not None,
+        primary_domain=tenant.primary_domain,
     )
 
 

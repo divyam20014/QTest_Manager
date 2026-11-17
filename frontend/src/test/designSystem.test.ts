@@ -64,6 +64,10 @@ describe('design tokens', () => {
 const HARD_CODED_COLOUR_BASELINE: Record<string, number> = {
   'routes/admin/Settings.tsx': 1,
   'routes/reporting/CompliancePrintView.tsx': 1,
+  // Mermaid's themeVariables take literal colours (it cannot resolve CSS
+  // variables); this one dark-theme edge-label background keeps the diagram
+  // labels at AA contrast. Must not grow.
+  'routes/docs/MermaidDiagram.tsx': 1,
 }
 
 const COLOUR_RE =

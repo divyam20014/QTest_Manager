@@ -37,7 +37,12 @@ def create_tenant_with_admin(
     # need a distinct, later review step. "pending" exists for a future
     # self-service path (ADR-032); the only path that exists today is
     # provisioned directly by a platform admin, so it starts approved.
-    tenant = Tenant(name=req.tenant_name, status="approved", data_region=req.data_region)
+    tenant = Tenant(
+        name=req.tenant_name,
+        status="approved",
+        data_region=req.data_region,
+        primary_domain=req.primary_domain,
+    )
     db.add(tenant)
     db.flush()
 
@@ -77,7 +82,7 @@ def create_tenant_with_admin(
         action="tenant.created",
         entity_type="tenant",
         entity_id=tenant.id,
-        metadata={"name": tenant.name},
+        metadata={"name": tenant.name, "primary_domain": tenant.primary_domain},
     )
     record_audit_event(
         db,

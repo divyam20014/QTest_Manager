@@ -1,4 +1,5 @@
 import { apiFetch } from '@/api/client'
+import type { TenantDomain } from '@/api/projects'
 
 export type RoleCode = 'admin' | 'manager' | 'tester'
 
@@ -91,6 +92,7 @@ export interface SignupRequest {
   admin_name: string
   admin_email: string
   admin_password: string
+  primary_domain?: TenantDomain | null
 }
 
 export interface SignupResponse {

@@ -2,6 +2,8 @@ from ipaddress import ip_network
 
 from pydantic import BaseModel, field_validator
 
+from app.schemas.platform import TenantPrimaryDomain
+
 
 class TenantSettingsOut(BaseModel):
     default_currency_code: str
@@ -10,6 +12,7 @@ class TenantSettingsOut(BaseModel):
     ai_provider: str
     ai_api_key_configured: bool
     ip_allowlist: list[str]
+    primary_domain: str | None = None
 
 
 class TenantSettingsUpdateRequest(BaseModel):
@@ -22,6 +25,9 @@ class TenantSettingsUpdateRequest(BaseModel):
     # Tier 4 / ADR-054 (PV-11.3): a full replace of the allowlist, never a
     # diff -- an empty list clears it (no restriction).
     ip_allowlist: list[str] | None = None
+    # BRD gap Phase 4 / ADR-073: send the field to set it, send null to clear
+    # it, omit it to leave it unchanged (distinguished via model_fields_set).
+    primary_domain: TenantPrimaryDomain | None = None
 
     @field_validator("default_currency_code")
     @classmethod
@@ -63,6 +69,9 @@ class TenantBrandingOut(BaseModel):
     display_name: str | None
     primary_color: str | None
     has_logo: bool
+    # Readable by every tenant member (the shell and the new-project form need
+    # it) -- it is a non-sensitive organisation label, like the display name.
+    primary_domain: str | None = None
 
 
 class TenantBrandingUpdateRequest(BaseModel):
