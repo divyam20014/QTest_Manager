@@ -85,7 +85,8 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /test-cases/{id} | detail incl. current version+steps | all (assigned) |
 | GET | /test-cases/{id}/versions | version history (ADR-003) | all (assigned) |
 | GET | /test-cases/{id}/versions/compare?from=&to= | per-step + title/description diff between two versions (ADR-034) | all (assigned) |
-| PATCH | /test-cases/{id} | edit → creates new version if approved | all (assigned, own drafts for tester delete rule) |
+| PATCH | /test-cases/{id} | content edit (title/description/steps/scenario/prerequisite/test data) → creates a new version and reverts to draft if approved. **Metadata-only edits (priority, assignee, module) never fork a version or un-approve the case** (ADR-070) | all (assigned, own drafts for tester delete rule) |
+| POST | /test-cases/bulk-update | bulk priority and/or assignee change (`test_case_ids`, `priority`, `assignee_id`; omitted key = unchanged, `assignee_id: null` = unassign); metadata-only; returns per-item `{updated, failed, results[]}`; `testcase.edit` checked per item against its project (ADR-070) | testcase.edit (per project) |
 | POST | /test-cases/{id}/submit-review | draft → ready_for_review | tester/manager/admin |
 | POST | /test-cases/{id}/approve | → approved | manager, admin |
 | POST | /test-cases/{id}/deprecate | → deprecated (terminal; ADR-034) | manager, admin |
@@ -131,7 +132,10 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | PATCH | /test-run-cases/{id}/assign | assign execution responsibility (ADR-036) | all (assigned) |
 | POST | /test-runs/{id}/pause | pause a run; blocks further step open/verdict until resumed (ADR-036) | manager, admin |
 | POST | /test-runs/{id}/resume | resume a paused run (ADR-036) | manager, admin |
-| POST | /test-runs/{id}/finish | set finished_at, lock | manager, admin |
+| POST | /test-runs/{id}/finish | set finished_at, lock. A run also finishes **automatically** when every case is complete (blocked, or every step recorded and the case not failed — a failed case keeps the run open for the re-run after the fix); audit event `testrun.finished` carries `auto: true` (ADR-070) | manager, admin |
+| DELETE | /test-runs/{id} | **soft delete** (`deleted_at`/`deleted_by`); the run leaves lists, counts, dashboards and reports, data is retained and included in tenant exports; audit `testrun.deleted` (ADR-070) | testrun.delete (admin, manager) |
+| POST | /test-run-cases/{id}/block | mark a run case **Blocked** with a required `reason` (3-1000 chars); same rights as recording a verdict (assignee for a Tester); 409 on a finished/paused run or an already-blocked case; verdicts/step-open are refused while blocked; audit `testrun.case_blocked` (ADR-070) | executionstep.record |
+| POST | /test-run-cases/{id}/unblock | re-open a blocked case; status is recomputed from its step verdicts; 409 if not blocked or the run is finished; audit `testrun.case_unblocked` (ADR-070) | executionstep.record |
 | GET | /test-run-cases/{id}/context | run/project/case display context for the Execution Console (ADR-036) | all (assigned) |
 | GET | /test-run-cases/{id}/steps | step list + current verdicts/timings | all (assigned) |
 | POST | /execution-steps/{id}/open | mark step opened (starts timer); idempotent, rejects if run finished/paused | all (assigned) |
@@ -140,6 +144,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 ## Defect Management (FR-DEF)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
+| DELETE | /defects/{id} | **soft delete**; the defect leaves lists, counts, dashboards and reports, row/links/history retained and included in tenant exports; audit `defect.deleted` (ADR-070) | defect.delete (admin, manager; project-scoped role overrides apply) |
 | GET | /defects | filter by project/status/severity/test_run_id/test_case_id/reported_by/created_from/created_to (ADR-037) | all (scoped) |
 | POST | /defects | create (standalone, in-run, or from execution_steps.id); accepts optional `Idempotency-Key` header (ADR-040) | all |
 | GET | /defects/{id} | detail incl. links, execution evidence, test case version + traceability chain (ADR-037) | all (scoped) |

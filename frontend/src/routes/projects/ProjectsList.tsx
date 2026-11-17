@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
+import { SegmentedToggle } from '@/components/ui/segmented'
 import { useAuth } from '@/lib/auth'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { isManagerOrAbove } from '@/api/auth'
@@ -47,6 +48,8 @@ const DOMAINS: Domain[] = ['Motor', 'Health', 'Travel', 'Life', 'Property']
 const STATUSES: ProjectStatus[] = ['On Track', 'At Risk', 'Delayed', 'Completed']
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const PAGE_SIZE = 10
+// The list endpoint caps page_size at 100.
+const MINE_FETCH_SIZE = 100
 
 export function ProjectsList() {
   const { user } = useAuth()
@@ -65,6 +68,24 @@ export function ProjectsList() {
   const [priority, setPriority] = useState<Priority | ''>('')
   const [sort, setSort] = useState('name')
   const [page, setPage] = useState(1)
+  // BRD FR-PROJ-02 "My Assigned / All Projects". The list endpoint has no
+  // membership filter, so "mine" asks for the largest page it allows (100) and
+  // keeps the projects whose `assigned_user_ids` include the signed-in user.
+  // Kept in the URL as `?assigned=me`.
+  const [mine, setMineState] = useState(searchParams.get('assigned') === 'me')
+  function setMine(next: boolean) {
+    setMineState(next)
+    setPage(1)
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (next) params.set('assigned', 'me')
+        else params.delete('assigned')
+        return params
+      },
+      { replace: true },
+    )
+  }
 
   // Phase 2: the command palette's "Create Project" quick action
   // navigates here with ?action=create -- reuses this existing create
@@ -85,9 +106,11 @@ export function ProjectsList() {
   }, [searchParams])
 
   const projectsQuery = useQuery({
-    queryKey: ['projects', { search, domain, status, priority, sort, page }],
+    queryKey: ['projects', { search, domain, status, priority, sort, page: mine ? 'mine' : page }],
     queryFn: () =>
-      listProjects({ search, domain, status, priority, sort, page, page_size: PAGE_SIZE }),
+      mine
+        ? listProjects({ search, domain, status, priority, sort, page: 1, page_size: MINE_FETCH_SIZE })
+        : listProjects({ search, domain, status, priority, sort, page, page_size: PAGE_SIZE }),
   })
 
   const { show: showToast } = useToast()
@@ -109,8 +132,14 @@ export function ProjectsList() {
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
 
   const isMobile = useIsMobile()
-  const total = projectsQuery.data?.total ?? 0
+  const fetched = projectsQuery.data?.items ?? []
+  const myProjects = mine && user ? fetched.filter((p) => p.assigned_user_ids.includes(user.user_id)) : []
+  const total = mine ? myProjects.length : (projectsQuery.data?.total ?? 0)
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const rows = mine ? myProjects.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : fetched
+  // More projects match than one request can return: say so rather than
+  // silently presenting a partial "mine" list as complete.
+  const mineTruncated = mine && (projectsQuery.data?.total ?? 0) > fetched.length
 
   function resetToFirstPage<T>(setter: (v: T) => void) {
     return (value: T) => {
@@ -199,11 +228,12 @@ export function ProjectsList() {
       />
 
       <FilterBar
-        activeCount={[domain, status, priority].filter(Boolean).length}
+        activeCount={[domain, status, priority].filter(Boolean).length + (mine ? 1 : 0)}
         onClear={() => {
           setDomain('')
           setStatus('')
           setPriority('')
+          setMine(false)
           setPage(1)
         }}
         desktopClear={false}
@@ -224,6 +254,15 @@ export function ProjectsList() {
           </div>
         }
       >
+        <SegmentedToggle
+          label="Which projects to show"
+          value={mine ? 'mine' : 'all'}
+          onChange={(v) => setMine(v === 'mine')}
+          options={[
+            { value: 'all', label: 'All projects' },
+            { value: 'mine', label: 'My projects' },
+          ]}
+        />
         <div className="flex flex-col gap-1.5">
           <label htmlFor="filter-domain" className="text-xs text-[var(--muted-foreground)]">
             Domain
@@ -303,19 +342,26 @@ export function ProjectsList() {
 
       <ResponsiveTable
         label="Projects"
-        rows={projectsQuery.data?.items ?? []}
+        rows={rows}
         rowKey={(p) => p.id}
         columns={columns}
         loading={projectsQuery.isLoading}
         stateCellClassName="px-4"
         state={
-          projectsQuery.data?.items.length === 0 ? (
+          projectsQuery.data && rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
-              No projects match these filters.
+              {mine ? 'You are not assigned to any project that matches these filters.' : 'No projects match these filters.'}
             </p>
           ) : undefined
         }
       />
+
+      {mineTruncated && (
+        <p role="status" className="text-xs text-[var(--muted-foreground)]">
+          Checked the first {fetched.length} of {projectsQuery.data?.total} matching projects for your assignments. Narrow
+          the search or filters to check the rest.
+        </p>
+      )}
 
       <Pagination page={page} totalPages={totalPages} total={total} noun="project" onPageChange={setPage} />
 

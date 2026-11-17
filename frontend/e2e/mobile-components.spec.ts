@@ -83,16 +83,18 @@ test('mobile components: card lists, filters sheet, form sheet, pinned sign-out,
     const box = (await sheet.boundingBox())!
     return [Math.round(box.width), Math.round(box.y + box.height)]
   }).toEqual([390, 844])
-  const status = sheet.getByLabel('Filter by status')
+  // (Status moved to the tab strip above the list; severity is the sheet's
+  // representative select now.)
+  const status = sheet.getByLabel('Filter by severity')
   const statusBox = (await status.boundingBox())!
   expect(statusBox.height).toBeGreaterThanOrEqual(44)
   expect(statusBox.width).toBeGreaterThan(300)
   expect(await status.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
-  await status.selectOption('Open')
+  await status.selectOption('Low')
   await expect(sheet.getByRole('button', { name: 'Clear filters' })).toBeEnabled()
   await sheet.getByRole('button', { name: 'Done' }).click()
   await expect(sheet).toBeHidden()
-  // Active filter count on the button, and the empty result for status=Open.
+  // Active filter count on the button, and the empty result for severity=Low.
   await expect(filtersButton.getByLabel('1 active')).toBeVisible()
   await expect(page.getByText('No defects match your filters')).toBeVisible()
   await noHorizontalOverflow(page)

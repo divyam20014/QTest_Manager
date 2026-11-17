@@ -12,6 +12,7 @@ from app.core.auth import (
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.execution import (
+    BlockRunCaseRequest,
     TestRunCaseAddRequest,
     TestRunCaseAssignRequest,
     TestRunCreateRequest,
@@ -137,6 +138,49 @@ def finish_test_run(
 ) -> dict:
     run = execution_service.finish_test_run(db, ctx.tenant_id, ctx.user_id, run_id)
     return envelope(execution_service.to_out(db, run).model_dump(mode="json"))
+
+
+@router.delete("/test-runs/{run_id}")
+def delete_test_run(
+    run_id: UUID,
+    ctx: SessionContext = Depends(require_permission("testrun.delete")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-070: soft delete -- the run disappears from lists/reports but its
+    data is retained (and included in tenant exports)."""
+    execution_service.delete_test_run(db, ctx.tenant_id, ctx.role_code, ctx.user_id, run_id)
+    return envelope({"id": str(run_id), "deleted": True})
+
+
+@router.post("/test-run-cases/{test_run_case_id}/block")
+def block_run_case(
+    test_run_case_id: UUID,
+    req: BlockRunCaseRequest,
+    ctx: SessionContext = Depends(require_permission("executionstep.record")),
+    db: Session = Depends(get_db),
+) -> dict:
+    run_case = execution_service.block_run_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_run_case_id, req.reason
+    )
+    return envelope(
+        {
+            "id": str(run_case.id),
+            "status": run_case.status,
+            "blocked_reason": run_case.blocked_reason,
+        }
+    )
+
+
+@router.post("/test-run-cases/{test_run_case_id}/unblock")
+def unblock_run_case(
+    test_run_case_id: UUID,
+    ctx: SessionContext = Depends(require_permission("executionstep.record")),
+    db: Session = Depends(get_db),
+) -> dict:
+    run_case = execution_service.unblock_run_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_run_case_id
+    )
+    return envelope({"id": str(run_case.id), "status": run_case.status, "blocked_reason": None})
 
 
 @router.get("/test-run-cases/{test_run_case_id}/context")

@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -35,6 +36,13 @@ class TestRun(Base, TenantScopedMixin):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ADR-070: soft delete. Every ORM SELECT excludes rows with deleted_at set
+    # (app/models/soft_delete.py); pass execution_options(include_deleted=True)
+    # to see them.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
 
 
 class TestRunCase(Base, TenantScopedMixin):
@@ -80,6 +88,8 @@ class TestRunCase(Base, TenantScopedMixin):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ADR-070: required explanation while status == 'blocked'; cleared on unblock.
+    blocked_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ExecutionStep(Base, TenantScopedMixin):

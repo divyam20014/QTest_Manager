@@ -7,6 +7,7 @@ import { ApiError } from '@/api/client'
 import { listProjects, type Project } from '@/api/projects'
 import {
   approveTestCase,
+  bulkUpdateTestCases,
   createTestCase,
   deleteTestCase,
   deprecateTestCase,
@@ -28,6 +29,8 @@ import { ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { SegmentedToggle } from '@/components/ui/segmented'
+import { useAuth } from '@/lib/auth'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { FilterBar } from '@/components/table/FilterBar'
 import {
@@ -45,6 +48,7 @@ import { useCanListUsers } from '@/lib/useCanListUsers'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { cn } from '@/lib/utils'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
+import { BulkMetadataDialog, type BulkMetadataKind } from './BulkMetadataDialog'
 
 const REPO_COLUMNS: TableColumnDef[] = [
   { key: 'title', label: 'Title', alwaysVisible: true, defaultWidth: 280 },
@@ -125,6 +129,24 @@ export function TestRepository() {
     (searchParams.get('status') as TestCaseStatus | null) ?? '',
   )
   const [priority, setPriority] = useState<Priority | ''>('')
+  // BRD FR-TC-01: "Assigned to Me / View All". Kept in the URL as
+  // `?assignee=me` (shareable, survives a refresh) and sent to the existing
+  // `assignee_id` list filter -- the user id itself never goes in the URL.
+  const { user } = useAuth()
+  const [mine, setMineState] = useState(searchParams.get('assignee') === 'me')
+  function setMine(next: boolean) {
+    setMineState(next)
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (next) params.set('assignee', 'me')
+        else params.delete('assignee')
+        return params
+      },
+      { replace: true },
+    )
+  }
+  const assigneeFilter = mine && user ? user.user_id : ''
   // Bug #8: deprecated cases cluttered the list by default (every seeded
   // case here happened to be deprecated) -- hidden unless explicitly
   // toggled on, or unless the status filter itself is set to Deprecated.
@@ -133,6 +155,8 @@ export function TestRepository() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkMessage, setBulkMessage] = useState<string | null>(null)
   const [bulkPending, setBulkPending] = useState(false)
+  // ADR-070: bulk priority / assignee dialog (metadata-only, never forks a version).
+  const [bulkMetaKind, setBulkMetaKind] = useState<BulkMetadataKind | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [createProjectId, setCreateProjectId] = useState('')
   const { show: showToast } = useToast()
@@ -145,7 +169,7 @@ export function TestRepository() {
   // Open/closed groups the user chose themselves (see the header comment for
   // the defaults).
   const [toggled, setToggled] = useState<Record<string, boolean>>({})
-  const filterSignature = JSON.stringify([debouncedSearch, status, priority, projectId])
+  const filterSignature = JSON.stringify([debouncedSearch, status, priority, projectId, assigneeFilter])
   const filterSignatureRef = useRef(filterSignature)
   filterSignatureRef.current = filterSignature
   useEffect(() => {
@@ -183,6 +207,7 @@ export function TestRepository() {
     priority,
     projectId,
     showDeprecated: showDeprecated ? 'true' : 'false',
+    assignee: mine ? 'me' : '',
   }
   function applyFilters(f: Record<string, string>) {
     setSearch(f.search ?? '')
@@ -190,6 +215,7 @@ export function TestRepository() {
     setPriority((f.priority as Priority | '') ?? '')
     setProjectId(f.projectId ?? '')
     setShowDeprecated(f.showDeprecated === 'true')
+    setMine(f.assignee === 'me')
   }
 
   const projectsQuery = useQuery({
@@ -213,7 +239,7 @@ export function TestRepository() {
     : projects.filter((p) => (p.test_case_count ?? 1) > 0)
   const grouped = targetProjects.length > 1
   // A filter that has to be answered by every project opens every group.
-  const filtersActive = Boolean(debouncedSearch || status || priority)
+  const filtersActive = Boolean(debouncedSearch || status || priority || assigneeFilter)
   const firstProjectId = targetProjects[0]?.id
   function isOpen(id: string): boolean {
     if (!grouped) return true
@@ -222,12 +248,13 @@ export function TestRepository() {
 
   const perProjectQueries = useQueries({
     queries: targetProjects.map((project) => ({
-      queryKey: ['test-repository', project.id, { search: debouncedSearch, status, priority }],
+      queryKey: ['test-repository', project.id, { search: debouncedSearch, status, priority, assignee: assigneeFilter }],
       queryFn: () =>
         listTestCases(project.id, {
           search: debouncedSearch,
           status,
           priority,
+          assignee_id: assigneeFilter,
           sort: '-created_at',
           page_size: PAGE_SIZE,
         }).then((r) => ({
@@ -309,6 +336,7 @@ export function TestRepository() {
           search: debouncedSearch,
           status,
           priority,
+          assignee_id: assigneeFilter,
           sort: '-created_at',
           page_size: PAGE_SIZE,
           page,
@@ -463,6 +491,34 @@ export function TestRepository() {
     invalidateRepository()
   }
 
+  async function runBulkMetadata(value: string | null) {
+    const kind = bulkMetaKind
+    const ids = rows.filter((r) => selected.has(r.case.id)).map((r) => r.case.id)
+    if (!kind || ids.length === 0) return
+    setBulkPending(true)
+    setBulkMessage(null)
+    try {
+      const result = await bulkUpdateTestCases(
+        kind === 'priority'
+          ? { test_case_ids: ids, priority: value ?? undefined }
+          : { test_case_ids: ids, assignee_id: value },
+      )
+      const firstError = result.results.find((r) => !r.ok)?.error
+      setBulkMessage(
+        result.failed === 0
+          ? `${result.updated} test case${result.updated === 1 ? '' : 's'} updated.`
+          : `${result.updated} updated, ${result.failed} failed${firstError ? ` (${firstError})` : ''}.`,
+      )
+      setBulkMetaKind(null)
+      setSelected(new Set())
+      invalidateRepository()
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not update the selected test cases.')
+    } finally {
+      setBulkPending(false)
+    }
+  }
+
   const selectedRows = rows.filter((r) => selected.has(r.case.id))
 
   // One definition feeds the desktop table and the phone cards (ResponsiveTable).
@@ -606,13 +662,14 @@ export function TestRepository() {
       />
 
       <FilterBar
-        activeCount={[status, priority, projectId].filter(Boolean).length + (showDeprecated ? 1 : 0)}
+        activeCount={[status, priority, projectId].filter(Boolean).length + (showDeprecated ? 1 : 0) + (mine ? 1 : 0)}
         desktopClear={false}
         onClear={() => {
           setStatus('')
           setPriority('')
           setProjectId('')
           setShowDeprecated(false)
+          setMine(false)
         }}
         primary={
           <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 max-md:min-w-0">
@@ -645,6 +702,15 @@ export function TestRepository() {
           />
         }
       >
+        <SegmentedToggle
+          label="Whose test cases to show"
+          value={mine ? 'mine' : 'all'}
+          onChange={(v) => setMine(v === 'mine')}
+          options={[
+            { value: 'all', label: 'All cases' },
+            { value: 'mine', label: 'Assigned to me' },
+          ]}
+        />
         <div className="flex flex-col gap-1.5">
           <label htmlFor="repo-project" className="text-xs text-[var(--muted-foreground)]">
             Project
@@ -733,6 +799,14 @@ export function TestRepository() {
           >
             Advance status
           </Button>
+          <Button size="sm" variant="outline" disabled={bulkPending} onClick={() => setBulkMetaKind('priority')}>
+            Set priority
+          </Button>
+          {canListUsers && (
+            <Button size="sm" variant="outline" disabled={bulkPending} onClick={() => setBulkMetaKind('assignee')}>
+              Set assignee
+            </Button>
+          )}
           <Button
             size="sm"
             variant="destructive"
@@ -800,6 +874,14 @@ export function TestRepository() {
       )}
       {rowMenu.menu}
       {confirmDialog}
+      <BulkMetadataDialog
+        kind={bulkMetaKind}
+        count={selected.size}
+        users={usersQuery.data ?? []}
+        pending={bulkPending}
+        onClose={() => setBulkMetaKind(null)}
+        onSubmit={(value) => void runBulkMetadata(value)}
+      />
 
       {failedCount > 0 && (
         <div className="rounded-md border border-[var(--border)] bg-[var(--background)]">

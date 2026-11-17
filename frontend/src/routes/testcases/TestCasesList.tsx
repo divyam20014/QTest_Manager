@@ -33,6 +33,8 @@ import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { useAuth } from '@/lib/auth'
+import { SegmentedToggle } from '@/components/ui/segmented'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { ImportDialog } from './ImportDialog'
 import { SharedStepsDialog } from './SharedStepsDialog'
@@ -68,6 +70,7 @@ export function TestCasesList() {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
   const { ask, dialog: confirmDialog } = useConfirm()
+  const { user } = useAuth()
 
   // Bug #13: filters now persist in the URL (shareable, survives
   // refresh) instead of plain component state.
@@ -211,7 +214,8 @@ export function TestCasesList() {
   }
   const chipDisplayValue: Record<string, string> = {
     status: status ? STATUS_DISPLAY[status]?.label ?? status : '',
-    assigneeId: usersQuery.data?.find((u) => u.id === assigneeId)?.name ?? assigneeId,
+    assigneeId:
+      assigneeId === user?.user_id ? 'Me' : (usersQuery.data?.find((u) => u.id === assigneeId)?.name ?? assigneeId),
     moduleId: modules.find((m) => m.id === moduleId)?.name ?? moduleId,
   }
   const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
@@ -363,6 +367,19 @@ export function TestCasesList() {
           </div>
         }
       >
+        {user && (
+          // BRD FR-TC-01: one click between everything and my own work. It
+          // drives the same `assigneeId` URL filter as the Assignee select.
+          <SegmentedToggle
+            label="Whose test cases to show"
+            value={assigneeId === user.user_id ? 'mine' : 'all'}
+            onChange={(v) => setFilter('assigneeId', v === 'mine' ? user.user_id : '')}
+            options={[
+              { value: 'all', label: 'All cases' },
+              { value: 'mine', label: 'Assigned to me' },
+            ]}
+          />
+        )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="tc-filter-status" className="text-xs text-[var(--muted-foreground)]">
             Status

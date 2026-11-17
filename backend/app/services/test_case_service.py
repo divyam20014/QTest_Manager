@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import datetime
 from typing import cast
 from uuid import UUID
@@ -7,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.core.errors import (
+    AppError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ValidationAppError,
+)
 from app.models.audit import AuditLog
 from app.models.defect import Defect
 from app.models.execution import ExecutionStep, TestRunCase
@@ -16,10 +23,13 @@ from app.models.project import Project
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
 from app.schemas.test_case import (
+    BulkItemResult,
     Priority,
     StepDiff,
     StepIn,
     StepOut,
+    TestCaseBulkUpdateRequest,
+    TestCaseBulkUpdateResult,
     TestCaseCreateRequest,
     TestCaseHistoryEntryOut,
     TestCaseOut,
@@ -522,7 +532,12 @@ def update_test_case(
     _authorize_case_access(db, tenant_id, role_code, actor_user_id, case)
 
     changes = req.model_dump(exclude_unset=True)
-    was_approved = case.status == "approved"
+    # ADR-070 rule A: priority / assignee / module are metadata of the case,
+    # not of the approved test content. Editing ONLY those never forks a new
+    # version and never un-approves the case; any change to the content
+    # (title, description, steps, scenario, prerequisite, test data) still
+    # follows ADR-020 exactly as before. (Computed below, once the new
+    # content values are resolved.)
     current_version = _get_current_version(db, case)
 
     new_title: str = req.title if req.title is not None else current_version.title
@@ -550,8 +565,27 @@ def update_test_case(
             for s in _steps_for_version(db, current_version.id)
         ]
 
-    if was_approved:
-        # ADR-020: any edit to an approved case forks a new version and
+    # A content field only counts as changed if its value actually differs --
+    # a form that re-submits the unchanged content alongside a new priority
+    # or assignee is still a metadata-only edit.
+    current_steps = [
+        (st.action, st.expected) for st in _steps_for_version(db, current_version.id)
+    ]
+    content_changed = (
+        new_title != current_version.title
+        or new_description != current_version.description
+        or new_scenario_id != current_version.scenario_id
+        or new_scenario_description != current_version.scenario_description
+        or new_prerequisite != current_version.prerequisite
+        or new_test_data != current_version.test_data
+        or [(st.action, st.expected) for st in new_steps] != current_steps
+    )
+    was_approved = case.status == "approved" and content_changed
+
+    if not content_changed:
+        pass  # metadata-only edit: nothing to version (rule A, see above)
+    elif was_approved:
+        # ADR-020: any content edit to an approved case forks a new version and
         # reverts to draft, pending re-approval.
         _write_version(
             db,
@@ -592,7 +626,7 @@ def update_test_case(
                     )
                 )
 
-    if "title" in changes:
+    if "title" in changes and changes["title"] is not None:
         case.title = changes["title"]
     if "priority" in changes:
         field_option_service.validate_code(db, tenant_id, "test_case_priority", changes["priority"])
@@ -617,6 +651,61 @@ def update_test_case(
     )
     db.commit()
     return case
+
+
+def bulk_update_metadata(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    req: TestCaseBulkUpdateRequest,
+    can_edit: Callable[[UUID], bool],
+) -> TestCaseBulkUpdateResult:
+    """ADR-070: apply a priority and/or assignee change to many test cases,
+    one item at a time through `update_test_case` (so project access, the
+    priority option check, assignee notification, audit entry and the
+    no-version-fork rule are all inherited, not re-implemented). `can_edit`
+    is the caller's project-scoped `testcase.edit` check. A failure on one
+    item (no permission, not in project, bad assignee) is reported for that
+    item and does not stop the rest."""
+    fields = req.model_fields_set & {"priority", "assignee_id"}
+    if not fields:
+        raise ValidationAppError("Choose a priority or an assignee to apply")
+    if "priority" in fields and req.priority is None:
+        raise ValidationAppError("Priority cannot be empty")
+
+    update_kwargs: dict = {}
+    if "priority" in fields:
+        update_kwargs["priority"] = req.priority
+    if "assignee_id" in fields:
+        update_kwargs["assignee_id"] = req.assignee_id
+
+    results: list[BulkItemResult] = []
+    for test_case_id in dict.fromkeys(req.test_case_ids):
+        # The RLS tenant GUC is transaction-local and resets on COMMIT
+        # (ADR-007): each update_test_case below commits, so re-assert it
+        # before every item.
+        set_tenant_context(db, str(tenant_id))
+        try:
+            case = _get_test_case_or_404(db, tenant_id, test_case_id)
+            if not can_edit(case.project_id):
+                raise ForbiddenError("Missing permission: testcase.edit")
+            update_test_case(
+                db,
+                tenant_id,
+                role_code,
+                actor_user_id,
+                test_case_id,
+                TestCaseUpdateRequest(**update_kwargs),
+            )
+            results.append(BulkItemResult(test_case_id=test_case_id, ok=True))
+        except AppError as exc:
+            db.rollback()
+            set_tenant_context(db, str(tenant_id))
+            results.append(BulkItemResult(test_case_id=test_case_id, ok=False, error=exc.message))
+
+    updated = sum(1 for r in results if r.ok)
+    return TestCaseBulkUpdateResult(updated=updated, failed=len(results) - updated, results=results)
 
 
 def _notify_reviewer(

@@ -192,3 +192,25 @@ export function deprecateTestCase(id: string): Promise<TestCase> {
 export function deleteTestCase(id: string): Promise<{ deleted: boolean }> {
   return apiFetch<{ deleted: boolean }>(`/test-cases/${id}`, { method: 'DELETE' })
 }
+
+export interface BulkUpdateResult {
+  updated: number
+  failed: number
+  results: { test_case_id: string; ok: boolean; error: string | null }[]
+}
+
+/**
+ * ADR-070: bulk priority/assignee change. Only keys that are present are
+ * applied -- `assignee_id: null` unassigns, omitting it leaves the assignee
+ * alone. Never creates a new version or un-approves a case.
+ */
+export function bulkUpdateTestCases(req: {
+  test_case_ids: string[]
+  priority?: string
+  assignee_id?: string | null
+}): Promise<BulkUpdateResult> {
+  return apiFetch<BulkUpdateResult>('/test-cases/bulk-update', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}

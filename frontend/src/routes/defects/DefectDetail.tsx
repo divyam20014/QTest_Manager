@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bug, Building2, ChevronRight, FileStack, ListChecks, PlayCircle } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { suggestDefectRootCause, type RootCauseSuggestion } from '@/api/ai'
 import { ApiError } from '@/api/client'
 import {
+  deleteDefect,
   getDefect,
   getDefectHistory,
   getPossibleDuplicates,
@@ -32,11 +33,12 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { DetailSkeleton } from '@/components/ui/skeleton'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
-import { isManagerOrAbove } from '@/api/auth'
+import { hasPermission, isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
@@ -59,6 +61,8 @@ export function DefectDetail() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
+  const navigate = useNavigate()
+  const { ask, dialog: confirmDialog } = useConfirm()
   const [verificationConfirmed, setVerificationConfirmed] = useState(false)
   const onMutationError = (err: unknown, fallback: string) =>
     showToast('error', err instanceof ApiError ? err.message : fallback)
@@ -105,6 +109,18 @@ export function DefectDetail() {
   // server with a clear error rather than silently allowed.
   const canListUsers = useCanListUsers()
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
+
+  // ADR-070: soft delete -- leaves every list/report; the record is retained.
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteDefect(defectId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['defects'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      showToast('success', 'Defect deleted')
+      navigate('/defects', { replace: true })
+    },
+    onError: (err) => onMutationError(err, 'Could not delete this defect'),
+  })
 
   const updateMutation = useMutation({
     mutationFn: (req: Parameters<typeof updateDefect>[1]) => updateDefect(defectId!, req),
@@ -214,7 +230,28 @@ export function DefectDetail() {
             {defect.reopened_count > 0 && <Badge tone="neutral">Reopened {defect.reopened_count}x</Badge>}
           </>
         }
+        actions={
+          hasPermission(user, 'defect.delete') ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                ask({
+                  title: `Delete defect "${defect.title}"?`,
+                  description:
+                    'The defect disappears from the defects list, dashboards and reports. Its history, links and comments are kept in the system but it can no longer be opened from here.',
+                  confirmLabel: 'Delete defect',
+                  run: () => deleteMutation.mutateAsync(),
+                })
+              }
+              disabled={deleteMutation.isPending}
+            >
+              Delete Defect
+            </Button>
+          ) : undefined
+        }
       />
+      {confirmDialog}
 
       {canCloseRole && REOPENABLE_STATUSES.includes(defect.status) && (
         <div>

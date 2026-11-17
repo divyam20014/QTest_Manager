@@ -103,7 +103,17 @@ def run_export(db: Session, tenant_id: UUID) -> dict:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, model in _EXPORT_MODELS:
-            rows = db.execute(select(model).where(model.tenant_id == tenant_id)).scalars().all()  # type: ignore[attr-defined]
+            # include_deleted: a tenant data export must be complete, including
+            # soft-deleted runs/defects (ADR-070); the rows carry deleted_at.
+            rows = (
+                db.execute(
+                    select(model)
+                    .where(model.tenant_id == tenant_id)  # type: ignore[attr-defined]
+                    .execution_options(include_deleted=True)
+                )
+                .scalars()
+                .all()
+            )
             payload = [_row_to_dict(row) for row in rows]
             manifest[name] = len(payload)
             archive.writestr(f"{name}.json", json.dumps(payload, default=_json_default, indent=2))

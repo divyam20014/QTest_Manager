@@ -22,6 +22,7 @@ export interface TestRunCase {
   test_case_version_id: string
   title: string
   status: RunCaseStatus
+  blocked_reason: string | null
   assigned_to: string | null
   started_at: string | null
   completed_at: string | null
@@ -70,6 +71,7 @@ export interface RunCaseContext {
   assignee_id: string | null
   assignee_name: string | null
   status: RunCaseStatus
+  blocked_reason: string | null
   data_row_id: string | null
   data_row_name: string | null
   data_row_values: Record<string, unknown> | null
@@ -159,4 +161,26 @@ export function recordVerdict(stepId: string, verdict: Verdict): Promise<Executi
     method: 'POST',
     body: JSON.stringify({ verdict }),
   })
+}
+
+/** ADR-070: mark a run case Blocked (a reason is required). */
+export function blockRunCase(
+  runCaseId: string,
+  reason: string,
+): Promise<{ id: string; status: RunCaseStatus; blocked_reason: string | null }> {
+  return apiFetch(`/test-run-cases/${runCaseId}/block`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+export function unblockRunCase(
+  runCaseId: string,
+): Promise<{ id: string; status: RunCaseStatus; blocked_reason: string | null }> {
+  return apiFetch(`/test-run-cases/${runCaseId}/unblock`, { method: 'POST' })
+}
+
+/** ADR-070: soft delete (Admin/Manager). */
+export function deleteTestRun(runId: string): Promise<{ id: string; deleted: boolean }> {
+  return apiFetch(`/test-runs/${runId}`, { method: 'DELETE' })
 }

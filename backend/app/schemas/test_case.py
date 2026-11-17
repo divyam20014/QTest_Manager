@@ -67,6 +67,29 @@ class TestCaseUpdateRequest(BaseModel):
     test_data: str | None = None
 
 
+class TestCaseBulkUpdateRequest(BaseModel):
+    """ADR-070: bulk metadata edit. Only the fields explicitly present in the
+    request body are applied: `assignee_id: null` unassigns, omitting the key
+    leaves the assignee alone. Never changes test content, so approved cases
+    stay approved on their current version."""
+
+    test_case_ids: list[UUID] = Field(min_length=1, max_length=200)
+    priority: Priority | None = None
+    assignee_id: UUID | None = None
+
+
+class BulkItemResult(BaseModel):
+    test_case_id: UUID
+    ok: bool
+    error: str | None = None
+
+
+class TestCaseBulkUpdateResult(BaseModel):
+    updated: int
+    failed: int
+    results: list[BulkItemResult]
+
+
 class TestCaseOut(BaseModel):
     id: UUID
     project_id: UUID

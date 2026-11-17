@@ -98,3 +98,6 @@ __all__ = [
     "TestPlan",
     "TestPlanRun",
 ]
+
+# ADR-070: registers the soft-delete SELECT filter (side-effect import).
+from app.models import soft_delete as _soft_delete  # noqa: E402,F401

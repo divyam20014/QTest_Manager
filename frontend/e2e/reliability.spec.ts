@@ -74,7 +74,7 @@ test('Browser refresh during execution preserves in-progress step state', async 
 
   // Step 1 auto-opens its server-side timer on mount (FR-EXEC-002). Give it
   // a moment to actually open before capturing "elapsed" state.
-  await expect(page.getByText(/\ds elapsed/)).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText(/\d\d:\d\d elapsed/)).toBeVisible({ timeout: 10000 })
   const urlBeforeReload = page.url()
   await page.waitForTimeout(1500)
 
@@ -87,8 +87,10 @@ test('Browser refresh during execution preserves in-progress step state', async 
   await expect(page.getByText('0/2 steps complete')).toBeVisible()
   // The timer resumed from the server's original opened_at rather than
   // restarting at 0s -- proves the backend, not the browser, owns timing.
-  const elapsedText = await page.getByText(/\ds elapsed/).textContent()
-  const elapsedSeconds = Number(elapsedText?.match(/(\d+)s elapsed/)?.[1] ?? 0)
+  // The clock reads MM:SS (BRD FR-EXEC-03).
+  const elapsedText = await page.getByText(/\d\d:\d\d elapsed/).textContent()
+  const clock = elapsedText?.match(/(\d\d):(\d\d) elapsed/)
+  const elapsedSeconds = clock ? Number(clock[1]) * 60 + Number(clock[2]) : 0
   expect(elapsedSeconds).toBeGreaterThanOrEqual(1)
 
   // Execution is still fully usable post-reload -- not a dead/broken state.

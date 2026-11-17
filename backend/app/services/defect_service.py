@@ -337,6 +337,29 @@ def _get_defect_or_404(db: Session, tenant_id: UUID, defect_id: UUID) -> Defect:
     return defect
 
 
+def delete_defect(
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, defect_id: UUID
+) -> None:
+    """ADR-070: soft delete. The row (with its links, history and comments)
+    is retained and included in tenant exports, but disappears from every
+    list, count and report. Caller must already hold defect.delete."""
+    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    project = _get_project_or_404(db, tenant_id, defect.project_id)
+    _require_project_access(db, project, role_code, actor_user_id)
+    defect.deleted_at = datetime.now(UTC)
+    defect.deleted_by = actor_user_id
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="defect.deleted",
+        entity_type="defect",
+        entity_id=defect.id,
+        metadata={"title": defect.title, "status": defect.status, "severity": defect.severity},
+    )
+    db.commit()
+
+
 def get_defect(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, defect_id: UUID
 ) -> Defect:

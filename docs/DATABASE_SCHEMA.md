@@ -185,7 +185,10 @@ Index: `(owner_type, owner_id)`.
 | run_type | TEXT NOT NULL CHECK IN ('Regression','Sanity','Smoke') | |
 | executed_by | UUID NOT NULL FK users | run creator/owner |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | |
-| finished_at | TIMESTAMPTZ NULL | |
+| finished_at | TIMESTAMPTZ NULL | set by Finish Run or automatically when every case has a final verdict (ADR-070) |
+| paused_at | TIMESTAMPTZ NULL | |
+| deleted_at | TIMESTAMPTZ NULL | soft delete (ADR-070, migration `d1e2f3a4b5c6`); every ORM SELECT excludes non-null rows |
+| deleted_by | UUID NULL FK users | who deleted it |
 
 ### `test_run_cases`
 One row per test case bundled into a run; pins the version (ADR-003).
@@ -198,6 +201,7 @@ One row per test case bundled into a run; pins the version (ADR-003).
 | test_case_version_id | UUID NOT NULL FK test_case_versions | pinned at creation |
 | status | TEXT NOT NULL DEFAULT 'pending' CHECK IN ('pending','in_progress','passed','failed','blocked','ignored') | ADR-001 |
 | assigned_to | UUID NULL FK users | |
+| blocked_reason | TEXT NULL | required explanation while status = 'blocked'; cleared on unblock (ADR-070) |
 | started_at | TIMESTAMPTZ NULL | |
 | completed_at | TIMESTAMPTZ NULL | |
 
@@ -238,6 +242,8 @@ UNIQUE (test_run_case_id, test_case_version_step_id).
 | reported_by | UUID NOT NULL FK users | |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | |
 | closed_at | TIMESTAMPTZ NULL | |
+| deleted_at | TIMESTAMPTZ NULL | soft delete (ADR-070, migration `d1e2f3a4b5c6`); every ORM SELECT excludes non-null rows |
+| deleted_by | UUID NULL FK users | who deleted it |
 
 ### `defect_links`
 Many-to-many linkage (ADR-005) — supports duplicate defects on one step and one defect spanning multiple references.

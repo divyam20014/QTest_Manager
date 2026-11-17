@@ -4,7 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, get_current_context, require_permission
+from app.core.auth import (
+    SessionContext,
+    get_current_context,
+    require_permission,
+    require_resource_permission,
+)
 from app.core.db import get_db
 from app.core.idempotency import with_idempotency
 from app.core.policy import require_policy
@@ -230,3 +235,15 @@ def add_link(
 ) -> dict:
     defect = defect_service.add_link(db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id, req)
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
+
+
+@router.delete("/{defect_id}")
+def delete_defect(
+    defect_id: UUID,
+    ctx: SessionContext = Depends(require_resource_permission("defect.delete", "defect")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-070: soft delete (Admin/Manager). The defect disappears from lists
+    and reports; its row, links and history are retained."""
+    defect_service.delete_defect(db, ctx.tenant_id, ctx.role_code, ctx.user_id, defect_id)
+    return envelope({"id": str(defect_id), "deleted": True})

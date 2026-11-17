@@ -55,6 +55,12 @@ class Defect(Base, TenantScopedMixin):
     steps_to_reproduce: Mapped[str | None] = mapped_column(String, nullable=True)
     actual_result: Mapped[str | None] = mapped_column(String, nullable=True)
     expected_result: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ADR-070: soft delete. Every ORM SELECT excludes rows with deleted_at set
+    # (app/models/soft_delete.py).
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     # Pass 2: optional, restricted at the service layer to users already
     # assigned to this defect's project (same membership check used
     # everywhere else), mirroring TestCase.assignee_id.

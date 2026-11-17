@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { listDefects } from '@/api/defects'
@@ -8,6 +8,7 @@ import { STATUS_TONE } from '@/routes/defects/statusDisplay'
 import {
   addTestRunCases,
   assignRunCase,
+  deleteTestRun,
   finishTestRun,
   getTestRun,
   pauseTestRun,
@@ -33,7 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
-import { isManagerOrAbove } from '@/api/auth'
+import { hasPermission, isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
@@ -49,6 +50,7 @@ export function TestRunDetail() {
   const [addCasesOpen, setAddCasesOpen] = useState(false)
   const { show: showToast } = useToast()
   const { ask, dialog: confirmDialog } = useConfirm()
+  const navigate = useNavigate()
 
   const runQuery = useQuery({ queryKey: ['test-runs', 'detail', runId], queryFn: () => getTestRun(runId!), enabled: !!runId })
   const canListUsers = useCanListUsers()
@@ -66,6 +68,18 @@ export function TestRunDetail() {
       showToast('success', 'Test run finished')
     },
     // No onError toast -- `finishError` below already renders this inline.
+  })
+
+  // ADR-070: soft delete -- the run leaves every list and report; its data is retained.
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteTestRun(runId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['test-runs'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      showToast('success', 'Test run deleted')
+      navigate(`/projects/${runQuery.data?.project_id}/test-runs`, { replace: true })
+    },
+    onError: () => showToast('error', 'Could not delete this test run'),
   })
 
   const pauseMutation = useMutation({
@@ -111,6 +125,7 @@ export function TestRunDetail() {
 
   const canManage = isManagerOrAbove(user)
   const canFinish = canManage && !run.finished_at
+  const canDelete = hasPermission(user, 'testrun.delete')
   const executionStarted = run.cases.some((rc) => rc.started_at !== null)
   const canEdit = canManage && !run.finished_at && !executionStarted
   const finishError = finishMutation.error instanceof ApiError ? finishMutation.error.message : null
@@ -133,7 +148,14 @@ export function TestRunDetail() {
       key: 'status',
       header: 'Status',
       card: 'badge',
-      cell: (rc) => <StatusBadge tone={RUN_CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</StatusBadge>,
+      cell: (rc) => (
+        <div className="flex flex-col items-start gap-1">
+          <StatusBadge tone={RUN_CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</StatusBadge>
+          {rc.status === 'blocked' && rc.blocked_reason && (
+            <span className="max-w-xs break-words text-xs text-[var(--muted-foreground)]">{rc.blocked_reason}</span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'progress',
@@ -222,6 +244,23 @@ export function TestRunDetail() {
               disabled={finishMutation.isPending}
             >
               Finish Run
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                ask({
+                  title: `Delete test run "${run.name}"?`,
+                  description:
+                    'The run disappears from the test runs list, dashboards and reports. Its results and defects are kept in the system but you will not be able to open it again from here.',
+                  confirmLabel: 'Delete run',
+                  run: () => deleteMutation.mutateAsync(),
+                })
+              }
+              disabled={deleteMutation.isPending}
+            >
+              Delete Run
             </Button>
           )}
           </>

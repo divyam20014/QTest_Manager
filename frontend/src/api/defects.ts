@@ -219,3 +219,8 @@ export function updateDefectRootCause(id: string, rootCause: RootCause | null): 
 export function updateDefect(id: string, req: DefectUpdateRequest): Promise<Defect> {
   return apiFetch<Defect>(`/defects/${id}`, { method: 'PATCH', body: JSON.stringify(req) })
 }
+
+/** ADR-070: soft delete (Admin/Manager). */
+export function deleteDefect(id: string): Promise<{ id: string; deleted: boolean }> {
+  return apiFetch(`/defects/${id}`, { method: 'DELETE' })
+}

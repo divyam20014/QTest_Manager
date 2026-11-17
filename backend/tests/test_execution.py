@@ -185,17 +185,24 @@ def test_re_verdict_after_fix_flips_case_back_to_passed(
     client: TestClient, platform_admin: dict
 ) -> None:
     """BRD Journey 4: tester re-executes a failed step after a fix and
-    marks it Pass; the case status flips from Failed back to Passed."""
+    marks it Pass; the case status flips from Failed back to Passed.
+
+    The run holds a second, not-yet-executed case: since ADR-070 a run
+    finishes itself once every case is complete (all steps recorded, none
+    failed), and a finished run takes no further verdicts -- so the
+    pass-everything-then-fail-one sequence below has to happen on a run that
+    is still open."""
     _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    other = _create_approved_case(client, project["id"], "Verify Salvage Valuation")
     run = client.post(
         f"/api/v1/projects/{project['id']}/test-runs",
         json={
             "name": "Sprint 42 Motor Regression",
             "run_type": "Regression",
-            "test_case_ids": [case["id"]],
+            "test_case_ids": [case["id"], other["id"]],
         },
     ).json()["data"]
-    run_case_id = run["cases"][0]["id"]
+    run_case_id = next(c["id"] for c in run["cases"] if c["test_case_id"] == case["id"])
     steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
 
     for step in steps:
@@ -203,14 +210,17 @@ def test_re_verdict_after_fix_flips_case_back_to_passed(
     client.post(f"/api/v1/execution-steps/{steps[1]['id']}/verdict", json={"verdict": "fail"})
 
     failed_run = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
-    assert failed_run["cases"][0]["status"] == "failed"
+    failed_case = next(c for c in failed_run["cases"] if c["id"] == run_case_id)
+    assert failed_case["status"] == "failed"
+    assert failed_run["finished_at"] is None
 
     # Defect fixed; tester re-executes the step and marks it Pass.
     client.post(f"/api/v1/execution-steps/{steps[1]['id']}/verdict", json={"verdict": "pass"})
 
     fixed_run = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
-    assert fixed_run["cases"][0]["status"] == "passed"
-    assert fixed_run["cases"][0]["completed_at"] is not None
+    fixed_case = next(c for c in fixed_run["cases"] if c["id"] == run_case_id)
+    assert fixed_case["status"] == "passed"
+    assert fixed_case["completed_at"] is not None
 
 
 def test_ignore_verdict_counts_as_resolved(client: TestClient, platform_admin: dict) -> None:

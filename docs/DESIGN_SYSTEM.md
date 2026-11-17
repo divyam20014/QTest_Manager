@@ -95,6 +95,8 @@ The classes sit in `@layer components`, so a Tailwind utility on the same elemen
 | Card | `Card` / `CardHeader` / `CardTitle` / `CardContent` | `ui/card.tsx` | Flat, for dense screens. `CardTitle` renders an `<h2>` by default; pass `as="h3"` when the card sits under another section heading so levels never skip. |
 | Hero card | `EmbossedCard`, `GaugeDial` | `ui/` | Dashboard widgets only. |
 | Tabs | `Tabs` | `ui/tabs.tsx` | |
+| Filter tabs | `FilterTabs` (a tab strip that filters one list; the page owns the panel) | `ui/filter-tabs.tsx` | Defects status tabs |
+| Segmented toggle | `SegmentedToggle` (one-click two/three-way switch, `aria-pressed`) | `ui/segmented.tsx` | "All cases / Assigned to me" |
 | Label / count | `Badge` (`neutral`, `positive`, `warning`, `critical`, `info`) | `ui/badge.tsx` | Plain labels, roles, counts. |
 | State | `StatusBadge` | `ui/StatusBadge.tsx` | Anything that is a state; adds an icon. Pick the tone from one mapping per domain (`statusDisplay.ts`), never at the call site. |
 | Chart card | `ChartPanel`, `ChartLegend`, `RangeControl` | `ui/ChartPanel.tsx` | Every chart: title, optional range control, "View as table" alternative, screen-reader summary, fixed-height body, HTML legend with values beside labels. Loading, empty and error states go inside it. |
@@ -196,3 +198,9 @@ Page headers (Phase C), the Dashboard (Phase D), status colours and chart colour
 - **Restricted routes:** `lib/routeAccess.ts` is the one list of screens that need more than a signed-in session (`admin` or `manager-or-above`). Add a route there and the sidebar, the mobile More sheet, the command palette and the route gate all follow. The API still enforces access; this only decides what the UI shows.
 - **No access:** `components/NoAccess.tsx` (`variant="page"` for the gate, `"inline"` inside a screen). Give a query's `error` to `ErrorState` for a screen's main data and a 403 shows the same message instead of "Couldn't load this". 403s are never retried.
 - **Chart-first screens:** on Reports every content panel is tactile (`ChartPanel`, or `EmbossedCard` for stat blocks); the Filters card is a plain control bar. `ChartPanel` takes optional `controls` (a control row under the title) and `footer` (content under the chart).
+
+## BRD Phase 1 additions
+
+- **`FilterTabs` vs `Tabs`:** `Tabs` swaps its own content (Settings). `FilterTabs` is controlled and filters a list the page renders; give the list wrapper `role="tabpanel"`, the `panelId`, and `aria-labelledby={filterTabId(panelId, value)}`. Use it only for a short, fixed, mutually exclusive set (defect status); keep other filters in `FilterBar`.
+- **`SegmentedToggle`:** for a one-click scope switch such as "All cases / Assigned to me". It is a group of `aria-pressed` buttons, not tabs. Put it inside `FilterBar` so it moves into the Filters sheet on phones, and count it in `activeCount`.
+- **Durations:** show elapsed and recorded time with `formatClock` / `formatDurationMs` from `lib/duration.ts` (`MM:SS`, `H:MM:SS`, or `N ms` under a second). A live clock is `role="timer"` with a spoken `aria-label` from `describeClock`; never put a ticking value in a live region.

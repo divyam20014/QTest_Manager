@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
+import { FilterTabs } from '@/components/ui/filter-tabs'
+import { filterTabId } from '@/components/ui/filterTabId'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -188,12 +190,14 @@ export function DefectsList() {
     queryKey: ['field-options', 'defect_severity'],
     queryFn: () => listFieldOptions('defect_severity'),
   })
+  // Status is deliberately NOT sent to the server: the endpoint returns every
+  // matching defect anyway, so one response feeds both the per-status counts
+  // on the tabs and the visible rows (filtered here) with no extra requests.
   const defectsQuery = useQuery({
-    queryKey: ['defects', projectId, status, severity, reportedBy, createdFrom, createdTo],
+    queryKey: ['defects', projectId, severity, reportedBy, createdFrom, createdTo],
     queryFn: () =>
       listDefects({
         project_id: projectId || undefined,
-        status: status || undefined,
         severity: severity || undefined,
         reported_by: reportedBy || undefined,
         created_from: createdFrom ? new Date(createdFrom).toISOString() : undefined,
@@ -203,7 +207,23 @@ export function DefectsList() {
 
   // The API returns every matching defect, so the list pages on the client
   // (50 per page) to keep the DOM small; the page resets when a filter changes.
-  const allDefects = defectsQuery.data ?? []
+  const fetchedDefects = useMemo(() => defectsQuery.data ?? [], [defectsQuery.data])
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const d of fetchedDefects) counts[d.status] = (counts[d.status] ?? 0) + 1
+    return counts
+  }, [fetchedDefects])
+  const activeStatus = (STATUS_ORDER as string[]).includes(status) ? status : ''
+  const allDefects = activeStatus ? fetchedDefects.filter((d) => d.status === activeStatus) : fetchedDefects
+  const countsReady = defectsQuery.isSuccess
+  const statusTabs = [
+    { key: '', label: 'All', count: countsReady ? fetchedDefects.length : undefined },
+    ...STATUS_ORDER.map((s) => ({ key: s as string, label: s as string, count: countsReady ? (statusCounts[s] ?? 0) : undefined })),
+  ]
+  // Status has its own control (the tabs), so it is not a chip and does not
+  // count towards the Filters badge.
+  const chipKeys = urlFilters.active.filter((key) => key !== 'status')
+  const otherFiltersActive = Boolean(projectId || severity || reportedBy || createdFrom || createdTo)
   const filterKey = [projectId, status, severity, reportedBy, createdFrom, createdTo].join('|')
   const [paging, setPaging] = useState({ key: filterKey, page: 1 })
   const totalPages = Math.max(1, Math.ceil(allDefects.length / DEFECTS_PAGE_SIZE))
@@ -230,9 +250,19 @@ export function DefectsList() {
         }
       />
 
+      <FilterTabs
+        label="Defect status"
+        items={statusTabs}
+        value={activeStatus}
+        onChange={(key) => urlFilters.setFilter('status', key)}
+        panelId="defects-panel"
+      />
+
       <FilterBar
-        activeCount={urlFilters.active.length}
-        onClear={urlFilters.clearAll}
+        activeCount={chipKeys.length}
+        onClear={() =>
+          urlFilters.setFilters({ projectId: '', severity: '', reportedBy: '', createdFrom: '', createdTo: '' })
+        }
         saved={
           <SavedFiltersMenu
             current={urlFilters.values}
@@ -262,21 +292,6 @@ export function DefectsList() {
             {projectsQuery.data?.items.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterField label="Status">
-          <Select
-            aria-label="Filter by status"
-            value={status}
-            onChange={(e) => urlFilters.setFilter('status', e.target.value)}
-            className="w-40"
-          >
-            <option value="">All Statuses</option>
-            {STATUS_ORDER.map((s) => (
-              <option key={s} value={s}>
-                {s}
               </option>
             ))}
           </Select>
@@ -322,9 +337,9 @@ export function DefectsList() {
         />
       </FilterBar>
 
-      {urlFilters.active.length > 0 && (
+      {chipKeys.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {urlFilters.active.map((key) => (
+          {chipKeys.map((key) => (
             <span
               key={key}
               className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-2.5 py-1 text-xs"
@@ -343,6 +358,12 @@ export function DefectsList() {
         </div>
       )}
 
+      <div
+        id="defects-panel"
+        role="tabpanel"
+        aria-labelledby={filterTabId('defects-panel', activeStatus)}
+        className="flex flex-col gap-4"
+      >
       <ResponsiveTable
         label="Defects"
         rows={pageRows}
@@ -364,12 +385,20 @@ export function DefectsList() {
         state={
           defectsQuery.isError ? (
             <ErrorState error={defectsQuery.error} onRetry={() => defectsQuery.refetch()} />
-          ) : !defectsQuery.isLoading && defectsQuery.data?.length === 0 ? (
+          ) : !defectsQuery.isLoading && allDefects.length === 0 ? (
             <EmptyState
-              title={status || severity || reportedBy || createdFrom || createdTo ? 'No defects match your filters' : 'No defects yet'}
+              title={
+                otherFiltersActive
+                  ? 'No defects match your filters'
+                  : activeStatus
+                    ? `No ${activeStatus} defects`
+                    : 'No defects yet'
+              }
               description={
-                status || severity || reportedBy || createdFrom || createdTo
+                otherFiltersActive
                   ? 'Try clearing a filter to see more results.'
+                  : activeStatus
+                    ? 'No defect is in this status right now. Pick another tab to see the rest.'
                   : 'Defects reported from a failed test step, or created directly, will show up here.'
               }
             />
@@ -385,6 +414,7 @@ export function DefectsList() {
           onPageChange={(next) => setPaging({ key: filterKey, page: next })}
         />
       )}
+      </div>
       {rowMenu.menu}
 
       <NewDefectDialog

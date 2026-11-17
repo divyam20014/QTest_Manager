@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
@@ -113,6 +113,116 @@ def _require_execution_rights(role_code: str, user_id: UUID, run_case: TestRunCa
         "This test case is not assigned to you. Ask an Admin or Manager to assign it "
         "before you can execute it."
     )
+
+
+# ADR-070: a run finishes itself once every run case is complete: either
+# blocked (it needs outside action, not further testing in this run) or with a
+# verdict recorded on every one of its steps (pass, fail or ignore).
+
+
+def _require_not_blocked(run_case: TestRunCase) -> None:
+    if run_case.status == "blocked":
+        raise ConflictError(
+            "This test case is blocked. Unblock it before recording results on it."
+        )
+
+
+def _finish_run(
+    db: Session,
+    tenant_id: UUID,
+    run: TestRun,
+    actor_user_id: UUID | None,
+    *,
+    auto: bool,
+    service_token_id: UUID | None = None,
+) -> None:
+    """Shared by the manual Finish Run endpoint and auto-finish: stamps
+    finished_at, writes the audit event and notifies the run owner. Does NOT
+    commit -- the caller owns the transaction."""
+    run.finished_at = datetime.now(UTC)
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        service_token_id=service_token_id,
+        action="testrun.finished",
+        entity_type="test_run",
+        entity_id=run.id,
+        metadata={"auto": True} if auto else None,
+    )
+
+    owner = db.execute(select(User).where(User.id == run.executed_by)).scalar_one_or_none()
+    if owner is not None:
+        notification_service.notify(
+            db,
+            tenant_id,
+            actor_user_id,
+            run.executed_by,
+            owner.email,
+            "test_run_completed",
+            "A test run you own has finished",
+            f'Test run "{run.name}" is complete.',
+            "test_run",
+            run.id,
+        )
+
+
+def _auto_finish_if_complete(
+    db: Session,
+    tenant_id: UUID,
+    run_id: UUID,
+    actor_user_id: UUID | None,
+    service_token_id: UUID | None = None,
+) -> bool:
+    """Rule B (ADR-070): finish the run when every run case is complete
+    (blocked, or every step recorded and not failed). Idempotent (never
+    finishes twice) and race-safe: the run row is locked so two final
+    verdicts landing concurrently on different cases serialize -- the
+    second one sees the first's committed result and does the finish;
+    without the lock both could see the other's case as still open and the
+    run would never auto-finish. Paused runs never auto-finish (nothing can
+    be recorded while paused anyway)."""
+    # autoflush is off (app/core/db.py): flush so the status counts below see
+    # the verdict/status change made earlier in this same transaction.
+    db.flush()
+    locked = db.execute(
+        select(TestRun)
+        .where(TestRun.tenant_id == tenant_id, TestRun.id == run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if locked is None or locked.finished_at is not None or locked.paused_at is not None:
+        return False
+    total_cases = db.execute(
+        select(func.count()).select_from(TestRunCase).where(TestRunCase.test_run_id == run_id)
+    ).scalar_one()
+    if total_cases == 0:
+        return False
+    # A case is complete when it is blocked, or when every one of its steps
+    # has a verdict AND it did not fail. A failed case keeps the run open on
+    # purpose: BRD Journey 4 has the tester re-run the failed step after the
+    # fix in the same run (and a case with one failed step is already 'failed'
+    # under ADR-024's fail-fast rollup while its other steps are still to be
+    # executed). Once the step is re-verdicted to Pass the case passes and the
+    # run finishes; a run that is left with a failed case is finished by hand.
+    has_unrecorded_step = (
+        select(ExecutionStep.id)
+        .where(ExecutionStep.test_run_case_id == TestRunCase.id, ExecutionStep.verdict.is_(None))
+        .exists()
+    )
+    open_cases = db.execute(
+        select(func.count())
+        .select_from(TestRunCase)
+        .where(
+            TestRunCase.test_run_id == run_id,
+            TestRunCase.status != "blocked",
+            or_(has_unrecorded_step, TestRunCase.status == "failed"),
+        )
+    ).scalar_one()
+    if open_cases:
+        return False
+    _finish_run(db, tenant_id, locked, actor_user_id, auto=True, service_token_id=service_token_id)
+    return True
 
 
 def get_execution_step(
@@ -553,6 +663,7 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
                 test_case_version_id=run_case.test_case_version_id,
                 title=case.title,
                 status=cast(RunCaseStatus, run_case.status),
+                blocked_reason=run_case.blocked_reason,
                 assigned_to=run_case.assigned_to,
                 started_at=run_case.started_at,
                 completed_at=run_case.completed_at,
@@ -660,6 +771,7 @@ def get_run_case_context(
         assignee_id=run_case.assigned_to,
         assignee_name=assignee_name,
         status=cast(RunCaseStatus, run_case.status),
+        blocked_reason=run_case.blocked_reason,
         data_row_id=run_case.test_data_row_id,
         data_row_name=data_row_name,
         data_row_values=data_row_values,
@@ -679,6 +791,7 @@ def open_step(
         raise ConflictError("Cannot modify steps on a finished test run")
     if run.paused_at is not None:
         raise ConflictError("Test run is paused")
+    _require_not_blocked(run_case)
 
     if step.opened_at is None:
         step.opened_at = datetime.now(UTC)
@@ -729,6 +842,7 @@ def record_verdict(
         raise ConflictError("Cannot modify steps on a finished test run")
     if run.paused_at is not None:
         raise ConflictError("Test run is paused")
+    _require_not_blocked(run_case)
 
     # Row-locked: concurrent verdicts on sibling steps of the same run_case
     # must serialize around the status recompute below. Without this, two
@@ -772,6 +886,7 @@ def record_verdict(
             "duration_ms": step.duration_ms,
         },
     )
+    _auto_finish_if_complete(db, tenant_id, run.id, user_id)
     db.commit()
     return step
 
@@ -814,6 +929,7 @@ def record_ci_result(
         raise ConflictError("Cannot record results on a finished test run")
     if run.paused_at is not None:
         raise ConflictError("Test run is paused")
+    _require_not_blocked(run_case)
 
     # Same row lock record_verdict takes (GAP-49) -- concurrent webhook
     # deliveries for sibling steps of the same run case must serialize
@@ -853,6 +969,7 @@ def record_ci_result(
         entity_id=run_case.id,
         metadata={"ci_status": ci_status, "verdict": verdict, "steps_updated": len(steps)},
     )
+    _auto_finish_if_complete(db, tenant_id, run.id, None, service_token_id)
     db.commit()
     return run_case
 
@@ -862,30 +979,116 @@ def finish_test_run(db: Session, tenant_id: UUID, actor_user_id: UUID, run_id: U
     if run.finished_at is not None:
         raise ConflictError("Test run is already finished")
 
-    run.finished_at = datetime.now(UTC)
+    _finish_run(db, tenant_id, run, actor_user_id, auto=False)
+    db.commit()
+    return run
+
+
+def block_run_case(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    test_run_case_id: UUID,
+    reason: str,
+) -> TestRunCase:
+    """ADR-070 / BRD "Block Case": mark a run case Blocked with a required
+    reason. Needs the same rights as recording a verdict (assignee for a
+    Tester). Blocked is a manual state the step recompute never produces, and
+    verdicts are refused until it is unblocked."""
+    run_case = _get_run_case_or_404(db, tenant_id, test_run_case_id)
+    run = _authorize_run_case_access(db, tenant_id, role_code, user_id, run_case)
+    _require_execution_rights(role_code, user_id, run_case)
+    if run.finished_at is not None:
+        raise ConflictError("Cannot modify a finished test run")
+    if run.paused_at is not None:
+        raise ConflictError("Test run is paused")
+    if run_case.status == "blocked":
+        raise ConflictError("This test case is already blocked")
+    clean_reason = reason.strip()
+    if len(clean_reason) < 3:
+        raise ValidationAppError("A reason of at least 3 characters is required to block a case")
+
+    db.execute(
+        select(TestRunCase).where(TestRunCase.id == run_case.id).with_for_update()
+    ).scalar_one()
+    now = datetime.now(UTC)
+    previous_status = run_case.status
+    run_case.status = "blocked"
+    run_case.blocked_reason = clean_reason
+    run_case.completed_at = now
+    if run_case.started_at is None:
+        run_case.started_at = now
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        action="testrun.case_blocked",
+        entity_type="test_run_case",
+        entity_id=run_case.id,
+        metadata={"reason": clean_reason, "previous_status": previous_status},
+    )
+    db.flush()
+    _auto_finish_if_complete(db, tenant_id, run.id, user_id)
+    db.commit()
+    return run_case
+
+
+def unblock_run_case(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, test_run_case_id: UUID
+) -> TestRunCase:
+    """Re-opens a blocked case: status is recomputed from its step verdicts
+    (pending / in_progress / passed / failed), exactly as if it had never been
+    blocked. Not possible once the run has finished."""
+    run_case = _get_run_case_or_404(db, tenant_id, test_run_case_id)
+    run = _authorize_run_case_access(db, tenant_id, role_code, user_id, run_case)
+    _require_execution_rights(role_code, user_id, run_case)
+    if run.finished_at is not None:
+        raise ConflictError("Cannot modify a finished test run")
+    if run.paused_at is not None:
+        raise ConflictError("Test run is paused")
+    if run_case.status != "blocked":
+        raise ConflictError("This test case is not blocked")
+
+    db.execute(
+        select(TestRunCase).where(TestRunCase.id == run_case.id).with_for_update()
+    ).scalar_one()
+    previous_reason = run_case.blocked_reason
+    run_case.blocked_reason = None
+    db.flush()
+    _recompute_run_case_status(db, run_case)
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        action="testrun.case_unblocked",
+        entity_type="test_run_case",
+        entity_id=run_case.id,
+        metadata={"previous_reason": previous_reason, "status": run_case.status},
+    )
+    db.commit()
+    return run_case
+
+
+def delete_test_run(
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, run_id: UUID
+) -> None:
+    """ADR-070: soft delete. The run, its run cases and step results stay in
+    the database (and in tenant data exports) but disappear from every list,
+    count and report. Caller must already hold testrun.delete."""
+    run = _get_run_or_404(db, tenant_id, run_id)
+    _authorize_run_access(db, tenant_id, role_code, actor_user_id, run)
+    run.deleted_at = datetime.now(UTC)
+    run.deleted_by = actor_user_id
     record_audit_event(
         db,
         tenant_id=tenant_id,
         user_id=actor_user_id,
-        action="testrun.finished",
+        action="testrun.deleted",
         entity_type="test_run",
         entity_id=run.id,
+        metadata={"name": run.name, "was_finished": run.finished_at is not None},
     )
-
-    owner = db.execute(select(User).where(User.id == run.executed_by)).scalar_one_or_none()
-    if owner is not None:
-        notification_service.notify(
-            db,
-            tenant_id,
-            actor_user_id,
-            run.executed_by,
-            owner.email,
-            "test_run_completed",
-            "A test run you own has finished",
-            f'Test run "{run.name}" is complete.',
-            "test_run",
-            run.id,
-        )
-
     db.commit()
-    return run

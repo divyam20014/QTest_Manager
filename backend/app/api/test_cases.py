@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import (
     SessionContext,
     get_current_context,
+    get_effective_permissions_for_project,
     require_project_permission,
     require_resource_permission,
 )
@@ -15,6 +16,7 @@ from app.core.responses import envelope
 from app.schemas.test_case import (
     RequestChangesRequest,
     SubmitForReviewRequest,
+    TestCaseBulkUpdateRequest,
     TestCaseCreateRequest,
     TestCaseListResponse,
     TestCaseUpdateRequest,
@@ -128,6 +130,27 @@ def compare_versions(
 ) -> dict:
     result = test_case_service.compare_versions(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, from_version, to_version
+    )
+    return envelope(result.model_dump(mode="json"))
+
+
+@router.post("/test-cases/bulk-update")
+def bulk_update_test_cases(
+    req: TestCaseBulkUpdateRequest,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-070: bulk priority/assignee change (metadata only -- never forks a
+    version). Per-item results; `testcase.edit` is checked per item against
+    that item's project (project-scoped role overrides apply)."""
+    result = test_case_service.bulk_update_metadata(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        req,
+        can_edit=lambda project_id: "testcase.edit"
+        in get_effective_permissions_for_project(db, ctx, project_id),
     )
     return envelope(result.model_dump(mode="json"))
 

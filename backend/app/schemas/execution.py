@@ -38,6 +38,11 @@ class VerdictRequest(BaseModel):
     verdict: Verdict
 
 
+class BlockRunCaseRequest(BaseModel):
+    # ADR-070: a reason is mandatory when blocking a case.
+    reason: str = Field(min_length=3, max_length=1000)
+
+
 class ExecutionStepOut(BaseModel):
     id: UUID
     test_case_version_step_id: UUID
@@ -57,6 +62,7 @@ class TestRunCaseOut(BaseModel):
     test_case_version_id: UUID
     title: str
     status: RunCaseStatus
+    blocked_reason: str | None = None
     assigned_to: UUID | None
     started_at: datetime | None
     completed_at: datetime | None
@@ -111,6 +117,7 @@ class RunCaseContextOut(BaseModel):
     assignee_id: UUID | None
     assignee_name: str | None
     status: RunCaseStatus
+    blocked_reason: str | None = None
     # Pass 5 item 2: when this run case was bundled from a specific
     # TestDataSetRow, the row's name + raw key/value parameters, so the
     # executor knows which data to use.
