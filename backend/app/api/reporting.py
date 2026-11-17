@@ -10,8 +10,9 @@ from app.core.auth import SessionContext, require_permission
 from app.core.db import get_db
 from app.core.pdf_report import render_compliance_report_pdf
 from app.core.responses import envelope
+from app.core.xlsx_report import XLSX_MEDIA_TYPE
 from app.models.identity import User
-from app.schemas.reporting import GroupBy, Metric
+from app.schemas.reporting import GroupBy, Metric, RunTypeFilter
 from app.services import reporting_service
 
 router = APIRouter(tags=["reporting"])
@@ -243,4 +244,128 @@ def compliance_detail_pdf(
         pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="compliance_report.pdf"'},
+    )
+
+
+def _xlsx_response(contents: bytes, filename: str) -> Response:
+    return Response(
+        contents,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/reports/quality-metrics")
+def quality_metrics(
+    days: int = Query(default=30, ge=1, le=365),
+    project_id: UUID | None = Query(default=None),
+    run_type: RunTypeFilter = Query(default="Regression"),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_quality_metrics(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        days=days,
+        project_id=project_id,
+        run_type=run_type,
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/quality-metrics/export.xlsx")
+def quality_metrics_export_xlsx(
+    days: int = Query(default=30, ge=1, le=365),
+    project_id: UUID | None = Query(default=None),
+    run_type: RunTypeFilter = Query(default="Regression"),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> Response:
+    report = reporting_service.get_quality_metrics(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        days=days,
+        project_id=project_id,
+        run_type=run_type,
+    )
+    return _xlsx_response(reporting_service.quality_metrics_to_xlsx(report), "quality_metrics.xlsx")
+
+
+@router.get("/reports/aggregate/export.xlsx")
+def aggregate_export_xlsx(
+    metric: Metric = Query(...),
+    group_by: GroupBy = Query(...),
+    project_id: UUID | None = Query(default=None),
+    domain: str | None = Query(default=None),
+    assignee_id: UUID | None = Query(default=None),
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    priority: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> Response:
+    report = reporting_service.get_aggregate_report(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        metric,
+        group_by,
+        project_id=project_id,
+        domain=domain,
+        assignee_id=assignee_id,
+        date_from=date_from,
+        date_to=date_to,
+        priority=priority,
+        status=status,
+    )
+    filters = {
+        "Project": str(project_id) if project_id else "",
+        "Domain": domain or "",
+        "Assignee": str(assignee_id) if assignee_id else "",
+        "From": date_from.isoformat() if date_from else "",
+        "To": date_to.isoformat() if date_to else "",
+        "Test case priority": priority or "",
+        "Test case status": status or "",
+    }
+    return _xlsx_response(
+        reporting_service.aggregate_report_to_xlsx(report, filters), f"report_{metric}.xlsx"
+    )
+
+
+@router.get("/reports/traceability-matrix/export.xlsx")
+def traceability_matrix_export_xlsx(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> Response:
+    report = reporting_service.get_traceability_matrix(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return _xlsx_response(
+        reporting_service.traceability_matrix_to_xlsx(report), "traceability_matrix.xlsx"
+    )
+
+
+@router.get("/reports/compliance-export.xlsx")
+def compliance_export_xlsx(
+    period_from: datetime | None = Query(default=None),
+    period_to: datetime | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.compliance_export")),
+    db: Session = Depends(get_db),
+) -> Response:
+    reporting_officer = db.execute(select(User).where(User.id == ctx.user_id)).scalar_one()
+    report = reporting_service.get_compliance_report(
+        db, ctx.tenant_id, reporting_officer, ctx.role_code, ctx.user_id, period_from, period_to
+    )
+    quality = reporting_service.get_quality_metrics(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, days=30, run_type="all"
+    )
+    return _xlsx_response(
+        reporting_service.compliance_report_to_xlsx(report, quality), "compliance_summary.xlsx"
     )

@@ -50,6 +50,7 @@ import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { FormError } from '@/components/ui/form-field'
+import { ProjectDrilldown } from './ProjectDrilldown'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
 import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
@@ -224,6 +225,8 @@ export function ProjectDetail() {
         <MetricTile label="Test Runs" value={project.test_run_count} />
         <MetricTile label="Open Defects" value={project.open_defect_count} />
       </div>
+
+      <ProjectDrilldown projectId={project.id} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>

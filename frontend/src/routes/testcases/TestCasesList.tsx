@@ -4,7 +4,8 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
-import { exportUrl } from '@/api/csvImport'
+import { exportUrl, exportXlsxPath } from '@/api/csvImport'
+import { ExportButton } from '@/components/ui/ExportButton'
 import { createModule, deleteModule, listModules } from '@/api/modules'
 import { listSharedSteps } from '@/api/sharedSteps'
 import { getProject } from '@/api/projects'
@@ -324,6 +325,12 @@ export function TestCasesList() {
           >
             Export CSV
           </a>
+          <ExportButton
+            size="sm"
+            path={exportXlsxPath(projectId!)}
+            fallbackName="test_cases_export.xlsx"
+            ariaLabel="Export test cases to Excel"
+          />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             Import CSV
           </Button>

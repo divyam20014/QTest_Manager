@@ -115,6 +115,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | /projects/{id}/test-cases/export.csv | export one project's test cases | all (assigned) |
+| GET | /projects/{id}/test-cases/export.xlsx | same rows as export.csv as an Excel workbook; string cells starting `= + - @` are neutralised (ADR-071) | testcase.bulk_import_export (assigned for tester) |
 | GET | /test-cases/import/template.csv | sample template | all |
 | POST | /test-cases/import | tenant-wide, synchronous validate+commit; each row names its own project (ADR-021); enforces a 2,000-row cap, 5MB/`.csv`-only file validation, and per-project duplicate-title detection (ADR-035) | all (per-row: Admin/Manager tenant-wide, Tester must be assigned to that row's project) |
 | POST | /test-cases/import/async | same validation, enqueues the import to the background job queue and returns a job id immediately instead of blocking the request (Tier 1, ADR-053) | all (same per-row rule as above) |
@@ -165,6 +166,11 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /reports/defect-aging | per-severity open-defect count + SLA-breach count, optional `project_id` (Phase 6, ADR-048, GAP-77) | all (scoped) |
 | GET | /reports/compliance-detail | structured JSON compliance report (summary + per-project detailed test case/defect tables), optional `period_from`/`period_to` — backs the browser print/PDF view (ADR-038) | manager, admin |
 | GET | /reports/compliance-export | CSV compliance summary, now incl. a Reporting Period header row and per-project detailed test case/defect tables, optional `period_from`/`period_to` (ADR-038) | manager, admin |
+| GET | /reports/compliance-export.xlsx | compliance summary as an Excel workbook (Compliance Summary, Period Trend, Quality Metrics, Cycle Time by Project sheets), optional `period_from`/`period_to` (ADR-071) | manager, admin (report.compliance_export) |
+| GET | /reports/aggregate/export.xlsx | the aggregate pivot as an Excel workbook (Report + Data sheets, applied filters listed); same query params as /reports/aggregate (ADR-071) | report.view (scoped) |
+| GET | /reports/traceability-matrix/export.xlsx | traceability matrix as an Excel workbook, `project_id` (ADR-071) | report.view |
+| GET | /reports/quality-metrics | BRD success metrics from real data: step-level defect precision, average cycle time (overall and per project), step pass rate, review-gate coverage; `days` (1-365, default 30), `project_id`, `run_type` (Regression default, Sanity, Smoke, all); ratios are `null` when there is nothing to measure (ADR-071) | report.view (scoped) |
+| GET | /reports/quality-metrics/export.xlsx | quality metrics as an Excel workbook; same params (ADR-071) | report.view (scoped) |
 
 ## Administration & Audit (FR-ADM-002)
 | Method | Path | Purpose | Role |

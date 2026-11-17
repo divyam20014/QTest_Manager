@@ -91,6 +91,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # ADR-071: lets the SPA read the server-chosen filename of a file download
+    # (fetch + blob) instead of falling back to a generic name.
+    expose_headers=["Content-Disposition"],
 )
 
 

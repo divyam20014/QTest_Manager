@@ -1,8 +1,10 @@
+import csv
+import io
 import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, require_permission
@@ -11,6 +13,7 @@ from app.core.db import get_db
 from app.core.errors import ValidationAppError
 from app.core.rate_limit import limiter
 from app.core.responses import envelope
+from app.core.xlsx_report import XLSX_MEDIA_TYPE, SheetSpec, build_workbook
 from app.services import csv_import_service, job_service
 
 settings = get_settings()
@@ -155,6 +158,28 @@ def export_test_cases(
         csv_text,
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="test_cases_export.csv"'},
+    )
+
+
+@router.get("/projects/{project_id}/test-cases/export.xlsx")
+def export_test_cases_xlsx(
+    project_id: UUID,
+    ctx: SessionContext = Depends(require_permission("testcase.bulk_import_export")),
+    db: Session = Depends(get_db),
+) -> Response:
+    """ADR-071: same dataset, permission and project-access rules as
+    export.csv, rendered as a workbook (reuses the CSV rows so the two
+    formats can never disagree)."""
+    csv_text = csv_import_service.export_test_cases_csv(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    headers, body = (rows[0], rows[1:]) if rows else ([], [])
+    contents = build_workbook([SheetSpec("Test Cases", headers, body)])
+    return Response(
+        contents,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="test_cases_export.xlsx"'},
     )
 
 

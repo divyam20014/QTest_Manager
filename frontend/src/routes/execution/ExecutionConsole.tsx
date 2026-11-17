@@ -102,13 +102,23 @@ export function ExecutionConsole() {
   // A blocked case takes no verdicts until it is unblocked.
   const blocked = contextQuery.data?.status === 'blocked'
 
+  const contextLoaded = contextQuery.data !== undefined
   const openMutation = useMutation({ mutationFn: (stepId: string) => openStep(stepId) })
 
   // Start the server-side timer for the current step as soon as it becomes
   // current (FR-EXEC-002's "stop-clock" timer), not only when a verdict is
   // finally submitted.
   useEffect(() => {
-    if (currentStep && currentStep.opened_at === null && !openMutation.isPending && !runLocked) {
+    // Wait for the case context before opening a step: a blocked case refuses
+    // step opens (409), which would otherwise log a console error on load.
+    if (
+      currentStep &&
+      currentStep.opened_at === null &&
+      !openMutation.isPending &&
+      !runLocked &&
+      contextLoaded &&
+      !blocked
+    ) {
       openMutation.mutate(currentStep.id, {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['execution-steps', runCaseId] }),
       })
@@ -116,7 +126,7 @@ export function ExecutionConsole() {
     // Deliberately scoped to currentStep?.id only: we want this to fire
     // once when the "current" step changes, not on every mutation-state
     // tick while opening is pending.
-  }, [currentStep?.id, runLocked])
+  }, [currentStep?.id, runLocked, blocked, contextLoaded])
 
   // Everything a verdict / block / unblock can change: the step list, this
   // case's context (status, and run_finished when the last verdict

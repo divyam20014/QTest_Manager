@@ -4,12 +4,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ForbiddenError, NotFoundError
+from app.core.xlsx_report import SheetSpec, build_workbook
 from app.models.audit import AuditLog
-from app.models.defect import Defect
+from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
@@ -31,6 +32,7 @@ from app.schemas.reporting import (
     ComplianceProjectSection,
     ComplianceReport,
     ComplianceTestCaseRow,
+    CycleTimeByProject,
     DashboardSummary,
     DefectAgingSeverityBucket,
     DefectAgingSummary,
@@ -46,8 +48,10 @@ from app.schemas.reporting import (
     Metric,
     MostReopenedDefect,
     ProjectStatusBreakdown,
+    QualityMetricsReport,
     ReleaseReadinessReport,
     ReopenSummary,
+    RunTypeFilter,
     TestCaseSummary,
     TestRunSummary,
     TraceabilityMatrixEntry,
@@ -1374,3 +1378,327 @@ def compliance_report_to_csv(report: ComplianceReport) -> str:
             writer.writerow([str(d.id), d.title, d.severity, d.status])
 
     return buffer.getvalue()
+
+
+def get_quality_metrics(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    *,
+    days: int = 30,
+    project_id: UUID | None = None,
+    run_type: RunTypeFilter = "Regression",
+) -> QualityMetricsReport:
+    """ADR-071: BRD section 2.2 success metrics from real data.
+
+    Definitions (also shown in the UI):
+    - Step-level defect precision: of defects raised from a test run
+      (`test_run_id` set) and created in the period, the share that point at
+      an exact step (`test_case_version_step_id` set, or an `execution_step`
+      defect link).
+    - Cycle time: mean of `finished_at - created_at` over runs of `run_type`
+      created in the period that have finished; unfinished runs are excluded
+      rather than counted as zero.
+    - Pass rate: share of step verdicts recorded in the period that are
+      `pass`, matching the Dashboard's step pass-rate definition.
+    - Review-gate coverage: share of all current test cases that are
+      `approved` (a snapshot, not period-bound).
+    Soft-deleted runs/defects are excluded by the ORM-level filter.
+    """
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    since = func.now() - func.make_interval(0, 0, 0, days)
+
+    def scope(query: Any, project_col: Any) -> Any:
+        if accessible is not None:
+            query = query.where(project_col.in_(accessible))
+        if project_id is not None:
+            query = query.where(project_col == project_id)
+        return query
+
+    # (a) step-level defect precision
+    step_linked = (Defect.test_case_version_step_id.is_not(None)) | exists().where(
+        DefectLink.defect_id == Defect.id, DefectLink.linkable_type == "execution_step"
+    )
+    defect_query = scope(
+        select(func.count(), func.count().filter(step_linked))
+        .select_from(Defect)
+        .join(Project, Project.id == Defect.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            Defect.test_run_id.is_not(None),
+            Defect.created_at >= since,
+        ),
+        Project.id,
+    )
+    execution_defects, linked_defects = db.execute(defect_query).one()
+
+    # (b) cycle time of finished runs created in the period
+    cycle_seconds = func.extract("epoch", TestRun.finished_at - TestRun.created_at)
+    cycle_query = (
+        select(Project.id, Project.name, func.count(), func.avg(cycle_seconds))
+        .select_from(TestRun)
+        .join(Project, Project.id == TestRun.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            TestRun.finished_at.is_not(None),
+            TestRun.created_at >= since,
+        )
+    )
+    if run_type != "all":
+        cycle_query = cycle_query.where(TestRun.run_type == run_type)
+    cycle_rows = db.execute(
+        scope(cycle_query, Project.id).group_by(Project.id, Project.name).order_by(Project.name)
+    ).all()
+    by_project = [
+        CycleTimeByProject(
+            project_id=pid,
+            project_name=name,
+            finished_run_count=count,
+            average_cycle_time_hours=round(float(avg) / 3600, 2) if avg is not None else None,
+        )
+        for pid, name, count, avg in cycle_rows
+    ]
+    total_runs = sum(r.finished_run_count for r in by_project)
+    weighted = sum((r.average_cycle_time_hours or 0.0) * r.finished_run_count for r in by_project)
+    average_cycle = round(weighted / total_runs, 2) if total_runs else None
+
+    # (c) pass rate over verdicts recorded in the period
+    step_query = scope(
+        select(ExecutionStep.verdict, func.count())
+        .select_from(ExecutionStep)
+        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .join(Project, Project.id == TestRun.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            ExecutionStep.verdict.is_not(None),
+            ExecutionStep.closed_at >= since,
+        ),
+        Project.id,
+    )
+    step_counts: dict[str | None, int] = dict(
+        db.execute(step_query.group_by(ExecutionStep.verdict)).tuples().all()
+    )
+    step_total = sum(step_counts.values())
+
+    # (d) review-gate coverage (current state)
+    tc_query = scope(
+        select(TestCase.status, func.count())
+        .join(Project, Project.id == TestCase.project_id)
+        .where(Project.tenant_id == tenant_id),
+        Project.id,
+    )
+    tc_counts: dict[str, int] = dict(db.execute(tc_query.group_by(TestCase.status)).tuples().all())
+    tc_total = sum(tc_counts.values())
+    approved = tc_counts.get("approved", 0)
+
+    def pct(part: int, whole: int) -> float | None:
+        return round(part * 100.0 / whole, 1) if whole else None
+
+    return QualityMetricsReport(
+        period_days=days,
+        project_id=project_id,
+        run_type=run_type,
+        execution_defect_count=execution_defects,
+        step_linked_defect_count=linked_defects,
+        step_defect_precision_percentage=pct(linked_defects, execution_defects),
+        finished_run_count=total_runs,
+        average_cycle_time_hours=average_cycle,
+        cycle_time_by_project=by_project,
+        step_sample_size=step_total,
+        step_pass_percentage=pct(step_counts.get("pass", 0), step_total),
+        total_test_cases=tc_total,
+        approved_test_cases=approved,
+        review_gate_coverage_percentage=pct(approved, tc_total),
+    )
+
+
+# --- Excel exports (ADR-071) ------------------------------------------------
+
+
+def _quality_metrics_rows(report: QualityMetricsReport) -> list[tuple[str, Any]]:
+    def val(v: Any) -> Any:
+        return "No data in this period" if v is None else v
+
+    return [
+        ("Period (days)", report.period_days),
+        ("Run type for cycle time", report.run_type),
+        ("Step-level defect precision (%)", val(report.step_defect_precision_percentage)),
+        ("  Execution-raised defects", report.execution_defect_count),
+        ("  ...of which linked to a step", report.step_linked_defect_count),
+        ("Average cycle time (hours)", val(report.average_cycle_time_hours)),
+        ("  Finished runs counted", report.finished_run_count),
+        ("Step pass rate (%)", val(report.step_pass_percentage)),
+        ("  Step verdicts counted", report.step_sample_size),
+        ("Review-gate coverage (% Approved)", val(report.review_gate_coverage_percentage)),
+        ("  Approved test cases", report.approved_test_cases),
+        ("  Total test cases", report.total_test_cases),
+    ]
+
+
+def quality_metrics_sheets(report: QualityMetricsReport) -> list[SheetSpec]:
+    return [
+        SheetSpec(
+            "Quality Metrics",
+            ["Metric", "Value"],
+            _quality_metrics_rows(report),
+            title="QTestHub Quality Metrics",
+        ),
+        SheetSpec(
+            "Cycle Time by Project",
+            ["Project", "Finished Runs", "Average Cycle Time (hours)"],
+            [
+                (r.project_name, r.finished_run_count, r.average_cycle_time_hours)
+                for r in report.cycle_time_by_project
+            ],
+        ),
+    ]
+
+
+def quality_metrics_to_xlsx(report: QualityMetricsReport) -> bytes:
+    return build_workbook(quality_metrics_sheets(report))
+
+
+def aggregate_report_to_xlsx(report: AggregateReport, filters: dict[str, str]) -> bytes:
+    values = sorted({r.value for r in report.rows})
+    labels: list[str] = []
+    matrix: dict[str, dict[str, int]] = {}
+    for r in report.rows:
+        if r.group_label not in matrix:
+            labels.append(r.group_label)
+            matrix[r.group_label] = {}
+        matrix[r.group_label][r.value] = matrix[r.group_label].get(r.value, 0) + r.count
+    pivot_rows = [
+        (label, *(matrix[label].get(v, 0) for v in values), sum(matrix[label].values()))
+        for label in labels
+    ]
+    return build_workbook(
+        [
+            SheetSpec(
+                "Report",
+                [f"Group ({report.group_by})", *values, "Total"],
+                pivot_rows,
+                title=f"QTestHub report: {report.metric} by {report.group_by}",
+                notes=[(k, v) for k, v in filters.items() if v],
+            ),
+            SheetSpec(
+                "Data",
+                ["Group", "Value", "Count"],
+                [(r.group_label, r.value, r.count) for r in report.rows],
+            ),
+        ]
+    )
+
+
+def traceability_matrix_to_xlsx(report: TraceabilityMatrixReport) -> bytes:
+    return build_workbook(
+        [
+            SheetSpec(
+                "Traceability",
+                [
+                    "Requirement",
+                    "Linked Test Cases",
+                    "Passed",
+                    "Failed",
+                    "Blocked",
+                    "Not Executed",
+                    "Coverage %",
+                ],
+                [
+                    (
+                        e.requirement_title,
+                        e.linked_test_case_count,
+                        e.passed_count,
+                        e.failed_count,
+                        e.blocked_count,
+                        e.not_executed_count,
+                        e.coverage_percentage,
+                    )
+                    for e in report.entries
+                ],
+                title="QTestHub Requirements Traceability Matrix",
+                notes=[
+                    ("Total requirements", report.total_requirements),
+                    ("Overall coverage %", report.overall_requirement_coverage_percentage),
+                ],
+            )
+        ]
+    )
+
+
+def compliance_report_to_xlsx(
+    report: ComplianceReport, quality: QualityMetricsReport | None = None
+) -> bytes:
+    period = (
+        f"{report.period_from.isoformat() if report.period_from else 'All time'}"
+        f" to {report.period_to.isoformat() if report.period_to else 'present'}"
+    )
+    sheets = [
+        SheetSpec(
+            "Compliance Summary",
+            [
+                "Project",
+                "Domain",
+                "Total Test Cases",
+                "Approved",
+                "Draft",
+                "Ready for Review",
+                "Open Defects",
+                "Critical Defects",
+                "Requirements Covered",
+                "Requirements Total",
+                "Requirement Coverage %",
+                "Defects Open",
+                "Defects SLA-Breached",
+            ],
+            [
+                (
+                    s.name,
+                    s.domain,
+                    s.total_test_cases,
+                    s.approved_test_cases,
+                    s.draft_test_cases,
+                    s.ready_for_review_test_cases,
+                    s.open_defects,
+                    s.critical_defects,
+                    s.requirement_covered,
+                    s.requirement_total,
+                    s.requirement_coverage_percentage,
+                    s.defect_aging.total_open,
+                    s.defect_aging.total_breached,
+                )
+                for s in report.projects
+            ],
+            title="QTestHub Compliance Summary",
+            notes=[
+                ("Tenant", report.tenant_name),
+                ("Generated At (UTC)", report.generated_at),
+                (
+                    "Reporting Officer",
+                    f"{report.reporting_officer_name} ({report.reporting_officer_email})",
+                ),
+                ("Reporting Period", period),
+            ],
+        )
+    ]
+    if report.trend is not None:
+        t = report.trend
+        sheets.append(
+            SheetSpec(
+                "Period Trend",
+                ["Measure", "Current Period", "Prior Period"],
+                [
+                    (
+                        "Test Cases Created",
+                        t.test_cases_created_current,
+                        t.test_cases_created_prior,
+                    ),
+                    ("Defects Opened", t.defects_opened_current, t.defects_opened_prior),
+                    ("Defects Closed", t.defects_closed_current, t.defects_closed_prior),
+                ],
+            )
+        )
+    if quality is not None:
+        sheets.extend(quality_metrics_sheets(quality))
+    return build_workbook(sheets)

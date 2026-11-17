@@ -1,7 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
-import { fetchTraceabilityMatrix, traceabilityMatrixExportUrl, type TraceabilityMatrixEntry } from '@/api/reporting'
+import {
+  fetchTraceabilityMatrix,
+  traceabilityMatrixExportUrl,
+  traceabilityMatrixExportXlsxPath,
+  type TraceabilityMatrixEntry,
+} from '@/api/reporting'
+import { ExportButton } from '@/components/ui/ExportButton'
 import { getProject } from '@/api/projects'
 import { buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -130,13 +136,20 @@ export function TraceabilityMatrix() {
         title={`Requirements Traceability Matrix ${projectQuery.data ? `— ${projectQuery.data.name}` : ''}`.trim()}
         actions={
           report && (
-            <a
-              href={traceabilityMatrixExportUrl(projectId!)}
-              download
-              className={buttonVariants({ variant: 'outline' })}
-            >
-              Download CSV
-            </a>
+            <>
+              <a
+                href={traceabilityMatrixExportUrl(projectId!)}
+                download
+                className={buttonVariants({ variant: 'outline' })}
+              >
+                Download CSV
+              </a>
+              <ExportButton
+                label="Download Excel"
+                path={traceabilityMatrixExportXlsxPath(projectId!)}
+                fallbackName="traceability_matrix.xlsx"
+              />
+            </>
           )
         }
       />

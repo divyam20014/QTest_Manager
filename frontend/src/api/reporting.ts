@@ -326,3 +326,74 @@ export function complianceExportPdfUrl(period: CompliancePeriod = {}): string {
   const query = params.toString()
   return `${API_BASE_URL}/reports/compliance-detail/pdf${query ? `?${query}` : ''}`
 }
+
+// ADR-071: Excel exports. Paths (not absolute URLs) because they are fetched
+// through `downloadFile`, which shows loading/error state instead of
+// navigating the browser to the file.
+export function aggregateExportXlsxPath(
+  metric: Metric,
+  groupBy: GroupBy,
+  filters: AggregateReportFilters = {}
+): string {
+  return `/reports/aggregate/export.xlsx?${buildAggregateParams(metric, groupBy, filters).toString()}`
+}
+
+export function complianceExportXlsxPath(period: CompliancePeriod = {}): string {
+  const params = new URLSearchParams()
+  if (period.periodFrom) params.set('period_from', period.periodFrom)
+  if (period.periodTo) params.set('period_to', period.periodTo)
+  const query = params.toString()
+  return `/reports/compliance-export.xlsx${query ? `?${query}` : ''}`
+}
+
+export function traceabilityMatrixExportXlsxPath(projectId: string): string {
+  return `/reports/traceability-matrix/export.xlsx?project_id=${projectId}`
+}
+
+export type QualityRunType = 'Regression' | 'Sanity' | 'Smoke' | 'all'
+
+export interface CycleTimeByProject {
+  project_id: string
+  project_name: string
+  finished_run_count: number
+  average_cycle_time_hours: number | null
+}
+
+export interface QualityMetricsReport {
+  period_days: number
+  project_id: string | null
+  run_type: QualityRunType
+  execution_defect_count: number
+  step_linked_defect_count: number
+  step_defect_precision_percentage: number | null
+  finished_run_count: number
+  average_cycle_time_hours: number | null
+  cycle_time_by_project: CycleTimeByProject[]
+  step_sample_size: number
+  step_pass_percentage: number | null
+  total_test_cases: number
+  approved_test_cases: number
+  review_gate_coverage_percentage: number | null
+}
+
+function qualityParams(days: number, projectId?: string, runType: QualityRunType = 'Regression') {
+  const params = new URLSearchParams({ days: String(days), run_type: runType })
+  if (projectId) params.set('project_id', projectId)
+  return params.toString()
+}
+
+export function fetchQualityMetrics(
+  days = 30,
+  projectId?: string,
+  runType: QualityRunType = 'Regression'
+): Promise<QualityMetricsReport> {
+  return apiFetch<QualityMetricsReport>(`/reports/quality-metrics?${qualityParams(days, projectId, runType)}`)
+}
+
+export function qualityMetricsExportXlsxPath(
+  days = 30,
+  projectId?: string,
+  runType: QualityRunType = 'Regression'
+): string {
+  return `/reports/quality-metrics/export.xlsx?${qualityParams(days, projectId, runType)}`
+}

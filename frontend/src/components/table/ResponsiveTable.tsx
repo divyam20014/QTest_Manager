@@ -1,4 +1,4 @@
-import type { HTMLAttributes, MouseEvent, ReactNode } from 'react'
+import { type HTMLAttributes, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { ResizableTh } from '@/components/table/ResizableTh'
 import { Skeleton, TableSkeleton } from '@/components/ui/skeleton'
@@ -112,8 +112,27 @@ function DesktopTable<T>({
   const colCount = visible.length + (selection ? 1 : 0) + (rowActions ? 1 : 0)
   const scrollInside = rows.length > 25 && !state && !loading
 
+  // A region that actually scrolls sideways (e.g. a wide table at tablet
+  // width) must be reachable by keyboard (axe: scrollable-region-focusable).
+  // Only tables that really overflow become a tab stop, so short tables add
+  // none.
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const [overflowsX, setOverflowsX] = useState(false)
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const measure = () => setOverflowsX(el.scrollWidth > el.clientWidth + 1)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    if (el.firstElementChild) observer.observe(el.firstElementChild)
+    return () => observer.disconnect()
+  }, [rows.length, visible.length])
+  const focusableScroll = scrollInside || overflowsX
+
   return (
     <div
+      ref={wrapperRef}
       className={cn(
         'overflow-x-auto rounded-lg border border-[var(--border)]',
         // Long tables scroll inside their own box so the header row stays
@@ -122,7 +141,7 @@ function DesktopTable<T>({
         scrollInside && 'max-h-[70svh] overflow-y-auto',
         className,
       )}
-      {...(scrollInside ? { tabIndex: 0, role: 'region', 'aria-label': `${label} (scrollable)` } : {})}
+      {...(focusableScroll ? { tabIndex: 0, role: 'region', 'aria-label': `${label} (scrollable)` } : {})}
     >
       <table aria-label={label} className="w-full text-sm">
         <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">

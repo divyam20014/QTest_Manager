@@ -468,7 +468,10 @@ function LinkedDefectsCard({ runId }: { runId: string }) {
         <ul className="divide-y divide-[var(--border)] text-sm">
           {defects.map((d) => (
             <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-2 max-md:min-h-11">
-              <Link to={`/defects/${d.id}`} className="min-w-0 break-words underline-offset-2 hover:underline">
+              <Link
+                to={`/defects/${d.id}`}
+                className="min-w-0 break-words underline-offset-2 hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
+              >
                 {d.title}
               </Link>
               <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>

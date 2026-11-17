@@ -26,6 +26,12 @@ export function exportUrl(projectId: string): string {
   return `${API_BASE_URL}/projects/${projectId}/test-cases/export.csv`
 }
 
+// ADR-071: same dataset as export.csv as an Excel workbook (fetched through
+// downloadFile so failures are shown, not navigated to).
+export function exportXlsxPath(projectId: string): string {
+  return `/projects/${projectId}/test-cases/export.xlsx`
+}
+
 // Pass 2 (ADR-061): Defect bulk import, newly built -- mirrors the test
 // case import pattern exactly.
 export function importDefects(file: File): Promise<ImportReport> {

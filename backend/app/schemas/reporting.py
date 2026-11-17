@@ -256,3 +256,40 @@ class TraceabilityMatrixReport(BaseModel):
     total_requirements: int
     overall_requirement_coverage_percentage: float
     entries: list[TraceabilityMatrixEntry]
+
+
+RunTypeFilter = Literal["Regression", "Sanity", "Smoke", "all"]
+
+
+class CycleTimeByProject(BaseModel):
+    project_id: UUID
+    project_name: str
+    finished_run_count: int
+    average_cycle_time_hours: float | None
+
+
+class QualityMetricsReport(BaseModel):
+    """ADR-071: the BRD's success metrics, computed from real data only.
+
+    Every ratio is `None` (not 0) when its denominator is empty, so the UI
+    can say "no data yet" instead of presenting a fabricated figure.
+    """
+
+    period_days: int
+    project_id: UUID | None
+    run_type: RunTypeFilter
+    # (a) step-level defect precision
+    execution_defect_count: int
+    step_linked_defect_count: int
+    step_defect_precision_percentage: float | None
+    # (b) regression cycle time (finished runs created in the period)
+    finished_run_count: int
+    average_cycle_time_hours: float | None
+    cycle_time_by_project: list[CycleTimeByProject]
+    # (c) pass rate over verdicts recorded in the period
+    step_sample_size: int
+    step_pass_percentage: float | None
+    # (d) review-gate coverage (current state, not period-bound)
+    total_test_cases: int
+    approved_test_cases: int
+    review_gate_coverage_percentage: float | None

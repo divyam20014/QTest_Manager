@@ -23,8 +23,10 @@ import {
   fetchDefectTrend,
   fetchDomainDistribution,
   fetchExecutionTrend,
+  aggregateExportXlsxPath,
   complianceExportPdfUrl,
   complianceExportUrl,
+  complianceExportXlsxPath,
   type GroupBy,
   type Metric,
 } from '@/api/reporting'
@@ -48,7 +50,9 @@ import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { categoricalColor, CATEGORICAL_DARK, SEQUENTIAL_BLUE_LIGHT } from './palette'
+import { ExportButton } from '@/components/ui/ExportButton'
 import { QAManagerIntelligenceCard } from './QAManagerIntelligenceCard'
+import { QualityMetricsCard } from './QualityMetricsCard'
 
 const METRICS: { value: Metric; label: string }[] = [
   { value: 'run_status', label: 'Test Run Status' },
@@ -206,6 +210,12 @@ export function Reporting() {
             >
               Download Compliance PDF
             </a>
+            <ExportButton
+              label="Download Compliance Excel"
+              path={complianceExportXlsxPath(exportPeriod)}
+              fallbackName="compliance_summary.xlsx"
+              className="max-md:w-full"
+            />
             </>
           )
         }
@@ -470,6 +480,8 @@ export function Reporting() {
           )}
       </ChartPanel>
 
+      <QualityMetricsCard projectId={projectId || undefined} />
+
       <EmbossedCard>
         <CardHeader>
           <CardTitle>Defect Aging &amp; SLA</CardTitle>
@@ -536,6 +548,14 @@ export function Reporting() {
       <ChartPanel
         title="Aggregate Report"
         bodyClassName="h-80"
+        actions={
+          <ExportButton
+            path={aggregateExportXlsxPath(metric, groupBy, filters)}
+            fallbackName={`report_${metric}.xlsx`}
+            ariaLabel="Export aggregate report to Excel"
+            disabled={aggregateData.length === 0}
+          />
+        }
         summary={
           aggregateData.length
             ? `${chartType} chart of ${METRICS.find((m) => m.value === metric)?.label ?? metric} grouped by ${groupBy}, ${aggregateData.length} groups.`
