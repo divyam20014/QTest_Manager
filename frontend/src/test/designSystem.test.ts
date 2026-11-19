@@ -68,6 +68,9 @@ const HARD_CODED_COLOUR_BASELINE: Record<string, number> = {
   // variables); this one dark-theme edge-label background keeps the diagram
   // labels at AA contrast. Must not grow.
   'routes/docs/MermaidDiagram.tsx': 1,
+  // QR codes must be pure black on white for scanners, whatever the theme
+  // (the quiet-zone background and the modules). Must not grow.
+  'routes/platformAdmin/QrCode.tsx': 2,
 }
 
 const COLOUR_RE =

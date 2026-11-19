@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ban, CheckCircle2, Clock, PauseCircle, ShieldCheck, ShieldOff } from 'lucide-react'
 
@@ -8,10 +8,15 @@ import {
   assignTenantSubscription,
   createPlatformAdmin,
   createTenant,
+  getPlatformSession,
   listLeads,
   listPlans,
   listPlatformAdmins,
   listTenants,
+  PLATFORM_SESSION_EXPIRED_EVENT,
+  PLATFORM_SESSION_KEY,
+  platformLogout,
+  resetPlatformAdminMfa,
   updateLeadStatus,
   updatePlatformAdminActive,
   updateTenantDataRegion,
@@ -20,7 +25,7 @@ import {
   type LeadKind,
   type LeadStatus,
   type PlatformAdminAccount,
-  type PlatformCredentials,
+  type PlatformSessionInfo,
   type Tenant,
   type TenantStatus,
 } from '@/api/platformAdmin'
@@ -29,8 +34,8 @@ import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/Respo
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ErrorState } from '@/components/ui/empty-state'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -39,84 +44,86 @@ import { Tabs } from '@/components/ui/tabs'
 import { Tooltip } from '@/components/ui/tooltip'
 import { useToast } from '@/lib/toast'
 import { FormError } from '@/components/ui/form-field'
+import { PlatformSignIn } from './platformAdmin/PlatformSignIn'
 
 // Platform Administration manages tenant lifecycle (create/approve/suspend/
 // deactivate) and platform admin accounts, deliberately separate from the
 // tenant app's own auth/RBAC (ADR-008): a different identity
-// (platform_admins), HTTP Basic, never a session cookie. This screen is not
-// linked from the main app shell/nav -- reachable only via its own URL,
-// matching that separation.
+// (platform_admins) with its own session cookie. ADR-074: sign-in is password
+// + TOTP MFA (or a recovery code). This screen is not linked from the main app
+// shell/nav -- reachable only via its own URL, matching that separation.
 export function PlatformAdmin() {
-  const [credentials, setCredentials] = useState<PlatformCredentials | null>(null)
+  const queryClient = useQueryClient()
+  // Forget everything the signed-in console fetched, but keep the session query
+  // itself: clearing it would detach the observer that drives this screen, so
+  // setting it to null afterwards would never re-render the page.
+  const dropConsoleData = () =>
+    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== PLATFORM_SESSION_KEY[0] })
 
-  return credentials ? (
-    <AdminConsole credentials={credentials} onSignOut={() => setCredentials(null)} />
-  ) : (
-    <SignInForm onSignedIn={setCredentials} />
-  )
-}
-
-function SignInForm({ onSignedIn }: { onSignedIn: (c: PlatformCredentials) => void }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-
-  const verifyMutation = useMutation({
-    mutationFn: (c: PlatformCredentials) => listTenants(c),
-    onSuccess: (_data, c) => onSignedIn(c),
+  // The session lives in an HttpOnly cookie the page cannot read; this asks
+  // the server who (if anyone) is signed in. 401 -> null -> show sign-in.
+  const sessionQuery = useQuery({
+    queryKey: PLATFORM_SESSION_KEY,
+    queryFn: () =>
+      getPlatformSession().catch((err: unknown) => {
+        if (err instanceof ApiError && err.code === 'unauthorized') return null
+        throw err
+      }),
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   })
 
-  const error = verifyMutation.error instanceof ApiError ? verifyMutation.error.message : null
+  useEffect(() => {
+    const onExpired = () => {
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== PLATFORM_SESSION_KEY[0] })
+      queryClient.setQueryData(PLATFORM_SESSION_KEY, null)
+    }
+    window.addEventListener(PLATFORM_SESSION_EXPIRED_EVENT, onExpired)
+    return () => window.removeEventListener(PLATFORM_SESSION_EXPIRED_EVENT, onExpired)
+  }, [queryClient])
 
-  return (
-    <div className="flex min-h-svh items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-base text-[var(--foreground)]">Platform Administration</CardTitle>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Separate from tenant sign-in — for provisioning and tenant lifecycle only.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              verifyMutation.mutate({ email, password })
-            }}
-          >
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="platform-email">Email</Label>
-              <Input
-                id="platform-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="platform-password">Password</Label>
-              <Input
-                id="platform-password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </div>
-            {error && (
-              <p role="alert" className="text-xs text-[var(--destructive)]">
-                {error}
-              </p>
-            )}
-            <Button type="submit" disabled={verifyMutation.isPending}>
-              {verifyMutation.isPending ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  )
+  const setSession = (next: PlatformSessionInfo | null) => {
+    queryClient.setQueryData(PLATFORM_SESSION_KEY, next)
+  }
+
+  if (sessionQuery.isLoading) {
+    return (
+      <div className="flex min-h-svh items-center justify-center p-4">
+        <p role="status" className="text-sm text-[var(--muted-foreground)]">
+          Checking your session…
+        </p>
+      </div>
+    )
+  }
+
+  if (sessionQuery.isError) {
+    return (
+      <div className="flex min-h-svh items-center justify-center p-4">
+        <ErrorState
+          message="Could not reach the server."
+          error={sessionQuery.error}
+          onRetry={() => sessionQuery.refetch()}
+        />
+      </div>
+    )
+  }
+
+  const session = sessionQuery.data ?? null
+  if (session?.stage === 'mfa_verified') {
+    return (
+      <AdminConsole
+        email={session.email}
+        onSignOut={() => {
+          void platformLogout().finally(() => {
+            dropConsoleData()
+            setSession(null)
+          })
+        }}
+      />
+    )
+  }
+  return <PlatformSignIn session={session} onSession={setSession} />
 }
 
 const STATUS_TONE: Record<TenantStatus, 'positive' | 'neutral' | 'critical' | 'warning'> = {
@@ -143,18 +150,12 @@ function StatusBadge({ status }: { status: TenantStatus }) {
   )
 }
 
-function AdminConsole({
-  credentials,
-  onSignOut,
-}: {
-  credentials: PlatformCredentials
-  onSignOut: () => void
-}) {
+function AdminConsole({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-6">
       <PageHeader
         title="Platform Administration"
-        description={<span className="break-all">Signed in as {credentials.email}</span>}
+        description={<span className="break-all">Signed in as {email}</span>}
         actions={
           <Button variant="outline" size="sm" onClick={onSignOut}>
             Sign out
@@ -165,13 +166,13 @@ function AdminConsole({
       <Tabs
         defaultKey="tenants"
         items={[
-          { key: 'tenants', label: 'Tenants', content: <TenantsPanel credentials={credentials} /> },
+          { key: 'tenants', label: 'Tenants', content: <TenantsPanel /> },
           {
             key: 'admins',
             label: 'Platform Admins',
-            content: <PlatformAdminsPanel credentials={credentials} />,
+            content: <PlatformAdminsPanel adminEmail={email} />,
           },
-          { key: 'leads', label: 'Leads', content: <LeadsPanel credentials={credentials} /> },
+          { key: 'leads', label: 'Leads', content: <LeadsPanel /> },
         ]}
       />
     </div>
@@ -185,13 +186,14 @@ function AdminConsole({
 const PAGE_SIZE = 25
 const REGION_OPTIONS = ['us', 'eu', 'apac']
 
-function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
+function TenantsPanel() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [planTarget, setPlanTarget] = useState<Tenant | null>(null)
-  const [confirmTarget, setConfirmTarget] = useState<{ tenant: Tenant; status: TenantStatus } | null>(
-    null,
-  )
+  const [confirmTarget, setConfirmTarget] = useState<{
+    tenant: Tenant
+    status: TenantStatus
+  } | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<TenantStatus | ''>('')
   const [page, setPage] = useState(1)
@@ -199,8 +201,7 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
 
   const tenantsQuery = useQuery({
     queryKey: ['platform-tenants', search, statusFilter, page],
-    queryFn: () =>
-      listTenants(credentials, { search, status: statusFilter, page, page_size: PAGE_SIZE }),
+    queryFn: () => listTenants({ search, status: statusFilter, page, page_size: PAGE_SIZE }),
   })
 
   const total = tenantsQuery.data?.total ?? 0
@@ -208,7 +209,7 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: TenantStatus }) =>
-      updateTenantStatus(credentials, id, status),
+      updateTenantStatus(id, status),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
       showToast('success', `Tenant ${vars.status}`)
@@ -221,7 +222,7 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
   // only, platform-admin-only to change.
   const dataRegionMutation = useMutation({
     mutationFn: ({ id, dataRegion }: { id: string; dataRegion: string }) =>
-      updateTenantDataRegion(credentials, id, dataRegion),
+      updateTenantDataRegion(id, dataRegion),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-tenants'] })
       showToast('success', 'Data region updated')
@@ -258,7 +259,12 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
         </>
       ),
     },
-    { key: 'status', header: 'Status', card: 'badge', cell: (t) => <StatusBadge status={t.status} /> },
+    {
+      key: 'status',
+      header: 'Status',
+      card: 'badge',
+      cell: (t) => <StatusBadge status={t.status} />,
+    },
     {
       key: 'domain',
       header: 'Domain',
@@ -278,7 +284,9 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
           disabled={dataRegionMutation.isPending}
           onChange={(e) => dataRegionMutation.mutate({ id: t.id, dataRegion: e.target.value })}
         >
-          {REGION_OPTIONS.includes(t.data_region) ? null : <option value={t.data_region}>{t.data_region}</option>}
+          {REGION_OPTIONS.includes(t.data_region) ? null : (
+            <option value={t.data_region}>{t.data_region}</option>
+          )}
           {REGION_OPTIONS.map((r) => (
             <option key={r} value={r}>
               {r}
@@ -357,9 +365,13 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
         stateCellClassName="px-4"
         state={
           tenantsQuery.isLoading ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">Loading tenants…</p>
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              Loading tenants…
+            </p>
           ) : total === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">No tenants match your search.</p>
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              No tenants match your search.
+            </p>
           ) : undefined
         }
         rowActions={(t) => (
@@ -368,17 +380,29 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
               Plan
             </Button>
             {t.status !== 'approved' && (
-              <Button variant="outline" size="sm" onClick={() => requestStatusChange(t, 'approved')}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => requestStatusChange(t, 'approved')}
+              >
                 Approve
               </Button>
             )}
             {t.status !== 'inactive' && (
-              <Button variant="outline" size="sm" onClick={() => requestStatusChange(t, 'inactive')}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => requestStatusChange(t, 'inactive')}
+              >
                 Deactivate
               </Button>
             )}
             {t.status !== 'suspended' && (
-              <Button variant="destructive" size="sm" onClick={() => requestStatusChange(t, 'suspended')}>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => requestStatusChange(t, 'suspended')}
+              >
                 Suspend
               </Button>
             )}
@@ -392,7 +416,12 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
             Page {page} of {totalPages} ({total} tenant{total === 1 ? '' : 's'})
           </span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
               Previous
             </Button>
             <Button
@@ -407,12 +436,8 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
         </div>
       )}
 
-      <NewTenantDialog
-        credentials={credentials}
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-      />
-      <PlanDialog credentials={credentials} tenant={planTarget} onClose={() => setPlanTarget(null)} />
+      <NewTenantDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <PlanDialog tenant={planTarget} onClose={() => setPlanTarget(null)} />
       {confirmTarget && (
         <ConfirmDialog
           open={!!confirmTarget}
@@ -422,10 +447,17 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
               ? `Every user at ${confirmTarget.tenant.name} will be immediately logged out and blocked from signing in again until this tenant is re-approved. Use this for a compliance or abuse hold.`
               : `Every user at ${confirmTarget.tenant.name} will be immediately logged out and blocked from signing in again until this tenant is re-approved. Use this for routine offboarding (e.g. non-payment), not a compliance hold.`
           }
-          confirmLabel={confirmTarget.status === 'suspended' ? 'Suspend tenant' : 'Deactivate tenant'}
+          confirmLabel={
+            confirmTarget.status === 'suspended' ? 'Suspend tenant' : 'Deactivate tenant'
+          }
           destructive
           pending={statusMutation.isPending}
-          onConfirm={() => statusMutation.mutate({ id: confirmTarget.tenant.id, status: confirmTarget.status })}
+          onConfirm={() =>
+            statusMutation.mutate({
+              id: confirmTarget.tenant.id,
+              status: confirmTarget.status,
+            })
+          }
           onClose={() => setConfirmTarget(null)}
         />
       )}
@@ -435,15 +467,7 @@ function TenantsPanel({ credentials }: { credentials: PlatformCredentials }) {
 
 // Tier 1 / ADR-053: schema/record-keeping only -- no payment gateway, no
 // billing engine.
-function PlanDialog({
-  credentials,
-  tenant,
-  onClose,
-}: {
-  credentials: PlatformCredentials
-  tenant: Tenant | null
-  onClose: () => void
-}) {
+function PlanDialog({ tenant, onClose }: { tenant: Tenant | null; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [planCode, setPlanCode] = useState('')
   const [status, setStatus] = useState<'trialing' | 'active' | 'past_due' | 'canceled'>('active')
@@ -452,13 +476,13 @@ function PlanDialog({
 
   const plansQuery = useQuery({
     queryKey: ['platform-plans'],
-    queryFn: () => listPlans(credentials),
+    queryFn: () => listPlans(),
     enabled: !!tenant,
   })
 
   const assignMutation = useMutation({
     mutationFn: () =>
-      assignTenantSubscription(credentials, tenant!.id, {
+      assignTenantSubscription(tenant!.id, {
         plan_code: planCode,
         status,
         seat_count: seatCount,
@@ -530,17 +554,10 @@ function PlanDialog({
   )
 }
 
-const PASSWORD_HINT = 'At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.'
+const PASSWORD_HINT =
+  'At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.'
 
-function NewTenantDialog({
-  credentials,
-  open,
-  onClose,
-}: {
-  credentials: PlatformCredentials
-  open: boolean
-  onClose: () => void
-}) {
+function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [tenantName, setTenantName] = useState('')
   const [adminName, setAdminName] = useState('')
@@ -552,7 +569,7 @@ function NewTenantDialog({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      createTenant(credentials, {
+      createTenant({
         tenant_name: tenantName,
         admin_name: adminName,
         admin_email: adminEmail,
@@ -690,20 +707,21 @@ function NewTenantDialog({
   )
 }
 
-function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials }) {
+function PlatformAdminsPanel({ adminEmail }: { adminEmail: string }) {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [confirmTarget, setConfirmTarget] = useState<PlatformAdminAccount | null>(null)
+  const [resetTarget, setResetTarget] = useState<PlatformAdminAccount | null>(null)
   const { show: showToast } = useToast()
 
   const adminsQuery = useQuery({
     queryKey: ['platform-admins'],
-    queryFn: () => listPlatformAdmins(credentials),
+    queryFn: () => listPlatformAdmins(),
   })
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      updatePlatformAdminActive(credentials, id, isActive),
+      updatePlatformAdminActive(id, isActive),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['platform-admins'] })
       showToast('success', vars.isActive ? 'Admin reactivated' : 'Admin deactivated')
@@ -713,8 +731,19 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
       showToast('error', err instanceof ApiError ? err.message : 'Could not update that admin'),
   })
 
+  const resetMfaMutation = useMutation({
+    mutationFn: (id: string) => resetPlatformAdminMfa(id),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['platform-admins'] })
+      showToast('success', `MFA reset for ${updated.email}; they will re-enrol at next sign-in`)
+      setResetTarget(null)
+    },
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not reset MFA'),
+  })
+
   const isSelf = (admin: PlatformAdminAccount) =>
-    admin.email.toLowerCase() === credentials.email.toLowerCase()
+    admin.email.toLowerCase() === adminEmail.toLowerCase()
 
   const adminColumns: ResponsiveColumn<PlatformAdminAccount>[] = [
     {
@@ -750,6 +779,17 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
       ),
     },
     {
+      key: 'mfa',
+      header: 'MFA',
+      card: 'badge',
+      cell: (a) => (
+        <Badge tone={a.mfa_enabled ? 'positive' : 'warning'} className="gap-1">
+          <ShieldCheck aria-hidden="true" className="h-3 w-3" />
+          {a.mfa_enabled ? 'MFA on' : 'MFA not set up'}
+        </Badge>
+      ),
+    },
+    {
       key: 'created',
       header: 'Created',
       tdClassName: 'text-[var(--muted-foreground)]',
@@ -761,7 +801,7 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-[var(--muted-foreground)]">
-          Accounts that can sign in to Platform Administration.
+          Accounts that can sign in to Platform Administration (password + authenticator app).
         </p>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           New Admin
@@ -776,39 +816,61 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
         stateCellClassName="px-4"
         state={
           adminsQuery.isLoading ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">Loading admins…</p>
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              Loading admins…
+            </p>
           ) : undefined
         }
-        rowActions={(a) =>
-          a.is_active ? (
-            <Tooltip content={isSelf(a) ? 'You cannot deactivate your own account' : null} side="bottom">
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={isSelf(a)}
-                aria-label={isSelf(a) ? 'Deactivate (you cannot deactivate your own account)' : undefined}
-                onClick={() => setConfirmTarget(a)}
-              >
-                Deactivate
+        rowActions={(a) => (
+          <>
+            {!isSelf(a) && a.mfa_enabled && (
+              <Button variant="outline" size="sm" onClick={() => setResetTarget(a)}>
+                Reset MFA
               </Button>
-            </Tooltip>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => toggleMutation.mutate({ id: a.id, isActive: true })}
-            >
-              Reactivate
-            </Button>
-          )
-        }
+            )}
+            {a.is_active ? (
+              <Tooltip
+                content={isSelf(a) ? 'You cannot deactivate your own account' : null}
+                side="bottom"
+              >
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={isSelf(a)}
+                  aria-label={
+                    isSelf(a) ? 'Deactivate (you cannot deactivate your own account)' : undefined
+                  }
+                  onClick={() => setConfirmTarget(a)}
+                >
+                  Deactivate
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => toggleMutation.mutate({ id: a.id, isActive: true })}
+              >
+                Reactivate
+              </Button>
+            )}
+          </>
+        )}
       />
 
-      <NewAdminDialog
-        credentials={credentials}
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-      />
+      <NewAdminDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      {resetTarget && (
+        <ConfirmDialog
+          open={!!resetTarget}
+          title={`Reset MFA for ${resetTarget.email}?`}
+          description="Their authenticator and recovery codes are removed and every active session ends. They must set up a new authenticator at their next sign-in."
+          confirmLabel="Reset MFA"
+          destructive
+          pending={resetMfaMutation.isPending}
+          onConfirm={() => resetMfaMutation.mutate(resetTarget.id)}
+          onClose={() => setResetTarget(null)}
+        />
+      )}
       {confirmTarget && (
         <ConfirmDialog
           open={!!confirmTarget}
@@ -825,22 +887,14 @@ function PlatformAdminsPanel({ credentials }: { credentials: PlatformCredentials
   )
 }
 
-function NewAdminDialog({
-  credentials,
-  open,
-  onClose,
-}: {
-  credentials: PlatformCredentials
-  open: boolean
-  onClose: () => void
-}) {
+function NewAdminDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const { show: showToast } = useToast()
 
   const createMutation = useMutation({
-    mutationFn: () => createPlatformAdmin(credentials, { email, password }),
+    mutationFn: () => createPlatformAdmin({ email, password }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-admins'] })
       setEmail('')
@@ -917,7 +971,7 @@ const LEAD_STATUS_TONE: Record<LeadStatus, 'warning' | 'positive' | 'neutral'> =
 
 // Enquiries from the public website's Request a Demo / Contact forms.
 // Prospects have no tenant yet, so leads live at platform level.
-function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
+function LeadsPanel() {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
   const [kind, setKind] = useState<LeadKind | ''>('')
@@ -926,12 +980,11 @@ function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
 
   const leadsQuery = useQuery({
     queryKey: ['platform-leads', kind, status, page],
-    queryFn: () => listLeads(credentials, { kind, status, page, page_size: PAGE_SIZE }),
+    queryFn: () => listLeads({ kind, status, page, page_size: PAGE_SIZE }),
   })
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, next }: { id: string; next: LeadStatus }) =>
-      updateLeadStatus(credentials, id, next),
+    mutationFn: ({ id, next }: { id: string; next: LeadStatus }) => updateLeadStatus(id, next),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['platform-leads'] })
       showToast('success', 'Lead updated')
@@ -949,7 +1002,12 @@ function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
       className="w-32 max-md:w-full"
       value={lead.status}
       disabled={statusMutation.isPending}
-      onChange={(e) => statusMutation.mutate({ id: lead.id, next: e.target.value as LeadStatus })}
+      onChange={(e) =>
+        statusMutation.mutate({
+          id: lead.id,
+          next: e.target.value as LeadStatus,
+        })
+      }
     >
       <option value="new">New</option>
       <option value="contacted">Contacted</option>
@@ -971,11 +1029,16 @@ function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
       cell: (lead) => (
         <>
           <div className="font-medium">{lead.full_name}</div>
-          <a className="text-xs text-[var(--brand)] hover:underline" href={`mailto:${lead.business_email}`}>
+          <a
+            className="text-xs text-[var(--brand)] hover:underline"
+            href={`mailto:${lead.business_email}`}
+          >
             {lead.business_email}
           </a>
           {lead.message && (
-            <p className="mt-1 max-w-md whitespace-pre-line text-xs text-[var(--muted-foreground)]">{lead.message}</p>
+            <p className="mt-1 max-w-md whitespace-pre-line text-xs text-[var(--muted-foreground)]">
+              {lead.message}
+            </p>
           )}
         </>
       ),
@@ -989,7 +1052,9 @@ function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
             {lead.business_email}
           </a>
           {lead.message && (
-            <p className="whitespace-pre-line break-words text-sm text-[var(--muted-foreground)]">{lead.message}</p>
+            <p className="whitespace-pre-line break-words text-sm text-[var(--muted-foreground)]">
+              {lead.message}
+            </p>
           )}
           <div className="mt-2 flex flex-col gap-1">
             <span className="text-xs text-[var(--muted-foreground)]">Update status</span>
@@ -1092,9 +1157,13 @@ function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
         stateCellClassName="px-4"
         state={
           leadsQuery.isLoading ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">Loading leads…</p>
+            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
+              Loading leads…
+            </p>
           ) : leadsQuery.isError ? (
-            <p className="py-6 text-center text-sm text-[var(--status-serious)]">Could not load leads.</p>
+            <p className="py-6 text-center text-sm text-[var(--status-serious)]">
+              Could not load leads.
+            </p>
           ) : leadsQuery.data && leadsQuery.data.items.length === 0 ? (
             <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
               No leads match these filters yet.
@@ -1109,7 +1178,12 @@ function LeadsPanel({ credentials }: { credentials: PlatformCredentials }) {
             Page {page} of {totalPages} ({total} lead{total === 1 ? '' : 's'})
           </span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
               Previous
             </Button>
             <Button

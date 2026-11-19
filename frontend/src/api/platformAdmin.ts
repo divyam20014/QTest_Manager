@@ -1,12 +1,9 @@
 import { API_BASE_URL, type ApiEnvelope, ApiError } from '@/api/client'
 
 // Platform Administration is a deliberately separate auth plane from tenant
-// sessions (ADR-008): HTTP Basic against platform_admins, not the session
-// cookie. Credentials are supplied per-call, never persisted.
-export interface PlatformCredentials {
-  email: string
-  password: string
-}
+// sessions (ADR-008). ADR-074: password + TOTP MFA exchanged for an HttpOnly,
+// SameSite=Strict session cookie scoped to /api/v1/platform. The browser keeps
+// the cookie; this code never sees, stores or re-sends the password.
 
 export type TenantStatus = 'pending' | 'approved' | 'suspended' | 'inactive'
 
@@ -40,6 +37,7 @@ export interface PlatformAdminAccount {
   email: string
   is_active: boolean
   created_at: string
+  mfa_enabled: boolean
 }
 
 export interface PlatformAdminListResponse {
@@ -56,70 +54,124 @@ export interface TenantCreateRequest {
   primary_domain?: string
 }
 
-async function platformFetch<T>(
-  path: string,
-  credentials: PlatformCredentials,
-  init?: RequestInit,
-): Promise<T> {
-  const basic = btoa(`${credentials.email}:${credentials.password}`)
+// Fired when a console request finds the session gone (expired / revoked /
+// signed out elsewhere) so the page can fall back to the sign-in form.
+// React Query key under which the current Platform Admin session is cached.
+export const PLATFORM_SESSION_KEY = ['platform-session'] as const
+
+export const PLATFORM_SESSION_EXPIRED_EVENT = 'qth:platform-session-expired'
+
+async function platformFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
-      Authorization: `Basic ${basic}`,
       'Content-Type': 'application/json',
       ...init?.headers,
     },
   })
-  const body = (await response.json()) as ApiEnvelope<T>
-  if (!response.ok || body.error) {
-    throw new ApiError(body.error?.message ?? 'Request failed', body.error?.code ?? 'unknown')
+  let body: ApiEnvelope<T> | null = null
+  try {
+    body = (await response.json()) as ApiEnvelope<T>
+  } catch {
+    body = null
   }
-  return body.data as T
+  if (!response.ok || body?.error) {
+    if (response.status === 401 && !path.startsWith('/platform/auth/')) {
+      window.dispatchEvent(new Event(PLATFORM_SESSION_EXPIRED_EVENT))
+    }
+    throw new ApiError(body?.error?.message ?? 'Request failed', body?.error?.code ?? 'unknown')
+  }
+  return body?.data as T
 }
 
-export function listTenants(
-  credentials: PlatformCredentials,
-  params: TenantListParams = {},
-): Promise<TenantListResponse> {
+// --- sign-in (ADR-074) ------------------------------------------------------
+
+export type PlatformStage = 'password_ok' | 'mfa_verified'
+
+export interface PlatformSessionInfo {
+  email: string
+  stage: PlatformStage
+  mfa_enrolled: boolean
+  recovery_codes_remaining: number | null
+}
+
+export interface PlatformEnrolStart {
+  secret: string
+  otpauth_uri: string
+  issuer: string
+  account: string
+}
+
+export interface PlatformEnrolFinish {
+  email: string
+  stage: PlatformStage
+  recovery_codes: string[]
+}
+
+export function platformLogin(email: string, password: string): Promise<PlatformSessionInfo> {
+  return platformFetch('/platform/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+export function getPlatformSession(): Promise<PlatformSessionInfo> {
+  return platformFetch('/platform/auth/me')
+}
+
+export function startPlatformEnrolment(): Promise<PlatformEnrolStart> {
+  return platformFetch('/platform/auth/mfa/enroll/start', { method: 'POST' })
+}
+
+export function finishPlatformEnrolment(code: string): Promise<PlatformEnrolFinish> {
+  return platformFetch('/platform/auth/mfa/enroll/verify', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  })
+}
+
+export function verifyPlatformMfa(
+  credential: { code: string } | { recovery_code: string },
+): Promise<PlatformSessionInfo> {
+  return platformFetch('/platform/auth/mfa/verify', {
+    method: 'POST',
+    body: JSON.stringify(credential),
+  })
+}
+
+export function platformLogout(): Promise<{ signed_out: boolean }> {
+  return platformFetch('/platform/auth/logout', { method: 'POST' })
+}
+
+export function listTenants(params: TenantListParams = {}): Promise<TenantListResponse> {
   const query = new URLSearchParams()
   if (params.search) query.set('search', params.search)
   if (params.status) query.set('status', params.status)
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
   const qs = query.toString()
-  return platformFetch<TenantListResponse>(
-    `/platform/tenants${qs ? `?${qs}` : ''}`,
-    credentials,
-  )
+  return platformFetch<TenantListResponse>(`/platform/tenants${qs ? `?${qs}` : ''}`)
 }
 
 export function createTenant(
-  credentials: PlatformCredentials,
   req: TenantCreateRequest,
 ): Promise<{ tenant: Tenant; admin_user_id: string }> {
-  return platformFetch('/platform/tenants', credentials, {
+  return platformFetch('/platform/tenants', {
     method: 'POST',
     body: JSON.stringify(req),
   })
 }
 
-export function updateTenantStatus(
-  credentials: PlatformCredentials,
-  tenantId: string,
-  status: Tenant['status'],
-): Promise<Tenant> {
-  return platformFetch<Tenant>(`/platform/tenants/${tenantId}/status`, credentials, {
+export function updateTenantStatus(tenantId: string, status: Tenant['status']): Promise<Tenant> {
+  return platformFetch<Tenant>(`/platform/tenants/${tenantId}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
   })
 }
 
-export function updateTenantDataRegion(
-  credentials: PlatformCredentials,
-  tenantId: string,
-  dataRegion: string,
-): Promise<Tenant> {
-  return platformFetch<Tenant>(`/platform/tenants/${tenantId}/data-region`, credentials, {
+export function updateTenantDataRegion(tenantId: string, dataRegion: string): Promise<Tenant> {
+  return platformFetch<Tenant>(`/platform/tenants/${tenantId}/data-region`, {
     method: 'PATCH',
     body: JSON.stringify({ data_region: dataRegion }),
   })
@@ -146,23 +198,23 @@ export interface Subscription {
   current_period_end: string | null
 }
 
-export function listPlans(credentials: PlatformCredentials): Promise<Plan[]> {
-  return platformFetch<Plan[]>('/platform/plans', credentials)
+export function listPlans(): Promise<Plan[]> {
+  return platformFetch<Plan[]>('/platform/plans')
 }
 
-export function getTenantSubscription(
-  credentials: PlatformCredentials,
-  tenantId: string,
-): Promise<Subscription> {
-  return platformFetch<Subscription>(`/platform/tenants/${tenantId}/subscription`, credentials)
+export function getTenantSubscription(tenantId: string): Promise<Subscription> {
+  return platformFetch<Subscription>(`/platform/tenants/${tenantId}/subscription`)
 }
 
 export function assignTenantSubscription(
-  credentials: PlatformCredentials,
   tenantId: string,
-  req: { plan_code: string; status: Subscription['status']; seat_count: number },
+  req: {
+    plan_code: string
+    status: Subscription['status']
+    seat_count: number
+  },
 ): Promise<Subscription> {
-  return platformFetch<Subscription>(`/platform/tenants/${tenantId}/subscription`, credentials, {
+  return platformFetch<Subscription>(`/platform/tenants/${tenantId}/subscription`, {
     method: 'PUT',
     body: JSON.stringify(req),
   })
@@ -172,35 +224,30 @@ export function assignTenantSubscription(
 // only way to provision/deactivate a platform admin was the out-of-band
 // CLI script.
 export function listPlatformAdmins(
-  credentials: PlatformCredentials,
   params: { page?: number; page_size?: number } = {},
 ): Promise<PlatformAdminListResponse> {
   const query = new URLSearchParams()
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
   const qs = query.toString()
-  return platformFetch<PlatformAdminListResponse>(
-    `/platform/admins${qs ? `?${qs}` : ''}`,
-    credentials,
-  )
+  return platformFetch<PlatformAdminListResponse>(`/platform/admins${qs ? `?${qs}` : ''}`)
 }
 
-export function createPlatformAdmin(
-  credentials: PlatformCredentials,
-  req: { email: string; password: string },
-): Promise<PlatformAdminAccount> {
-  return platformFetch<PlatformAdminAccount>('/platform/admins', credentials, {
+export function createPlatformAdmin(req: {
+  email: string
+  password: string
+}): Promise<PlatformAdminAccount> {
+  return platformFetch<PlatformAdminAccount>('/platform/admins', {
     method: 'POST',
     body: JSON.stringify(req),
   })
 }
 
 export function updatePlatformAdminActive(
-  credentials: PlatformCredentials,
   adminId: string,
   isActive: boolean,
 ): Promise<PlatformAdminAccount> {
-  return platformFetch<PlatformAdminAccount>(`/platform/admins/${adminId}`, credentials, {
+  return platformFetch<PlatformAdminAccount>(`/platform/admins/${adminId}`, {
     method: 'PATCH',
     body: JSON.stringify({ is_active: isActive }),
   })
@@ -231,8 +278,12 @@ export interface LeadListResponse {
 }
 
 export function listLeads(
-  credentials: PlatformCredentials,
-  params: { kind?: LeadKind | ''; status?: LeadStatus | ''; page?: number; page_size?: number } = {},
+  params: {
+    kind?: LeadKind | ''
+    status?: LeadStatus | ''
+    page?: number
+    page_size?: number
+  } = {},
 ): Promise<LeadListResponse> {
   const query = new URLSearchParams()
   if (params.kind) query.set('kind', params.kind)
@@ -240,16 +291,18 @@ export function listLeads(
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
   const qs = query.toString()
-  return platformFetch<LeadListResponse>(`/platform/leads${qs ? `?${qs}` : ''}`, credentials)
+  return platformFetch<LeadListResponse>(`/platform/leads${qs ? `?${qs}` : ''}`)
 }
 
-export function updateLeadStatus(
-  credentials: PlatformCredentials,
-  leadId: string,
-  status: LeadStatus,
-): Promise<MarketingLead> {
-  return platformFetch<MarketingLead>(`/platform/leads/${leadId}`, credentials, {
+export function updateLeadStatus(leadId: string, status: LeadStatus): Promise<MarketingLead> {
+  return platformFetch<MarketingLead>(`/platform/leads/${leadId}`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  })
+}
+
+export function resetPlatformAdminMfa(adminId: string): Promise<PlatformAdminAccount> {
+  return platformFetch<PlatformAdminAccount>(`/platform/admins/${adminId}/reset-mfa`, {
+    method: 'POST',
   })
 }

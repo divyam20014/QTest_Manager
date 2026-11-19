@@ -1,7 +1,13 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test'
 
-import { bootstrapTenant, loginViaUi } from './fixtures'
+import {
+  bootstrapTenant,
+  freshPlatformTotpCode,
+  loginViaUi,
+  PLATFORM_ADMIN_EMAIL,
+  PLATFORM_ADMIN_PASSWORD,
+} from './fixtures'
 
 // BRD gap Phase 4: accessibility (axe WCAG 2 A/AA), horizontal overflow and
 // phone tap-target sweep over the Documentation viewer, Sign-up, Settings and
@@ -191,9 +197,12 @@ test('Platform Admin: the tenant list shows an Insurance Domain column and the N
   page,
 }) => {
   await page.goto('/platform-admin')
-  await page.getByLabel('Email').fill(process.env.E2E_PLATFORM_ADMIN_EMAIL ?? 'owner@qtesthub.local')
-  await page.getByLabel('Password').fill(process.env.E2E_PLATFORM_ADMIN_PASSWORD ?? 'Sup3rSecret1Pass')
+  await page.getByLabel('Email').fill(PLATFORM_ADMIN_EMAIL)
+  await page.getByLabel('Password').fill(PLATFORM_ADMIN_PASSWORD)
   await page.getByRole('button', { name: 'Sign in' }).click()
+  // ADR-074: second step -- 6-digit authenticator code.
+  await page.getByLabel('Authentication code').fill(await freshPlatformTotpCode())
+  await page.getByRole('button', { name: 'Verify' }).click()
   await expect(page.getByRole('columnheader', { name: 'Domain' })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: 'New Tenant' }).click()
   const select = page.getByLabel('Insurance Domain (optional)')
