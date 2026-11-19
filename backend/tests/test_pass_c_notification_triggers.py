@@ -219,7 +219,7 @@ def test_sla_breach_sweep_is_isolated_per_tenant(
     # must never leak this tenant's breach notification into another's.
     other_bootstrap = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Other Carrier",
             "admin_name": "Other Admin",

@@ -9,7 +9,7 @@ def _bootstrap_tenant(
 ) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": name,
             "admin_name": "Admin A",
@@ -39,7 +39,7 @@ def test_new_tenant_has_a_default_trial_subscription(
 
     response = client.get(
         f"/api/v1/platform/tenants/{tenant_id}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
     )
     assert response.status_code == 200, response.text
     data = response.json()["data"]
@@ -53,7 +53,7 @@ def test_platform_admin_can_assign_a_subscription(client: TestClient, platform_a
 
     response = client.put(
         f"/api/v1/platform/tenants/{tenant_id}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"plan_code": "standard", "status": "active", "seat_count": 10},
     )
     assert response.status_code == 200, response.text
@@ -69,7 +69,7 @@ def test_assigning_an_unknown_plan_code_fails(client: TestClient, platform_admin
 
     response = client.put(
         f"/api/v1/platform/tenants/{tenant_id}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"plan_code": "nonexistent", "status": "active", "seat_count": 1},
     )
     assert response.status_code == 422, response.text
@@ -99,13 +99,13 @@ def test_subscriptions_are_tenant_isolated(client: TestClient, platform_admin: d
 
     client.put(
         f"/api/v1/platform/tenants/{tenant_a['tenant']['id']}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"plan_code": "standard", "status": "active", "seat_count": 5},
     )
 
     response = client.get(
         f"/api/v1/platform/tenants/{tenant_b['tenant']['id']}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
     )
     assert response.status_code == 200, response.text
     # Tenant B's own default Trial subscription is unaffected by Tenant A's

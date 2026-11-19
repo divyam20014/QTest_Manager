@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 def _bootstrap_tenant(client: TestClient, platform_admin: dict, tenant_name: str = "Zenith Cover") -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": tenant_name,
             "admin_name": "Admin A",

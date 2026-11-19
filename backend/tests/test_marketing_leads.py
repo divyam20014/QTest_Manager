@@ -73,7 +73,7 @@ def test_lead_submission_is_rate_limited(client: TestClient) -> None:
 def test_platform_admin_can_list_filter_and_update(
     client: TestClient, platform_admin: dict
 ) -> None:
-    auth = (platform_admin["email"], platform_admin["password"])
+    auth = platform_admin["headers"]
     client.post("/api/v1/public/leads", json=_DEMO)
     client.post(
         "/api/v1/public/leads",
@@ -85,24 +85,26 @@ def test_platform_admin_can_list_filter_and_update(
         },
     )
 
-    listing = client.get("/api/v1/platform/leads", auth=auth)
+    listing = client.get("/api/v1/platform/leads", headers=auth)
     assert listing.status_code == 200, listing.text
     data = listing.json()["data"]
     assert data["total"] == 2
     assert data["items"][0]["kind"] == "contact"  # newest first
 
-    demos = client.get("/api/v1/platform/leads", params={"kind": "demo"}, auth=auth).json()["data"]
+    demos = client.get(
+        "/api/v1/platform/leads", params={"kind": "demo"}, headers=auth
+    ).json()["data"]
     assert [item["full_name"] for item in demos["items"]] == ["Morgan Hale"]
 
     lead_id = demos["items"][0]["id"]
     updated = client.patch(
-        f"/api/v1/platform/leads/{lead_id}", json={"status": "contacted"}, auth=auth
+        f"/api/v1/platform/leads/{lead_id}", json={"status": "contacted"}, headers=auth
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["data"]["status"] == "contacted"
 
     contacted = client.get(
-        "/api/v1/platform/leads", params={"status": "contacted"}, auth=auth
+        "/api/v1/platform/leads", params={"status": "contacted"}, headers=auth
     ).json()["data"]
     assert contacted["total"] == 1
 

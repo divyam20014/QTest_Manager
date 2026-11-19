@@ -25,6 +25,7 @@ from app.api import (
     marketing,
     notifications,
     platform,
+    platform_auth,
     projects,
     report_schedule,
     reporting,
@@ -172,6 +173,7 @@ def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
 
 
 app.include_router(platform.router, prefix="/api/v1")
+app.include_router(platform_auth.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")

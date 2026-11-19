@@ -1,97 +1,60 @@
-from datetime import UTC, datetime, timedelta
+"""Platform Administration auth (ADR-008, ADR-074).
+
+Platform Administration is provisioning-only and a deliberately separate
+auth plane from tenant RBAC. ADR-074 replaces the old HTTP Basic scheme
+(credentials re-sent on every request, no MFA) with a server-side session
+that is only granted after a password AND a TOTP code (or recovery code).
+HTTP Basic is no longer accepted anywhere on /platform.
+"""
 
 from fastapi import Depends, Request
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_db
-from app.core.errors import UnauthorizedError
-from app.core.logging import logger
+from app.core.errors import ForbiddenError
 from app.core.rate_limit import limiter
-from app.core.security import verify_password
 from app.models.identity import PlatformAdmin
+from app.services import platform_auth_service as svc
 
-_security = HTTPBasic()
 settings = get_settings()
 
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
-# Tier 0 / ADR-052: rate-limiting is applied HERE, on the shared auth
-# dependency, rather than via a @limiter.limit decorator on each route
-# function. FastAPI resolves a route's Depends() parameters (this one
-# included) before ever calling the route function itself, so a decorator
-# on the route function would never get a chance to block a request that
-# this dependency already rejects with 401 -- the rate limit must sit at or
-# before the same layer that can reject the request.
-#
-# 60/minute (vs. login's tighter 10/minute): this dependency gates ALL
-# platform routes including the read-only tenant list, which the frontend's
-# own TenantConsole legitimately re-polls after every mutation (see
-# PlatformAdmin.tsx's `invalidateQueries`), and this project's own Playwright
-# regression suite calls the create-tenant route once per spec file via
-# `bootstrapTenant` -- a 10/minute cap left near-zero headroom for two
-# consecutive full suite runs (observed firsthand: a second run within the
-# same window tripped 429s on otherwise-passing specs). The lockout above
-# (5 wrong passwords -> 15 min lock) is this plane's primary brute-force
-# defense; this rate limit is a supplementary throttle, not the only gate,
-# so a materially looser cap here doesn't meaningfully weaken it.
+
+def enforce_same_origin(request: Request) -> None:
+    """CSRF defence in depth for the cookie-authenticated platform plane.
+    The session cookie is SameSite=Strict, JSON bodies force a CORS preflight
+    for any other origin, and on top of that a browser-supplied Origin header
+    on a state-changing request must be one of the configured origins.
+    Non-browser clients (curl, tests, the CLI) send no Origin and pass."""
+    if request.method in _SAFE_METHODS:
+        return
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in settings.cors_allow_origins:
+        raise ForbiddenError("Cross-origin request rejected")
+
+
+def platform_session_token(request: Request) -> str | None:
+    return request.cookies.get(settings.platform_session_cookie_name)
+
+
+# Tier 0 / ADR-052: rate-limiting lives HERE, on the shared auth dependency,
+# not on each route function -- FastAPI resolves this dependency before the
+# route body runs, so a decorator on the route could never throttle a request
+# this dependency already rejects. 60/minute: the Platform Admin console
+# legitimately re-polls the tenant list after every mutation, and the e2e
+# suite provisions a tenant per spec file; the account lockout (password and
+# MFA failures) is the real brute-force defence, this is a supplementary
+# throttle.
 @limiter.limit("60/minute")
-def require_platform_admin(
-    request: Request,
-    credentials: HTTPBasicCredentials = Depends(_security),
-    db: Session = Depends(get_db),
-) -> PlatformAdmin:
-    """Platform Administration is provisioning-only (ADR-008): separate from
-    tenant RBAC, authenticated against the RLS-exempt platform_admins table.
-
-    Tier 0 / ADR-052: adds a brute-force lockout on this HTTP Basic plane
-    (mirroring the spirit of the tenant MFA challenge's attempt_count) since
-    a full session+MFA replacement was deliberately deferred as out of
-    proportion for this pass -- see ADR-052 for the reasoning.
-    """
-    admin = db.execute(
-        select(PlatformAdmin).where(PlatformAdmin.email == credentials.username)
-    ).scalar_one_or_none()
-
-    if admin is not None and admin.locked_until is not None:
-        now = datetime.now(UTC)
-        locked_until = admin.locked_until
-        if locked_until.tzinfo is None:
-            locked_until = locked_until.replace(tzinfo=UTC)
-        if locked_until > now:
-            logger.warning(
-                "security_event=platform_admin_login_blocked reason=locked email=%s",
-                credentials.username,
-            )
-            raise UnauthorizedError("Account temporarily locked due to repeated failed logins")
-
-    if admin is not None and not admin.is_active:
-        logger.warning(
-            "security_event=platform_admin_login_blocked reason=inactive email=%s",
-            credentials.username,
-        )
-        raise UnauthorizedError("This platform admin account has been deactivated")
-
-    if admin is None or not verify_password(credentials.password, admin.password_hash):
-        if admin is not None:
-            admin.failed_login_count += 1
-            if admin.failed_login_count >= settings.platform_admin_max_failed_logins:
-                admin.locked_until = datetime.now(UTC) + timedelta(
-                    minutes=settings.platform_admin_lockout_minutes
-                )
-                logger.warning(
-                    "security_event=platform_admin_locked_out email=%s", credentials.username
-                )
-            db.commit()
-        logger.warning(
-            "security_event=platform_admin_login_failed email=%s", credentials.username
-        )
-        raise UnauthorizedError("Invalid platform admin credentials")
-
-    if admin.failed_login_count or admin.locked_until:
-        admin.failed_login_count = 0
-        admin.locked_until = None
-        db.commit()
-
+def require_platform_admin(request: Request, db: Session = Depends(get_db)) -> PlatformAdmin:
+    """A fully authenticated platform admin: live session cookie whose stage
+    is 'mfa_verified'. A password-only ('password_ok') session, a tenant
+    session cookie, or an Authorization: Basic header never qualifies."""
+    enforce_same_origin(request)
+    session_row, admin = svc.load_session(
+        db, platform_session_token(request), stages=(svc.STAGE_MFA_VERIFIED,)
+    )
+    svc.touch_session(db, session_row)
     return admin

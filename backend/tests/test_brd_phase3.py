@@ -157,7 +157,7 @@ def test_exports_are_tenant_scoped(client: TestClient, platform_admin: dict) -> 
     other = TestClient(client.app)
     response = other.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Other Mutual",
             "admin_name": "Admin B",

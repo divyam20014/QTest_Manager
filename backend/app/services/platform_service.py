@@ -14,7 +14,7 @@ from app.models.identity import Session as SessionModel
 from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
 from app.schemas.platform import PlatformAdminCreateRequest, TenantCreateRequest
-from app.services import field_option_service
+from app.services import field_option_service, platform_auth_service
 
 # Tier 1 / ADR-053: every tenant starts on this plan -- seeded by migration
 # c2d3e4f5a6b7, never absent.
@@ -270,6 +270,8 @@ def upsert_platform_admin(db: Session, email: str, password: str) -> PlatformAdm
         existing.is_active = True
         existing.failed_login_count = 0
         existing.locked_until = None
+        # ADR-074: a changed password ends every live session for that admin.
+        platform_auth_service.revoke_all_sessions(db, existing.id)
         db.commit()
         return existing
 
@@ -304,10 +306,35 @@ def update_platform_admin_active(
         raise NotFoundError("Platform admin not found")
 
     admin.is_active = is_active
+    if not is_active:
+        platform_auth_service.revoke_all_sessions(db, admin.id)
     db.commit()
     logger.warning(
         "security_event=platform_admin_%s email=%s actor_admin_id=%s",
         "activated" if is_active else "deactivated",
+        admin.email,
+        actor_admin_id,
+    )
+    return admin
+
+
+def reset_platform_admin_mfa(db: Session, admin_id: UUID, actor_admin_id: UUID) -> PlatformAdmin:
+    """ADR-074: one admin clears another's MFA (lost device). Not allowed on
+    yourself -- a hijacked session must not be able to swap in its own
+    authenticator; the operator CLI is the self-recovery path."""
+    if admin_id == actor_admin_id:
+        raise ConflictError(
+            "You cannot reset your own MFA from an active session; use the operator CLI "
+            "(scripts.reset_platform_admin_mfa) or ask another platform admin"
+        )
+    admin = db.execute(
+        select(PlatformAdmin).where(PlatformAdmin.id == admin_id)
+    ).scalar_one_or_none()
+    if admin is None:
+        raise NotFoundError("Platform admin not found")
+    platform_auth_service.reset_mfa(db, admin)
+    logger.warning(
+        "security_event=platform_admin_mfa_reset_by_admin email=%s actor_admin_id=%s",
         admin.email,
         actor_admin_id,
     )

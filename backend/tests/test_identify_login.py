@@ -14,7 +14,7 @@ def _bootstrap_tenant(
 ) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": tenant_name,
             "admin_name": "Admin",

@@ -178,3 +178,15 @@ def update_platform_admin(
 ) -> dict:
     updated = platform_service.update_platform_admin_active(db, admin_id, req.is_active, admin.id)
     return envelope(PlatformAdminOut.model_validate(updated).model_dump(mode="json"))
+
+
+@router.post("/admins/{admin_id}/reset-mfa")
+def reset_platform_admin_mfa(
+    admin_id: UUID,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    """ADR-074: clear another admin's MFA (lost device); they re-enrol on
+    their next sign-in. Refused for your own account."""
+    updated = platform_service.reset_platform_admin_mfa(db, admin_id, admin.id)
+    return envelope(PlatformAdminOut.model_validate(updated).model_dump(mode="json"))

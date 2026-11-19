@@ -19,7 +19,7 @@ from app.services import job_service
 def _bootstrap_tenant(client: TestClient, platform_admin: dict) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Horizon Mutual",
             "admin_name": "Admin A",
@@ -142,7 +142,7 @@ def test_a_tenant_cannot_read_another_tenants_job(client: TestClient, platform_a
 
     bootstrap_b = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Apex Insurance",
             "admin_name": "Admin B",

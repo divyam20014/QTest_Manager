@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 def _bootstrap_tenant(client: TestClient, platform_admin: dict) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Horizon Mutual",
             "admin_name": "Admin A",
@@ -117,7 +117,7 @@ def test_requirement_attachment_is_tenant_scoped(client: TestClient, platform_ad
     other_client = TestClient(client.app)
     other_bootstrap = other_client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Summit Casualty",
             "admin_name": "Admin B",
@@ -306,7 +306,7 @@ def test_defect_attachment_from_a_different_project_is_still_tenant_scoped(
     other_client = TestClient(client.app)
     other_bootstrap = other_client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Summit Casualty",
             "admin_name": "Admin B",

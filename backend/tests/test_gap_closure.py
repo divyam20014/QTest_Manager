@@ -14,7 +14,7 @@ def _bootstrap_tenant(
 ) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": name,
             "admin_name": "Admin A",
@@ -81,7 +81,7 @@ def test_platform_admin_can_create_and_update_a_plan(
 ) -> None:
     create = client.post(
         "/api/v1/platform/plans",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"code": "gap-closure-plan", "name": "Gap Closure Plan", "seat_limit": 3},
     )
     assert create.status_code == 200, create.text
@@ -89,7 +89,7 @@ def test_platform_admin_can_create_and_update_a_plan(
 
     update = client.patch(
         "/api/v1/platform/plans/gap-closure-plan",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"seat_limit": 5},
     )
     assert update.status_code == 200, update.text
@@ -100,12 +100,12 @@ def test_platform_admin_can_create_and_update_a_plan(
 def test_duplicate_plan_code_rejected(client: TestClient, platform_admin: dict) -> None:
     client.post(
         "/api/v1/platform/plans",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"code": "dup-plan", "name": "Dup Plan"},
     )
     second = client.post(
         "/api/v1/platform/plans",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"code": "dup-plan", "name": "Dup Plan Again"},
     )
     assert second.status_code == 422, second.text
@@ -117,14 +117,14 @@ def test_seat_limit_blocks_user_creation_once_reached(
     name = "SeatLimited Co"
     client.post(
         "/api/v1/platform/plans",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"code": "one-seat", "name": "One Seat Plan", "seat_limit": 1},
     )
     bootstrap = _bootstrap_tenant(client, platform_admin, name)
     tenant_id = bootstrap["tenant"]["id"]
     client.put(
         f"/api/v1/platform/tenants/{tenant_id}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"plan_code": "one-seat", "status": "active"},
     )
     _login_and_verify(client, tenant_id, _setup_admin_email(name), "AdminPassw0rd!")
@@ -159,14 +159,14 @@ def test_ai_quota_blocks_further_ai_calls_once_reached(
     name = "AIQuota Co"
     client.post(
         "/api/v1/platform/plans",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"code": "zero-ai", "name": "Zero AI Plan", "ai_monthly_request_limit": 1},
     )
     bootstrap = _bootstrap_tenant(client, platform_admin, name)
     tenant_id = bootstrap["tenant"]["id"]
     client.put(
         f"/api/v1/platform/tenants/{tenant_id}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"plan_code": "zero-ai", "status": "active"},
     )
     tid = UUID(tenant_id)
@@ -213,7 +213,7 @@ def test_platform_admin_can_clear_ip_allowlist(client: TestClient, platform_admi
 
     clear_resp = client.post(
         f"/api/v1/platform/tenants/{tenant_id}/clear-ip-allowlist",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
     )
     assert clear_resp.status_code == 200, clear_resp.text
 

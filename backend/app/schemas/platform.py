@@ -58,6 +58,8 @@ class PlatformAdminOut(BaseModel):
     email: str
     is_active: bool
     created_at: datetime
+    # ADR-074: derived from mfa_enabled_at -- never exposes any secret.
+    mfa_enabled: bool = False
 
     model_config = {"from_attributes": True}
 

@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 def _bootstrap_and_login(client: TestClient, platform_admin: dict, name: str) -> None:
     bootstrap = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": name,
             "admin_name": "Admin A",

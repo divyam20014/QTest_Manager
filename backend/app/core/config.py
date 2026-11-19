@@ -47,7 +47,10 @@ class Settings(BaseSettings):
     smtp_from_email: str = "no-reply@qtesthub.local"
     smtp_use_tls: bool = True
 
-    cors_allow_origins: list[str] = ["http://localhost:5173"]
+    # Local-dev default: browsers treat localhost and 127.0.0.1 as different
+    # origins, so both are allowed. validate_for_production() still rejects
+    # these defaults, so a production deploy must set CORS_ALLOW_ORIGINS.
+    cors_allow_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     # ADR-012: attachment bytes live on disk, never as DB blobs. Matches the
     # `qtesthub_attachments` volume already mounted at this path in
@@ -104,6 +107,18 @@ class Settings(BaseSettings):
     platform_admin_max_failed_logins: int = 5
     platform_admin_lockout_minutes: int = 15
 
+    # ADR-074: Platform Admin session + TOTP MFA (supersedes the HTTP Basic
+    # plane described above). A distinct cookie name keeps a tenant session
+    # from ever being read as a platform session and vice versa.
+    platform_session_cookie_name: str = "qth_platform_session"
+    platform_session_absolute_ttl_hours: int = 8
+    platform_session_idle_timeout_minutes: int = 30
+    # The password-verified, pre-MFA session is short-lived: it only has to
+    # survive the time it takes to type a 6-digit code.
+    platform_pre_mfa_ttl_minutes: int = 10
+    platform_mfa_max_failed_attempts: int = 5
+    platform_mfa_issuer: str = "QTestHub"
+
     # Tier 1 / ADR-053: pluggable attachment storage backend. "local" (the
     # default, unchanged dev/test behavior) writes under attachments_dir;
     # "s3" targets AWS S3 or any S3-compatible endpoint (MinIO, DO Spaces)
@@ -146,7 +161,7 @@ _DEV_DATABASE_URL = "postgresql+psycopg://qtesthub:qtesthub@localhost:5432/qtest
 _DEV_IDENTIFY_DATABASE_URL = (
     "postgresql+psycopg://qtesthub_identify:qtesthub_identify@localhost:5432/qtesthub"
 )
-_DEV_CORS_ORIGINS = ["http://localhost:5173"]
+_DEV_CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 class InsecureProductionConfigError(RuntimeError):
@@ -193,7 +208,9 @@ def validate_for_production(settings: Settings) -> None:
             "exposure -- set a real IDENTIFY_DATABASE_URL."
         )
 
-    if not settings.cors_allow_origins or settings.cors_allow_origins == _DEV_CORS_ORIGINS:
+    if not settings.cors_allow_origins or set(settings.cors_allow_origins) <= set(
+        _DEV_CORS_ORIGINS
+    ):
         problems.append(
             "CORS_ALLOW_ORIGINS is unset or still the local-dev default "
             "(http://localhost:5173) -- set it to your real frontend origin(s)."
@@ -204,6 +221,25 @@ def validate_for_production(settings: Settings) -> None:
             "credentials are allowed and would be unsafe even if it weren't -- "
             "list explicit origins."
         )
+
+    # ADR-074: platform-admin TOTP secrets are encrypted at rest with the
+    # same Fernet key as AI credentials. An empty/invalid key would make
+    # every platform sign-in fail at runtime -- refuse to boot instead.
+    if not settings.ai_credential_encryption_key:
+        problems.append(
+            "AI_CREDENTIAL_ENCRYPTION_KEY is unset -- it also encrypts platform-admin "
+            "MFA secrets (ADR-074); generate one with Fernet.generate_key()."
+        )
+    else:
+        try:
+            from cryptography.fernet import Fernet
+
+            Fernet(settings.ai_credential_encryption_key.encode())
+        except ValueError:
+            problems.append(
+                "AI_CREDENTIAL_ENCRYPTION_KEY is not a valid Fernet key "
+                "(urlsafe-base64, 32 bytes) -- it also encrypts platform-admin MFA secrets."
+            )
 
     if problems:
         raise InsecureProductionConfigError(

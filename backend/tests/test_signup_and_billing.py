@@ -148,14 +148,14 @@ def test_switching_to_a_plan_below_current_seat_count_is_blocked(
 
     plan_response = client.put(
         f"/api/v1/platform/tenants/{tenant_id}/subscription",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"plan_code": "standard", "status": "active", "seat_count": 1},
     )
     assert plan_response.status_code == 200, plan_response.text
 
     create_plan = client.post(
         "/api/v1/platform/plans",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"code": "solo-seat-block-co", "name": "Solo", "seat_limit": 1},
     )
     assert create_plan.status_code == 200, create_plan.text

@@ -9,6 +9,7 @@ def _base_production_settings(**overrides) -> Settings:
         database_url="postgresql+psycopg://real_user:real_pass@db.internal:5432/qtesthub",
         mfa_delivery_mode="real",
         cors_allow_origins=["https://app.example.com"],
+        ai_credential_encryption_key="kEdknj1w6XzjMsv2T86nToujCkYjMqSYnr3CoPxuKAI=",
     )
     defaults.update(overrides)
     return Settings(**defaults)
@@ -57,3 +58,14 @@ def test_multiple_problems_are_all_reported() -> None:
     message = str(exc_info.value)
     assert "MFA_DELIVERY_MODE" in message
     assert "CORS_ALLOW_ORIGINS" in message
+
+
+def test_missing_encryption_key_in_production_is_rejected() -> None:
+    # ADR-074: the Fernet key also protects platform-admin MFA secrets.
+    with pytest.raises(InsecureProductionConfigError, match="AI_CREDENTIAL_ENCRYPTION_KEY"):
+        validate_for_production(_base_production_settings(ai_credential_encryption_key=""))
+
+
+def test_invalid_encryption_key_in_production_is_rejected() -> None:
+    with pytest.raises(InsecureProductionConfigError, match="not a valid Fernet key"):
+        validate_for_production(_base_production_settings(ai_credential_encryption_key="nope"))

@@ -284,7 +284,7 @@ def test_tester_cannot_delete_run_and_other_tenant_cannot_see_it(
 
     other = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Other Mutual",
             "admin_name": "Other Admin",
@@ -368,7 +368,7 @@ def test_other_tenant_cannot_delete_defect(client: TestClient, platform_admin: d
     defect = _create_defect(client, project["id"], "Cross tenant probe")
     other = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Other Mutual",
             "admin_name": "Other Admin",

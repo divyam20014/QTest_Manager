@@ -52,7 +52,6 @@ def test_platform_tenants_is_rate_limited_after_sixty_attempts_per_minute(
         responses = [
             client.post(
                 "/api/v1/platform/tenants",
-                auth=("nobody@example.com", "WrongPassword1!"),
                 json={
                     "tenant_name": "x",
                     "admin_name": "x",

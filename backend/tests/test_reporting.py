@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 def _bootstrap_tenant(client: TestClient, platform_admin: dict) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Horizon Mutual",
             "admin_name": "Admin A",

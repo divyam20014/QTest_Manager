@@ -1,15 +1,17 @@
-"""Tier 0 / ADR-052: platform-admin brute-force lockout and audit
-attribution on the existing HTTP Basic plane (a full session+MFA
-replacement was deliberately deferred -- see ADR-052)."""
+"""Tier 0 / ADR-052 + ADR-074: platform-admin brute-force lockout and audit
+attribution. The lockout now applies to the session sign-in
+(POST /platform/auth/login) rather than HTTP Basic."""
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+
+from tests.platform_helpers import cookie_from
 
 
 def _create_tenant(client: TestClient, platform_admin: dict) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Lockout Test Co",
             "admin_name": "Admin A",
@@ -21,63 +23,35 @@ def _create_tenant(client: TestClient, platform_admin: dict) -> dict:
     return response.json()["data"]
 
 
+def _login(client: TestClient, email: str, password: str):
+    return client.post("/api/v1/platform/auth/login", json={"email": email, "password": password})
+
+
 def test_failed_logins_lock_the_platform_admin_account(
     client: TestClient, platform_admin: dict
 ) -> None:
     for _ in range(5):
-        response = client.post(
-            "/api/v1/platform/tenants",
-            auth=(platform_admin["email"], "WrongPassword1!"),
-            json={
-                "tenant_name": "x",
-                "admin_name": "x",
-                "admin_email": "x@example.com",
-                "admin_password": "x",
-            },
-        )
-        assert response.status_code == 401
+        assert _login(client, platform_admin["email"], "WrongPassword1!").status_code == 401
 
     # The 6th attempt, even with the CORRECT password, is rejected because
     # the account is now locked.
-    locked_response = client.post(
-        "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
-        json={
-            "tenant_name": "x",
-            "admin_name": "x",
-            "admin_email": "x@example.com",
-            "admin_password": "x",
-        },
-    )
+    locked_response = _login(client, platform_admin["email"], platform_admin["password"])
     assert locked_response.status_code == 401
     assert "locked" in locked_response.json()["error"]["message"].lower()
+    assert cookie_from(locked_response) is None
+
+    # ... and an already-issued session of a locked account stops working.
+    me = client.get("/api/v1/platform/tenants", headers=platform_admin["headers"])
+    assert me.status_code == 401
 
 
 def test_successful_login_resets_failed_count(
     client: TestClient, platform_admin: dict, owner_engine
 ) -> None:
     for _ in range(3):
-        client.post(
-            "/api/v1/platform/tenants",
-            auth=(platform_admin["email"], "WrongPassword1!"),
-            json={
-                "tenant_name": "x",
-                "admin_name": "x",
-                "admin_email": "x@example.com",
-                "admin_password": "x",
-            },
-        )
+        assert _login(client, platform_admin["email"], "WrongPassword1!").status_code == 401
 
-    ok_response = client.post(
-        "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
-        json={
-            "tenant_name": "Reset Test Co",
-            "admin_name": "Admin A",
-            "admin_email": "admin@reset.example.com",
-            "admin_password": "AdminPassw0rd!",
-        },
-    )
+    ok_response = _login(client, platform_admin["email"], platform_admin["password"])
     assert ok_response.status_code == 200, ok_response.text
 
     with owner_engine.begin() as conn:

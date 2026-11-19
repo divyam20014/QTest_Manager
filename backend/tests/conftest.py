@@ -29,11 +29,11 @@ os.environ["ATTACHMENTS_DIR"] = str(Path(__file__).resolve().parent / "_tmp_atta
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
-from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 
 from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 ADMIN_DSN = "postgresql://qtesthub:qtesthub@localhost:5432/postgres"
@@ -115,13 +115,24 @@ def db_session():
 
 @pytest.fixture
 def platform_admin(owner_engine):
-    from app.core.security import hash_password
+    """A platform admin that is already MFA-enrolled and signed in through the
+    real password + TOTP flow (ADR-074). `headers` carries the fully
+    authenticated session cookie; `email`/`password`/`totp_secret` are there
+    for tests that exercise the sign-in flow itself."""
+    from app.main import app
+    from tests.platform_helpers import (
+        PLATFORM_EMAIL,
+        PLATFORM_PASSWORD,
+        PLATFORM_TOTP_SECRET,
+        seed_admin,
+        sign_in,
+    )
 
-    email = "owner@qtesthub.local"
-    password = "PlatformOwner123!"
-    with owner_engine.begin() as conn:
-        conn.execute(
-            text("INSERT INTO platform_admins (email, password_hash) VALUES (:email, :hash)"),
-            {"email": email, "hash": hash_password(password)},
-        )
-    return {"email": email, "password": password}
+    seed_admin(owner_engine)
+    headers = sign_in(TestClient(app))
+    return {
+        "email": PLATFORM_EMAIL,
+        "password": PLATFORM_PASSWORD,
+        "totp_secret": PLATFORM_TOTP_SECRET,
+        "headers": headers,
+    }

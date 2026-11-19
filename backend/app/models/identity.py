@@ -3,6 +3,7 @@ from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -38,6 +39,70 @@ class PlatformAdmin(Base, UUIDPKMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=sa.text("true")
     )
+    # ADR-074: TOTP MFA. The secret is Fernet-encrypted at rest (never the
+    # plaintext base32). While mfa_enabled_at is NULL the secret is only a
+    # PENDING enrolment secret and grants nothing.
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
+    mfa_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Highest TOTP time step already accepted -- a code is single-use.
+    mfa_last_used_step: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    mfa_failed_count: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+
+    @property
+    def mfa_enabled(self) -> bool:
+        return self.mfa_enabled_at is not None and self.mfa_secret_encrypted is not None
+
+
+class PlatformSession(Base, UUIDPKMixin):
+    """ADR-074: server-side Platform Admin session. The cookie carries a
+    random 256-bit token; only its SHA-256 is stored, so a database read
+    cannot be replayed as a live session. `stage` 'password_ok' (password
+    verified, MFA outstanding) grants no API access; only 'mfa_verified'
+    does."""
+
+    __tablename__ = "platform_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "stage in ('password_ok','mfa_verified')", name="ck_platform_sessions_stage"
+        ),
+    )
+
+    admin_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("platform_admins.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    stage: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    mfa_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class PlatformAdminRecoveryCode(Base, UUIDPKMixin):
+    """ADR-074: single-use MFA recovery code. Only the SHA-256 of the
+    (80-bit random) code is stored."""
+
+    __tablename__ = "platform_admin_recovery_codes"
+
+    admin_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("platform_admins.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    code_hash: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Role(Base, UUIDPKMixin):

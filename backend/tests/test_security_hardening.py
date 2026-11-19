@@ -22,7 +22,7 @@ settings = get_settings()
 def _bootstrap_tenant(client: TestClient, platform_admin: dict, name: str, email: str) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": name,
             "admin_name": "Admin",

@@ -126,7 +126,7 @@ def test_platform_admin_can_create_a_tenant_with_a_domain_and_sees_it_in_the_lis
 ) -> None:
     created = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": "Platform Made Co",
             "admin_name": "Admin A",
@@ -139,7 +139,7 @@ def test_platform_admin_can_create_a_tenant_with_a_domain_and_sees_it_in_the_lis
     assert created.json()["data"]["tenant"]["primary_domain"] == "Property"
 
     listing = client.get(
-        "/api/v1/platform/tenants", auth=(platform_admin["email"], platform_admin["password"])
+        "/api/v1/platform/tenants", headers=platform_admin["headers"]
     )
     assert listing.status_code == 200, listing.text
     by_name = {item["name"]: item for item in listing.json()["data"]["items"]}

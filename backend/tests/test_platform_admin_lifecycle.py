@@ -10,7 +10,7 @@ from sqlalchemy import text
 def _create_tenant(client: TestClient, platform_admin: dict, name: str = "Lifecycle Test Co") -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={
             "tenant_name": name,
             "admin_name": "Admin A",
@@ -42,7 +42,7 @@ def test_tenant_status_accepts_inactive(client: TestClient, platform_admin: dict
 
     response = client.patch(
         f"/api/v1/platform/tenants/{tenant_id}/status",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"status": "inactive"},
     )
     assert response.status_code == 200, response.text
@@ -58,7 +58,7 @@ def test_inactive_tenant_login_blocked_with_distinct_message(
 
     client.patch(
         f"/api/v1/platform/tenants/{tenant_id}/status",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"status": "inactive"},
     )
 
@@ -91,7 +91,7 @@ def test_suspending_a_tenant_revokes_active_sessions(
 
     suspend = client.patch(
         f"/api/v1/platform/tenants/{tenant_id}/status",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"status": "suspended"},
     )
     assert suspend.status_code == 200, suspend.text
@@ -124,7 +124,7 @@ def test_approving_a_tenant_does_not_touch_sessions(
 
     response = client.patch(
         f"/api/v1/platform/tenants/{tenant_id}/status",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"status": "approved"},
     )
     assert response.status_code == 200, response.text
@@ -146,7 +146,7 @@ def test_tenant_list_search_filter_and_pagination(client: TestClient, platform_a
 
     search_response = client.get(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         params={"search": "Searchable"},
     )
     assert search_response.status_code == 200, search_response.text
@@ -159,7 +159,7 @@ def test_tenant_list_search_filter_and_pagination(client: TestClient, platform_a
 
     paged_response = client.get(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         params={"page": 1, "page_size": 1, "search": "Searchable"},
     )
     assert paged_response.status_code == 200
@@ -169,7 +169,7 @@ def test_tenant_list_search_filter_and_pagination(client: TestClient, platform_a
 
     status_response = client.get(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         params={"status": "approved"},
     )
     assert status_response.status_code == 200
@@ -179,18 +179,18 @@ def test_tenant_list_search_filter_and_pagination(client: TestClient, platform_a
 def test_platform_admin_crud_and_self_deactivation_guard(
     client: TestClient, platform_admin: dict
 ) -> None:
-    auth = (platform_admin["email"], platform_admin["password"])
+    auth = platform_admin["headers"]
 
     create_response = client.post(
         "/api/v1/platform/admins",
-        auth=auth,
+        headers=auth,
         json={"email": "second.admin@example.com", "password": "SecondAdmin123!"},
     )
     assert create_response.status_code == 200, create_response.text
     second_admin = create_response.json()["data"]
     assert second_admin["is_active"] is True
 
-    list_response = client.get("/api/v1/platform/admins", auth=auth)
+    list_response = client.get("/api/v1/platform/admins", headers=auth)
     assert list_response.status_code == 200
     emails = {a["email"] for a in list_response.json()["data"]["items"]}
     assert "second.admin@example.com" in emails
@@ -202,33 +202,28 @@ def test_platform_admin_crud_and_self_deactivation_guard(
         if a["email"] == platform_admin["email"]
     )
     self_deactivate = client.patch(
-        f"/api/v1/platform/admins/{self_id}", auth=auth, json={"is_active": False}
+        f"/api/v1/platform/admins/{self_id}", headers=auth, json={"is_active": False}
     )
     assert self_deactivate.status_code == 409
     assert "your own" in self_deactivate.json()["error"]["message"].lower()
 
     other_id = second_admin["id"]
     deactivate_other = client.patch(
-        f"/api/v1/platform/admins/{other_id}", auth=auth, json={"is_active": False}
+        f"/api/v1/platform/admins/{other_id}", headers=auth, json={"is_active": False}
     )
     assert deactivate_other.status_code == 200
     assert deactivate_other.json()["data"]["is_active"] is False
 
-    locked_out = client.post(
-        "/api/v1/platform/tenants",
-        auth=("second.admin@example.com", "SecondAdmin123!"),
-        json={
-            "tenant_name": "x",
-            "admin_name": "x",
-            "admin_email": "x2@example.com",
-            "admin_password": "x",
-        },
+    # A deactivated admin cannot sign in (correct password, still refused).
+    blocked = client.post(
+        "/api/v1/platform/auth/login",
+        json={"email": "second.admin@example.com", "password": "SecondAdmin123!"},
     )
-    assert locked_out.status_code == 401
-    assert "deactivated" in locked_out.json()["error"]["message"].lower()
+    assert blocked.status_code == 401
+    assert "deactivated" in blocked.json()["error"]["message"].lower()
 
     reactivate = client.patch(
-        f"/api/v1/platform/admins/{other_id}", auth=auth, json={"is_active": True}
+        f"/api/v1/platform/admins/{other_id}", headers=auth, json={"is_active": True}
     )
     assert reactivate.status_code == 200
     assert reactivate.json()["data"]["is_active"] is True

@@ -15,6 +15,8 @@ from app.models.identity import (
     MfaChallenge,
     Permission,
     PlatformAdmin,
+    PlatformAdminRecoveryCode,
+    PlatformSession,
     Role,
     RolePermission,
     Session,
@@ -47,6 +49,8 @@ from app.models.user_invite import UserInvite
 __all__ = [
     "Tenant",
     "PlatformAdmin",
+    "PlatformAdminRecoveryCode",
+    "PlatformSession",
     "Role",
     "Permission",
     "RolePermission",

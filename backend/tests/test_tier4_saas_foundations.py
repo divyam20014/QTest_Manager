@@ -22,7 +22,7 @@ def _bootstrap_tenant(client: TestClient, platform_admin: dict, **overrides) -> 
     payload.update(overrides)
     response = client.post(
         "/api/v1/platform/tenants",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json=payload,
     )
     assert response.status_code == 200, response.text
@@ -240,7 +240,7 @@ def test_data_region_is_platform_admin_only(client: TestClient, platform_admin: 
 
     admin_response = client.patch(
         f"/api/v1/platform/tenants/{tenant_id}/data-region",
-        auth=(platform_admin["email"], platform_admin["password"]),
+        headers=platform_admin["headers"],
         json={"data_region": "apac"},
     )
     assert admin_response.status_code == 200, admin_response.text
