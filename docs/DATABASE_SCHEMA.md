@@ -23,6 +23,36 @@ Bootstrap-only (ADR-008). Not a tenant role.
 | email | CITEXT UNIQUE NOT NULL | |
 | password_hash | TEXT NOT NULL | Argon2id |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+| failed_login_count | SMALLINT NOT NULL DEFAULT 0 | password-failure lockout (ADR-052) |
+| locked_until | TIMESTAMPTZ | set by password **or** MFA lockout |
+| is_active | BOOLEAN NOT NULL DEFAULT true | |
+| mfa_secret_encrypted | TEXT | Fernet ciphertext of the base32 TOTP secret; never plaintext (ADR-074). While `mfa_enabled_at` is NULL it is only a *pending* enrolment secret |
+| mfa_enabled_at | TIMESTAMPTZ | NULL = MFA not enrolled; set when the first code is confirmed |
+| mfa_last_used_step | BIGINT | highest accepted TOTP time step -- a code is single-use (replay protection) |
+| mfa_failed_count | SMALLINT NOT NULL DEFAULT 0 | wrong TOTP/recovery codes since the last success; 5 locks the account |
+
+### `platform_sessions` (ADR-074)
+Server-side Platform Admin session. No tenant column, no RLS (platform table, same grants as `platform_admins`).
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| admin_id | UUID FK platform_admins ON DELETE CASCADE | indexed |
+| token_hash | TEXT UNIQUE NOT NULL | SHA-256 of the cookie token; the raw token is never stored |
+| stage | TEXT NOT NULL | `password_ok` (grants no API access) \| `mfa_verified` |
+| created_at / last_seen_at | TIMESTAMPTZ | idle timeout (30 min) is measured from `last_seen_at` |
+| expires_at | TIMESTAMPTZ NOT NULL | absolute: 10 min for `password_ok`, 8 h for `mfa_verified` |
+| mfa_verified_at | TIMESTAMPTZ | |
+| revoked_at | TIMESTAMPTZ | logout, deactivation, password change, MFA reset, lockout |
+| ip_address / user_agent | TEXT | recorded for forensics only; not bound to the session |
+
+### `platform_admin_recovery_codes` (ADR-074)
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| admin_id | UUID FK platform_admins ON DELETE CASCADE | indexed; UNIQUE (admin_id, code_hash) |
+| code_hash | TEXT NOT NULL | SHA-256 of the 80-bit recovery code; plaintext is shown once at enrolment |
+| created_at | TIMESTAMPTZ | |
+| used_at | TIMESTAMPTZ | NULL = still usable; each code works once |
 
 ## Identity & Access (FR-AUTH, FR-ADM-001)
 

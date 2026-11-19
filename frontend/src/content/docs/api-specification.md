@@ -16,11 +16,20 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 | GET | /ready | Readiness — does a real `SELECT 1` against the database; 503 if unreachable (SAAS-GAP-16). Used by the `api` service's Docker healthcheck. |
 
 ## Platform Administration (no tenant context)
+
+Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth/*` (password, then authenticator code or recovery code). Every route below requires a fully authenticated (`mfa_verified`) session carried in the `qth_platform_session` HttpOnly, SameSite=Strict cookie (`Path=/api/v1/platform`); an `Authorization: Basic` header is rejected with 401. State-changing requests carrying a browser `Origin` outside `CORS_ALLOW_ORIGINS` get 403.
 | Method | Path | Purpose | Role |
 |---|---|---|---|
+| POST | /platform/auth/login | Password step: `{email, password}` → sets the pre-MFA `qth_platform_session` cookie (stage `password_ok`, 10 min, grants no API access). Rate limited 10/min/IP; 5 wrong passwords lock the account 15 min (ADR-074) | public |
+| GET | /platform/auth/me | Current platform session: `{email, stage, mfa_enrolled, recovery_codes_remaining}`; 401 when signed out/expired | platform session (any stage) |
+| POST | /platform/auth/mfa/enroll/start | First-time setup: returns a *pending* `{secret, otpauth_uri, issuer, account}` (refused with 409 once MFA is enabled) | platform session (`password_ok`) |
+| POST | /platform/auth/mfa/enroll/verify | `{code}` confirms the first authenticator code, enables MFA, returns the 10 single-use `recovery_codes` **once** and rotates to a fully authenticated session | platform session (`password_ok`) |
+| POST | /platform/auth/mfa/verify | `{code}` (6-digit TOTP) **or** `{recovery_code}` (consumed) → fully authenticated session (token rotated). 5 wrong codes lock the account 15 min and revoke its sessions | platform session (`password_ok`, enrolled) |
+| POST | /platform/auth/logout | Revokes the session and clears the cookie | any |
 | POST | /platform/tenants | Create tenant + first Admin user (ADR-008); every new tenant is seeded with a default Trial subscription (ADR-053); optional `primary_domain` (Motor/Health/Travel/Life/Property/Other, else 422; ADR-073) | platform_owner |
 | GET | /platform/tenants | List tenants (each includes `primary_domain`, ADR-073) | platform_owner |
 | PATCH | /platform/tenants/{id}/status | approve/suspend tenant | platform_owner |
+| POST | /platform/admins/{id}/reset-mfa | Clear another platform admin's MFA (lost device) and revoke their sessions; they re-enrol at next sign-in. 409 for your own account (ADR-074) | platform_owner |
 | GET | /platform/plans | list the subscription-plan catalog (Tier 1, ADR-053) | platform_owner |
 | GET | /platform/tenants/{id}/subscription | view a tenant's current subscription | platform_owner |
 | PUT | /platform/tenants/{id}/subscription | assign/update a tenant's plan/status/seat count — schema/record-keeping only, no payment gateway (Tier 1, ADR-053) | platform_owner |

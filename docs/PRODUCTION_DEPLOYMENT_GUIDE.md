@@ -72,6 +72,8 @@ curl -k https://<your-host>/api/v1/ready            # {"data":{"status":"ready"}
 curl -k https://<your-host>/                        # frontend HTML
 ```
 
+**Platform Admin MFA (ADR-074).** Sign-in to `/platform-admin` needs the admin's password *and* a code from an authenticator app; HTTP Basic is no longer accepted. Seed the first admin without `--totp-secret` (that flag is refused when `ENVIRONMENT=production`), sign in at `/platform-admin` straight away and enrol an authenticator, and store the 10 recovery codes safely. Platform MFA secrets are encrypted with `AI_CREDENTIAL_ENCRYPTION_KEY`: the application now refuses to start in production if it is unset or not a valid Fernet key, and **rotating it makes stored MFA secrets unreadable** (reset each admin with `python -m scripts.reset_platform_admin_mfa --email ...` and have them re-enrol). The platform session cookie is `Secure` and `SameSite=Strict`, so the console and the API must be served over HTTPS from the same site (for example `app.example.com` and `api.example.com`), and `CORS_ALLOW_ORIGINS` must list the console origin exactly (it is also checked as the allowed `Origin` for state-changing platform requests).
+
 Then provision your first tenant via the Platform Administration API (there
 is no seeded tenant) — see `docs/ADMINISTRATOR_GUIDE.md` §1.
 

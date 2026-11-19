@@ -14,23 +14,47 @@ and no tenant user can see or affect platform-admin actions. It is reachable
 at `/platform-admin` in the frontend (not linked from the main app's
 navigation) or directly via the API under `/api/v1/platform/*`.
 
-**Authentication:** HTTP Basic, using the email/password provisioned when the
-platform admin account was created (see `backend/scripts/seed_platform_admin.py`
-for bootstrapping the first one). As of Tier 0 (ADR-052), this plane has:
+**Authentication:** password **plus an authenticator-app code** (TOTP), exchanged for a
+server-side session cookie (ADR-074; HTTP Basic is no longer accepted). See §1.0 below for
+signing in, first-time authenticator setup, recovery codes and lost-device recovery; see
+`backend/scripts/seed_platform_admin.py` for bootstrapping the first admin. Protections on this plane
+(ADR-052 and ADR-074):
 - **Rate limiting**: 60/minute across all platform routes (looser than
   tenant login's 10/minute, since this also gates the read-only tenant list
   the console re-polls after every mutation) — repeated rapid attempts are
   throttled (`429 rate_limited`). The per-admin lockout below is the primary
   brute-force defense on this plane, not this rate limit.
-- **Lockout**: 5 consecutive failed logins locks the account for 15 minutes.
+- **Lockout**: 5 consecutive wrong passwords, or 5 consecutive wrong authenticator/recovery
+  codes, lock the account for 15 minutes (and end its sessions).
 - **Audit attribution**: every tenant-create/status-change action records
   which platform admin performed it (previously unattributed).
 
-A full session+MFA replacement of this HTTP Basic plane was evaluated and
-deliberately deferred for this tier (see ADR-052) as disproportionate to the
-rest of Tier 0's scope — treat platform admin credentials with the same care
-as any other high-privilege credential (a password manager, not a shared
-note) until that follow-up phase happens.
+Treat platform admin credentials with the same care as any other high-privilege credential
+(a password manager, not a shared note), and keep the recovery codes somewhere separate from
+the authenticator device.
+
+### 1.0 Signing in to Platform Administration (password + authenticator app)
+
+Platform Administration is protected by two steps (ADR-074). Open `/platform-admin` (linked from the bottom of the tenant sign-in page), then:
+
+1. **Password** - your platform-admin email and password. Five wrong passwords lock the account for 15 minutes.
+2. **Authenticator code** - the 6-digit code from your authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Authy...). Five wrong codes also lock the account for 15 minutes.
+
+**First sign-in (setting up the authenticator).** An admin who has not enrolled yet sees *Set up two-step verification*: scan the QR code with the app (or type the setup key), enter the code it shows, and the console shows **10 recovery codes once**. Copy or download them and tick *I have saved these* before continuing - they are not shown again. Enrol straight after an account is created: until then the password alone can start enrolment.
+
+**Using a recovery code.** On the code screen choose *Use a recovery code instead* and enter one code (hyphens and case do not matter). Each recovery code works exactly once, so enrol a new authenticator soon after using one (ask another platform admin for *Reset MFA*, or use the CLI below).
+
+**Sessions.** You stay signed in for up to 8 hours, or 30 minutes of inactivity, whichever comes first; *Sign out* ends the session immediately. Changing an admin's password, deactivating them, resetting their MFA or locking the account ends all of their sessions.
+
+**Lost your phone / authenticator.**
+- Another platform admin: *Platform Admins* tab -> *Reset MFA* on your row (not allowed on your own account), then you sign in and enrol a new authenticator.
+- Nobody else can sign in (you are the only admin): run, with shell access to the deployment,
+  `docker compose exec api python -m scripts.reset_platform_admin_mfa --email you@example.com`
+  then sign in with your password and enrol again.
+
+**Local development: use `http://localhost:5173`.** The session cookie is `SameSite=Strict`, so the console and the API must be on the same site. Opening the console at `http://127.0.0.1:5173` while the API is at `http://localhost:8000` makes the browser drop the cookie, and sign-in reports "Your browser did not keep the sign-in cookie".
+
+**Development and automated tests only.** `python -m scripts.seed_platform_admin --email ... --password ... --totp-secret <base32>` pre-enrols a known secret so tests can sign in without a QR code. It is refused when `ENVIRONMENT=production`. The dev admin used by the e2e suite is `owner@qtesthub.local`, whose TOTP secret is the documented test value `JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP` (you can add it to an authenticator app by typing it as the setup key, or re-enrol your own with the reset script).
 
 ### 1.1 Provisioning a new tenant
 
@@ -150,7 +174,7 @@ network is included before saving.
 **Recovery procedure (gap-closure pass, ADR-057)**: if a tenant locks
 itself out this way, a Platform Administrator can clear that tenant's
 allowlist via `POST /api/v1/platform/tenants/{tenant_id}/clear-ip-allowlist`
-(platform-admin HTTP Basic auth, same as every other `/platform/*` route —
+(platform-admin session + MFA, same as every other `/platform/*` route —
 see Part 1 below). This is a deliberate "break glass" action: it is
 audit-logged (`tenant.ip_allowlist_cleared_by_platform_admin`) and should
 only be used when a tenant genuinely cannot reach support any other way,
