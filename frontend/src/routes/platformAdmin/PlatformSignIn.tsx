@@ -8,6 +8,7 @@ import {
   getPlatformSession,
   platformLogin,
   platformLogout,
+  resetPlatformPassword,
   startPlatformEnrolment,
   verifyPlatformMfa,
   type PlatformEnrolStart,
@@ -36,16 +37,38 @@ function Shell({
   subtitle: string
   children: ReactNode
 }) {
+  const mainRef = useRef<HTMLElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  // A step change replaces the controls that had focus, which drops it to
+  // <body> (a screen reader user is then lost). Move it to the new step's
+  // heading -- unless the step already put focus on one of its own fields.
+  useEffect(() => {
+    const active = document.activeElement
+    if (!active || active === document.body || !mainRef.current?.contains(active)) {
+      headingRef.current?.focus()
+    }
+  }, [title])
   return (
-    <div className="flex min-h-svh items-center justify-center p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <main
+      ref={mainRef}
+      id="main-content"
+      className="flex min-h-svh items-center justify-center p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+    >
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-base text-[var(--foreground)]">{title}</CardTitle>
+          <CardTitle
+            as="h1"
+            ref={headingRef}
+            tabIndex={-1}
+            className="text-base text-[var(--foreground)] outline-none"
+          >
+            {title}
+          </CardTitle>
           <p className="text-sm text-[var(--muted-foreground)]">{subtitle}</p>
         </CardHeader>
         <CardContent>{children}</CardContent>
       </Card>
-    </div>
+    </main>
   )
 }
 
@@ -56,11 +79,35 @@ function Shell({
 export function PlatformSignIn({
   session,
   onSession,
+  initialNotice = null,
 }: {
   session: PlatformSessionInfo | null
   onSession: (next: PlatformSessionInfo | null) => void
+  /** e.g. the idle-timeout message after the session expired (ADR-083). */
+  initialNotice?: string | null
 }) {
-  if (!session) return <PasswordStep onSession={onSession} />
+  const [mode, setMode] = useState<'signin' | 'reset'>('signin')
+  const [notice, setNotice] = useState<string | null>(initialNotice)
+  if (!session) {
+    return mode === 'reset' ? (
+      <ResetStep
+        onBack={() => setMode('signin')}
+        onDone={() => {
+          setNotice('Password updated. Sign in with your new password.')
+          setMode('signin')
+        }}
+      />
+    ) : (
+      <PasswordStep
+        onSession={onSession}
+        notice={notice}
+        onHaveResetCode={() => {
+          setNotice(null)
+          setMode('reset')
+        }}
+      />
+    )
+  }
   // stage is 'password_ok' here (mfa_verified renders the console instead).
   return session.mfa_enrolled ? (
     <VerifyStep onSession={onSession} />
@@ -69,7 +116,15 @@ export function PlatformSignIn({
   )
 }
 
-function PasswordStep({ onSession }: { onSession: (s: PlatformSessionInfo) => void }) {
+function PasswordStep({
+  onSession,
+  notice,
+  onHaveResetCode,
+}: {
+  onSession: (s: PlatformSessionInfo) => void
+  notice: string | null
+  onHaveResetCode: () => void
+}) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
@@ -78,15 +133,15 @@ function PasswordStep({ onSession }: { onSession: (s: PlatformSessionInfo) => vo
       const info = await platformLogin(email, password)
       // The session cookie is SameSite=Strict, so a browser silently drops it
       // when the page and the API are on different sites (for example the page
-      // on http://127.0.0.1:5173 and the API on http://localhost:8000). Confirm
-      // it was kept now, rather than failing confusingly at the code step.
+      // on a network IP and the API on localhost). Confirm it was kept now,
+      // rather than failing confusingly at the code step.
       try {
         await getPlatformSession()
       } catch (err) {
         if (err instanceof ApiError && err.code === 'unauthorized') {
           throw new ApiError(
             'Your browser did not keep the sign-in cookie. Open this page on the same site as ' +
-              'the API (for local development use http://localhost:5173, not 127.0.0.1).',
+              'the API (for local development use http://localhost:5173 or http://127.0.0.1:5173).',
             'cookie_rejected',
           )
         }
@@ -133,12 +188,204 @@ function PasswordStep({ onSession }: { onSession: (s: PlatformSessionInfo) => vo
             autoComplete="current-password"
           />
         </div>
+        {notice && (
+          <p role="status" className="text-sm text-[var(--foreground)]">
+            {notice}
+          </p>
+        )}
         <FormError>
           {loginMutation.isError ? errorMessage(loginMutation.error, 'Sign-in failed') : null}
         </FormError>
         <Button type="submit" disabled={loginMutation.isPending}>
           {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
         </Button>
+        <button
+          type="button"
+          className="min-h-11 self-start text-sm text-[var(--muted-foreground)] underline-offset-4 hover:underline md:min-h-0"
+          onClick={onHaveResetCode}
+        >
+          Have a reset code?
+        </button>
+      </form>
+    </Shell>
+  )
+}
+
+/** ADR-081: finish an admin-initiated password reset. Needs the one-time reset
+ * code, a new password and (when the account has MFA) an authenticator or
+ * recovery code. Nothing here is stored; it signs nobody in, the person signs in
+ * normally afterwards. */
+function ResetStep({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
+  const [email, setEmail] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [useRecovery, setUseRecovery] = useState(false)
+  const [code, setCode] = useState('')
+  const [recovery, setRecovery] = useState('')
+
+  const mismatch = confirm.length > 0 && password !== confirm
+  const resetMutation = useMutation({
+    mutationFn: () =>
+      resetPlatformPassword({
+        email,
+        resetCode: resetCode.trim(),
+        newPassword: password,
+        factor: useRecovery
+          ? recovery.trim()
+            ? { recovery_code: recovery }
+            : null
+          : code
+            ? { code }
+            : null,
+      }),
+    onSuccess: () => {
+      setPassword('')
+      setConfirm('')
+      onDone()
+    },
+    onError: () => {
+      setCode('')
+      setRecovery('')
+    },
+  })
+  const ready =
+    email.length > 2 &&
+    resetCode.replace(/[^A-Za-z0-9]/g, '').length >= 8 &&
+    password.length > 0 &&
+    password === confirm
+
+  return (
+    <Shell
+      title="Reset your password"
+      subtitle="Use the one-time reset code another platform admin gave you, then choose a new password."
+    >
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (ready && !resetMutation.isPending) resetMutation.mutate()
+        }}
+      >
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="platform-reset-email">Email</Label>
+          <Input
+            id="platform-reset-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            className="min-h-11 md:min-h-0"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="platform-reset-code">Reset code</Label>
+          <Input
+            id="platform-reset-code"
+            value={resetCode}
+            onChange={(e) => setResetCode(e.target.value)}
+            autoComplete="off"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+            className="min-h-11 font-mono md:min-h-0"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="platform-reset-password">New password</Label>
+          <Input
+            id="platform-reset-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            aria-describedby="platform-reset-password-hint"
+            className="min-h-11 md:min-h-0"
+          />
+          <p id="platform-reset-password-hint" className="text-xs text-[var(--muted-foreground)]">
+            At least 12 characters with an uppercase letter, a lowercase letter and a digit.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="platform-reset-confirm">Confirm new password</Label>
+          <Input
+            id="platform-reset-confirm"
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            aria-invalid={mismatch}
+            aria-describedby={mismatch ? 'platform-reset-confirm-error' : undefined}
+            className="min-h-11 md:min-h-0"
+          />
+          {mismatch && (
+            <p
+              id="platform-reset-confirm-error"
+              role="alert"
+              className="text-xs text-[var(--destructive)]"
+            >
+              The two new passwords do not match
+            </p>
+          )}
+        </div>
+        {useRecovery ? (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="platform-reset-recovery">Recovery code (if you have set up MFA)</Label>
+            <Input
+              id="platform-reset-recovery"
+              value={recovery}
+              onChange={(e) => setRecovery(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              placeholder="XXXX-XXXX-XXXX-XXXX"
+              className="min-h-11 font-mono md:min-h-0"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="platform-reset-auth-code">
+              Authentication code (if you have set up MFA)
+            </Label>
+            <Input
+              id="platform-reset-auth-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              autoComplete="one-time-code"
+              placeholder="123456"
+              className="min-h-11 font-mono tracking-[0.3em] md:min-h-0"
+            />
+          </div>
+        )}
+        <button
+          type="button"
+          className="min-h-11 self-start text-left text-sm underline-offset-4 hover:underline md:min-h-0"
+          onClick={() => {
+            setUseRecovery((v) => !v)
+            resetMutation.reset()
+          }}
+        >
+          {useRecovery ? 'Use an authenticator code instead' : 'Use a recovery code instead'}
+        </button>
+        <FormError>
+          {resetMutation.isError
+            ? errorMessage(resetMutation.error, 'Password reset failed')
+            : null}
+        </FormError>
+        <Button type="submit" disabled={!ready || resetMutation.isPending}>
+          {resetMutation.isPending ? 'Resetting…' : 'Set new password'}
+        </Button>
+        <button
+          type="button"
+          className="min-h-11 self-start text-sm text-[var(--muted-foreground)] underline-offset-4 hover:underline md:min-h-0"
+          onClick={onBack}
+        >
+          Back to sign in
+        </button>
       </form>
     </Shell>
   )
@@ -254,26 +501,21 @@ function EnrolStep({
 }) {
   const { show: showToast } = useToast()
   const [setup, setSetup] = useState<PlatformEnrolStart | null>(null)
+  // ADR-080: the one-time enrolment code is asked for first, kept only in
+  // memory, and sent again with the final step.
+  const [enrolCode, setEnrolCode] = useState('')
   const [code, setCode] = useState('')
   const [codes, setCodes] = useState<string[] | null>(null)
   const [saved, setSaved] = useState(false)
   const cancel = useCancelSignIn(onSession)
 
   const startMutation = useMutation({
-    mutationFn: startPlatformEnrolment,
+    mutationFn: () => startPlatformEnrolment(enrolCode.trim()),
     onSuccess: setSetup,
   })
-  const startedRef = useRef(false)
-  useEffect(() => {
-    // Generate the pending secret once per visit (not on every re-render).
-    if (startedRef.current) return
-    startedRef.current = true
-    startMutation.mutate()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const finishMutation = useMutation({
-    mutationFn: () => finishPlatformEnrolment(code),
+    mutationFn: () => finishPlatformEnrolment(code, enrolCode.trim()),
     onSuccess: (data) => setCodes(data.recovery_codes),
     onError: () => setCode(''),
   })
@@ -357,9 +599,62 @@ function EnrolStep({
   const startError = startMutation.isError
     ? errorMessage(startMutation.error, 'Could not start setup')
     : null
+  const enrolCodeReady = enrolCode.replace(/[^A-Za-z0-9]/g, '').length >= 8
   const finishError = finishMutation.isError
     ? errorMessage(finishMutation.error, 'Verification failed')
     : null
+
+  if (!setup) {
+    return (
+      <Shell
+        title="Enter your enrolment code"
+        subtitle="First sign-in: Platform Administration needs the one-time enrolment code before it shows your authenticator setup."
+      >
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (enrolCodeReady && !startMutation.isPending) startMutation.mutate()
+          }}
+        >
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="platform-enrolment-code">Enrolment code</Label>
+            <Input
+              id="platform-enrolment-code"
+              value={enrolCode}
+              onChange={(e) => setEnrolCode(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              autoFocus
+              placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+              aria-describedby="platform-enrolment-code-help"
+              className="min-h-11 font-mono md:min-h-0"
+            />
+            <p id="platform-enrolment-code-help" className="text-xs text-[var(--muted-foreground)]">
+              The code your administrator gave you, separate from your password
+            </p>
+          </div>
+          <FormError>{startError}</FormError>
+          <Button
+            type="submit"
+            className="min-h-11 md:min-h-0"
+            disabled={!enrolCodeReady || startMutation.isPending}
+          >
+            {startMutation.isPending ? 'Checking…' : 'Continue'}
+          </Button>
+          <button
+            type="button"
+            className="min-h-11 self-start text-sm text-[var(--muted-foreground)] underline-offset-4 hover:underline md:min-h-0"
+            onClick={cancel}
+          >
+            Back to sign in
+          </button>
+        </form>
+      </Shell>
+    )
+  }
 
   return (
     <Shell
@@ -368,80 +663,69 @@ function EnrolStep({
     >
       <div className="flex flex-col gap-4">
         <FormError>{startError}</FormError>
-        {setup ? (
-          <>
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--muted-foreground)]">
-              <li>Scan this QR code with your authenticator app, or type the key below.</li>
-              <li>Enter the 6-digit code it shows to finish.</li>
-            </ol>
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-              <QrCode value={setup.otpauth_uri} label="QR code for your authenticator app" />
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <Label htmlFor="platform-secret">Setup key (manual entry)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="platform-secret"
-                    readOnly
-                    value={setup.secret.replace(/(.{4})/g, '$1 ').trim()}
-                    className="font-mono text-xs"
-                    onFocus={(e) => e.currentTarget.select()}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Copy setup key"
-                    onClick={async () => {
-                      const ok = await copyText(setup.secret)
-                      showToast(
-                        ok ? 'success' : 'error',
-                        ok ? 'Setup key copied' : 'Could not copy',
-                      )
-                    }}
-                  >
-                    <KeyRound aria-hidden="true" className="size-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  Account: {setup.account} · Time-based, 6 digits, 30 s
-                </p>
-              </div>
-            </div>
-            <form
-              className="flex flex-col gap-3"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (code.length === 6) finishMutation.mutate()
-              }}
-            >
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="platform-enrol-code">Authentication code</Label>
+        <>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--muted-foreground)]">
+            <li>Scan this QR code with your authenticator app, or type the key below.</li>
+            <li>Enter the 6-digit code it shows to finish.</li>
+          </ol>
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+            <QrCode value={setup.otpauth_uri} label="QR code for your authenticator app" />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <Label htmlFor="platform-secret">Setup key (manual entry)</Label>
+              <div className="flex gap-2">
                 <Input
-                  id="platform-enrol-code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  autoComplete="one-time-code"
-                  placeholder="123456"
-                  className="font-mono tracking-[0.3em]"
+                  id="platform-secret"
+                  readOnly
+                  value={setup.secret.replace(/(.{4})/g, '$1 ').trim()}
+                  className="font-mono text-xs"
+                  onFocus={(e) => e.currentTarget.select()}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Copy setup key"
+                  onClick={async () => {
+                    const ok = await copyText(setup.secret)
+                    showToast(ok ? 'success' : 'error', ok ? 'Setup key copied' : 'Could not copy')
+                  }}
+                >
+                  <KeyRound aria-hidden="true" className="size-4" />
+                </Button>
               </div>
-              <FormError>{finishError}</FormError>
-              <Button type="submit" disabled={code.length !== 6 || finishMutation.isPending}>
-                <ShieldCheck aria-hidden="true" className="size-4" />
-                {finishMutation.isPending ? 'Verifying…' : 'Verify and enable'}
-              </Button>
-            </form>
-          </>
-        ) : (
-          !startError && (
-            <p role="status" className="text-sm text-[var(--muted-foreground)]">
-              Preparing your setup key…
-            </p>
-          )
-        )}
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Account: {setup.account} · Time-based, 6 digits, 30 s
+              </p>
+            </div>
+          </div>
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (code.length === 6) finishMutation.mutate()
+            }}
+          >
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="platform-enrol-code">Authentication code</Label>
+              <Input
+                id="platform-enrol-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                autoComplete="one-time-code"
+                placeholder="123456"
+                className="font-mono tracking-[0.3em]"
+              />
+            </div>
+            <FormError>{finishError}</FormError>
+            <Button type="submit" disabled={code.length !== 6 || finishMutation.isPending}>
+              <ShieldCheck aria-hidden="true" className="size-4" />
+              {finishMutation.isPending ? 'Verifying…' : 'Verify and enable'}
+            </Button>
+          </form>
+        </>
         <button
           type="button"
           className="min-h-11 self-start text-sm text-[var(--muted-foreground)] underline-offset-4 hover:underline md:min-h-0"

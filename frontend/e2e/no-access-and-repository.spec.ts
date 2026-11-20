@@ -214,6 +214,22 @@ test('UX-008: Test Repository only requests and renders the open project group',
     return fulfillCors(route, { items, total: search ? items.length : total })
   })
 
+  // ADR-077: a filter is answered by ONE tenant-wide request (not one per project).
+  const requestedAll: { search: string; sort: string; page: number }[] = []
+  await page.route(/\/api\/v1\/test-cases(\?.*)?$/, (route) => {
+    const url = new URL(route.request().url())
+    const search = url.searchParams.get('search') ?? ''
+    const pageNo = Number(url.searchParams.get('page') ?? '1')
+    requestedAll.push({ search, sort: url.searchParams.get('sort') ?? '', page: pageNo })
+    const all = [
+      ...Array.from({ length: 60 }, (_, i) => caseFixture(P1.id, 60 - i, `Alpha case ${String(60 - i).padStart(3, '0')}`)),
+      ...Array.from({ length: 5 }, (_, i) => caseFixture(P3.id, 5 - i, `Gamma case ${String(5 - i).padStart(3, '0')}`)),
+    ].filter((c) => !search || c.title.toLowerCase().includes(search.toLowerCase()))
+    const size = Number(url.searchParams.get('page_size') ?? '50')
+    const start = (pageNo - 1) * size
+    return fulfillCors(route, { items: all.slice(start, start + size), total: all.length })
+  })
+
   await page.goto('/test-repository')
   // Group headers for the two non-empty projects (counts come from the project list);
   // the empty project has no header and is never requested.
@@ -255,15 +271,20 @@ test('UX-008: Test Repository only requests and renders the open project group',
   await page.getByRole('button', { name: /Load more \(10 remaining\)/ }).click()
   await expect(page.locator('table tbody tr')).toHaveCount(60)
 
-  // Searching is debounced (one burst of requests, not one per keystroke) and only
-  // asks the projects that have cases.
-  const before = requested.length
+  // Searching is debounced (one request, not one per keystroke) and ONE tenant-wide
+  // request answers it -- the projects are not asked one by one any more.
+  const projectRequestsBefore = requested.length
   await page.locator('#repo-search').pressSequentially('gamma', { delay: 40 })
   await expect(page.getByText('Gamma case 005').first()).toBeVisible()
-  const burst = requested.slice(before)
-  expect(burst.every((r) => r.search === 'gamma')).toBeTruthy()
-  expect(new Set(burst.map((r) => r.project))).toEqual(new Set([P1.id, P3.id]))
-  expect(burst.length).toBe(2)
-  // Project 1 has no match: its group disappears while the filter is on.
+  expect(requested.length, 'no per-project request while a filter is on').toBe(projectRequestsBefore)
+  expect(requestedAll).toEqual([{ search: 'gamma', sort: '-created_at', page: 1 }])
+  // The results are one flat list (no group headers) with a Project column.
   await expect(page.getByRole('button', { name: /Project 1/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Project 3/ })).toHaveCount(0)
+  await expect(page.locator('table tbody tr')).toHaveCount(5)
+  await expect(page.getByRole('columnheader', { name: 'Project' })).toBeVisible()
+  await expect(page.getByText(/5 test cases shown \(all matching\) across all projects/)).toBeVisible()
+  // Clearing the filter returns to the grouped view.
+  await page.locator('#repo-search').fill('')
+  await expect(page.getByRole('button', { name: /Project 1/ })).toBeVisible()
 })

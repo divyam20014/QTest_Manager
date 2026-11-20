@@ -5,7 +5,9 @@ Usage:
 
 Platform Admin sign-in now requires TOTP MFA (ADR-074): the first time this
 admin signs in at /platform-admin they are walked through enrolling an
-authenticator app. Nothing more is needed in production.
+authenticator app, and must also enter the one-time enrolment code this script
+prints ONCE (ADR-080; hand it over separately from the password). Nothing more
+is needed in production.
 
 DEV / TEST ONLY -- pre-enrol a known TOTP secret so automated tests can sign
 in without scanning a QR code:
@@ -62,7 +64,10 @@ def main() -> None:
             platform_auth_service.preenrol_with_secret(db, admin, args.totp_secret)
             print("MFA pre-enrolled with the supplied (dev/test) TOTP secret.")
         elif not platform_auth_service.mfa_enrolled(admin):
+            code = platform_auth_service.issue_enrolment_code(db, admin)
+            db.commit()
             print("MFA not enrolled yet: the admin sets up an authenticator on first sign-in.")
+            print(f"One-time enrolment code (shown once; pass it on separately): {code}")
 
 
 if __name__ == "__main__":

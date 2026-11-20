@@ -54,7 +54,24 @@ def require_platform_admin(request: Request, db: Session = Depends(get_db)) -> P
     session cookie, or an Authorization: Basic header never qualifies."""
     enforce_same_origin(request)
     session_row, admin = svc.load_session(
-        db, platform_session_token(request), stages=(svc.STAGE_MFA_VERIFIED,)
+        db, platform_session_token(request), stages=(svc.STAGE_MFA_VERIFIED,), request=request
     )
     svc.touch_session(db, session_row)
+    # ADR-083: lets a sensitive route check the step-up on the same session.
+    request.state.platform_session = session_row
     return admin
+
+
+def require_platform_admin_step_up(
+    request: Request, admin: PlatformAdmin = Depends(require_platform_admin)
+) -> PlatformAdmin:
+    """ADR-083: like require_platform_admin, and additionally 403 `step_up_required`
+    unless a TOTP / recovery code was verified on this session recently."""
+    svc.require_step_up(request.state.platform_session)
+    return admin
+
+
+def enforce_step_up(request: Request) -> None:
+    """For a route that is only sensitive for some requests (deactivating, not
+    reactivating, an admin). Call after require_platform_admin has run."""
+    svc.require_step_up(request.state.platform_session)

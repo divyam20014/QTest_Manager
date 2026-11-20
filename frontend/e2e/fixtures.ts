@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -103,8 +104,33 @@ export async function freshPlatformTotpCode(
   }
 }
 
+// ADR-083: a platform session is bound to the User-Agent it signed in with, and
+// Playwright's `request` fixture, `page.request` and a fresh APIRequestContext
+// each send a different default one. Every fixture call therefore uses this one
+// explicit agent, and specs build their cookie header with `platformAuthHeaders`.
+export const FIXTURE_USER_AGENT = 'qth-e2e-platform-fixture'
+
+export function platformAuthHeaders(token: string): Record<string, string> {
+  return { Cookie: `${PLATFORM_COOKIE}=${token}`, 'User-Agent': FIXTURE_USER_AGENT }
+}
+
 function cookieHeader(token: string): Record<string, string> {
-  return { Cookie: `${PLATFORM_COOKIE}=${token}` }
+  return platformAuthHeaders(token)
+}
+
+/** ADR-083: sensitive platform actions (create/deactivate an admin, issue codes,
+ * reset MFA) need a TOTP verified within the last few minutes. A cached shared
+ * session can be older than that, so top it up through the REAL step-up
+ * endpoint (using a code newer than any step already used). */
+async function ensureStepUp(api: APIRequestContext, token: string): Promise<void> {
+  const me = await api.get(`${API_BASE_URL}/platform/auth/me`, { headers: cookieHeader(token) })
+  const until: string | null | undefined = (await me.json()).data?.step_up_expires_at
+  if (until && new Date(until).getTime() - Date.now() > 60_000) return
+  const res = await api.post(`${API_BASE_URL}/platform/auth/step-up`, {
+    data: { code: await freshPlatformTotpCode() },
+    headers: cookieHeader(token),
+  })
+  if (!res.ok()) throw new Error(`Platform step-up failed (${res.status()}): ${await res.text()}`)
 }
 
 function tokenFrom(setCookie: string | undefined): string | null {
@@ -118,14 +144,17 @@ function tokenFrom(setCookie: string | undefined): string | null {
  * cached live session when there is one (the server enforces a 30 min idle
  * timeout, so a cached token is re-validated before use). */
 export async function getPlatformSessionToken(forceFresh = false): Promise<string> {
-  const api = await pwRequest.newContext()
+  const api = await pwRequest.newContext({ userAgent: FIXTURE_USER_AGENT })
   try {
     const cached = forceFresh ? undefined : readState().token
     if (cached) {
       const me = await api.get(`${API_BASE_URL}/platform/auth/me`, {
         headers: cookieHeader(cached),
       })
-      if (me.ok() && (await me.json()).data?.stage === 'mfa_verified') return cached
+      if (me.ok() && (await me.json()).data?.stage === 'mfa_verified') {
+        await ensureStepUp(api, cached)
+        return cached
+      }
     }
 
     const login = await api.post(`${API_BASE_URL}/platform/auth/login`, {
@@ -154,6 +183,103 @@ export async function getPlatformSessionToken(forceFresh = false): Promise<strin
   } finally {
     await api.dispose()
   }
+}
+
+export interface ThrowawayPlatformAdmin {
+  id: string
+  email: string
+  password: string
+  /** The one-time enrolment code from the creation response (ADR-080). */
+  enrolmentCode: string
+}
+
+/** Creates an UN-enrolled platform admin through the API (as the shared dev
+ * admin). Its first sign-in needs `enrolmentCode`. Pair with
+ * `deactivateThrowawayPlatformAdmin` so throwaways do not stay active. */
+export async function createThrowawayPlatformAdmin(
+  request: APIRequestContext,
+  prefix = 'mfa-e2e',
+  password = 'PlatformMfaPass123!',
+): Promise<ThrowawayPlatformAdmin> {
+  const token = await getPlatformSessionToken()
+  const email = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`
+  const created = await request.post(`${API_BASE_URL}/platform/admins`, {
+    headers: cookieHeader(token),
+    data: { email, password },
+  })
+  if (!created.ok()) throw new Error(`Could not create platform admin: ${await created.text()}`)
+  const data = (await created.json()).data
+  return { id: data.id, email, password, enrolmentCode: data.enrolment_code }
+}
+
+export interface EnrolledThrowawayPlatformAdmin extends ThrowawayPlatformAdmin {
+  secret: string
+  recoveryCodes: string[]
+  /** An authenticator code this admin's server-side replay guard will accept
+   * (newest step in the +-1 window that is newer than any step used so far;
+   * waits for the next 30 s boundary when none is left). */
+  nextCode: () => Promise<string>
+}
+
+/** Like `createThrowawayPlatformAdmin`, but also completes MFA enrolment through
+ * the API (ADR-080 code, then the first TOTP code), so a spec can start from an
+ * enrolled admin without clicking through setup. Never touches the shared dev
+ * admin's password or authenticator (ADR-081 specs change passwords). */
+export async function createEnrolledThrowawayPlatformAdmin(
+  request: APIRequestContext,
+  prefix = 'pw-e2e',
+  password = 'PlatformMfaPass123!',
+): Promise<EnrolledThrowawayPlatformAdmin> {
+  const admin = await createThrowawayPlatformAdmin(request, prefix, password)
+  const api = await pwRequest.newContext({ userAgent: FIXTURE_USER_AGENT })
+  try {
+    const login = await api.post(`${API_BASE_URL}/platform/auth/login`, {
+      data: { email: admin.email, password },
+    })
+    const pre = tokenFrom(login.headers()['set-cookie'])
+    if (!login.ok() || !pre) throw new Error(`Throwaway sign-in failed: ${await login.text()}`)
+    const start = await api.post(`${API_BASE_URL}/platform/auth/mfa/enroll/start`, {
+      data: { enrolment_code: admin.enrolmentCode },
+      headers: cookieHeader(pre),
+    })
+    if (!start.ok()) throw new Error(`Throwaway enrolment start failed: ${await start.text()}`)
+    const secret: string = (await start.json()).data.secret
+    let lastStep = totpStep()
+    const finish = await api.post(`${API_BASE_URL}/platform/auth/mfa/enroll/verify`, {
+      data: {
+        code: totpCodeForStep(secret, lastStep),
+        enrolment_code: admin.enrolmentCode,
+      },
+      headers: cookieHeader(pre),
+    })
+    if (!finish.ok()) throw new Error(`Throwaway enrolment failed: ${await finish.text()}`)
+    const recoveryCodes: string[] = (await finish.json()).data.recovery_codes
+    const nextCode = async (): Promise<string> => {
+      for (;;) {
+        const now = totpStep()
+        const candidate = Math.max(now, lastStep + 1)
+        if (candidate <= now + 1) {
+          lastStep = candidate
+          return totpCodeForStep(secret, candidate)
+        }
+        await sleep((now + 1) * PERIOD * 1000 - Date.now() + 250)
+      }
+    }
+    return { ...admin, secret, recoveryCodes, nextCode }
+  } finally {
+    await api.dispose()
+  }
+}
+
+export async function deactivateThrowawayPlatformAdmin(
+  request: APIRequestContext,
+  id: string,
+): Promise<void> {
+  const token = await getPlatformSessionToken()
+  await request.patch(`${API_BASE_URL}/platform/admins/${id}`, {
+    headers: cookieHeader(token),
+    data: { is_active: false },
+  })
 }
 
 export interface SeededTenant {
@@ -233,4 +359,28 @@ export async function loginViaUi(
   await page.fill('#code', match[1])
   await page.click('button:has-text("Verify")')
   await page.waitForSelector('h1:has-text("Dashboard")')
+}
+
+// ADR-083 test hooks: there is deliberately NO production switch for these, so
+// the specs reach into the dev database to make a session look stale.
+function psqlForAdminSessions(email: string, setClause: string): void {
+  if (!/^[a-z0-9@._-]+$/i.test(email)) throw new Error(`Unexpected admin email: ${email}`)
+  const sql =
+    `UPDATE platform_sessions SET ${setClause} ` +
+    `WHERE admin_id IN (SELECT id FROM platform_admins WHERE email = '${email}')`
+  execFileSync(
+    'docker',
+    ['compose', 'exec', '-T', 'db', 'psql', '-U', 'qtesthub', '-d', 'qtesthub', '-c', sql],
+    { cwd: join(process.cwd(), '..'), stdio: 'pipe' },
+  )
+}
+
+/** Makes the admin's sessions look like their last step-up was 10 minutes ago. */
+export function ageSessionStepUp(email: string): void {
+  psqlForAdminSessions(email, "step_up_at = now() - interval '10 minutes'")
+}
+
+/** Makes the admin's sessions look idle for 40 minutes (past the 30 minute timeout). */
+export function expireSessionIdle(email: string): void {
+  psqlForAdminSessions(email, "last_seen_at = now() - interval '40 minutes'")
 }

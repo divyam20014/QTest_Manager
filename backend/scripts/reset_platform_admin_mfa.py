@@ -5,7 +5,9 @@ Usage (needs shell access to the deployment, which is the point):
 
 Clears the admin's TOTP secret and recovery codes and revokes every live
 session. The admin signs in with their password and enrols a new
-authenticator app. Another platform admin can do the same from the console
+authenticator app, which also needs the one-time enrolment code printed here
+(ADR-080; valid for PLATFORM_ENROLMENT_CODE_TTL_HOURS). Another platform admin can
+do the same from the console
 (Admins tab -> Reset MFA); this CLI is the route when the only admin is
 locked out.
 """
@@ -31,8 +33,9 @@ def main() -> None:
         ).scalar_one_or_none()
         if admin is None:
             sys.exit(f"No platform admin with email {args.email}")
-        platform_auth_service.reset_mfa(db, admin)
+        code = platform_auth_service.reset_mfa(db, admin)
         print(f"MFA reset for {args.email}. They must re-enrol an authenticator at next sign-in.")
+        print(f"One-time enrolment code (shown once; give it to them separately): {code}")
 
 
 if __name__ == "__main__":

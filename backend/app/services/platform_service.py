@@ -15,6 +15,7 @@ from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
 from app.schemas.platform import PlatformAdminCreateRequest, TenantCreateRequest
 from app.services import field_option_service, platform_auth_service
+from app.services.platform_audit_service import record_platform_event
 
 # Tier 1 / ADR-053: every tenant starts on this plan -- seeded by migration
 # c2d3e4f5a6b7, never absent.
@@ -270,6 +271,8 @@ def upsert_platform_admin(db: Session, email: str, password: str) -> PlatformAdm
         existing.is_active = True
         existing.failed_login_count = 0
         existing.locked_until = None
+        # ADR-081: an operator/API password set supersedes a pending reset.
+        platform_auth_service.clear_password_reset_code(existing)
         # ADR-074: a changed password ends every live session for that admin.
         platform_auth_service.revoke_all_sessions(db, existing.id)
         db.commit()
@@ -283,14 +286,28 @@ def upsert_platform_admin(db: Session, email: str, password: str) -> PlatformAdm
 
 def create_platform_admin(
     db: Session, req: PlatformAdminCreateRequest, actor_admin_id: UUID
-) -> PlatformAdmin:
+) -> tuple[PlatformAdmin, str | None]:
+    """Returns the admin and, when it is not MFA-enrolled, the one-time
+    enrolment code in plaintext (ADR-080) -- the only time it is ever visible."""
     admin = upsert_platform_admin(db, req.email, req.password)
+    code = None
+    if not platform_auth_service.mfa_enrolled(admin):
+        code = platform_auth_service.issue_enrolment_code(db, admin)
+        db.commit()
     logger.warning(
         "security_event=platform_admin_created email=%s actor_admin_id=%s",
         req.email,
         actor_admin_id,
     )
-    return admin
+    record_platform_event(
+        db,
+        "admin_created",
+        actor_admin_id=actor_admin_id,
+        target_admin_id=admin.id,
+        details={"target_email": admin.email},
+        commit=True,
+    )
+    return admin, code
 
 
 def update_platform_admin_active(
@@ -308,6 +325,13 @@ def update_platform_admin_active(
     admin.is_active = is_active
     if not is_active:
         platform_auth_service.revoke_all_sessions(db, admin.id)
+    record_platform_event(
+        db,
+        "admin_activated" if is_active else "admin_deactivated",
+        actor_admin_id=actor_admin_id,
+        target_admin_id=admin.id,
+        details={"target_email": admin.email},
+    )
     db.commit()
     logger.warning(
         "security_event=platform_admin_%s email=%s actor_admin_id=%s",
@@ -318,7 +342,9 @@ def update_platform_admin_active(
     return admin
 
 
-def reset_platform_admin_mfa(db: Session, admin_id: UUID, actor_admin_id: UUID) -> PlatformAdmin:
+def reset_platform_admin_mfa(
+    db: Session, admin_id: UUID, actor_admin_id: UUID
+) -> tuple[PlatformAdmin, str]:
     """ADR-074: one admin clears another's MFA (lost device). Not allowed on
     yourself -- a hijacked session must not be able to swap in its own
     authenticator; the operator CLI is the self-recovery path."""
@@ -332,10 +358,75 @@ def reset_platform_admin_mfa(db: Session, admin_id: UUID, actor_admin_id: UUID) 
     ).scalar_one_or_none()
     if admin is None:
         raise NotFoundError("Platform admin not found")
-    platform_auth_service.reset_mfa(db, admin)
+    code = platform_auth_service.reset_mfa(db, admin, actor_admin_id)
     logger.warning(
         "security_event=platform_admin_mfa_reset_by_admin email=%s actor_admin_id=%s",
         admin.email,
         actor_admin_id,
     )
-    return admin
+    return admin, code
+
+
+def reissue_platform_admin_enrolment_code(
+    db: Session, admin_id: UUID, actor_admin_id: UUID
+) -> tuple[PlatformAdmin, str]:
+    """ADR-080: a new enrolment code for an admin who has not enrolled yet
+    (the previous code stops working). Not on yourself, not once enrolled."""
+    if admin_id == actor_admin_id:
+        raise ConflictError("You cannot issue an enrolment code for your own account")
+    admin = db.execute(
+        select(PlatformAdmin).where(PlatformAdmin.id == admin_id)
+    ).scalar_one_or_none()
+    if admin is None:
+        raise NotFoundError("Platform admin not found")
+    code = platform_auth_service.issue_enrolment_code(db, admin)  # 409 if enrolled
+    record_platform_event(
+        db,
+        "enrolment_code_issued",
+        actor_admin_id=actor_admin_id,
+        target_admin_id=admin.id,
+        details={"target_email": admin.email},
+    )
+    db.commit()
+    logger.warning(
+        "security_event=platform_admin_enrolment_code_issued email=%s actor_admin_id=%s",
+        admin.email,
+        actor_admin_id,
+    )
+    return admin, code
+
+
+def issue_platform_admin_password_reset_code(
+    db: Session, admin_id: UUID, actor_admin_id: UUID
+) -> tuple[PlatformAdmin, str]:
+    """ADR-081: one admin forces another's password reset. Not on yourself (a
+    hijacked session must not be able to lock the real owner out of
+    self-service); revokes the target's sessions and returns the one-time code
+    in plaintext -- the only time it is ever visible."""
+    if admin_id == actor_admin_id:
+        raise ConflictError(
+            "You cannot issue a password reset code for your own account; "
+            "use Change password instead"
+        )
+    admin = db.execute(
+        select(PlatformAdmin).where(PlatformAdmin.id == admin_id)
+    ).scalar_one_or_none()
+    if admin is None:
+        raise NotFoundError("Platform admin not found")
+    if not admin.is_active:
+        raise ConflictError("This platform admin account is deactivated")
+    code = platform_auth_service.issue_password_reset_code(db, admin)
+    record_platform_event(
+        db,
+        "password_reset_code_issued",
+        actor_admin_id=actor_admin_id,
+        target_admin_id=admin.id,
+        details={"target_email": admin.email},
+    )
+    db.commit()
+    logger.warning(
+        "security_event=platform_admin_password_reset_code_issued email=%s actor_admin_id=%s",
+        admin.email,
+        actor_admin_id,
+    )
+    return admin, code

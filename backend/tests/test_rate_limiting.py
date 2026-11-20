@@ -5,7 +5,8 @@ logins don't trip it; this test explicitly re-enables and resets it."""
 
 from fastapi.testclient import TestClient
 
-from app.core.rate_limit import limiter
+from app.core.config import get_settings
+from app.core.rate_limit import limiter, scaled
 
 
 def test_login_is_rate_limited_after_ten_attempts_per_minute(client: TestClient) -> None:
@@ -122,3 +123,15 @@ def test_csv_import_is_rate_limited_after_ten_attempts_per_minute(
 
     statuses = [r.status_code for r in responses]
     assert 429 in statuses
+
+
+def test_scaled_limit_follows_the_multiplier_setting() -> None:
+    settings = get_settings()
+    original = settings.auth_rate_limit_multiplier
+    try:
+        settings.auth_rate_limit_multiplier = 1
+        assert scaled(10)() == "10/minute"
+        settings.auth_rate_limit_multiplier = 10
+        assert scaled(10)() == "100/minute"
+    finally:
+        settings.auth_rate_limit_multiplier = original

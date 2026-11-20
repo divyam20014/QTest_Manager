@@ -15,6 +15,7 @@ from app.core.rate_limit import limiter
 from app.main import app
 from tests.platform_helpers import (
     COOKIE_NAME,
+    ENROLMENT_CODE,
     PLATFORM_EMAIL,
     PLATFORM_PASSWORD,
     PLATFORM_TOTP_SECRET,
@@ -38,8 +39,10 @@ def _login(client: TestClient, email: str = PLATFORM_EMAIL, password: str = PLAT
     return client.post(LOGIN, json={"email": email, "password": password})
 
 
-def _pre_mfa_headers(client: TestClient, email: str = PLATFORM_EMAIL) -> dict[str, str]:
-    response = _login(client, email)
+def _pre_mfa_headers(
+    client: TestClient, email: str = PLATFORM_EMAIL, password: str = PLATFORM_PASSWORD
+) -> dict[str, str]:
+    response = _login(client, email, password)
     assert response.status_code == 200, response.text
     token = cookie_from(response)
     assert token
@@ -55,15 +58,22 @@ def _away_from_step_boundary(margin: float = 4.0) -> None:
 
 
 def _enrol(
-    client: TestClient, email: str = PLATFORM_EMAIL
+    client: TestClient,
+    email: str = PLATFORM_EMAIL,
+    password: str = PLATFORM_PASSWORD,
+    enrolment_code: str = ENROLMENT_CODE,
 ) -> tuple[dict[str, str], str, list[str]]:
     """Walks an un-enrolled admin through enrolment; returns (full-session
     headers, secret, recovery codes)."""
-    pre = _pre_mfa_headers(client, email)
-    start = client.post(ENROL_START, headers=pre)
+    pre = _pre_mfa_headers(client, email, password)
+    start = client.post(ENROL_START, json={"enrolment_code": enrolment_code}, headers=pre)
     assert start.status_code == 200, start.text
     secret = start.json()["data"]["secret"]
-    finish = client.post(ENROL_VERIFY, json={"code": totp.generate_code(secret)}, headers=pre)
+    finish = client.post(
+        ENROL_VERIFY,
+        json={"code": totp.generate_code(secret), "enrolment_code": enrolment_code},
+        headers=pre,
+    )
     assert finish.status_code == 200, finish.text
     token = cookie_from(finish)
     assert token
@@ -111,7 +121,7 @@ def test_totp_window_and_replay_rules() -> None:
 
 
 def test_enrolment_happy_path_and_storage(client: TestClient, owner_engine) -> None:
-    seed_admin(owner_engine, totp_secret=None)
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
     pre = _pre_mfa_headers(client)
 
     # Password alone is not enough for any platform API route.
@@ -122,9 +132,10 @@ def test_enrolment_happy_path_and_storage(client: TestClient, owner_engine) -> N
         "stage": "password_ok",
         "mfa_enrolled": False,
         "recovery_codes_remaining": None,
+        "step_up_expires_at": None,
     }
 
-    start = client.post(ENROL_START, headers=pre)
+    start = client.post(ENROL_START, json={"enrolment_code": ENROLMENT_CODE}, headers=pre)
     assert start.status_code == 200, start.text
     data = start.json()["data"]
     assert data["otpauth_uri"].startswith("otpauth://totp/QTestHub%3Aowner%40qtesthub.local?")
@@ -142,7 +153,9 @@ def test_enrolment_happy_path_and_storage(client: TestClient, owner_engine) -> N
     assert client.get(TENANTS, headers=pre).status_code == 401
 
     finish = client.post(
-        ENROL_VERIFY, json={"code": totp.generate_code(data["secret"])}, headers=pre
+        ENROL_VERIFY,
+        json={"code": totp.generate_code(data["secret"]), "enrolment_code": ENROLMENT_CODE},
+        headers=pre,
     )
     assert finish.status_code == 200, finish.text
     body = finish.json()["data"]
@@ -162,31 +175,44 @@ def test_enrolment_happy_path_and_storage(client: TestClient, owner_engine) -> N
         hashes = [
             r[0] for r in conn.execute(text("SELECT code_hash FROM platform_admin_recovery_codes"))
         ]
-        enabled = conn.execute(text("SELECT mfa_enabled_at FROM platform_admins")).scalar_one()
+        enabled, code_hash, code_expiry = conn.execute(
+            text(
+                "SELECT mfa_enabled_at, enrolment_code_hash, enrolment_code_expires_at "
+                "FROM platform_admins"
+            )
+        ).one()
     assert enabled is not None
+    assert code_hash is None and code_expiry is None  # consumed by the enrolment
     assert len(hashes) == 10
     assert all(len(h) == 64 and h not in codes for h in hashes)
     assert not any(c.replace("-", "") in h for c in codes for h in hashes)
 
     # Enrolment cannot be restarted (or secrets swapped) once enabled.
-    again = client.post(ENROL_START, headers=_pre_mfa_headers(client))
+    again = client.post(
+        ENROL_START, json={"enrolment_code": ENROLMENT_CODE}, headers=_pre_mfa_headers(client)
+    )
     assert again.status_code == 409
 
 
-def test_wrong_enrolment_code_does_not_enable_mfa(client: TestClient, owner_engine) -> None:
-    seed_admin(owner_engine, totp_secret=None)
+def test_wrong_authenticator_code_does_not_enable_mfa(client: TestClient, owner_engine) -> None:
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
     pre = _pre_mfa_headers(client)
-    client.post(ENROL_START, headers=pre)
-    bad = client.post(ENROL_VERIFY, json={"code": "000000"}, headers=pre)
+    client.post(ENROL_START, json={"enrolment_code": ENROLMENT_CODE}, headers=pre)
+    bad = client.post(
+        ENROL_VERIFY, json={"code": "000000", "enrolment_code": ENROLMENT_CODE}, headers=pre
+    )
     assert bad.status_code == 401
     with owner_engine.begin() as conn:
         assert conn.execute(text("SELECT mfa_enabled_at FROM platform_admins")).scalar_one() is None
 
 
 def test_enrol_verify_without_start_is_rejected(client: TestClient, owner_engine) -> None:
-    seed_admin(owner_engine, totp_secret=None)
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
     pre = _pre_mfa_headers(client)
-    assert client.post(ENROL_VERIFY, json={"code": "123456"}, headers=pre).status_code == 422
+    response = client.post(
+        ENROL_VERIFY, json={"code": "123456", "enrolment_code": ENROLMENT_CODE}, headers=pre
+    )
+    assert response.status_code == 422
 
 
 def test_unenrolled_admin_cannot_use_the_verify_step(client: TestClient, owner_engine) -> None:
@@ -278,7 +304,7 @@ def test_two_simultaneous_verifications_with_one_code_only_succeed_once(owner_en
 
 
 def test_recovery_code_is_single_use(client: TestClient, owner_engine) -> None:
-    seed_admin(owner_engine, totp_secret=None)
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
     _, _, codes = _enrol(client)
 
     first = client.post(VERIFY, json={"recovery_code": codes[0]}, headers=_pre_mfa_headers(client))
@@ -405,7 +431,14 @@ _ROUTES = _platform_routes()
 _SESSION_GUARDED = [
     (m, p)
     for m, p in _ROUTES
-    if p not in ("/api/v1/platform/auth/login", "/api/v1/platform/auth/logout")
+    if p
+    not in (
+        "/api/v1/platform/auth/login",
+        "/api/v1/platform/auth/logout",
+        # ADR-081: public by design (the target's sessions were revoked); gated by
+        # the one-time reset code instead -- see test_platform_password.py.
+        "/api/v1/platform/auth/password/reset",
+    )
 ]
 
 
@@ -531,16 +564,24 @@ def test_new_admin_must_enrol_on_first_sign_in(client: TestClient, platform_admi
     )
     assert created.status_code == 200, created.text
     assert created.json()["data"]["mfa_enabled"] is False
+    code = created.json()["data"]["enrolment_code"]
+    assert code and len(code.replace("-", "")) == 20
 
     login = _login(client, "second@example.com", "SecondAdmin123!")
     assert login.json()["data"]["mfa_enrolled"] is False
     pre = headers_for(cookie_from(login))
     assert client.get(TENANTS, headers=pre).status_code == 401
+    # password alone gets nothing; the code from the creation response does
+    assert client.post(ENROL_START, json={"enrolment_code": "X"}, headers=pre).status_code == 401
+    full, _, _ = _enrol(
+        TestClient(app), "second@example.com", "SecondAdmin123!", enrolment_code=code
+    )
+    assert client.get(TENANTS, headers=full).status_code == 200
     listing = client.get("/api/v1/platform/admins", headers=platform_admin["headers"]).json()[
         "data"
     ]
     flags = {a["email"]: a["mfa_enabled"] for a in listing["items"]}
-    assert flags == {PLATFORM_EMAIL: True, "second@example.com": False}
+    assert flags == {PLATFORM_EMAIL: True, "second@example.com": True}
 
 
 def test_deactivating_an_admin_ends_their_session(
@@ -596,9 +637,17 @@ def test_admin_can_reset_another_admins_mfa_but_not_their_own(
         headers=platform_admin["headers"],
     )
     assert done.status_code == 200 and done.json()["data"]["mfa_enabled"] is False
+    fresh = done.json()["data"]["enrolment_code"]
+    assert fresh and done.json()["data"]["enrolment_code_active"] is True
     assert client.get(TENANTS, headers=second).status_code == 401  # sessions revoked
     relogin = _login(client, "second@example.com", "SecondAdmin123!")
     assert relogin.json()["data"]["mfa_enrolled"] is False  # must re-enrol
+    pre = headers_for(cookie_from(relogin))
+    # the reset leaves no code but the fresh one: the admin must use it
+    assert (
+        client.post(ENROL_START, json={"enrolment_code": ENROLMENT_CODE}, headers=pre).status_code
+        == 401
+    )
     with owner_engine.begin() as conn:
         left = conn.execute(
             text(
@@ -607,6 +656,7 @@ def test_admin_can_reset_another_admins_mfa_but_not_their_own(
             )
         ).scalar_one()
     assert left == 0
+    _enrol(TestClient(app), "second@example.com", "SecondAdmin123!", enrolment_code=fresh)
 
 
 # --- throttling ---------------------------------------------------------------------
@@ -659,13 +709,14 @@ def test_seed_with_totp_secret_is_refused_in_production(monkeypatch, owner_engin
         assert conn.execute(text("SELECT count(*) FROM platform_admins")).scalar_one() == 0
 
 
-def test_reset_script_clears_mfa(client: TestClient, owner_engine, monkeypatch) -> None:
+def test_reset_script_clears_mfa(client: TestClient, owner_engine, monkeypatch, capsys) -> None:
     import scripts.reset_platform_admin_mfa as reset_script
 
     seed_admin(owner_engine)
     headers = sign_in(client)
     monkeypatch.setattr("sys.argv", ["reset", "--email", PLATFORM_EMAIL])
     reset_script.main()
+    printed = capsys.readouterr().out.strip().splitlines()[-1].rsplit(": ", 1)[1]
     with owner_engine.begin() as conn:
         row = conn.execute(
             text("SELECT mfa_secret_encrypted, mfa_enabled_at FROM platform_admins")
@@ -673,3 +724,312 @@ def test_reset_script_clears_mfa(client: TestClient, owner_engine, monkeypatch) 
     assert row.mfa_secret_encrypted is None and row.mfa_enabled_at is None
     assert client.get(TENANTS, headers=headers).status_code == 401
     assert _login(client).json()["data"]["mfa_enrolled"] is False
+    full, _, _ = _enrol(client, enrolment_code=printed)  # the CLI-printed code works
+    assert client.get(TENANTS, headers=full).status_code == 200
+
+
+# --- one-time enrolment code (ADR-080) -------------------------------------------------
+
+ENROL_ERROR = "Invalid or expired enrolment code"
+_SECOND = ("second@example.com", "SecondAdmin123!")
+
+
+def _admin_row(owner_engine, email: str = PLATFORM_EMAIL):
+    with owner_engine.begin() as conn:
+        return conn.execute(
+            text(
+                "SELECT mfa_secret_encrypted, mfa_enabled_at, mfa_failed_count, "
+                "enrolment_code_hash, enrolment_code_expires_at FROM platform_admins "
+                "WHERE email = :e"
+            ),
+            {"e": email},
+        ).one()
+
+
+@pytest.fixture
+def security_log(caplog):
+    """Alembic's fileConfig (test DB setup) disables existing loggers and the
+    app replaces the root handlers, so re-enable the app logger and attach
+    caplog's handler to it directly."""
+    import logging
+
+    app_logger = logging.getLogger("qtesthub")
+    was_disabled = app_logger.disabled
+    app_logger.disabled = False
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level("WARNING", logger="qtesthub")
+    yield caplog
+    app_logger.removeHandler(caplog.handler)
+    app_logger.disabled = was_disabled
+
+
+def _start(client: TestClient, pre: dict[str, str], code: str | None):
+    return client.post(ENROL_START, json={"enrolment_code": code}, headers=pre)
+
+
+def test_enrolment_is_blocked_when_no_code_was_ever_issued(
+    client: TestClient, owner_engine
+) -> None:
+    seed_admin(owner_engine, totp_secret=None)  # e.g. un-enrolled at migration time
+    pre = _pre_mfa_headers(client)
+    for attempt in (ENROLMENT_CODE, "anything-at-all"):
+        response = _start(client, pre, attempt)
+        assert response.status_code == 401
+        assert response.json()["error"]["message"] == ENROL_ERROR
+    # no secret / QR material was issued to a password-only session
+    assert _admin_row(owner_engine).mfa_secret_encrypted is None
+    # a missing field is a validation error, not a way around the check
+    assert client.post(ENROL_START, json={}, headers=pre).status_code == 422
+    assert client.post(ENROL_START, headers=pre).status_code == 422
+    assert client.post(ENROL_VERIFY, json={"code": "123456"}, headers=pre).status_code == 422
+
+
+def test_wrong_enrolment_code_is_rejected_generically_and_counts_towards_lockout(
+    client: TestClient, owner_engine, security_log
+) -> None:
+    caplog = security_log
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
+    pre = _pre_mfa_headers(client)
+    with caplog.at_level("WARNING", logger="qtesthub"):
+        first = _start(client, pre, "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ")
+    assert first.status_code == 401 and first.json()["error"]["message"] == ENROL_ERROR
+    assert "security_event=platform_admin_enrolment_code_failed" in caplog.text
+    row = _admin_row(owner_engine)
+    assert row.mfa_failed_count == 1 and row.mfa_secret_encrypted is None
+    assert row.enrolment_code_hash is not None  # a failed guess does not burn the code
+
+    # the real code still works after a wrong guess (failures do not consume it)
+    ok = _start(client, pre, ENROLMENT_CODE)
+    assert ok.status_code == 200 and ok.json()["data"]["secret"]
+
+    # ...and wrong guesses lock the account exactly like wrong MFA codes
+    for _ in range(3):
+        assert _start(client, pre, "BAD").status_code == 401
+    locked = _start(client, pre, "BAD")  # the 5th failure in total
+    assert locked.status_code == 401 and "locked" in locked.json()["error"]["message"].lower()
+    login = _login(client)
+    assert login.status_code == 401 and "locked" in login.json()["error"]["message"].lower()
+    assert _admin_row(owner_engine).enrolment_code_hash is not None
+
+
+def test_enrolment_code_formatting_is_forgiving_but_not_loose(
+    client: TestClient, owner_engine
+) -> None:
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
+    pre = _pre_mfa_headers(client)
+    assert _start(client, pre, ENROLMENT_CODE.lower().replace("-", " ")).status_code == 200
+    assert _start(client, pre, ENROLMENT_CODE[:-1]).status_code == 401
+
+
+def test_expired_enrolment_code_is_rejected(client: TestClient, owner_engine) -> None:
+    seed_admin(
+        owner_engine,
+        totp_secret=None,
+        enrolment_code=ENROLMENT_CODE,
+        enrolment_valid_for=timedelta(seconds=-5),
+    )
+    pre = _pre_mfa_headers(client)
+    response = _start(client, pre, ENROLMENT_CODE)
+    assert response.status_code == 401 and response.json()["error"]["message"] == ENROL_ERROR
+    assert _admin_row(owner_engine).mfa_secret_encrypted is None
+
+    # expiry reached between the two steps also blocks completion
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE platform_admins SET enrolment_code_expires_at = now() + interval '1 hour'")
+        )
+    started = _start(client, pre, ENROLMENT_CODE)
+    assert started.status_code == 200
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE platform_admins SET enrolment_code_expires_at = now() - interval '1 s'")
+        )
+    finish = client.post(
+        ENROL_VERIFY,
+        json={
+            "code": totp.generate_code(started.json()["data"]["secret"]),
+            "enrolment_code": ENROLMENT_CODE,
+        },
+        headers=pre,
+    )
+    assert finish.status_code == 401 and finish.json()["error"]["message"] == ENROL_ERROR
+    assert _admin_row(owner_engine).mfa_enabled_at is None
+
+
+def test_completing_enrolment_needs_the_code_even_with_a_valid_authenticator_code(
+    client: TestClient, owner_engine
+) -> None:
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
+    pre = _pre_mfa_headers(client)
+    secret = _start(client, pre, ENROLMENT_CODE).json()["data"]["secret"]
+    finish = client.post(
+        ENROL_VERIFY,
+        json={"code": totp.generate_code(secret), "enrolment_code": "WRONG-WRONG-WRONG-WRONG"},
+        headers=pre,
+    )
+    assert finish.status_code == 401 and finish.json()["error"]["message"] == ENROL_ERROR
+    row = _admin_row(owner_engine)
+    assert row.mfa_enabled_at is None and row.mfa_failed_count == 1
+
+
+def test_enrolment_code_is_single_use(client: TestClient, owner_engine) -> None:
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
+    full, _, _ = _enrol(client)
+    assert client.get(TENANTS, headers=full).status_code == 200
+    row = _admin_row(owner_engine)
+    assert row.enrolment_code_hash is None and row.enrolment_code_expires_at is None
+    # replaying the same code (even from a fresh password-only session) is refused
+    replay = _start(client, _pre_mfa_headers(client), ENROLMENT_CODE)
+    assert replay.status_code == 409
+    assert _admin_row(owner_engine).mfa_secret_encrypted == row.mfa_secret_encrypted
+
+
+def test_new_admin_code_is_returned_once_stored_hashed_and_never_listed(
+    client: TestClient, owner_engine, platform_admin: dict
+) -> None:
+    created = client.post(
+        "/api/v1/platform/admins",
+        headers=platform_admin["headers"],
+        json={"email": _SECOND[0], "password": _SECOND[1]},
+    ).json()["data"]
+    code = created["enrolment_code"]
+    assert created["enrolment_code_active"] is True and created["enrolment_code_expires_at"]
+    assert all(ch in "ABCDEFGHJKLMNPQRSTUVWXYZ23456789-" for ch in code)
+
+    row = _admin_row(owner_engine, _SECOND[0])
+    assert len(row.enrolment_code_hash) == 64
+    assert code not in row.enrolment_code_hash
+    assert code.replace("-", "") not in row.enrolment_code_hash
+
+    listing = client.get("/api/v1/platform/admins", headers=platform_admin["headers"])
+    second = next(a for a in listing.json()["data"]["items"] if a["email"] == _SECOND[0])
+    assert second["enrolment_code_active"] is True
+    assert "enrolment_code" not in second and "enrolment_code_hash" not in second
+    assert code not in listing.text and row.enrolment_code_hash not in listing.text
+    owner_item = next(a for a in listing.json()["data"]["items"] if a["email"] == PLATFORM_EMAIL)
+    assert owner_item["enrolment_code_active"] is False
+
+
+def test_enrolment_code_ttl_comes_from_settings(
+    client: TestClient, owner_engine, platform_admin: dict, monkeypatch
+) -> None:
+    from app.services import platform_auth_service as svc
+
+    monkeypatch.setattr(svc.settings, "platform_enrolment_code_ttl_hours", 2)
+    client.post(
+        "/api/v1/platform/admins",
+        headers=platform_admin["headers"],
+        json={"email": _SECOND[0], "password": _SECOND[1]},
+    )
+    expires = _admin_row(owner_engine, _SECOND[0]).enrolment_code_expires_at
+    remaining = expires - datetime.now(UTC)
+    assert timedelta(hours=1, minutes=55) < remaining <= timedelta(hours=2)
+
+
+def test_reissue_replaces_the_previous_code(
+    client: TestClient, owner_engine, platform_admin: dict, security_log
+) -> None:
+    caplog = security_log
+    created = client.post(
+        "/api/v1/platform/admins",
+        headers=platform_admin["headers"],
+        json={"email": _SECOND[0], "password": _SECOND[1]},
+    ).json()["data"]
+    old = created["enrolment_code"]
+    base = f"/api/v1/platform/admins/{created['id']}/enrolment-code"
+    with caplog.at_level("WARNING", logger="qtesthub"):
+        again = client.post(base, headers=platform_admin["headers"])
+    assert again.status_code == 200, again.text
+    new = again.json()["data"]["enrolment_code"]
+    assert new and new != old and again.json()["data"]["enrolment_code_active"] is True
+    assert "security_event=platform_admin_enrolment_code_issued" in caplog.text
+    assert old not in caplog.text and new not in caplog.text
+
+    pre = _pre_mfa_headers(client, *_SECOND)
+    assert _start(client, pre, old).status_code == 401  # the old one is dead
+    full, _, _ = _enrol(TestClient(app), *_SECOND, enrolment_code=new)
+    assert client.get(TENANTS, headers=full).status_code == 200
+
+
+def test_reissue_is_refused_for_yourself_enrolled_admins_and_strangers(
+    client: TestClient, owner_engine, platform_admin: dict
+) -> None:
+    seed_admin(owner_engine, _SECOND[0], _SECOND[1], PLATFORM_TOTP_SECRET)  # already enrolled
+    admins = client.get("/api/v1/platform/admins", headers=platform_admin["headers"]).json()
+    ids = {a["email"]: a["id"] for a in admins["data"]["items"]}
+    h = platform_admin["headers"]
+    assert (
+        client.post(
+            f"/api/v1/platform/admins/{ids[PLATFORM_EMAIL]}/enrolment-code", headers=h
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            f"/api/v1/platform/admins/{ids[_SECOND[0]]}/enrolment-code", headers=h
+        ).status_code
+        == 409
+    )
+    missing = "/api/v1/platform/admins/00000000-0000-0000-0000-000000000000/enrolment-code"
+    assert client.post(missing, headers=h).status_code == 404
+    assert _admin_row(owner_engine, _SECOND[0]).enrolment_code_hash is None
+
+
+def test_reissue_needs_a_fully_authenticated_platform_session(
+    client: TestClient, owner_engine, platform_admin: dict
+) -> None:
+    created = client.post(
+        "/api/v1/platform/admins",
+        headers=platform_admin["headers"],
+        json={"email": _SECOND[0], "password": _SECOND[1]},
+    ).json()["data"]
+    url = f"/api/v1/platform/admins/{created['id']}/enrolment-code"
+    assert client.post(url).status_code == 401
+    pre = _pre_mfa_headers(TestClient(app), *_SECOND)
+    assert client.post(url, headers=pre).status_code == 401
+
+
+def test_seed_script_issues_a_code_for_unenrolled_admins_only(
+    owner_engine, monkeypatch, capsys
+) -> None:
+    import scripts.seed_platform_admin as seed_script
+
+    monkeypatch.setattr(
+        "sys.argv", ["seed", "--email", "a@example.com", "--password", "SomePass123!"]
+    )
+    seed_script.main()
+    printed = capsys.readouterr().out.strip().splitlines()[-1].rsplit(": ", 1)[1]
+    assert len(printed.replace("-", "")) == 20
+    assert _admin_row(owner_engine, "a@example.com").enrolment_code_hash is not None
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "seed",
+            "--email",
+            "b@example.com",
+            "--password",
+            "SomePass123!",
+            "--totp-secret",
+            PLATFORM_TOTP_SECRET,
+        ],
+    )
+    seed_script.main()
+    assert "enrolment code" not in capsys.readouterr().out.lower()
+    row = _admin_row(owner_engine, "b@example.com")
+    assert row.mfa_enabled_at is not None and row.enrolment_code_hash is None
+
+
+def test_tenant_session_and_basic_auth_cannot_enrol(client: TestClient, owner_engine) -> None:
+    import base64 as b64
+
+    seed_admin(owner_engine, totp_secret=None, enrolment_code=ENROLMENT_CODE)
+    basic = b64.b64encode(f"{PLATFORM_EMAIL}:{PLATFORM_PASSWORD}".encode()).decode()
+    for url in (ENROL_START, ENROL_VERIFY):
+        response = client.post(
+            url,
+            json={"code": "123456", "enrolment_code": ENROLMENT_CODE},
+            headers={"Authorization": f"Basic {basic}"},
+        )
+        assert response.status_code == 401
+    assert _admin_row(owner_engine).mfa_secret_encrypted is None

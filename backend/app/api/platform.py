@@ -1,17 +1,26 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.platform_auth import require_platform_admin
+from app.core.platform_auth import (
+    enforce_step_up,
+    require_platform_admin,
+    require_platform_admin_step_up,
+)
+from app.core.rate_limit import limiter, scaled
 from app.core.responses import envelope
 from app.models.identity import PlatformAdmin
+from app.schemas.audit import AuditCheckpointOut, CreateCheckpointResult
 from app.schemas.platform import (
     PlatformAdminCreateRequest,
     PlatformAdminListResponse,
     PlatformAdminOut,
     PlatformAdminUpdateRequest,
+    PlatformAdminWithCodeOut,
     TenantCreateRequest,
     TenantCreateResponse,
     TenantDataRegionUpdateRequest,
@@ -19,12 +28,18 @@ from app.schemas.platform import (
     TenantOut,
     TenantStatusUpdateRequest,
 )
+from app.schemas.platform_audit import PlatformAuditEventListResponse, PlatformAuditEventOut
 from app.schemas.subscription import (
     PlanCreateRequest,
     PlanUpdateRequest,
     SubscriptionAssignRequest,
 )
-from app.services import platform_service, subscription_service
+from app.services import (
+    audit_checkpoint_service,
+    platform_audit_service,
+    platform_service,
+    subscription_service,
+)
 
 router = APIRouter(prefix="/platform", tags=["platform"])
 
@@ -163,19 +178,24 @@ def list_platform_admins(
 def create_platform_admin(
     req: PlatformAdminCreateRequest,
     db: Session = Depends(get_db),
-    admin: PlatformAdmin = Depends(require_platform_admin),
+    admin: PlatformAdmin = Depends(require_platform_admin_step_up),
 ) -> dict:
-    created = platform_service.create_platform_admin(db, req, admin.id)
-    return envelope(PlatformAdminOut.model_validate(created).model_dump(mode="json"))
+    created, code = platform_service.create_platform_admin(db, req, admin.id)
+    out = PlatformAdminWithCodeOut.model_validate(created)
+    out.enrolment_code = code
+    return envelope(out.model_dump(mode="json"))
 
 
 @router.patch("/admins/{admin_id}")
 def update_platform_admin(
     admin_id: UUID,
     req: PlatformAdminUpdateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     admin: PlatformAdmin = Depends(require_platform_admin),
 ) -> dict:
+    if not req.is_active:  # ADR-083: deactivating needs a fresh step-up; reactivating does not
+        enforce_step_up(request)
     updated = platform_service.update_platform_admin_active(db, admin_id, req.is_active, admin.id)
     return envelope(PlatformAdminOut.model_validate(updated).model_dump(mode="json"))
 
@@ -184,9 +204,133 @@ def update_platform_admin(
 def reset_platform_admin_mfa(
     admin_id: UUID,
     db: Session = Depends(get_db),
-    admin: PlatformAdmin = Depends(require_platform_admin),
+    admin: PlatformAdmin = Depends(require_platform_admin_step_up),
 ) -> dict:
     """ADR-074: clear another admin's MFA (lost device); they re-enrol on
-    their next sign-in. Refused for your own account."""
-    updated = platform_service.reset_platform_admin_mfa(db, admin_id, admin.id)
-    return envelope(PlatformAdminOut.model_validate(updated).model_dump(mode="json"))
+    their next sign-in with a fresh one-time enrolment code (returned once
+    here, ADR-080). Refused for your own account."""
+    updated, code = platform_service.reset_platform_admin_mfa(db, admin_id, admin.id)
+    out = PlatformAdminWithCodeOut.model_validate(updated)
+    out.enrolment_code = code
+    return envelope(out.model_dump(mode="json"))
+
+
+@router.post("/admins/{admin_id}/enrolment-code")
+def reissue_platform_admin_enrolment_code(
+    admin_id: UUID,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin_step_up),
+) -> dict:
+    """ADR-080: new one-time enrolment code for an admin who has not enrolled
+    yet; the previous code stops working. Refused for your own account."""
+    updated, code = platform_service.reissue_platform_admin_enrolment_code(db, admin_id, admin.id)
+    out = PlatformAdminWithCodeOut.model_validate(updated)
+    out.enrolment_code = code
+    return envelope(out.model_dump(mode="json"))
+
+
+@router.post("/admins/{admin_id}/password-reset-code")
+@limiter.limit(scaled(10))
+def issue_platform_admin_password_reset_code(
+    request: Request,
+    admin_id: UUID,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin_step_up),
+) -> dict:
+    """ADR-081: force another admin's password reset. Revokes their sessions and
+    returns a one-time reset code (shown once); they must use it at sign-in.
+    Refused for your own account."""
+    updated, code = platform_service.issue_platform_admin_password_reset_code(
+        db, admin_id, admin.id
+    )
+    out = PlatformAdminWithCodeOut.model_validate(updated)
+    out.password_reset_code = code
+    return envelope(out.model_dump(mode="json"))
+
+
+# ADR-082: read-only platform audit trail (no write/delete route exists).
+@router.get("/audit-events")
+@limiter.limit(scaled(60))
+def list_audit_events(
+    request: Request,
+    event_type: str | None = Query(default=None, max_length=64),
+    outcome: str | None = Query(default=None, pattern="^(success|failure)$"),
+    actor_email: str | None = Query(default=None, max_length=254),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    rows, total = platform_audit_service.list_events(
+        db,
+        event_type=event_type,
+        outcome=outcome,
+        actor_email=actor_email,
+        page=page,
+        page_size=page_size,
+    )
+    items = [PlatformAuditEventOut.model_validate(r) for r in rows]
+    return envelope(
+        PlatformAuditEventListResponse(items=items, total=total).model_dump(mode="json")
+    )
+
+
+@router.get("/audit-events/verify")
+@limiter.limit(scaled(10))
+def verify_audit_events(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    result = platform_audit_service.verify_chain(db)
+    return envelope(result.model_dump(mode="json"))
+
+
+# ADR-085: signed checkpoints over the platform audit chain. Low-risk (it only
+# anchors what is already there), so a platform session suffices -- no step-up.
+@router.get("/audit-events/checkpoints")
+@limiter.limit(scaled(30))
+def list_audit_checkpoints(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    rows = audit_checkpoint_service.list_checkpoints(db, audit_checkpoint_service.PLATFORM_SCOPE)
+    return envelope([AuditCheckpointOut.model_validate(r).model_dump(mode="json") for r in rows])
+
+
+@router.post("/audit-events/checkpoints")
+@limiter.limit(scaled(10))
+def create_audit_checkpoint(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    checkpoint = audit_checkpoint_service.create_checkpoint(
+        db, audit_checkpoint_service.PLATFORM_SCOPE
+    )
+    result = CreateCheckpointResult(
+        created=checkpoint is not None,
+        reason=None if checkpoint else "no_new_events",
+        checkpoint=AuditCheckpointOut.model_validate(checkpoint) if checkpoint else None,
+    )
+    return envelope(result.model_dump(mode="json"))
+
+
+@router.get("/audit-events/checkpoints/export")
+@limiter.limit(scaled(10))
+def export_audit_checkpoints(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> JSONResponse:
+    rows = audit_checkpoint_service.list_checkpoints(db, audit_checkpoint_service.PLATFORM_SCOPE)
+    body = {
+        "scope": audit_checkpoint_service.PLATFORM_SCOPE,
+        "exported_at": datetime.now(UTC).isoformat(),
+        "checkpoints": [AuditCheckpointOut.model_validate(r).model_dump(mode="json") for r in rows],
+    }
+    return JSONResponse(
+        body,
+        headers={"Content-Disposition": 'attachment; filename="platform_audit_checkpoints.json"'},
+    )

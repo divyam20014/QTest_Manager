@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 
-def _create_tenant(client: TestClient, platform_admin: dict, name: str = "Lifecycle Test Co") -> dict:
+def _create_tenant(
+    client: TestClient, platform_admin: dict, name: str = "Lifecycle Test Co"
+) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
         headers=platform_admin["headers"],
@@ -82,9 +84,7 @@ def test_suspending_a_tenant_revokes_active_sessions(
 
     with owner_engine.begin() as conn:
         active_before = conn.execute(
-            text(
-                "SELECT count(*) FROM sessions WHERE tenant_id = :tid AND revoked_at IS NULL"
-            ),
+            text("SELECT count(*) FROM sessions WHERE tenant_id = :tid AND revoked_at IS NULL"),
             {"tid": tenant_id},
         ).scalar_one()
     assert active_before == 1
@@ -98,9 +98,7 @@ def test_suspending_a_tenant_revokes_active_sessions(
 
     with owner_engine.begin() as conn:
         active_after = conn.execute(
-            text(
-                "SELECT count(*) FROM sessions WHERE tenant_id = :tid AND revoked_at IS NULL"
-            ),
+            text("SELECT count(*) FROM sessions WHERE tenant_id = :tid AND revoked_at IS NULL"),
             {"tid": tenant_id},
         ).scalar_one()
     assert active_after == 0
@@ -131,9 +129,7 @@ def test_approving_a_tenant_does_not_touch_sessions(
 
     with owner_engine.begin() as conn:
         active = conn.execute(
-            text(
-                "SELECT count(*) FROM sessions WHERE tenant_id = :tid AND revoked_at IS NULL"
-            ),
+            text("SELECT count(*) FROM sessions WHERE tenant_id = :tid AND revoked_at IS NULL"),
             {"tid": tenant_id},
         ).scalar_one()
     assert active == 1

@@ -8,8 +8,10 @@ def _base_production_settings(**overrides) -> Settings:
         environment="production",
         database_url="postgresql+psycopg://real_user:real_pass@db.internal:5432/qtesthub",
         mfa_delivery_mode="real",
+        smtp_host="smtp.example.com",
         cors_allow_origins=["https://app.example.com"],
         ai_credential_encryption_key="kEdknj1w6XzjMsv2T86nToujCkYjMqSYnr3CoPxuKAI=",
+        audit_checkpoint_hmac_key="Zk3p9vQw1LrT7yUaXc5NmB8dEh2GfJ4sRt6VnKo0WiA",
     )
     defaults.update(overrides)
     return Settings(**defaults)
@@ -69,3 +71,13 @@ def test_missing_encryption_key_in_production_is_rejected() -> None:
 def test_invalid_encryption_key_in_production_is_rejected() -> None:
     with pytest.raises(InsecureProductionConfigError, match="not a valid Fernet key"):
         validate_for_production(_base_production_settings(ai_credential_encryption_key="nope"))
+
+
+def test_loosened_auth_rate_limit_in_production_is_rejected() -> None:
+    with pytest.raises(InsecureProductionConfigError, match="AUTH_RATE_LIMIT_MULTIPLIER"):
+        validate_for_production(_base_production_settings(auth_rate_limit_multiplier=10))
+
+
+def test_real_mfa_without_smtp_host_in_production_is_rejected() -> None:
+    with pytest.raises(InsecureProductionConfigError, match="SMTP_HOST"):
+        validate_for_production(_base_production_settings(smtp_host=""))

@@ -60,8 +60,25 @@ class PlatformAdminOut(BaseModel):
     created_at: datetime
     # ADR-074: derived from mfa_enabled_at -- never exposes any secret.
     mfa_enabled: bool = False
+    # ADR-080: only whether a code is usable and when it lapses -- never the
+    # code or its hash.
+    enrolment_code_active: bool = False
+    enrolment_code_expires_at: datetime | None = None
+    # ADR-081: whether an admin-issued password-reset code is usable and when it
+    # lapses -- never the code or its hash.
+    password_reset_code_active: bool = False
+    password_reset_code_expires_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class PlatformAdminWithCodeOut(PlatformAdminOut):
+    """Returned by create / reset-MFA / re-issue: carries the PLAINTEXT
+    one-time enrolment code, visible only in this response."""
+
+    enrolment_code: str | None = None
+    # ADR-081: set only by POST /platform/admins/{id}/password-reset-code.
+    password_reset_code: str | None = None
 
 
 class PlatformAdminListResponse(BaseModel):

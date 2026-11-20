@@ -1,3 +1,4 @@
+import type { ChainVerificationResult, CreateCheckpointResult } from '@/api/audit'
 import { API_BASE_URL, type ApiEnvelope, ApiError } from '@/api/client'
 
 // Platform Administration is a deliberately separate auth plane from tenant
@@ -38,6 +39,21 @@ export interface PlatformAdminAccount {
   is_active: boolean
   created_at: string
   mfa_enabled: boolean
+  // ADR-080: whether a one-time enrolment code is usable, and when it lapses.
+  // The code itself is never returned by the list.
+  enrolment_code_active: boolean
+  enrolment_code_expires_at: string | null
+  // ADR-081: whether an admin-issued password-reset code is usable, and when it
+  // lapses (null once consumed or never issued). Never the code itself.
+  password_reset_code_active: boolean
+  password_reset_code_expires_at: string | null
+}
+
+/** Create / reset-MFA / re-issue / password-reset responses carry the plaintext
+ * one-time code -- the only time it is ever visible. */
+export interface PlatformAdminWithCode extends PlatformAdminAccount {
+  enrolment_code: string | null
+  password_reset_code?: string | null
 }
 
 export interface PlatformAdminListResponse {
@@ -61,7 +77,22 @@ export const PLATFORM_SESSION_KEY = ['platform-session'] as const
 
 export const PLATFORM_SESSION_EXPIRED_EVENT = 'qth:platform-session-expired'
 
-async function platformFetch<T>(path: string, init?: RequestInit): Promise<T> {
+/** ADR-083: set by the signed-in console. Called when the server answers 403
+ * `step_up_required`; resolves true once the admin has entered a fresh code (the
+ * request is then retried once) and false when they cancel. */
+type StepUpHandler = () => Promise<boolean>
+let stepUpHandler: StepUpHandler | null = null
+export function setStepUpHandler(handler: StepUpHandler | null): void {
+  stepUpHandler = handler
+}
+export const STEP_UP_REQUIRED_CODE = 'step_up_required'
+export const SESSION_IDLE_CODE = 'session_idle_expired'
+
+async function platformFetch<T>(
+  path: string,
+  init?: RequestInit,
+  stepUpRetried = false,
+): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: 'include',
@@ -77,10 +108,27 @@ async function platformFetch<T>(path: string, init?: RequestInit): Promise<T> {
     body = null
   }
   if (!response.ok || body?.error) {
-    if (response.status === 401 && !path.startsWith('/platform/auth/')) {
-      window.dispatchEvent(new Event(PLATFORM_SESSION_EXPIRED_EVENT))
+    const code = body?.error?.code ?? 'unknown'
+    if (
+      response.status === 403 &&
+      code === STEP_UP_REQUIRED_CODE &&
+      !stepUpRetried &&
+      stepUpHandler
+    ) {
+      if (await stepUpHandler()) return platformFetch<T>(path, init, true)
     }
-    throw new ApiError(body?.error?.message ?? 'Request failed', body?.error?.code ?? 'unknown')
+    const idle = response.status === 401 && code === SESSION_IDLE_CODE
+    const sessionGone =
+      response.status === 401 &&
+      (!path.startsWith('/platform/auth/') || path.startsWith('/platform/auth/sessions'))
+    if (idle || sessionGone) {
+      window.dispatchEvent(
+        new CustomEvent(PLATFORM_SESSION_EXPIRED_EVENT, {
+          detail: { message: idle ? (body?.error?.message ?? null) : null },
+        }),
+      )
+    }
+    throw new ApiError(body?.error?.message ?? 'Request failed', code)
   }
   return body?.data as T
 }
@@ -94,6 +142,7 @@ export interface PlatformSessionInfo {
   stage: PlatformStage
   mfa_enrolled: boolean
   recovery_codes_remaining: number | null
+  step_up_expires_at?: string | null
 }
 
 export interface PlatformEnrolStart {
@@ -120,14 +169,20 @@ export function getPlatformSession(): Promise<PlatformSessionInfo> {
   return platformFetch('/platform/auth/me')
 }
 
-export function startPlatformEnrolment(): Promise<PlatformEnrolStart> {
-  return platformFetch('/platform/auth/mfa/enroll/start', { method: 'POST' })
+export function startPlatformEnrolment(enrolmentCode: string): Promise<PlatformEnrolStart> {
+  return platformFetch('/platform/auth/mfa/enroll/start', {
+    method: 'POST',
+    body: JSON.stringify({ enrolment_code: enrolmentCode }),
+  })
 }
 
-export function finishPlatformEnrolment(code: string): Promise<PlatformEnrolFinish> {
+export function finishPlatformEnrolment(
+  code: string,
+  enrolmentCode: string,
+): Promise<PlatformEnrolFinish> {
   return platformFetch('/platform/auth/mfa/enroll/verify', {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, enrolment_code: enrolmentCode }),
   })
 }
 
@@ -138,6 +193,72 @@ export function verifyPlatformMfa(
     method: 'POST',
     body: JSON.stringify(credential),
   })
+}
+
+/** Exactly one of `code` (TOTP) or `recovery_code`. */
+export type SecondFactor = { code: string } | { recovery_code: string }
+
+/** ADR-081: change your own password (current password + fresh authenticator or
+ * recovery code). Other sessions of this admin are revoked; this one stays. */
+export function changePlatformPassword(
+  currentPassword: string,
+  newPassword: string,
+  factor: SecondFactor,
+): Promise<{ password_changed: boolean }> {
+  return platformFetch('/platform/auth/password/change', {
+    method: 'POST',
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+      ...factor,
+    }),
+  })
+}
+
+/** ADR-081: complete an admin-issued reset. The authenticator factor is only
+ * needed (and only checked) when the account has MFA enabled. */
+export function resetPlatformPassword(req: {
+  email: string
+  resetCode: string
+  newPassword: string
+  factor: SecondFactor | null
+}): Promise<{ password_reset: boolean }> {
+  return platformFetch('/platform/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: req.email,
+      reset_code: req.resetCode,
+      new_password: req.newPassword,
+      ...(req.factor ?? {}),
+    }),
+  })
+}
+
+/** ADR-083: prove possession of the authenticator so sensitive actions are
+ * allowed for the next few minutes. */
+export function stepUpPlatform(factor: SecondFactor): Promise<{ step_up_expires_at: string }> {
+  return platformFetch('/platform/auth/step-up', {
+    method: 'POST',
+    body: JSON.stringify(factor),
+  })
+}
+
+/** ADR-083: one of the signed-in admin's own live sessions. */
+export interface PlatformSessionEntry {
+  id: string
+  created_at: string
+  last_seen_at: string | null
+  ip_address: string | null
+  user_agent: string | null
+  current: boolean
+}
+
+export function listPlatformSessions(): Promise<PlatformSessionEntry[]> {
+  return platformFetch('/platform/auth/sessions')
+}
+
+export function revokePlatformSession(id: string): Promise<{ revoked: boolean; current: boolean }> {
+  return platformFetch(`/platform/auth/sessions/${id}`, { method: 'DELETE' })
 }
 
 export function platformLogout(): Promise<{ signed_out: boolean }> {
@@ -236,8 +357,8 @@ export function listPlatformAdmins(
 export function createPlatformAdmin(req: {
   email: string
   password: string
-}): Promise<PlatformAdminAccount> {
-  return platformFetch<PlatformAdminAccount>('/platform/admins', {
+}): Promise<PlatformAdminWithCode> {
+  return platformFetch<PlatformAdminWithCode>('/platform/admins', {
     method: 'POST',
     body: JSON.stringify(req),
   })
@@ -301,8 +422,75 @@ export function updateLeadStatus(leadId: string, status: LeadStatus): Promise<Ma
   })
 }
 
-export function resetPlatformAdminMfa(adminId: string): Promise<PlatformAdminAccount> {
-  return platformFetch<PlatformAdminAccount>(`/platform/admins/${adminId}/reset-mfa`, {
+export function resetPlatformAdminMfa(adminId: string): Promise<PlatformAdminWithCode> {
+  return platformFetch<PlatformAdminWithCode>(`/platform/admins/${adminId}/reset-mfa`, {
     method: 'POST',
   })
+}
+
+export function reissuePlatformAdminEnrolmentCode(adminId: string): Promise<PlatformAdminWithCode> {
+  return platformFetch<PlatformAdminWithCode>(`/platform/admins/${adminId}/enrolment-code`, {
+    method: 'POST',
+  })
+}
+
+export function issuePlatformAdminPasswordResetCode(
+  adminId: string,
+): Promise<PlatformAdminWithCode> {
+  return platformFetch<PlatformAdminWithCode>(`/platform/admins/${adminId}/password-reset-code`, {
+    method: 'POST',
+  })
+}
+
+// ADR-082: read-only platform audit trail.
+export type PlatformAuditOutcome = 'success' | 'failure'
+
+export interface PlatformAuditEvent {
+  id: string
+  created_at: string
+  event_type: string
+  actor_admin_id: string | null
+  actor_email: string | null
+  target_admin_id: string | null
+  ip: string | null
+  outcome: PlatformAuditOutcome
+  details: Record<string, string | number | boolean> | null
+}
+
+export interface PlatformAuditEventList {
+  items: PlatformAuditEvent[]
+  total: number
+}
+
+export type PlatformAuditChainResult = ChainVerificationResult
+
+export function createPlatformAuditCheckpoint(): Promise<CreateCheckpointResult> {
+  return platformFetch<CreateCheckpointResult>('/platform/audit-events/checkpoints', {
+    method: 'POST',
+  })
+}
+
+export const PLATFORM_AUDIT_CHECKPOINT_EXPORT_PATH = '/platform/audit-events/checkpoints/export'
+
+export function listPlatformAuditEvents(
+  params: {
+    event_type?: string
+    outcome?: PlatformAuditOutcome | ''
+    actor_email?: string
+    page?: number
+    page_size?: number
+  } = {},
+): Promise<PlatformAuditEventList> {
+  const query = new URLSearchParams()
+  if (params.event_type) query.set('event_type', params.event_type)
+  if (params.outcome) query.set('outcome', params.outcome)
+  if (params.actor_email) query.set('actor_email', params.actor_email)
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  const qs = query.toString()
+  return platformFetch<PlatformAuditEventList>(`/platform/audit-events${qs ? `?${qs}` : ''}`)
+}
+
+export function verifyPlatformAuditChain(): Promise<PlatformAuditChainResult> {
+  return platformFetch<PlatformAuditChainResult>('/platform/audit-events/verify')
 }

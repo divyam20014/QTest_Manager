@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     session_ttl_minutes: int = 30
     session_absolute_ttl_hours: int = 12
 
+    # Multiplies the per-minute sign-in/MFA rate limits (app/core/rate_limit.py
+    # `scaled`). Dev/e2e only; production must leave it at 1.
+    auth_rate_limit_multiplier: int = 1
+
     # ADR-011: MFA delivery mode. "simulated" logs/returns the code instead of
     # sending it through a real provider; only ever used outside production.
     mfa_delivery_mode: str = "simulated"
@@ -67,8 +71,19 @@ class Settings(BaseSettings):
     # AI/SaaS vision roadmap Phase 3 (ADR-045): Fernet key used to encrypt
     # tenant-supplied AI provider API keys at rest. Empty means "not
     # configured" -- saving a key fails loudly rather than storing it
-    # unencrypted (same fail-loud convention as smtp_host).
+    # unencrypted (same fail-loud convention as smtp_host). ADR-084: may be a
+    # comma-separated list for key rotation -- first key encrypts, all decrypt.
     ai_credential_encryption_key: str = ""
+
+    # ADR-085 (GAP-01): HMAC key that signs audit-chain checkpoints. It must live
+    # OUTSIDE the database (env / secret manager): the signature only protects
+    # anything while the DB owner cannot read this key. Empty in dev/test falls
+    # back to a public, dev-only constant; production refuses to boot without a
+    # real key (validate_for_production).
+    audit_checkpoint_hmac_key: str = ""
+    # The worker writes checkpoints on this cadence (0 disables the worker loop;
+    # `python -m scripts.audit_checkpoint` from cron works either way).
+    audit_checkpoint_interval_seconds: float = 3600.0
     gemini_api_base_url: str = "https://generativelanguage.googleapis.com"
     # Google retired gemini-2.0-flash; its own 404 error names
     # gemini-3.8-flash as the replacement. Override via GEMINI_MODEL if
@@ -112,12 +127,22 @@ class Settings(BaseSettings):
     # from ever being read as a platform session and vice versa.
     platform_session_cookie_name: str = "qth_platform_session"
     platform_session_absolute_ttl_hours: int = 8
-    platform_session_idle_timeout_minutes: int = 30
+    # ADR-083: session hardening. Idle expiry, optional IP binding (off by default
+    # because mobile / VPN users change address) and the step-up freshness window
+    # for sensitive actions. The User-Agent binding is always on.
+    platform_session_idle_minutes: int = 30
+    platform_session_bind_ip: bool = False
+    platform_step_up_minutes: int = 5
     # The password-verified, pre-MFA session is short-lived: it only has to
     # survive the time it takes to type a 6-digit code.
     platform_pre_mfa_ttl_minutes: int = 10
     platform_mfa_max_failed_attempts: int = 5
     platform_mfa_issuer: str = "QTestHub"
+    # ADR-080: a first-time authenticator enrolment also needs a one-time code
+    # that the creating admin hands over separately from the password.
+    platform_enrolment_code_ttl_hours: int = 24
+    # ADR-081: validity of an admin-issued one-time password-reset code.
+    platform_password_reset_code_ttl_hours: int = 24
 
     # Tier 1 / ADR-053: pluggable attachment storage backend. "local" (the
     # default, unchanged dev/test behavior) writes under attachments_dir;
@@ -194,6 +219,13 @@ def validate_for_production(settings: Settings) -> None:
             "responses -- set MFA_DELIVERY_MODE=real and configure SMTP_* for production."
         )
 
+    # Real delivery with no SMTP host would fail every MFA email at login time.
+    if settings.mfa_delivery_mode == "real" and not settings.smtp_host.strip():
+        problems.append(
+            "MFA_DELIVERY_MODE=real requires SMTP_HOST to be set -- without it no "
+            "MFA code can be delivered and nobody can sign in."
+        )
+
     if settings.database_url == _DEV_DATABASE_URL:
         problems.append(
             "DATABASE_URL is still the insecure local-dev default "
@@ -231,15 +263,66 @@ def validate_for_production(settings: Settings) -> None:
             "MFA secrets (ADR-074); generate one with Fernet.generate_key()."
         )
     else:
-        try:
-            from cryptography.fernet import Fernet
+        # ADR-084: the value may be a comma-separated rotation list (first key
+        # encrypts, all decrypt). Every entry must be a valid key; the message
+        # names the position only, never a key value.
+        from app.core.crypto import CredentialEncryptionError, parse_keys
 
-            Fernet(settings.ai_credential_encryption_key.encode())
-        except ValueError:
-            problems.append(
-                "AI_CREDENTIAL_ENCRYPTION_KEY is not a valid Fernet key "
-                "(urlsafe-base64, 32 bytes) -- it also encrypts platform-admin MFA secrets."
+        try:
+            parse_keys(settings.ai_credential_encryption_key)
+        except CredentialEncryptionError as exc:
+            problems.append(f"{exc} -- it also encrypts platform-admin MFA secrets.")
+
+    # ADR-085: the checkpoint signing key is the real tamper protection for the
+    # audit chains, so it must be set, long, and not reused from another secret.
+    key = settings.audit_checkpoint_hmac_key
+    if not key:
+        problems.append(
+            "AUDIT_CHECKPOINT_HMAC_KEY is unset -- it signs audit-chain checkpoints "
+            "(ADR-085); generate one with `python -c \"import secrets; "
+            "print(secrets.token_urlsafe(48))\"`."
+        )
+    elif len(key) < 32:
+        problems.append("AUDIT_CHECKPOINT_HMAC_KEY must be at least 32 characters (ADR-085).")
+    else:
+        other_secrets = [
+            *settings.ai_credential_encryption_key.split(","),
+            settings.smtp_password,
+            settings.s3_secret_access_key,
+        ]
+        reused = any(s and s.strip() == key for s in other_secrets) or any(
+            key in url
+            for url in (
+                settings.database_url,
+                settings.identify_database_url,
+                settings.migration_database_url or "",
             )
+        )
+        if reused:
+            problems.append(
+                "AUDIT_CHECKPOINT_HMAC_KEY must differ from every other secret "
+                "(encryption key, SMTP/S3 credentials, database passwords) (ADR-085)."
+            )
+
+    if settings.auth_rate_limit_multiplier != 1:
+        problems.append(
+            "AUTH_RATE_LIMIT_MULTIPLIER must be 1 in production -- it loosens the "
+            "sign-in and MFA rate limits and exists only for dev/e2e stacks."
+        )
+
+    # ADR-083: a zero/negative idle window would lock everyone out, an absurd one
+    # (> 24 h, i.e. longer than a day) makes the idle timeout meaningless. Same
+    # bounds for the step-up window.
+    if not 1 <= settings.platform_session_idle_minutes <= 1440:
+        problems.append(
+            "PLATFORM_SESSION_IDLE_MINUTES must be between 1 and 1440 -- it is the "
+            "Platform Admin idle timeout (ADR-083)."
+        )
+    if not 1 <= settings.platform_step_up_minutes <= 1440:
+        problems.append(
+            "PLATFORM_STEP_UP_MINUTES must be between 1 and 1440 -- it is how long a "
+            "TOTP step-up stays valid for sensitive Platform Admin actions (ADR-083)."
+        )
 
     if problems:
         raise InsecureProductionConfigError(

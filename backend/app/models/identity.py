@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -50,9 +50,42 @@ class PlatformAdmin(Base, UUIDPKMixin):
         SmallInteger, nullable=False, default=0, server_default="0"
     )
 
+    # ADR-080: one-time enrolment code (SHA-256 of the normalised code; the
+    # plaintext is shown once to the issuing admin). Cleared on enrolment.
+    enrolment_code_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    enrolment_code_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # ADR-081: one-time password-reset code issued by ANOTHER admin (same
+    # storage rules as the enrolment code). While the hash is set the old
+    # password no longer signs in; consumed by the reset flow.
+    password_reset_code_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    password_reset_code_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    @property
+    def password_reset_code_active(self) -> bool:
+        expires = self.password_reset_code_expires_at
+        if self.password_reset_code_hash is None or expires is None:
+            return False
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        return expires > datetime.now(UTC)
+
     @property
     def mfa_enabled(self) -> bool:
         return self.mfa_enabled_at is not None and self.mfa_secret_encrypted is not None
+
+    @property
+    def enrolment_code_active(self) -> bool:
+        expires = self.enrolment_code_expires_at
+        if self.enrolment_code_hash is None or expires is None or self.mfa_enabled:
+            return False
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        return expires > datetime.now(UTC)
 
 
 class PlatformSession(Base, UUIDPKMixin):
@@ -85,7 +118,12 @@ class PlatformSession(Base, UUIDPKMixin):
     mfa_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Truncated, display-only. The binding check uses ua_hash, never this.
     user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ADR-083: SHA-256 of the sign-in User-Agent (session binding) and the last
+    # time a TOTP / recovery code was verified on this session (step-up).
+    ua_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    step_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PlatformAdminRecoveryCode(Base, UUIDPKMixin):
