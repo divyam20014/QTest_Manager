@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
@@ -19,7 +19,7 @@ from app.models.audit import AuditLog
 from app.models.defect import Defect
 from app.models.execution import ExecutionStep, TestRunCase
 from app.models.identity import User
-from app.models.project import Project
+from app.models.project import Project, ProjectMember
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
 from app.schemas.test_case import (
@@ -43,6 +43,7 @@ from app.services import (
     field_option_service,
     notification_service,
     status_label_service,
+    tester_visibility,
 )
 from app.services.project_service import is_assigned
 
@@ -104,6 +105,8 @@ def _authorize_case_access(
 ) -> None:
     project = _get_project_or_404(db, tenant_id, case.project_id)
     _require_project_access(db, project, role_code, user_id)
+    # ADR-093: a scoped Tester gets 404 (no existence leak) for unassigned cases.
+    tester_visibility.assert_case_visible(db, tenant_id, role_code, user_id, case.id)
 
 
 def _last_execution(
@@ -181,28 +184,22 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
     )
 
 
-def list_test_cases(
+def _filter_sort_page(
     db: Session,
-    tenant_id: UUID,
-    role_code: str,
-    user_id: UUID,
-    project_id: UUID,
+    query,  # a `select(TestCase)` already restricted to the projects the caller may see
     *,
-    search: str | None = None,
-    priority: str | None = None,
-    status: str | None = None,
-    assignee_id: UUID | None = None,
-    module_id: UUID | None = None,
-    sort: str = "created_at",
-    page: int = 1,
-    page_size: int = DEFAULT_PAGE_SIZE,
+    search: str | None,
+    priority: str | None,
+    status: str | None,
+    assignee_id: UUID | None,
+    module_id: UUID | None,
+    sort: str,
+    page: int,
+    page_size: int,
 ) -> tuple[list[TestCase], int]:
-    project = _get_project_or_404(db, tenant_id, project_id)
-    _require_project_access(db, project, role_code, user_id)
-
-    query = select(TestCase).where(
-        TestCase.tenant_id == tenant_id, TestCase.project_id == project_id
-    )
+    """The filters, sorting and paging shared by the per-project and the
+    tenant-wide listings, so the two can never disagree about what a filter
+    means."""
     if search:
         query = query.where(TestCase.title.ilike(f"%{search}%"))
     if priority:
@@ -226,6 +223,88 @@ def list_test_cases(
     query = query.limit(page_size).offset((page - 1) * page_size)
 
     return list(db.execute(query).scalars()), total
+
+
+def list_test_cases(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID,
+    *,
+    search: str | None = None,
+    priority: str | None = None,
+    status: str | None = None,
+    assignee_id: UUID | None = None,
+    module_id: UUID | None = None,
+    sort: str = "created_at",
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+) -> tuple[list[TestCase], int]:
+    project = _get_project_or_404(db, tenant_id, project_id)
+    _require_project_access(db, project, role_code, user_id)
+
+    query = select(TestCase).where(
+        TestCase.tenant_id == tenant_id, TestCase.project_id == project_id
+    )
+    query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, query)
+    return _filter_sort_page(
+        db,
+        query,
+        search=search,
+        priority=priority,
+        status=status,
+        assignee_id=assignee_id,
+        module_id=module_id,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def list_test_cases_all_projects(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    *,
+    search: str | None = None,
+    priority: str | None = None,
+    status: str | None = None,
+    assignee_id: UUID | None = None,
+    module_id: UUID | None = None,
+    sort: str = "created_at",
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+) -> tuple[list[TestCase], int]:
+    """One listing across every project the caller may see, with the same
+    filters, sorting and paging as the per-project list (the Test Repository
+    used to ask each project separately whenever a filter was on).
+
+    Visibility is exactly `_require_project_access`'s rule, expressed as a
+    filter instead of a per-project check: Admin and Manager see every project
+    in the tenant; anyone else sees only projects they own or are a member of
+    -- so a Tester never receives a case from a project they could not open."""
+    query = select(TestCase).where(TestCase.tenant_id == tenant_id)
+    if role_code not in ("admin", "manager"):
+        owned = select(Project.id).where(
+            Project.tenant_id == tenant_id, Project.owner_id == user_id
+        )
+        member_of = select(ProjectMember.project_id).where(ProjectMember.user_id == user_id)
+        query = query.where(or_(TestCase.project_id.in_(owned), TestCase.project_id.in_(member_of)))
+    query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, query)
+    return _filter_sort_page(
+        db,
+        query,
+        search=search,
+        priority=priority,
+        status=status,
+        assignee_id=assignee_id,
+        module_id=module_id,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
 
 
 def get_test_case(
@@ -387,8 +466,6 @@ def _validate_module(db: Session, tenant_id: UUID, project_id: UUID, module_id: 
         raise NotFoundError("module_id must belong to this test case's project")
 
 
-
-
 def _write_version(
     db: Session,
     tenant_id: UUID,
@@ -544,9 +621,7 @@ def update_test_case(
     new_description: str = (
         req.description if req.description is not None else current_version.description
     )
-    new_scenario_id = (
-        req.scenario_id if "scenario_id" in changes else current_version.scenario_id
-    )
+    new_scenario_id = req.scenario_id if "scenario_id" in changes else current_version.scenario_id
     new_scenario_description = (
         req.scenario_description
         if "scenario_description" in changes
@@ -568,9 +643,7 @@ def update_test_case(
     # A content field only counts as changed if its value actually differs --
     # a form that re-submits the unchanged content alongside a new priority
     # or assignee is still a metadata-only edit.
-    current_steps = [
-        (st.action, st.expected) for st in _steps_for_version(db, current_version.id)
-    ]
+    current_steps = [(st.action, st.expected) for st in _steps_for_version(db, current_version.id)]
     content_changed = (
         new_title != current_version.title
         or new_description != current_version.description

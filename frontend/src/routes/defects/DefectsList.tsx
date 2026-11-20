@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
-import { createDefect, listDefects, type Defect, type DefectStatus, type Priority, type Severity } from '@/api/defects'
+import { createDefect, getDefectStatusCounts, listDefectsPage, type Defect, type DefectStatus, type Priority, type Severity } from '@/api/defects'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
@@ -190,46 +190,58 @@ export function DefectsList() {
     queryKey: ['field-options', 'defect_severity'],
     queryFn: () => listFieldOptions('defect_severity'),
   })
-  // Status is deliberately NOT sent to the server: the endpoint returns every
-  // matching defect anyway, so one response feeds both the per-status counts
-  // on the tabs and the visible rows (filtered here) with no extra requests.
-  const defectsQuery = useQuery({
-    queryKey: ['defects', projectId, severity, reportedBy, createdFrom, createdTo],
-    queryFn: () =>
-      listDefects({
-        project_id: projectId || undefined,
-        severity: severity || undefined,
-        reported_by: reportedBy || undefined,
-        created_from: createdFrom ? new Date(createdFrom).toISOString() : undefined,
-        created_to: createdTo ? new Date(createdTo + 'T23:59:59').toISOString() : undefined,
-      }),
-  })
-
-  // The API returns every matching defect, so the list pages on the client
-  // (50 per page) to keep the DOM small; the page resets when a filter changes.
-  const fetchedDefects = useMemo(() => defectsQuery.data ?? [], [defectsQuery.data])
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const d of fetchedDefects) counts[d.status] = (counts[d.status] ?? 0) + 1
-    return counts
-  }, [fetchedDefects])
+  // ADR-078: the server pages the list (50 per page, newest first) and counts the matching
+  // defects per status, so only one page of rows is ever downloaded however many defects exist.
   const activeStatus = (STATUS_ORDER as string[]).includes(status) ? status : ''
-  const allDefects = activeStatus ? fetchedDefects.filter((d) => d.status === activeStatus) : fetchedDefects
-  const countsReady = defectsQuery.isSuccess
-  const statusTabs = [
-    { key: '', label: 'All', count: countsReady ? fetchedDefects.length : undefined },
-    ...STATUS_ORDER.map((s) => ({ key: s as string, label: s as string, count: countsReady ? (statusCounts[s] ?? 0) : undefined })),
-  ]
   // Status has its own control (the tabs), so it is not a chip and does not
   // count towards the Filters badge.
   const chipKeys = urlFilters.active.filter((key) => key !== 'status')
   const otherFiltersActive = Boolean(projectId || severity || reportedBy || createdFrom || createdTo)
   const filterKey = [projectId, status, severity, reportedBy, createdFrom, createdTo].join('|')
   const [paging, setPaging] = useState({ key: filterKey, page: 1 })
-  const totalPages = Math.max(1, Math.ceil(allDefects.length / DEFECTS_PAGE_SIZE))
-  const page = Math.min(paging.key === filterKey ? paging.page : 1, totalPages)
-  const pageRows = allDefects.slice((page - 1) * DEFECTS_PAGE_SIZE, page * DEFECTS_PAGE_SIZE)
-
+  // The page resets to 1 when any filter (or the status tab) changes.
+  const page = paging.key === filterKey ? paging.page : 1
+  const scopeParams = {
+    project_id: projectId || undefined,
+    severity: severity || undefined,
+    reported_by: reportedBy || undefined,
+    created_from: createdFrom ? new Date(createdFrom).toISOString() : undefined,
+    created_to: createdTo ? new Date(createdTo + 'T23:59:59').toISOString() : undefined,
+  }
+  const defectsQuery = useQuery({
+    queryKey: ['defects', 'page', projectId, severity, reportedBy, createdFrom, createdTo, activeStatus, page],
+    queryFn: () =>
+      listDefectsPage({
+        ...scopeParams,
+        status: activeStatus || undefined,
+        page,
+        page_size: DEFECTS_PAGE_SIZE,
+      }),
+    placeholderData: keepPreviousData,
+  })
+  const countsQuery = useQuery({
+    queryKey: ['defects', 'status-counts', projectId, severity, reportedBy, createdFrom, createdTo],
+    queryFn: () => getDefectStatusCounts(scopeParams),
+    placeholderData: keepPreviousData,
+  })
+  const pageRows = useMemo(() => defectsQuery.data?.items ?? [], [defectsQuery.data])
+  const totalMatching = defectsQuery.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalMatching / DEFECTS_PAGE_SIZE))
+  // Defects can be deleted or moved between statuses while on a later page: if that page
+  // no longer exists, step back to the last one that does.
+  if (defectsQuery.data && defectsQuery.data.items.length === 0 && page > totalPages) {
+    setPaging({ key: filterKey, page: totalPages })
+  }
+  const countsReady = countsQuery.isSuccess
+  const statusCounts = countsQuery.data?.counts ?? {}
+  const statusTabs = [
+    { key: '', label: 'All', count: countsReady ? countsQuery.data?.total : undefined },
+    ...STATUS_ORDER.map((s) => ({
+      key: s as string,
+      label: s as string,
+      count: countsReady ? (statusCounts[s] ?? 0) : undefined,
+    })),
+  ]
   // defect.create is granted to every role (admin/manager/tester) per
   // ADR-014's seed, so this is a contextual action available uniformly --
   // not role-gated, matching the backend permission it calls.
@@ -385,7 +397,7 @@ export function DefectsList() {
         state={
           defectsQuery.isError ? (
             <ErrorState error={defectsQuery.error} onRetry={() => defectsQuery.refetch()} />
-          ) : !defectsQuery.isLoading && allDefects.length === 0 ? (
+          ) : !defectsQuery.isLoading && totalMatching === 0 ? (
             <EmptyState
               title={
                 otherFiltersActive
@@ -405,11 +417,11 @@ export function DefectsList() {
           ) : undefined
         }
       />
-      {allDefects.length > DEFECTS_PAGE_SIZE && (
+      {totalMatching > DEFECTS_PAGE_SIZE && (
         <Pagination
           page={page}
           totalPages={totalPages}
-          total={allDefects.length}
+          total={totalMatching}
           noun="defect"
           onPageChange={(next) => setPaging({ key: filterKey, page: next })}
         />

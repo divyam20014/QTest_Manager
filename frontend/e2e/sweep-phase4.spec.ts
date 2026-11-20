@@ -181,12 +181,13 @@ for (const role of ['admin', 'manager', 'tester'] as const) {
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Documentation' }).first()).toBeVisible()
     const docsNav = page.getByRole('navigation', { name: 'Documents' })
     const count = await docsNav.getByRole('link').count()
-    if (role === 'tester') {
-      expect(count).toBe(4)
+    // ADR-089: Admin sees all 24 documents; Manager and Tester only the 12 general ones.
+    if (role !== 'admin') {
+      expect(count).toBe(12)
       await page.goto('/brd/api-specification')
       await expect(page.getByRole('heading', { name: /don.t have access/i })).toBeVisible()
     } else {
-      expect(count).toBe(19)
+      expect(count).toBe(24)
       await page.goto('/brd/api-specification')
       await expect(page.locator('article h1').first()).toContainText('API Specification')
     }

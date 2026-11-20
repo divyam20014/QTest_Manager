@@ -329,7 +329,7 @@ export function TestCasesList() {
             size="sm"
             path={exportXlsxPath(projectId!)}
             fallbackName="test_cases_export.xlsx"
-            ariaLabel="Export test cases to Excel"
+            ariaLabel="test cases"
           />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
             Import CSV

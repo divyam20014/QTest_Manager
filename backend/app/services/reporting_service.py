@@ -59,7 +59,7 @@ from app.schemas.reporting import (
     WorkloadEntry,
     WorkloadSummary,
 )
-from app.services import requirement_service
+from app.services import requirement_service, tester_visibility
 from app.services.defect_service import SLA_DAYS_BY_SEVERITY, compute_aging
 
 OPEN_DEFECT_STATUSES = ("New", "Open")
@@ -89,13 +89,22 @@ def _accessible_project_ids(
 
 
 def get_dashboard_summary(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None = None,
 ) -> DashboardSummary:
+    """ADR-079: with `project_id`, every figure is narrowed to that one project (still
+    intersected with what the caller may see, so a project outside their scope gives
+    zeros, like the other reports)."""
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
 
     project_query = select(Project).where(Project.tenant_id == tenant_id)
     if accessible is not None:
         project_query = project_query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        project_query = project_query.where(Project.id == project_id)
     projects = list(db.execute(project_query).scalars())
     status_counts: dict[str, int] = {}
     for p in projects:
@@ -111,6 +120,9 @@ def get_dashboard_summary(
     )
     if accessible is not None:
         tc_query = tc_query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        tc_query = tc_query.where(Project.id == project_id)
+    tc_query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, tc_query)
     tc_counts: dict[str, int] = dict(db.execute(tc_query.group_by(TestCase.status)).tuples().all())
     tc_total = sum(tc_counts.values())
     approved_count = tc_counts.get("approved", 0)
@@ -124,6 +136,8 @@ def get_dashboard_summary(
     )
     if accessible is not None:
         run_query = run_query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        run_query = run_query.where(Project.id == project_id)
     active_runs = db.execute(run_query).scalar_one()
 
     step_query = (
@@ -136,6 +150,8 @@ def get_dashboard_summary(
     )
     if accessible is not None:
         step_query = step_query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        step_query = step_query.where(Project.id == project_id)
     step_counts: dict[str | None, int] = dict(
         db.execute(step_query.group_by(ExecutionStep.verdict)).tuples().all()
     )
@@ -149,6 +165,8 @@ def get_dashboard_summary(
     )
     if accessible is not None:
         defect_query = defect_query.where(Project.id.in_(accessible))
+    if project_id is not None:
+        defect_query = defect_query.where(Project.id == project_id)
     open_by_severity: dict[str, int] = dict(
         db.execute(defect_query.group_by(Defect.severity)).tuples().all()
     )
@@ -201,9 +219,15 @@ def get_domain_distribution(
 
         tc_counts: dict[str, int] = dict(
             db.execute(
-                select(TestCase.status, func.count())
-                .where(TestCase.project_id.in_(project_ids))
-                .group_by(TestCase.status)
+                tester_visibility.scope_case_query(
+                    db,
+                    tenant_id,
+                    role_code,
+                    user_id,
+                    select(TestCase.status, func.count()).where(
+                        TestCase.project_id.in_(project_ids)
+                    ),
+                ).group_by(TestCase.status)
             )
             .tuples()
             .all()
@@ -362,7 +386,11 @@ def _resolve_entity_project_ids(
 
 
 def get_activity_stream(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None = None,
 ) -> list[ActivityEntry]:
     base_query = (
         select(AuditLog, User.name)
@@ -381,6 +409,32 @@ def get_activity_stream(
         .order_by(AuditLog.created_at.desc())
     )
 
+    if project_id is not None:
+        # ADR-079: only events whose entity belongs to this project, found by resolving the
+        # latest tenant events to their projects (audit rows carry no project id). A
+        # project the caller may not see has no visible activity.
+        scope = _accessible_project_ids(db, tenant_id, role_code, user_id)
+        if scope is not None and project_id not in scope:
+            return []
+        window = db.execute(base_query.limit(_ACTIVITY_FEED_CANDIDATE_WINDOW)).all()
+        owner_of = _resolve_entity_project_ids(
+            db, tenant_id, [(log.entity_type, log.entity_id) for log, _ in window]
+        )
+        in_project = [
+            (log, name)
+            for log, name in window
+            if owner_of.get((log.entity_type, log.entity_id)) == project_id
+        ]
+        return [
+            ActivityEntry(
+                user_name=name,
+                action=log.action,
+                entity_type=log.entity_type,
+                entity_id=log.entity_id,
+                created_at=log.created_at,
+            )
+            for log, name in in_project[:ACTIVITY_FEED_LIMIT]
+        ]
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
     if accessible is None:
         # Admin/manager-tier: tenant-wide visibility of work activity,
@@ -497,6 +551,7 @@ def get_aggregate_report(
             .join(Project, Project.id == TestCase.project_id)
             .where(Project.tenant_id == tenant_id)
         )
+        base = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, base)
     elif metric in ("defect_severity", "defect_status", "defect_root_cause"):
         if metric == "defect_severity":
             value_col = Defect.severity

@@ -158,16 +158,19 @@ export interface CompliancePeriod {
   periodTo?: string
 }
 
-export function fetchDashboardSummary(): Promise<DashboardSummary> {
-  return apiFetch<DashboardSummary>('/dashboard/summary')
+// ADR-079: both take an optional project to narrow every figure / event to it.
+export function fetchDashboardSummary(projectId?: string): Promise<DashboardSummary> {
+  const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''
+  return apiFetch<DashboardSummary>(`/dashboard/summary${qs}`)
 }
 
 export function fetchDomainDistribution(): Promise<DomainDistributionEntry[]> {
   return apiFetch<DomainDistributionEntry[]>('/dashboard/domain-distribution')
 }
 
-export function fetchActivityStream(): Promise<ActivityEntry[]> {
-  return apiFetch<ActivityEntry[]>('/dashboard/activity-stream')
+export function fetchActivityStream(projectId?: string): Promise<ActivityEntry[]> {
+  const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''
+  return apiFetch<ActivityEntry[]>(`/dashboard/activity-stream${qs}`)
 }
 
 function buildAggregateParams(

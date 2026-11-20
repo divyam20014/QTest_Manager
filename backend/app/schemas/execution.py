@@ -124,3 +124,10 @@ class RunCaseContextOut(BaseModel):
     data_row_id: UUID | None = None
     data_row_name: str | None = None
     data_row_values: dict | None = None
+
+
+class TestRunSummaryListResponse(BaseModel):
+    """One page of runs across projects (`GET /test-runs`) with the total that match."""
+
+    items: list[TestRunSummaryOut]
+    total: int

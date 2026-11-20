@@ -3,7 +3,7 @@ from typing import cast
 from uuid import UUID
 
 from rapidfuzz import fuzz
-from sqlalchemy import or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
@@ -238,6 +238,9 @@ def create_defect(
 
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
+    _enforce_environment_rules(
+        db, tenant_id, role_code, project_id, "defect.create", req.environment, req.environment_id
+    )
     field_option_service.validate_code(db, tenant_id, "defect_severity", req.severity)
     field_option_service.validate_code(db, tenant_id, "defect_priority", req.priority)
     _validate_assignee_membership(db, project, req.assigned_to)
@@ -369,7 +372,7 @@ def get_defect(
     return defect
 
 
-def list_defects(
+def _defects_query(
     db: Session,
     tenant_id: UUID,
     role_code: str,
@@ -382,7 +385,7 @@ def list_defects(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     test_case_id: UUID | None = None,
-) -> list[Defect]:
+) -> Select[tuple[Defect]]:
     query = select(Defect).where(Defect.tenant_id == tenant_id)
 
     if project_id is not None:
@@ -428,7 +431,84 @@ def list_defects(
             or_(Defect.test_run_id == test_run_id, Defect.id.in_(linked_defect_ids))
         )
 
+    return query
+
+def list_defects(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None,
+    status: str | None,
+    severity: str | None,
+    test_run_id: UUID | None = None,
+    reported_by: UUID | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
+    test_case_id: UUID | None = None,
+) -> list[Defect]:
+    query = _defects_query(
+        db, tenant_id, role_code, user_id, project_id, status, severity,
+        test_run_id, reported_by, created_from, created_to, test_case_id,
+    )
     return list(db.execute(query.order_by(Defect.created_at.desc())).scalars())
+
+
+DEFECT_MAX_PAGE_SIZE = 100
+
+
+def list_defects_page(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None,
+    status: str | None,
+    severity: str | None,
+    reported_by: UUID | None,
+    created_from: datetime | None,
+    created_to: datetime | None,
+    page: int,
+    page_size: int,
+) -> tuple[list[Defect], int]:
+    """ADR-078: one page of the same listing, newest first, plus how many match in all.
+    Same visibility and filters as `list_defects` (they share `_defects_query`)."""
+    query = _defects_query(
+        db, tenant_id, role_code, user_id, project_id, status, severity,
+        None, reported_by, created_from, created_to, None,
+    )
+    total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
+    page_size = min(max(page_size, 1), DEFECT_MAX_PAGE_SIZE)
+    page = max(page, 1)
+    rows = db.execute(
+        query.order_by(Defect.created_at.desc(), Defect.id)
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    ).scalars()
+    return list(rows), total
+
+
+def defect_status_counts(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None,
+    severity: str | None,
+    reported_by: UUID | None,
+    created_from: datetime | None,
+    created_to: datetime | None,
+) -> dict[str, int]:
+    """ADR-078: matching defects per status, under every filter EXCEPT status, so the
+    Defects page's status tabs can show each tab's count while only one page of rows
+    is loaded."""
+    query = _defects_query(
+        db, tenant_id, role_code, user_id, project_id, None, severity,
+        None, reported_by, created_from, created_to, None,
+    )
+    sub = query.subquery()
+    rows = db.execute(select(sub.c.status, func.count()).group_by(sub.c.status)).all()
+    return {status: count for status, count in rows}
 
 
 DUPLICATE_SIMILARITY_THRESHOLD = 70.0
@@ -594,6 +674,37 @@ def reopen_defect(
     return defect
 
 
+def _enforce_environment_rules(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    project_id: UUID,
+    action_code: str,
+    environment_name: str | None,
+    environment_id: UUID | None,
+) -> None:
+    """RBAC Phase 4 (ADR-092): environment_restriction access rules. Resolves
+    the environment's name (free text or Environment row) and lets the rule
+    engine decide; a no-op when the tenant has no enabled rules."""
+    from app.core import access_rules
+
+    name = environment_name
+    if environment_id is not None:
+        name = db.execute(
+            select(Environment.name).where(
+                Environment.tenant_id == tenant_id, Environment.id == environment_id
+            )
+        ).scalar_one_or_none() or name
+    access_rules.enforce_environment(
+        db,
+        tenant_id=tenant_id,
+        role_code=role_code,
+        action_code=action_code,
+        project_id=project_id,
+        environment=name,
+    )
+
+
 def set_defect_environment(
     db: Session,
     tenant_id: UUID,
@@ -607,6 +718,9 @@ def set_defect_environment(
     defect = _get_defect_or_404(db, tenant_id, defect_id)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
+    _enforce_environment_rules(
+        db, tenant_id, role_code, defect.project_id, "defect.create", None, environment_id
+    )
 
     defect.environment_id = environment_id
 

@@ -8,7 +8,8 @@ import { useSyncExternalStore } from 'react'
 
 export type Theme = 'light' | 'dark'
 
-const STORAGE_KEY = 'qtesthub:theme'
+// Also read by public/theme-init.js before first paint (a unit test keeps the two in sync).
+export const STORAGE_KEY = 'qtesthub:theme'
 const listeners = new Set<() => void>()
 
 function prefersDark(): boolean {

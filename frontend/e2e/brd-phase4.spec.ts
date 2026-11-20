@@ -203,7 +203,8 @@ test('Docs: a Tester sees only the user-facing documents; internal ones show "No
   await expect(page.locator('article h1').first()).toContainText('User Guide')
 
   const docsNav = page.getByRole('navigation', { name: 'Documents' })
-  await expect(docsNav.getByRole('link')).toHaveCount(4)
+  // ADR-089: the API lists only the general documents (5 product + 7 diagram).
+  await expect(docsNav.getByRole('link')).toHaveCount(12)
   await expect(docsNav.getByRole('link', { name: 'Product Vision' })).toBeVisible()
   await expect(docsNav.getByRole('link', { name: 'Database Schema' })).toHaveCount(0)
 

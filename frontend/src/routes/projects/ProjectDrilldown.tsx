@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { listDefects } from '@/api/defects'
@@ -11,7 +11,7 @@ import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { ChartSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
+import { useIsMobile, usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
 import { categoricalColor } from '@/routes/reporting/palette'
 import { STATUS_TONE as DEFECT_STATUS_TONE, severityTone } from '@/routes/defects/statusDisplay'
@@ -35,6 +35,47 @@ const RUN_STATUSES: { key: string; label: string; slot: number }[] = [
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+/** Phone layout for the two "Recent ..." panels. They sit inside a raised card, so a stack of
+ * cards would be heavy for five rows: each entry is a wrapping title with its badges and date
+ * underneath, separated by dividers, instead of a four-column table that crams the title. */
+function RecentList<T>({
+  label,
+  rows,
+  rowKey,
+  href,
+  title,
+  badges,
+  meta,
+}: {
+  label: string
+  rows: T[]
+  rowKey: (row: T) => string
+  href: (row: T) => string
+  title: (row: T) => string
+  badges: (row: T) => ReactNode
+  meta?: (row: T) => ReactNode
+}) {
+  return (
+    <ul aria-label={label} className="divide-y divide-[var(--border)]">
+      {rows.map((row) => (
+        <li key={rowKey(row)} className="py-1">
+          <Link
+            to={href(row)}
+            className="flex min-h-11 items-center break-words text-base leading-snug text-[var(--link)] hover:underline"
+          >
+            {title(row)}
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-2 pb-2">
+            {badges(row)}
+            {meta?.(row)}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 
 function ListSkeleton() {
   return (
@@ -82,6 +123,7 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
   }))
   const total = bars.reduce((sum, b) => sum + b.count, 0)
   const recentDefects = (defectsQuery.data ?? []).slice(0, 5)
+  const isMobile = useIsMobile()
   const recentCases = casesQuery.data?.items ?? []
 
   return (
@@ -145,6 +187,22 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
               <ErrorState error={casesQuery.error} onRetry={() => casesQuery.refetch()} message="Could not load test cases." />
             ) : recentCases.length === 0 ? (
               <EmptyState title="No test cases yet" description="Test cases added to this project appear here." />
+            ) : isMobile ? (
+              <RecentList
+                label="Five most recently created test cases"
+                rows={recentCases}
+                rowKey={(tc) => tc.id}
+                href={(tc) => `/test-cases/${tc.id}`}
+                title={(tc) => tc.title}
+                badges={(tc) => (
+                  <>
+                    <StatusBadge tone={priorityTone(tc.priority)}>{tc.priority}</StatusBadge>
+                    <StatusBadge tone={STATUS_DISPLAY[tc.status]?.tone ?? 'neutral'}>
+                      {tc.status_label ?? STATUS_DISPLAY[tc.status]?.label ?? tc.status}
+                    </StatusBadge>
+                  </>
+                )}
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -201,6 +259,25 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
               <ErrorState error={defectsQuery.error} onRetry={() => defectsQuery.refetch()} message="Could not load defects." />
             ) : recentDefects.length === 0 ? (
               <EmptyState title="No defects yet" description="Defects reported against this project appear here." />
+            ) : isMobile ? (
+              <RecentList
+                label="Five most recently reported defects"
+                rows={recentDefects}
+                rowKey={(d) => d.id}
+                href={(d) => `/defects/${d.id}`}
+                title={(d) => d.title}
+                badges={(d) => (
+                  <>
+                    <StatusBadge tone={severityTone(d.severity)}>{d.severity}</StatusBadge>
+                    <StatusBadge tone={DEFECT_STATUS_TONE[d.status] ?? 'neutral'}>
+                      {d.status_label ?? d.status}
+                    </StatusBadge>
+                  </>
+                )}
+                meta={(d) => (
+                  <span className="text-xs text-[var(--muted-foreground)]">{formatDate(d.created_at)}</span>
+                )}
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">

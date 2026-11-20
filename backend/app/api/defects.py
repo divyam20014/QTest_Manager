@@ -19,7 +19,9 @@ from app.schemas.defect import (
     DefectCreateRequest,
     DefectEnvironmentUpdateRequest,
     DefectLinkCreateRequest,
+    DefectListResponse,
     DefectRootCauseUpdateRequest,
+    DefectStatusCountsOut,
     DefectStatusUpdateRequest,
     DefectUpdateRequest,
 )
@@ -38,9 +40,34 @@ def list_defects(
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
     test_case_id: UUID | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=defect_service.DEFECT_MAX_PAGE_SIZE),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Without `page_size`: every matching defect as a plain list (what the run, project
+    and test case screens use). With `page_size`: one page, newest first, as
+    `{items, total}` (ADR-078); `test_run_id` and `test_case_id` apply to the plain list only."""
+    if page_size is not None:
+        defects_page, total = defect_service.list_defects_page(
+            db,
+            ctx.tenant_id,
+            ctx.role_code,
+            ctx.user_id,
+            project_id,
+            status,
+            severity,
+            reported_by,
+            created_from,
+            created_to,
+            page,
+            page_size,
+        )
+        return envelope(
+            DefectListResponse(
+                items=[defect_service.to_out(db, d) for d in defects_page], total=total
+            ).model_dump(mode="json")
+        )
     defects = defect_service.list_defects(
         db,
         ctx.tenant_id,
@@ -56,6 +83,32 @@ def list_defects(
         test_case_id,
     )
     return envelope([defect_service.to_out(db, d).model_dump(mode="json") for d in defects])
+
+
+@router.get("/status-counts")
+def defect_status_counts(
+    project_id: UUID | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    reported_by: UUID | None = Query(default=None),
+    created_from: datetime | None = Query(default=None),
+    created_to: datetime | None = Query(default=None),
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-078: matching defects per status, under every filter except status."""
+    counts = defect_service.defect_status_counts(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        severity,
+        reported_by,
+        created_from,
+        created_to,
+    )
+    out = DefectStatusCountsOut(counts=counts, total=sum(counts.values()))
+    return envelope(out.model_dump(mode="json"))
 
 
 @router.post("")

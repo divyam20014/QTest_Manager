@@ -6,23 +6,35 @@ from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, require_permission
+from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
 from app.core.pdf_report import render_compliance_report_pdf
 from app.core.responses import envelope
 from app.core.xlsx_report import XLSX_MEDIA_TYPE
 from app.models.identity import User
 from app.schemas.reporting import GroupBy, Metric, RunTypeFilter
-from app.services import reporting_service
+from app.services import reporting_service, tester_visibility
 
 router = APIRouter(tags=["reporting"])
 
 
+def require_reports_not_hidden(
+    ctx: SessionContext = Depends(get_current_context), db: Session = Depends(get_db)
+) -> None:
+    """ADR-093: 403 for a Tester when the tenant hides Reports from Testers. The
+    /dashboard/* endpoints deliberately stay open (the Dashboard must render)."""
+    tester_visibility.require_reports_visible(db, ctx.tenant_id, ctx.role_code)
+
+
 @router.get("/dashboard/summary")
 def dashboard_summary(
-    ctx: SessionContext = Depends(require_permission("report.view")), db: Session = Depends(get_db)
+    project_id: UUID | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
 ) -> dict:
-    summary = reporting_service.get_dashboard_summary(db, ctx.tenant_id, ctx.role_code, ctx.user_id)
+    summary = reporting_service.get_dashboard_summary(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
     return envelope(summary.model_dump(mode="json"))
 
 
@@ -38,13 +50,17 @@ def domain_distribution(
 
 @router.get("/dashboard/activity-stream")
 def activity_stream(
-    ctx: SessionContext = Depends(require_permission("report.view")), db: Session = Depends(get_db)
+    project_id: UUID | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
 ) -> dict:
-    entries = reporting_service.get_activity_stream(db, ctx.tenant_id, ctx.role_code, ctx.user_id)
+    entries = reporting_service.get_activity_stream(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
     return envelope([e.model_dump(mode="json") for e in entries])
 
 
-@router.get("/reports/aggregate")
+@router.get("/reports/aggregate", dependencies=[Depends(require_reports_not_hidden)])
 def aggregate_report(
     metric: Metric = Query(...),
     group_by: GroupBy = Query(...),
@@ -76,7 +92,7 @@ def aggregate_report(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/execution-trend")
+@router.get("/reports/execution-trend", dependencies=[Depends(require_reports_not_hidden)])
 def execution_trend(
     days: int = Query(default=30, ge=1, le=180),
     project_id: UUID | None = Query(default=None),
@@ -89,7 +105,7 @@ def execution_trend(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/defect-trend")
+@router.get("/reports/defect-trend", dependencies=[Depends(require_reports_not_hidden)])
 def defect_trend(
     days: int = Query(default=30, ge=1, le=180),
     project_id: UUID | None = Query(default=None),
@@ -102,7 +118,7 @@ def defect_trend(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/defect-aging")
+@router.get("/reports/defect-aging", dependencies=[Depends(require_reports_not_hidden)])
 def defect_aging(
     project_id: UUID | None = Query(default=None),
     ctx: SessionContext = Depends(require_permission("report.view")),
@@ -114,7 +130,7 @@ def defect_aging(
     return envelope(summary.model_dump(mode="json"))
 
 
-@router.get("/reports/defect-reopen-summary")
+@router.get("/reports/defect-reopen-summary", dependencies=[Depends(require_reports_not_hidden)])
 def defect_reopen_summary(
     project_id: UUID | None = Query(default=None),
     ctx: SessionContext = Depends(require_permission("report.view")),
@@ -126,7 +142,7 @@ def defect_reopen_summary(
     return envelope(summary.model_dump(mode="json"))
 
 
-@router.get("/reports/release-readiness")
+@router.get("/reports/release-readiness", dependencies=[Depends(require_reports_not_hidden)])
 def release_readiness(
     project_id: UUID = Query(),
     release_id: UUID | None = Query(default=None),
@@ -139,7 +155,7 @@ def release_readiness(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/workload")
+@router.get("/reports/workload", dependencies=[Depends(require_reports_not_hidden)])
 def workload_summary(
     project_id: UUID = Query(),
     ctx: SessionContext = Depends(require_permission("report.view")),
@@ -151,7 +167,7 @@ def workload_summary(
     return envelope(summary.model_dump(mode="json"))
 
 
-@router.get("/reports/flaky-tests")
+@router.get("/reports/flaky-tests", dependencies=[Depends(require_reports_not_hidden)])
 def flaky_tests(
     project_id: UUID = Query(),
     limit: int = Query(default=10, ge=1, le=50),
@@ -164,7 +180,7 @@ def flaky_tests(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/traceability-matrix")
+@router.get("/reports/traceability-matrix", dependencies=[Depends(require_reports_not_hidden)])
 def traceability_matrix(
     project_id: UUID = Query(),
     ctx: SessionContext = Depends(require_permission("report.view")),
@@ -176,7 +192,9 @@ def traceability_matrix(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/traceability-matrix/export")
+@router.get(
+    "/reports/traceability-matrix/export", dependencies=[Depends(require_reports_not_hidden)]
+)
 def traceability_matrix_export(
     project_id: UUID = Query(),
     ctx: SessionContext = Depends(require_permission("report.view")),
@@ -193,7 +211,7 @@ def traceability_matrix_export(
     )
 
 
-@router.get("/reports/compliance-detail")
+@router.get("/reports/compliance-detail", dependencies=[Depends(require_reports_not_hidden)])
 def compliance_detail(
     period_from: datetime | None = Query(default=None),
     period_to: datetime | None = Query(default=None),
@@ -207,7 +225,7 @@ def compliance_detail(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/compliance-export")
+@router.get("/reports/compliance-export", dependencies=[Depends(require_reports_not_hidden)])
 def compliance_export(
     period_from: datetime | None = Query(default=None),
     period_to: datetime | None = Query(default=None),
@@ -226,7 +244,7 @@ def compliance_export(
     )
 
 
-@router.get("/reports/compliance-detail/pdf")
+@router.get("/reports/compliance-detail/pdf", dependencies=[Depends(require_reports_not_hidden)])
 def compliance_detail_pdf(
     period_from: datetime | None = Query(default=None),
     period_to: datetime | None = Query(default=None),
@@ -255,7 +273,7 @@ def _xlsx_response(contents: bytes, filename: str) -> Response:
     )
 
 
-@router.get("/reports/quality-metrics")
+@router.get("/reports/quality-metrics", dependencies=[Depends(require_reports_not_hidden)])
 def quality_metrics(
     days: int = Query(default=30, ge=1, le=365),
     project_id: UUID | None = Query(default=None),
@@ -275,7 +293,9 @@ def quality_metrics(
     return envelope(report.model_dump(mode="json"))
 
 
-@router.get("/reports/quality-metrics/export.xlsx")
+@router.get(
+    "/reports/quality-metrics/export.xlsx", dependencies=[Depends(require_reports_not_hidden)]
+)
 def quality_metrics_export_xlsx(
     days: int = Query(default=30, ge=1, le=365),
     project_id: UUID | None = Query(default=None),
@@ -295,7 +315,7 @@ def quality_metrics_export_xlsx(
     return _xlsx_response(reporting_service.quality_metrics_to_xlsx(report), "quality_metrics.xlsx")
 
 
-@router.get("/reports/aggregate/export.xlsx")
+@router.get("/reports/aggregate/export.xlsx", dependencies=[Depends(require_reports_not_hidden)])
 def aggregate_export_xlsx(
     metric: Metric = Query(...),
     group_by: GroupBy = Query(...),
@@ -338,7 +358,9 @@ def aggregate_export_xlsx(
     )
 
 
-@router.get("/reports/traceability-matrix/export.xlsx")
+@router.get(
+    "/reports/traceability-matrix/export.xlsx", dependencies=[Depends(require_reports_not_hidden)]
+)
 def traceability_matrix_export_xlsx(
     project_id: UUID = Query(),
     ctx: SessionContext = Depends(require_permission("report.view")),
@@ -352,7 +374,7 @@ def traceability_matrix_export_xlsx(
     )
 
 
-@router.get("/reports/compliance-export.xlsx")
+@router.get("/reports/compliance-export.xlsx", dependencies=[Depends(require_reports_not_hidden)])
 def compliance_export_xlsx(
     period_from: datetime | None = Query(default=None),
     period_to: datetime | None = Query(default=None),

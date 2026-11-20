@@ -140,8 +140,35 @@ export function resumeTestRun(runId: string): Promise<TestRun> {
   return apiFetch<TestRun>(`/test-runs/${runId}/resume`, { method: 'POST' })
 }
 
+// ADR-078: one page of runs across every project the caller may see, newest first,
+// plus how many match in all.
+export interface TestRunPage {
+  items: TestRunSummary[]
+  total: number
+}
+
+export function listAllTestRuns(params: {
+  project_id?: string
+  active_only?: boolean
+  page?: number
+  page_size?: number
+}): Promise<TestRunPage> {
+  const query = new URLSearchParams()
+  if (params.project_id) query.set('project_id', params.project_id)
+  if (params.active_only) query.set('active_only', 'true')
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  const qs = query.toString()
+  return apiFetch<TestRunPage>(`/test-runs${qs ? `?${qs}` : ''}`)
+}
+
 export function finishTestRun(runId: string): Promise<TestRun> {
   return apiFetch<TestRun>(`/test-runs/${runId}/finish`, { method: 'POST' })
+}
+
+// ADR-075: undo a finish so a blocked case can be unblocked / work can continue.
+export function reopenTestRun(runId: string): Promise<TestRun> {
+  return apiFetch<TestRun>(`/test-runs/${runId}/reopen`, { method: 'POST' })
 }
 
 export function getRunCaseContext(runCaseId: string): Promise<RunCaseContext> {

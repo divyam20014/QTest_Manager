@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -16,6 +16,7 @@ from app.schemas.execution import (
     TestRunCaseAddRequest,
     TestRunCaseAssignRequest,
     TestRunCreateRequest,
+    TestRunSummaryListResponse,
     TestRunUpdateRequest,
     VerdictRequest,
 )
@@ -35,6 +36,33 @@ def create_test_run(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, req
     )
     return envelope(execution_service.to_out(db, run).model_dump(mode="json"))
+
+
+@router.get("/test-runs")
+def list_test_runs_all_projects(
+    project_id: UUID | None = Query(default=None),
+    active_only: bool = Query(default=False),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(
+        default=execution_service.RUN_DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=execution_service.RUN_MAX_PAGE_SIZE,
+    ),
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-078: one page of runs across every project the caller may see, newest first."""
+    items, total = execution_service.list_test_runs_all_projects(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id=project_id,
+        active_only=active_only,
+        page=page,
+        page_size=page_size,
+    )
+    return envelope(TestRunSummaryListResponse(items=items, total=total).model_dump(mode="json"))
 
 
 @router.get("/projects/{project_id}/test-runs")
@@ -127,6 +155,16 @@ def resume_test_run(
     db: Session = Depends(get_db),
 ) -> dict:
     run = execution_service.resume_test_run(db, ctx.tenant_id, ctx.user_id, run_id)
+    return envelope(execution_service.to_out(db, run).model_dump(mode="json"))
+
+
+@router.post("/test-runs/{run_id}/reopen")
+def reopen_test_run(
+    run_id: UUID,
+    ctx: SessionContext = Depends(require_permission("testrun.finish")),
+    db: Session = Depends(get_db),
+) -> dict:
+    run = execution_service.reopen_test_run(db, ctx.tenant_id, ctx.user_id, run_id)
     return envelope(execution_service.to_out(db, run).model_dump(mode="json"))
 
 

@@ -70,7 +70,13 @@ def _clean_tenant_data():
     # Cascades through every tenant-owned table via their tenant_id FK; the
     # RBAC seed (roles/permissions/role_permissions) is left untouched.
     with _owner_engine.begin() as conn:
-        conn.execute(text("TRUNCATE TABLE tenants, platform_admins, marketing_leads RESTART IDENTITY CASCADE"))
+        conn.execute(
+            text(
+                "TRUNCATE TABLE tenants, platform_admins, platform_audit_events, "
+                "audit_chain_checkpoints, marketing_leads "
+                "RESTART IDENTITY CASCADE"
+            )
+        )
 
 
 @pytest.fixture

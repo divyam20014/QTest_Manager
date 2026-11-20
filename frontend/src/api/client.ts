@@ -1,6 +1,7 @@
+import { resolveApiBase } from '@/api/apiBase'
 import { logger } from '@/lib/logger'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+export const API_BASE_URL = resolveApiBase(import.meta.env.VITE_API_BASE_URL)
 
 export interface ApiEnvelope<T> {
   data: T | null

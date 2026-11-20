@@ -16,7 +16,6 @@ Usage:
 """
 
 from datetime import date, timedelta
-from uuid import UUID
 
 from sqlalchemy import select
 
@@ -26,9 +25,14 @@ from app.models.identity import Role, User
 from app.models.tenant import Tenant
 from app.schemas.defect import DefectCreateRequest
 from app.schemas.execution import TestRunCreateRequest
+from app.schemas.platform import TenantCreateRequest
 from app.schemas.project import ProjectCreateRequest
 from app.schemas.requirement import RequirementCreateRequest
-from app.schemas.test_asset import BuildCreateRequest, EnvironmentCreateRequest, ReleaseCreateRequest
+from app.schemas.test_asset import (
+    BuildCreateRequest,
+    EnvironmentCreateRequest,
+    ReleaseCreateRequest,
+)
 from app.schemas.test_case import StepIn, TestCaseCreateRequest
 from app.services import (
     defect_service,
@@ -40,7 +44,6 @@ from app.services import (
     test_case_service,
 )
 from app.services.platform_service import create_tenant_with_admin
-from app.schemas.platform import TenantCreateRequest
 
 TENANT_NAME = "Meridian Auto Insurance"
 ADMIN_EMAIL = "admin@meridianauto.demo"
@@ -83,8 +86,14 @@ TEST_CASES = [
         "FNOL submission with valid policy number is accepted",
         "High",
         [
-            ("Log in as a policyholder and navigate to File a Claim", "The FNOL form loads with policy number pre-filled"),
-            ("Enter incident date, location, and a loss description, then submit", "A new claim is created with status 'Open' and a claim number is displayed"),
+            (
+                "Log in as a policyholder and navigate to File a Claim",
+                "The FNOL form loads with policy number pre-filled",
+            ),
+            (
+                "Enter incident date, location, and a loss description, then submit",
+                "A new claim is created with status 'Open' and a claim number is displayed",
+            ),
         ],
         "SCN-CLM-001",
         "Happy-path FNOL intake for an active policy.",
@@ -94,7 +103,10 @@ TEST_CASES = [
         "FNOL submission is rejected for an expired policy",
         "High",
         [
-            ("Submit an FNOL using a policy number that lapsed before the incident date", "The system rejects the submission with a clear 'policy not active on this date' message, and no claim record is created"),
+            (
+                "Submit an FNOL using a policy number that lapsed before the incident date",
+                "The system rejects the submission with a clear 'policy not active on this date' message, and no claim record is created",
+            ),
         ],
         "SCN-CLM-002",
         "Guards against claims being filed against lapsed coverage.",
@@ -104,8 +116,14 @@ TEST_CASES = [
         "Adjuster can move a claim from Open to Under Review",
         "Medium",
         [
-            ("As a claims adjuster, open a claim with status 'Open'", "The claim detail page shows an 'Advance to Under Review' action"),
-            ("Click 'Advance to Under Review' and confirm", "Claim status updates to 'Under Review' and the change is recorded in the claim's history"),
+            (
+                "As a claims adjuster, open a claim with status 'Open'",
+                "The claim detail page shows an 'Advance to Under Review' action",
+            ),
+            (
+                "Click 'Advance to Under Review' and confirm",
+                "Claim status updates to 'Under Review' and the change is recorded in the claim's history",
+            ),
         ],
         "SCN-CLM-003",
         "Core adjudication status-transition flow.",
@@ -115,7 +133,10 @@ TEST_CASES = [
         "Risk score is computed for a standard new application",
         "High",
         [
-            ("Submit a new auto policy application with a clean driving record, a mid-size sedan, and a suburban coverage region", "A risk score in the 'Standard' tier is returned, and a quote is generated"),
+            (
+                "Submit a new auto policy application with a clean driving record, a mid-size sedan, and a suburban coverage region",
+                "A risk score in the 'Standard' tier is returned, and a quote is generated",
+            ),
         ],
         "SCN-UW-001",
         "Baseline risk-scoring path for a typical applicant.",
@@ -125,7 +146,10 @@ TEST_CASES = [
         "High-risk driver history triggers manual review",
         "High",
         [
-            ("Submit a new application for a driver with two at-fault accidents in the past 3 years", "The application is routed to manual underwriting review instead of receiving an automatic quote"),
+            (
+                "Submit a new application for a driver with two at-fault accidents in the past 3 years",
+                "The application is routed to manual underwriting review instead of receiving an automatic quote",
+            ),
         ],
         "SCN-UW-002",
         "Confirms the manual-review threshold is honored, not silently auto-approved.",
@@ -135,8 +159,14 @@ TEST_CASES = [
         "Adding a second vehicle via endorsement recalculates premium",
         "Medium",
         [
-            ("Open an active policy and start a 'Add Vehicle' endorsement", "The endorsement form requests the new vehicle's VIN, year, make, and model"),
-            ("Submit the endorsement with a valid VIN", "The policy now lists two vehicles and the premium is recalculated pro-rata for the remaining term"),
+            (
+                "Open an active policy and start a 'Add Vehicle' endorsement",
+                "The endorsement form requests the new vehicle's VIN, year, make, and model",
+            ),
+            (
+                "Submit the endorsement with a valid VIN",
+                "The policy now lists two vehicles and the premium is recalculated pro-rata for the remaining term",
+            ),
         ],
         "SCN-PA-001",
         "Mid-term policy change without a full re-issue.",
@@ -164,7 +194,9 @@ DEFECTS = [
 
 
 def _get_or_create_role_id(db, tenant_id, code):
-    return db.execute(select(Role.id).where(Role.tenant_id.is_(None), Role.code == code)).scalar_one()
+    return db.execute(
+        select(Role.id).where(Role.tenant_id.is_(None), Role.code == code)
+    ).scalar_one()
 
 
 def main() -> None:
@@ -172,9 +204,13 @@ def main() -> None:
         existing = db.execute(select(Tenant).where(Tenant.name == TENANT_NAME)).scalar_one_or_none()
         if existing is not None:
             tenant = existing
-            print(f"Tenant '{TENANT_NAME}' already exists ({tenant.id}) -- resuming/skipping creates as needed.")
+            print(
+                f"Tenant '{TENANT_NAME}' already exists ({tenant.id}) -- resuming/skipping creates as needed."
+            )
             set_tenant_context(db, str(tenant.id))
-            admin = db.execute(select(User).where(User.tenant_id == tenant.id, User.email == ADMIN_EMAIL)).scalar_one()
+            admin = db.execute(
+                select(User).where(User.tenant_id == tenant.id, User.email == ADMIN_EMAIL)
+            ).scalar_one()
         else:
             tenant, admin = create_tenant_with_admin(
                 db,
@@ -190,7 +226,9 @@ def main() -> None:
 
         set_tenant_context(db, str(tenant.id))
 
-        tester = db.execute(select(User).where(User.tenant_id == tenant.id, User.email == TESTER_EMAIL)).scalar_one_or_none()
+        tester = db.execute(
+            select(User).where(User.tenant_id == tenant.id, User.email == TESTER_EMAIL)
+        ).scalar_one_or_none()
         if tester is None:
             tester_role_id = _get_or_create_role_id(db, tenant.id, "tester")
             tester = User(
@@ -206,14 +244,18 @@ def main() -> None:
             print(f"Created tester {TESTER_EMAIL}")
 
         set_tenant_context(db, str(tenant.id))
-        project = project_service.get_project_by_name(db, tenant.id, "Auto Insurance Claims Platform") if hasattr(
-            project_service, "get_project_by_name"
-        ) else None
+        project = (
+            project_service.get_project_by_name(db, tenant.id, "Auto Insurance Claims Platform")
+            if hasattr(project_service, "get_project_by_name")
+            else None
+        )
         if project is None:
             from app.models.project import Project
 
             project = db.execute(
-                select(Project).where(Project.tenant_id == tenant.id, Project.name == "Auto Insurance Claims Platform")
+                select(Project).where(
+                    Project.tenant_id == tenant.id, Project.name == "Auto Insurance Claims Platform"
+                )
             ).scalar_one_or_none()
         if project is None:
             project = project_service.create_project(
@@ -238,12 +280,18 @@ def main() -> None:
             print(f"Project '{project.name}' already exists ({project.id})")
 
         set_tenant_context(db, str(tenant.id))
-        req_titles_existing = {
-            r.title
-            for r in db.execute(
-                select(requirement_service.Requirement).where(requirement_service.Requirement.project_id == project.id)
-            ).scalars()
-        } if hasattr(requirement_service, "Requirement") else set()
+        req_titles_existing = (
+            {
+                r.title
+                for r in db.execute(
+                    select(requirement_service.Requirement).where(
+                        requirement_service.Requirement.project_id == project.id
+                    )
+                ).scalars()
+            }
+            if hasattr(requirement_service, "Requirement")
+            else set()
+        )
         created_reqs = 0
         for title, description in REQUIREMENTS:
             if title in req_titles_existing:
@@ -257,11 +305,17 @@ def main() -> None:
             # the loop, or only the first iteration ever sees it.
             set_tenant_context(db, str(tenant.id))
             requirement_service.create_requirement(
-                db, tenant.id, "admin", admin.id, project.id,
+                db,
+                tenant.id,
+                "admin",
+                admin.id,
+                project.id,
                 RequirementCreateRequest(title=title, description=description),
             )
             created_reqs += 1
-        print(f"Requirements: {created_reqs} created, {len(REQUIREMENTS) - created_reqs} already present")
+        print(
+            f"Requirements: {created_reqs} created, {len(REQUIREMENTS) - created_reqs} already present"
+        )
 
         set_tenant_context(db, str(tenant.id))
         from app.models.test_case import TestCase, TestCaseVersion
@@ -271,7 +325,10 @@ def main() -> None:
             for v in db.execute(
                 select(TestCaseVersion)
                 .join(TestCase, TestCase.id == TestCaseVersion.test_case_id)
-                .where(TestCase.project_id == project.id, TestCase.current_version_id == TestCaseVersion.id)
+                .where(
+                    TestCase.project_id == project.id,
+                    TestCase.current_version_id == TestCaseVersion.id,
+                )
             ).scalars()
         }
 
@@ -285,7 +342,11 @@ def main() -> None:
             )
             set_tenant_context(db, str(tenant.id))
             case = test_case_service.create_test_case(
-                db, tenant.id, "admin", admin.id, project.id,
+                db,
+                tenant.id,
+                "admin",
+                admin.id,
+                project.id,
                 TestCaseCreateRequest(
                     title=title,
                     module_id=module.id if module else None,
@@ -306,32 +367,54 @@ def main() -> None:
         set_tenant_context(db, str(tenant.id))
         env_exists = db.execute(
             select(test_asset_service.Environment).where(
-                test_asset_service.Environment.tenant_id == tenant.id, test_asset_service.Environment.name.ilike("Staging")
+                test_asset_service.Environment.tenant_id == tenant.id,
+                test_asset_service.Environment.name.ilike("Staging"),
             )
         ).scalar_one_or_none()
         if not env_exists:
             test_asset_service.create_environment(
-                db, tenant.id, admin.id, EnvironmentCreateRequest(name="Staging", description="Pre-production staging environment")
+                db,
+                tenant.id,
+                admin.id,
+                EnvironmentCreateRequest(
+                    name="Staging", description="Pre-production staging environment"
+                ),
             )
             print("Created Environment 'Staging'")
 
         set_tenant_context(db, str(tenant.id))
         build_exists = db.execute(
-            select(test_asset_service.Build).where(test_asset_service.Build.project_id == project.id, test_asset_service.Build.name == "2026.11.1")
+            select(test_asset_service.Build).where(
+                test_asset_service.Build.project_id == project.id,
+                test_asset_service.Build.name == "2026.11.1",
+            )
         ).scalar_one_or_none()
         if not build_exists:
             test_asset_service.create_build(
-                db, tenant.id, admin.id, project.id, BuildCreateRequest(name="2026.11.1", built_at=date.today() - timedelta(days=3))
+                db,
+                tenant.id,
+                admin.id,
+                project.id,
+                BuildCreateRequest(name="2026.11.1", built_at=date.today() - timedelta(days=3)),
             )
             print("Created Build '2026.11.1'")
 
         set_tenant_context(db, str(tenant.id))
         release_exists = db.execute(
-            select(test_asset_service.Release).where(test_asset_service.Release.project_id == project.id, test_asset_service.Release.name == "Q4 2026 Release")
+            select(test_asset_service.Release).where(
+                test_asset_service.Release.project_id == project.id,
+                test_asset_service.Release.name == "Q4 2026 Release",
+            )
         ).scalar_one_or_none()
         if not release_exists:
             test_asset_service.create_release(
-                db, tenant.id, admin.id, project.id, ReleaseCreateRequest(name="Q4 2026 Release", release_date=date.today() + timedelta(days=14))
+                db,
+                tenant.id,
+                admin.id,
+                project.id,
+                ReleaseCreateRequest(
+                    name="Q4 2026 Release", release_date=date.today() + timedelta(days=14)
+                ),
             )
             print("Created Release 'Q4 2026 Release'")
 
@@ -341,14 +424,20 @@ def main() -> None:
         all_templates = template_service.list_templates()
         underwriting_templates = [t.id for t in all_templates if t.category == "Underwriting"][:2]
         if underwriting_templates:
-            already_imported = db.execute(
-                select(TestCaseVersion.title)
-                .join(TestCase, TestCase.id == TestCaseVersion.test_case_id)
-                .where(TestCase.project_id == project.id)
-            ).scalars().all()
+            already_imported = (
+                db.execute(
+                    select(TestCaseVersion.title)
+                    .join(TestCase, TestCase.id == TestCaseVersion.test_case_id)
+                    .where(TestCase.project_id == project.id)
+                )
+                .scalars()
+                .all()
+            )
             template_titles = {t.title for t in all_templates if t.id in underwriting_templates}
             if not template_titles.issubset(set(already_imported)):
-                template_service.import_templates(db, tenant.id, "admin", admin.id, project.id, underwriting_templates)
+                template_service.import_templates(
+                    db, tenant.id, "admin", admin.id, project.id, underwriting_templates
+                )
                 db.flush()
                 print(f"Imported {len(underwriting_templates)} Insurance QA Pack templates")
             else:
@@ -360,42 +449,70 @@ def main() -> None:
         from app.models.execution import TestRun
 
         existing_run = db.execute(
-            select(TestRun).where(TestRun.project_id == project.id, TestRun.name == "Sprint 42 Regression")
+            select(TestRun).where(
+                TestRun.project_id == project.id, TestRun.name == "Sprint 42 Regression"
+            )
         ).scalar_one_or_none()
         if existing_run is None:
             approved_case_ids = [
                 row[0]
                 for row in db.execute(
-                    select(TestCase.id).where(TestCase.project_id == project.id, TestCase.status == "approved")
+                    select(TestCase.id).where(
+                        TestCase.project_id == project.id, TestCase.status == "approved"
+                    )
                 ).all()
             ][:5]
             if approved_case_ids:
                 run = execution_service.create_test_run(
-                    db, tenant.id, "admin", admin.id, project.id,
-                    TestRunCreateRequest(name="Sprint 42 Regression", run_type="Regression", test_case_ids=approved_case_ids),
+                    db,
+                    tenant.id,
+                    "admin",
+                    admin.id,
+                    project.id,
+                    TestRunCreateRequest(
+                        name="Sprint 42 Regression",
+                        run_type="Regression",
+                        test_case_ids=approved_case_ids,
+                    ),
                 )
                 set_tenant_context(db, str(tenant.id))
 
-                run_cases = db.execute(
-                    select(execution_service.TestRunCase).where(execution_service.TestRunCase.test_run_id == run.id)
-                ).scalars().all()
+                run_cases = (
+                    db.execute(
+                        select(execution_service.TestRunCase).where(
+                            execution_service.TestRunCase.test_run_id == run.id
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
                 verdict_pattern = ["pass", "pass", "fail", "pass"]
                 for i, run_case in enumerate(run_cases):
                     set_tenant_context(db, str(tenant.id))
-                    steps = db.execute(
-                        select(execution_service.ExecutionStep).where(
-                            execution_service.ExecutionStep.test_run_case_id == run_case.id
+                    steps = (
+                        db.execute(
+                            select(execution_service.ExecutionStep).where(
+                                execution_service.ExecutionStep.test_run_case_id == run_case.id
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     for step in steps:
                         set_tenant_context(db, str(tenant.id))
                         execution_service.open_step(db, tenant.id, "admin", admin.id, step.id)
                         verdict = verdict_pattern[i % len(verdict_pattern)]
                         set_tenant_context(db, str(tenant.id))
-                        execution_service.record_verdict(db, tenant.id, "admin", admin.id, step.id, verdict)
-                print(f"Created test run 'Sprint 42 Regression' with real execution history ({len(run_cases)} cases)")
+                        execution_service.record_verdict(
+                            db, tenant.id, "admin", admin.id, step.id, verdict
+                        )
+                print(
+                    f"Created test run 'Sprint 42 Regression' with real execution history ({len(run_cases)} cases)"
+                )
             else:
-                print("No approved test cases available yet to build a run from -- skipped run creation")
+                print(
+                    "No approved test cases available yet to build a run from -- skipped run creation"
+                )
         else:
             print("Test run 'Sprint 42 Regression' already exists")
 
@@ -404,7 +521,8 @@ def main() -> None:
         from app.models.defect import Defect
 
         existing_defect_titles = {
-            d[0] for d in db.execute(select(Defect.title).where(Defect.project_id == project.id)).all()
+            d[0]
+            for d in db.execute(select(Defect.title).where(Defect.project_id == project.id)).all()
         }
         created_defects = 0
         for title, severity, description, steps_to_reproduce, expected, actual in DEFECTS:
@@ -412,7 +530,10 @@ def main() -> None:
                 continue
             set_tenant_context(db, str(tenant.id))
             defect_service.create_defect(
-                db, tenant.id, "admin", admin.id,
+                db,
+                tenant.id,
+                "admin",
+                admin.id,
                 DefectCreateRequest(
                     project_id=project.id,
                     title=title,
@@ -466,7 +587,9 @@ def _ensure_team(db, tenant):
     team = {}
     for name, email, role_code in TEAM:
         _ctx(db, tenant)
-        user = db.execute(select(User).where(User.tenant_id == tenant.id, User.email == email)).scalar_one_or_none()
+        user = db.execute(
+            select(User).where(User.tenant_id == tenant.id, User.email == email)
+        ).scalar_one_or_none()
         if user is None:
             user = User(
                 tenant_id=tenant.id,
@@ -487,7 +610,9 @@ def _ensure_member(db, tenant, project, user):
 
     _ctx(db, tenant)
     exists = db.execute(
-        select(ProjectMember).where(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)
+        select(ProjectMember).where(
+            ProjectMember.project_id == project.id, ProjectMember.user_id == user.id
+        )
     ).first()
     if exists is None:
         db.add(ProjectMember(project_id=project.id, user_id=user.id))
@@ -520,7 +645,9 @@ def _enrich(db, tenant, admin):
     team = _ensure_team(db, tenant)
     managers = [team[e][0] for _, e, r in TEAM if r == "manager"]
     testers = [team[e][0] for _, e, r in TEAM if r == "tester"]
-    sam = db.execute(select(User).where(User.tenant_id == tenant.id, User.email == TESTER_EMAIL)).scalar_one_or_none()
+    sam = db.execute(
+        select(User).where(User.tenant_id == tenant.id, User.email == TESTER_EMAIL)
+    ).scalar_one_or_none()
     if sam is not None:
         testers.append(sam)
 
@@ -532,7 +659,9 @@ def _enrich(db, tenant, admin):
         if project is None:
             manager = managers[p_index % len(managers)]
             project = project_service.create_project(
-                db, tenant.id, admin.id,
+                db,
+                tenant.id,
+                admin.id,
                 ProjectCreateRequest(
                     name=spec["name"],
                     domain="Motor",
@@ -555,13 +684,19 @@ def _enrich(db, tenant, admin):
         release_name = spec["release"]
         if not db.execute(
             select(test_asset_service.Release).where(
-                test_asset_service.Release.project_id == project.id, test_asset_service.Release.name == release_name
+                test_asset_service.Release.project_id == project.id,
+                test_asset_service.Release.name == release_name,
             )
         ).scalar_one_or_none():
             _ctx(db, tenant)
             test_asset_service.create_release(
-                db, tenant.id, admin.id, project.id,
-                ReleaseCreateRequest(name=release_name, release_date=date.today() + timedelta(days=10 + 7 * p_index)),
+                db,
+                tenant.id,
+                admin.id,
+                project.id,
+                ReleaseCreateRequest(
+                    name=release_name, release_date=date.today() + timedelta(days=10 + 7 * p_index)
+                ),
             )
 
         # -- test cases -------------------------------------------------
@@ -571,7 +706,10 @@ def _enrich(db, tenant, admin):
             for v in db.execute(
                 select(TestCaseVersion)
                 .join(TestCase, TestCase.id == TestCaseVersion.test_case_id)
-                .where(TestCase.project_id == project.id, TestCase.current_version_id == TestCaseVersion.id)
+                .where(
+                    TestCase.project_id == project.id,
+                    TestCase.current_version_id == TestCaseVersion.id,
+                )
             ).scalars()
         }
         cases_by_module: dict[str, list] = {}
@@ -589,7 +727,11 @@ def _enrich(db, tenant, admin):
                 reviewer = managers[(m_index + c_index + 1) % len(managers)]
                 _ctx(db, tenant)
                 case = test_case_service.create_test_case(
-                    db, tenant.id, "manager", author.id, project.id,
+                    db,
+                    tenant.id,
+                    "manager",
+                    author.id,
+                    project.id,
                     TestCaseCreateRequest(
                         title=title,
                         module_id=module.id if module else None,
@@ -597,9 +739,18 @@ def _enrich(db, tenant, admin):
                         priority=priority,
                         assignee_id=testers[(m_index * 3 + c_index) % len(testers)].id,
                         steps=[
-                            StepIn(action=f"Sign in as a {persona} and open the {module_name} area", expected=f"The {module_name} screen loads without errors"),
-                            StepIn(action="Set up the scenario data described in the preconditions", expected="Scenario data is available and valid"),
-                            StepIn(action=f"Perform the action under test: {_sentence_case(title)}", expected=expected),
+                            StepIn(
+                                action=f"Sign in as a {persona} and open the {module_name} area",
+                                expected=f"The {module_name} screen loads without errors",
+                            ),
+                            StepIn(
+                                action="Set up the scenario data described in the preconditions",
+                                expected="Scenario data is available and valid",
+                            ),
+                            StepIn(
+                                action=f"Perform the action under test: {_sentence_case(title)}",
+                                expected=expected,
+                            ),
                         ],
                         scenario_id=f"SCN-{p_index + 1:02d}{m_index + 1}-{c_index + 1:03d}",
                         prerequisite=f"An active {persona} account with access to {module_name}",
@@ -608,26 +759,44 @@ def _enrich(db, tenant, admin):
                 # Last case per module stays a draft, second-to-last in review, rest approved.
                 if c_index < len(cases) - 2 or (c_index == len(cases) - 2 and m_index % 2 == 0):
                     _ctx(db, tenant)
-                    test_case_service.submit_for_review(db, tenant.id, "manager", author.id, case.id, reviewer_id=reviewer.id)
+                    test_case_service.submit_for_review(
+                        db, tenant.id, "manager", author.id, case.id, reviewer_id=reviewer.id
+                    )
                     if c_index < len(cases) - 2:
                         _ctx(db, tenant)
-                        test_case_service.approve_test_case(db, tenant.id, "manager", reviewer.id, case.id)
+                        test_case_service.approve_test_case(
+                            db, tenant.id, "manager", reviewer.id, case.id
+                        )
                 _ctx(db, tenant)
-                _backdate(db, TestCase, case.id, created_at=now - timedelta(days=60 - (m_index * 8 + c_index), hours=c_index))
+                _backdate(
+                    db,
+                    TestCase,
+                    case.id,
+                    created_at=now - timedelta(days=60 - (m_index * 8 + c_index), hours=c_index),
+                )
                 cases_by_module.setdefault(module_name, []).append(case.id)
                 created += 1
         print(f"  {project.name}: {created} test cases created")
 
         # -- requirements + traceability -------------------------------
         _ctx(db, tenant)
-        existing_reqs = {r.title for r in db.execute(select(Requirement).where(Requirement.project_id == project.id)).scalars()}
+        existing_reqs = {
+            r.title
+            for r in db.execute(
+                select(Requirement).where(Requirement.project_id == project.id)
+            ).scalars()
+        }
         for r_index, (module_name, title, description) in enumerate(spec["requirements"]):
             if title in existing_reqs:
                 continue
             author = managers[r_index % len(managers)]
             _ctx(db, tenant)
             req = requirement_service.create_requirement(
-                db, tenant.id, "manager", author.id, project.id,
+                db,
+                tenant.id,
+                "manager",
+                author.id,
+                project.id,
                 RequirementCreateRequest(title=title, description=description),
             )
             _ctx(db, tenant)
@@ -641,7 +810,12 @@ def _enrich(db, tenant, admin):
                 _ctx(db, tenant)
                 try:
                     requirement_service.link_test_case(
-                        db, tenant.id, "manager", author.id, req.id, module_cases[(start + k) % len(module_cases)]
+                        db,
+                        tenant.id,
+                        "manager",
+                        author.id,
+                        req.id,
+                        module_cases[(start + k) % len(module_cases)],
                     )
                 except Exception:  # noqa: BLE001 -- already linked on a resumed run
                     db.rollback()
@@ -651,29 +825,47 @@ def _enrich(db, tenant, admin):
         approved = [
             row[0]
             for row in db.execute(
-                select(TestCase.id).where(TestCase.project_id == project.id, TestCase.status == "approved").order_by(TestCase.created_at)
+                select(TestCase.id)
+                .where(TestCase.project_id == project.id, TestCase.status == "approved")
+                .order_by(TestCase.created_at)
             ).all()
         ]
         if not approved:
             continue
         for r_index, (run_name, run_type, days_ago, pass_rate, finished) in enumerate(RUNS):
             _ctx(db, tenant)
-            if db.execute(select(TestRun).where(TestRun.project_id == project.id, TestRun.name == run_name)).scalar_one_or_none():
+            if db.execute(
+                select(TestRun).where(TestRun.project_id == project.id, TestRun.name == run_name)
+            ).scalar_one_or_none():
                 continue
-            size = 10 if run_type == "Smoke" else min(len(approved), 14 + (stable(project.name, run_name) % 6))
+            size = (
+                10
+                if run_type == "Smoke"
+                else min(len(approved), 14 + (stable(project.name, run_name) % 6))
+            )
             offset = stable(project.name, run_name, "o") % len(approved)
-            case_ids = list(dict.fromkeys(approved[(offset + i) % len(approved)] for i in range(size)))
+            case_ids = list(
+                dict.fromkeys(approved[(offset + i) % len(approved)] for i in range(size))
+            )
             owner = managers[r_index % len(managers)]
             _ctx(db, tenant)
             run = execution_service.create_test_run(
-                db, tenant.id, "manager", owner.id, project.id,
+                db,
+                tenant.id,
+                "manager",
+                owner.id,
+                project.id,
                 TestRunCreateRequest(name=run_name, run_type=run_type, test_case_ids=case_ids),
             )
             run_day = now - timedelta(days=days_ago)
             _ctx(db, tenant)
             _backdate(db, TestRun, run.id, created_at=run_day - timedelta(hours=2))
             _ctx(db, tenant)
-            run_cases = db.execute(select(TestRunCase).where(TestRunCase.test_run_id == run.id)).scalars().all()
+            run_cases = (
+                db.execute(select(TestRunCase).where(TestRunCase.test_run_id == run.id))
+                .scalars()
+                .all()
+            )
             for rc_index, run_case in enumerate(run_cases):
                 executor = testers[(rc_index + r_index) % len(testers)]
                 _ctx(db, tenant)
@@ -685,9 +877,15 @@ def _enrich(db, tenant, admin):
                     continue
                 fails = (stable(run.id, rc_index) % 1000) / 1000 >= pass_rate
                 _ctx(db, tenant)
-                steps = db.execute(
-                    select(ExecutionStep).where(ExecutionStep.test_run_case_id == run_case.id).order_by(ExecutionStep.id)
-                ).scalars().all()
+                steps = (
+                    db.execute(
+                        select(ExecutionStep)
+                        .where(ExecutionStep.test_run_case_id == run_case.id)
+                        .order_by(ExecutionStep.id)
+                    )
+                    .scalars()
+                    .all()
+                )
                 # Real runs are executed over a few days, not in one sitting.
                 span = min(3, days_ago + 1)
                 exec_start = min(
@@ -697,16 +895,22 @@ def _enrich(db, tenant, admin):
                 for s_index, step in enumerate(steps):
                     verdict = "fail" if fails and s_index == len(steps) - 1 else "pass"
                     _ctx(db, tenant)
-                    execution_service.record_verdict(db, tenant.id, "tester", executor.id, step.id, verdict)
+                    execution_service.record_verdict(
+                        db, tenant.id, "tester", executor.id, step.id, verdict
+                    )
                     _ctx(db, tenant)
                     _backdate(
-                        db, ExecutionStep, step.id,
+                        db,
+                        ExecutionStep,
+                        step.id,
                         opened_at=exec_start + timedelta(minutes=3 * s_index),
                         closed_at=exec_start + timedelta(minutes=3 * s_index + 2),
                     )
                 _ctx(db, tenant)
                 _backdate(
-                    db, TestRunCase, run_case.id,
+                    db,
+                    TestRunCase,
+                    run_case.id,
                     started_at=exec_start,
                     completed_at=exec_start + timedelta(minutes=3 * len(steps)),
                 )
@@ -721,7 +925,10 @@ def _enrich(db, tenant, admin):
 
         # -- defects across the lifecycle -------------------------------
         _ctx(db, tenant)
-        existing_defects = {d[0] for d in db.execute(select(Defect.title).where(Defect.project_id == project.id)).all()}
+        existing_defects = {
+            d[0]
+            for d in db.execute(select(Defect.title).where(Defect.project_id == project.id)).all()
+        }
         flow = ["Open", "Fixed", "Verified", "Closed"]
         for d_index, (title, severity, target_status) in enumerate(spec["defects"]):
             if title in existing_defects:
@@ -731,13 +938,18 @@ def _enrich(db, tenant, admin):
             linked_case = approved[stable(title) % len(approved)]
             _ctx(db, tenant)
             defect = defect_service.create_defect(
-                db, tenant.id, "tester", reporter.id,
+                db,
+                tenant.id,
+                "tester",
+                reporter.id,
                 DefectCreateRequest(
                     project_id=project.id,
                     test_case_id=linked_case,
                     title=title,
                     severity=severity,
-                    priority="Critical" if severity == "Critical" else ("High" if severity == "High" else "Medium"),
+                    priority="Critical"
+                    if severity == "Critical"
+                    else ("High" if severity == "High" else "Medium"),
                     description=f"Observed during regression testing: {_sentence_case(title)}.",
                     steps_to_reproduce="1. Prepare the scenario data.\n2. Perform the action described in the linked test case.\n3. Observe the result.",
                     expected_result="Behaviour matches the linked requirement and test case.",
@@ -749,13 +961,21 @@ def _enrich(db, tenant, admin):
                 for status in flow[: flow.index(target_status) + 1]:
                     _ctx(db, tenant)
                     defect_service.update_status(
-                        db, tenant.id, "manager", fixer.id, defect.id, status, verification_confirmed=True
+                        db,
+                        tenant.id,
+                        "manager",
+                        fixer.id,
+                        defect.id,
+                        status,
+                        verification_confirmed=True,
                     )
             opened = now - timedelta(days=3 + (stable(title) % 26), hours=stable(title, "h") % 9)
             _ctx(db, tenant)
             values = {"created_at": opened}
             if target_status == "Closed":
-                values["closed_at"] = min(now - timedelta(hours=6), opened + timedelta(days=2 + stable(title, "c") % 6))
+                values["closed_at"] = min(
+                    now - timedelta(hours=6), opened + timedelta(days=2 + stable(title, "c") % 6)
+                )
             _backdate(db, Defect, defect.id, **values)
             db.commit()
         print(f"  {project.name}: defects ready")

@@ -11,6 +11,7 @@ import {
   createTestCase,
   deleteTestCase,
   deprecateTestCase,
+  listAllTestCases,
   listTestCases,
   submitForReview,
   type Priority,
@@ -164,6 +165,12 @@ export function TestRepository() {
   // Pages beyond the first, per project (see PAGE_SIZE).
   const [extra, setExtra] = useState<Record<string, { page: number; items: TestCase[] }>>({})
   const [loadingMore, setLoadingMore] = useState(false)
+  // ADR-077: pages beyond the first of the single tenant-wide listing used while a
+  // filter is on (see `unified` below).
+  const [unifiedExtra, setUnifiedExtra] = useState<{ page: number; items: TestCase[] }>({
+    page: 1,
+    items: [],
+  })
   // The box keeps the live value (typing stays instant); requests use this one.
   const debouncedSearch = useDebouncedValue(search, 300)
   // Open/closed groups the user chose themselves (see the header comment for
@@ -174,6 +181,7 @@ export function TestRepository() {
   filterSignatureRef.current = filterSignature
   useEffect(() => {
     setExtra({})
+    setUnifiedExtra({ page: 1, items: [] })
     // A new search/filter starts from the default open/closed state, so a group
     // the user collapsed earlier cannot hide the results of the new filter.
     setToggled({})
@@ -237,9 +245,13 @@ export function TestRepository() {
   const targetProjects = projectId
     ? projects.filter((p) => p.id === projectId)
     : projects.filter((p) => (p.test_case_count ?? 1) > 0)
-  const grouped = targetProjects.length > 1
   // A filter that has to be answered by every project opens every group.
   const filtersActive = Boolean(debouncedSearch || status || priority || assigneeFilter)
+  // ADR-077: with a filter on and no project chosen, ONE tenant-wide request answers it
+  // (it used to ask every non-empty project) and the results show as a flat list with a
+  // Project column. Without a filter, projects stay as collapsible groups that load on open.
+  const unified = !projectId && filtersActive && targetProjects.length > 1
+  const grouped = targetProjects.length > 1 && !unified
   const firstProjectId = targetProjects[0]?.id
   function isOpen(id: string): boolean {
     if (!grouped) return true
@@ -262,8 +274,26 @@ export function TestRepository() {
           items: r.items,
           total: r.total,
         })),
-      enabled: isOpen(project.id),
+      enabled: isOpen(project.id) && !unified,
     })),
+  })
+
+  const unifiedQuery = useQuery({
+    queryKey: [
+      'test-repository',
+      'all',
+      { search: debouncedSearch, status, priority, assignee: assigneeFilter },
+    ],
+    queryFn: () =>
+      listAllTestCases({
+        search: debouncedSearch,
+        status,
+        priority,
+        assignee_id: assigneeFilter,
+        sort: '-created_at',
+        page_size: PAGE_SIZE,
+      }),
+    enabled: unified,
   })
 
   const usersById = useMemo(
@@ -285,7 +315,34 @@ export function TestRepository() {
     rows: Row[]
     hiddenDeprecated: number
   }
-  const groups: RepoGroup[] = targetProjects.map((project, i) => {
+  const projectsById = new Map(projects.map((p) => [p.id, p]))
+  const unifiedGroups: RepoGroup[] = []
+  if (unified && targetProjects[0]) {
+    const seen = new Set<string>()
+    const loaded = unifiedQuery.data
+      ? [...unifiedQuery.data.items, ...unifiedExtra.items]
+          .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+          .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      : []
+    const shown = loaded.filter(
+      (c) => showDeprecated || status === 'deprecated' || c.status !== 'deprecated',
+    )
+    unifiedGroups.push({
+      // Only a placeholder: every row below carries its own real project.
+      project: targetProjects[0],
+      open: true,
+      loading: unifiedQuery.isLoading,
+      failed: unifiedQuery.isError,
+      loaded,
+      total: unifiedQuery.data?.total,
+      rows: shown.map((c) => ({
+        project: projectsById.get(c.project_id) ?? targetProjects[0],
+        case: c,
+      })),
+      hiddenDeprecated: loaded.length - shown.length,
+    })
+  }
+  const perProjectGroups: RepoGroup[] = unified ? [] : targetProjects.map((project, i) => {
     const q = perProjectQueries[i]
     const open = isOpen(project.id)
     const seen = new Set<string>()
@@ -308,6 +365,7 @@ export function TestRepository() {
       hiddenDeprecated: open ? loaded.length - shown.length : 0,
     }
   })
+  const groups: RepoGroup[] = unified ? unifiedGroups : perProjectGroups
   // With a filter on, a project that answered "no matches" is not worth a header.
   const visibleGroups = groups.filter((g) => !(filtersActive && g.total === 0 && !g.failed))
   const openGroups = visibleGroups.filter((g) => g.open)
@@ -327,6 +385,30 @@ export function TestRepository() {
 
   async function loadMore() {
     const signature = filterSignatureRef.current
+    if (unified) {
+      setLoadingMore(true)
+      const page = unifiedExtra.page + 1
+      try {
+        const r = await listAllTestCases({
+          search: debouncedSearch,
+          status,
+          priority,
+          assignee_id: assigneeFilter,
+          sort: '-created_at',
+          page_size: PAGE_SIZE,
+          page,
+        })
+        // The filters changed while this was loading: those rows belong to a different result set.
+        if (signature === filterSignatureRef.current) {
+          setUnifiedExtra((prev) => ({ page, items: [...prev.items, ...r.items] }))
+        }
+      } catch {
+        showToast('error', 'Some test cases could not be loaded. Try “Load more” again.')
+      } finally {
+        setLoadingMore(false)
+      }
+      return
+    }
     setLoadingMore(true)
     const targets = openGroups.filter((g) => g.total !== undefined && g.loaded.length < g.total)
     const results = await Promise.allSettled(
@@ -377,6 +459,7 @@ export function TestRepository() {
     // Back to the first page: rows loaded by "Load more" may have been deleted
     // or changed, and the refetch only covers the first page of each project.
     setExtra({})
+    setUnifiedExtra({ page: 1, items: [] })
     queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'test-repository' })
     // The per-project counts decide which projects are requested at all.
     queryClient.invalidateQueries({ queryKey: ['projects', 'all'] })
@@ -886,7 +969,11 @@ export function TestRepository() {
       {failedCount > 0 && (
         <div className="rounded-md border border-[var(--border)] bg-[var(--background)]">
           <ErrorState
-            message={`${failedCount} of ${openGroups.length} project${openGroups.length === 1 ? '' : 's'} could not be loaded, so the list below is incomplete.`}
+            message={
+              unified
+                ? 'The matching test cases could not be loaded.'
+                : `${failedCount} of ${openGroups.length} project${openGroups.length === 1 ? '' : 's'} could not be loaded, so the list below is incomplete.`
+            }
             onRetry={invalidateRepository}
           />
         </div>
@@ -898,7 +985,9 @@ export function TestRepository() {
             {rows.length} test case{rows.length === 1 ? '' : 's'} shown
             {grouped
               ? ` from ${openGroups.length} of ${visibleGroups.length} projects${hasMore ? ` · ${remaining} more in the open projects` : ''}`
-              : `${hasMore ? ` of ${totalAvailable} matching` : ''} across ${targetProjects.length} project${targetProjects.length === 1 ? '' : 's'}`}
+              : unified
+                ? `${hasMore ? ` of ${totalAvailable} matching` : ' (all matching)'} across all projects`
+                : `${hasMore ? ` of ${totalAvailable} matching` : ''} across ${targetProjects.length} project${targetProjects.length === 1 ? '' : 's'}`}
             {selectedRows.length > 0 ? ` · ${selectedRows.length} selected` : ''}.
           </p>
           {hasMore && (

@@ -1,5 +1,28 @@
+from collections.abc import Callable
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from app.core.config import get_settings
+
+
+def scaled(per_minute: int) -> Callable[[], str]:
+    """Per-minute limit for the sign-in/MFA endpoints, scaled by
+    ``AUTH_RATE_LIMIT_MULTIPLIER`` (default 1 = the documented limits).
+
+    Only for dev/e2e stacks: a fast browser test run signs in more often than
+    8-10 times a minute from one IP and would be throttled. The multiplier is
+    read per request (slowapi accepts a callable), and
+    ``validate_for_production`` refuses to boot with anything but 1, so a
+    production deployment always enforces the real limits. Lockout after
+    repeated wrong passwords/codes is separate and unaffected.
+    """
+
+    def _limit() -> str:
+        return f"{per_minute * get_settings().auth_rate_limit_multiplier}/minute"
+
+    return _limit
+
 
 # GAP-16: POST /auth/login had no throttling at all, letting an attacker
 # submit unlimited password guesses against a known (tenant_id, email)

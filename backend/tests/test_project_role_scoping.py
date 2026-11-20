@@ -10,7 +10,9 @@ the tenant-wide role immediately.
 from fastapi.testclient import TestClient
 
 
-def _bootstrap_tenant(client: TestClient, platform_admin: dict, tenant_name: str = "Zenith Cover") -> dict:
+def _bootstrap_tenant(
+    client: TestClient, platform_admin: dict, tenant_name: str = "Zenith Cover"
+) -> dict:
     response = client.post(
         "/api/v1/platform/tenants",
         headers=platform_admin["headers"],
@@ -67,7 +69,9 @@ def _role_id_by_code(client: TestClient, code: str) -> str:
     return match["id"]
 
 
-def _setup_tenant_with_tester(client: TestClient, platform_admin: dict, tenant_name: str) -> tuple[str, dict, str]:
+def _setup_tenant_with_tester(
+    client: TestClient, platform_admin: dict, tenant_name: str
+) -> tuple[str, dict, str]:
     """Returns (tenant_id, project, tester_user_id); leaves `client` logged
     in as the tenant admin, with the tester already added as a project
     member with no role override (the default)."""
@@ -77,26 +81,38 @@ def _setup_tenant_with_tester(client: TestClient, platform_admin: dict, tenant_n
     _login_and_verify(client, tenant_id, admin_email, "AdminPassw0rd!")
     project = _create_project(client, f"{tenant_name} Claims")
     tester_id = _create_user(
-        client, f"tester@{tenant_name.lower().replace(' ', '')}.example.com", "Tess Tester", "tester", "TesterPassw0rd!"
+        client,
+        f"tester@{tenant_name.lower().replace(' ', '')}.example.com",
+        "Tess Tester",
+        "tester",
+        "TesterPassw0rd!",
     )
     add_resp = client.post(f"/api/v1/projects/{project['id']}/members", json={"user_id": tester_id})
     assert add_resp.status_code == 200, add_resp.text
     return tenant_id, project, tester_id
 
 
-def test_no_override_behaves_identically_to_before(client: TestClient, platform_admin: dict) -> None:
+def test_no_override_behaves_identically_to_before(
+    client: TestClient, platform_admin: dict
+) -> None:
     """Regression: a tester with no project-role override cannot create a
     test case needing a permission their tenant-wide role lacks (here:
     none needed, testcase.create is already in the tester permission set --
     the real regression check is requirement.manage, which testers lack)."""
-    tenant_id, project, tester_id = _setup_tenant_with_tester(client, platform_admin, "Meridian Shield")
+    tenant_id, project, tester_id = _setup_tenant_with_tester(
+        client, platform_admin, "Meridian Shield"
+    )
     admin_email = "admin@meridianshield.example.com"
     _login_and_verify(client, tenant_id, "tester@meridianshield.example.com", "TesterPassw0rd!")
 
     # testcase.create: tester already holds this tenant-wide -- unchanged.
     resp = client.post(
         f"/api/v1/projects/{project['id']}/test-cases",
-        json={"title": "Baseline case", "priority": "High", "steps": [{"action": "a", "expected": "b"}]},
+        json={
+            "title": "Baseline case",
+            "priority": "High",
+            "steps": [{"action": "a", "expected": "b"}],
+        },
     )
     assert resp.status_code == 200, resp.text
 
@@ -109,13 +125,17 @@ def test_no_override_behaves_identically_to_before(client: TestClient, platform_
     )
     assert resp.status_code == 403, resp.text
 
-    _login_and_verify(client, tenant_id, admin_email, "AdminPassw0rd!")  # restore admin session for teardown cleanliness
+    _login_and_verify(
+        client, tenant_id, admin_email, "AdminPassw0rd!"
+    )  # restore admin session for teardown cleanliness
 
 
 def test_project_override_grants_permission_only_within_that_project(
     client: TestClient, platform_admin: dict
 ) -> None:
-    tenant_id, project, tester_id = _setup_tenant_with_tester(client, platform_admin, "Coastal Trust")
+    tenant_id, project, tester_id = _setup_tenant_with_tester(
+        client, platform_admin, "Coastal Trust"
+    )
     manager_role_id = _role_id_by_code(client, "manager")
 
     set_resp = client.patch(
@@ -136,8 +156,12 @@ def test_project_override_grants_permission_only_within_that_project(
     assert resp.status_code == 200, resp.text
 
 
-def test_override_does_not_leak_to_a_second_project(client: TestClient, platform_admin: dict) -> None:
-    tenant_id, project_a, tester_id = _setup_tenant_with_tester(client, platform_admin, "Harbor Mutual")
+def test_override_does_not_leak_to_a_second_project(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project_a, tester_id = _setup_tenant_with_tester(
+        client, platform_admin, "Harbor Mutual"
+    )
     admin_email = "admin@harbormutual.example.com"
     manager_role_id = _role_id_by_code(client, "manager")
 
@@ -171,7 +195,9 @@ def test_override_does_not_leak_to_a_second_project(client: TestClient, platform
 def test_clearing_override_reverts_to_tenant_role_immediately(
     client: TestClient, platform_admin: dict
 ) -> None:
-    tenant_id, project, tester_id = _setup_tenant_with_tester(client, platform_admin, "Summit Assurance")
+    tenant_id, project, tester_id = _setup_tenant_with_tester(
+        client, platform_admin, "Summit Assurance"
+    )
     admin_email = "admin@summitassurance.example.com"
     manager_role_id = _role_id_by_code(client, "manager")
 
@@ -197,8 +223,12 @@ def test_clearing_override_reverts_to_tenant_role_immediately(
     _login_and_verify(client, tenant_id, admin_email, "AdminPassw0rd!")
 
 
-def test_list_members_shows_tenant_and_project_role_names(client: TestClient, platform_admin: dict) -> None:
-    tenant_id, project, tester_id = _setup_tenant_with_tester(client, platform_admin, "Lighthouse Indemnity")
+def test_list_members_shows_tenant_and_project_role_names(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project, tester_id = _setup_tenant_with_tester(
+        client, platform_admin, "Lighthouse Indemnity"
+    )
     manager_role_id = _role_id_by_code(client, "manager")
 
     members = client.get(f"/api/v1/projects/{project['id']}/members").json()["data"]

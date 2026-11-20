@@ -127,6 +127,22 @@ export function listTestCases(
   return apiFetch<TestCaseListResponse>(`/projects/${projectId}/test-cases${qs ? `?${qs}` : ''}`)
 }
 
+// ADR-077: the same listing across every project the caller may see; each item
+// carries its `project_id`. Replaces asking each project separately when a filter is on.
+export function listAllTestCases(params: TestCaseListParams = {}): Promise<TestCaseListResponse> {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  if (params.priority) query.set('priority', params.priority)
+  if (params.status) query.set('status', params.status)
+  if (params.assignee_id) query.set('assignee_id', params.assignee_id)
+  if (params.module_id) query.set('module_id', params.module_id)
+  if (params.sort) query.set('sort', params.sort)
+  if (params.page) query.set('page', String(params.page))
+  if (params.page_size) query.set('page_size', String(params.page_size))
+  const qs = query.toString()
+  return apiFetch<TestCaseListResponse>(`/test-cases${qs ? `?${qs}` : ''}`)
+}
+
 export function getTestCase(id: string): Promise<TestCase> {
   return apiFetch<TestCase>(`/test-cases/${id}`)
 }

@@ -144,7 +144,7 @@ test('Excel exports download real workbooks and report failures', async ({ page,
 
   // Reports: aggregate workbook for the selected metric.
   await page.goto('/reporting')
-  const exportAggregate = page.getByRole('button', { name: 'Export aggregate report to Excel' })
+  const exportAggregate = page.getByRole('button', { name: 'Export Excel (aggregate report)' })
   await expect(exportAggregate).toBeEnabled()
   const [download] = await Promise.all([page.waitForEvent('download'), exportAggregate.click()])
   expect(download.suggestedFilename()).toMatch(/^report_.*\.xlsx$/)
@@ -164,7 +164,7 @@ test('Excel exports download real workbooks and report failures', async ({ page,
   await page.goto(`/projects/${projectId}/test-cases`)
   const [cases] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Export test cases to Excel' }).click(),
+    page.getByRole('button', { name: 'Export Excel (test cases)' }).click(),
   ])
   expect(cases.suggestedFilename()).toBe('test_cases_export.xlsx')
 
@@ -181,7 +181,7 @@ test('Excel exports download real workbooks and report failures', async ({ page,
     })
   })
   await page.goto('/reporting')
-  await page.getByRole('button', { name: 'Export quality metrics to Excel' }).click()
+  await page.getByRole('button', { name: 'Export Excel (quality metrics)' }).click()
   await expect(page.getByText('Could not create the export. Please try again.')).toBeVisible()
   await expect(page).toHaveURL(/\/reporting/)
 })

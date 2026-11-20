@@ -26,6 +26,39 @@ from app.services import test_case_service
 router = APIRouter(tags=["test-cases"])
 
 
+@router.get("/test-cases")
+def list_test_cases_all_projects(
+    search: str | None = Query(default=None),
+    priority: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    assignee_id: UUID | None = Query(default=None),
+    module_id: UUID | None = Query(default=None),
+    sort: str = Query(default="created_at"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=test_case_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-077: the same listing as `/projects/{id}/test-cases`, across every project
+    the caller may see. Each item carries its `project_id`."""
+    cases, total = test_case_service.list_test_cases_all_projects(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        search=search,
+        priority=priority,
+        status=status,
+        assignee_id=assignee_id,
+        module_id=module_id,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
+    items = [test_case_service.to_out(db, c) for c in cases]
+    return envelope(TestCaseListResponse(items=items, total=total).model_dump(mode="json"))
+
+
 @router.get("/projects/{project_id}/test-cases")
 def list_test_cases(
     project_id: UUID,

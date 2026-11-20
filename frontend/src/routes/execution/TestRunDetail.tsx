@@ -10,12 +10,14 @@ import {
   assignRunCase,
   deleteTestRun,
   finishTestRun,
+  reopenTestRun,
   getTestRun,
   pauseTestRun,
   removeTestRunCase,
   resumeTestRun,
   updateTestRun,
   type RunType,
+  type TestRun,
 } from '@/api/execution'
 import { listTestCases } from '@/api/testCases'
 import { listUsers } from '@/api/users'
@@ -41,6 +43,19 @@ import { FormError } from '@/components/ui/form-field'
 
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
+
+// A run finishes by itself only when every case is blocked, or has every step
+// recorded and no failure (ADR-070). A failed case keeps the run open on purpose so
+// the failed step can be re-run after the fix. When nothing else is left to do, tell
+// the user why the run is still active: returns how many failed cases are holding it open.
+function failedCasesHoldingRunOpen(run: TestRun): number {
+  if (run.cases.length === 0) return 0
+  const hasUnrecordedSteps = run.cases.some(
+    (c) => c.status !== 'blocked' && c.passed_count + c.failed_count + c.ignored_count < c.step_count,
+  )
+  if (hasUnrecordedSteps) return 0
+  return run.cases.filter((c) => c.status === 'failed').length
+}
 
 export function TestRunDetail() {
   const { runId } = useParams<{ runId: string }>()
@@ -68,6 +83,16 @@ export function TestRunDetail() {
       showToast('success', 'Test run finished')
     },
     // No onError toast -- `finishError` below already renders this inline.
+  })
+
+  // ADR-075: undo a finish. Only clears the finish time; results are untouched and
+  // the run does not finish again until the next verdict or block.
+  const reopenMutation = useMutation({
+    mutationFn: () => reopenTestRun(runId!),
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Test run reopened')
+    },
   })
 
   // ADR-070: soft delete -- the run leaves every list and report; its data is retained.
@@ -125,6 +150,7 @@ export function TestRunDetail() {
 
   const canManage = isManagerOrAbove(user)
   const canFinish = canManage && !run.finished_at
+  const heldOpenBy = !run.finished_at && !run.paused_at ? failedCasesHoldingRunOpen(run) : 0
   const canDelete = hasPermission(user, 'testrun.delete')
   const executionStarted = run.cases.some((rc) => rc.started_at !== null)
   const canEdit = canManage && !run.finished_at && !executionStarted
@@ -229,6 +255,24 @@ export function TestRunDetail() {
               Resume Run
             </Button>
           )}
+          {canManage && run.finished_at && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                ask({
+                  title: 'Reopen this run?',
+                  description:
+                    'The run becomes active again so testers can unblock cases and record results. Nothing already recorded is changed, and the run finishes again once every case is complete or you finish it by hand.',
+                  confirmLabel: 'Reopen run',
+                  destructive: false,
+                  run: () => reopenMutation.mutateAsync(),
+                })
+              }
+              disabled={reopenMutation.isPending}
+            >
+              Reopen Run
+            </Button>
+          )}
           {canFinish && (
             <Button
               onClick={() =>
@@ -267,6 +311,20 @@ export function TestRunDetail() {
         }
       />
       {confirmDialog}
+      {heldOpenBy > 0 && (
+        <div
+          role="status"
+          className="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm"
+        >
+          <p className="font-medium">
+            Every case has results, but {heldOpenBy} {heldOpenBy === 1 ? 'case' : 'cases'} failed.
+          </p>
+          <p className="text-[var(--muted-foreground)]">
+            The run stays open so failed steps can be re-run after a fix and passed.
+            {canManage ? ' Use Finish Run when you are done.' : ' A manager or admin finishes it when you are done.'}
+          </p>
+        </div>
+      )}
       <FormError>{finishError}</FormError>
 
       <ResponsiveTable

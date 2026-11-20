@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { listTestRuns, type TestRunSummary } from '@/api/execution'
+import { listAllTestRuns, type TestRunSummary } from '@/api/execution'
 import { listProjects, type Project } from '@/api/projects'
 import { FilterBar } from '@/components/table/FilterBar'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
@@ -85,29 +85,39 @@ export function TestRunsOverview() {
     queryFn: () => listProjects({ page_size: 100 }),
   })
   const projects = projectsQuery.data?.items ?? []
-  const targetProjects = projectId ? projects.filter((p) => p.id === projectId) : projects
 
-  const perProjectQueries = useQueries({
-    queries: targetProjects.map((project) => ({
-      queryKey: ['test-runs-overview', project.id],
-      queryFn: () => listTestRuns(project.id).then((runs) => ({ project, runs })),
-    })),
-  })
-
-  const isLoading = perProjectQueries.some((q) => q.isLoading)
-  const rows: OverviewRow[] = perProjectQueries
-    .flatMap((q) => (q.data ? q.data.runs.map((run) => ({ project: q.data!.project, run })) : []))
-    .filter((r) => !activeOnly || !r.run.finished_at)
-    .sort((a, b) => b.run.created_at.localeCompare(a.run.created_at))
-
-  // Every project's runs are fetched, so page the merged list on the client
-  // (50 per page) to keep the DOM small; resets when a filter changes.
+  // ADR-078: the server pages the runs across every project the caller can see (newest
+  // first), so one page is downloaded however many projects and runs exist. The page
+  // resets to 1 when a filter changes.
   const filterKey = `${projectId}|${activeOnly}`
   const [paging, setPaging] = useState({ key: filterKey, page: 1 })
-  const totalPages = Math.max(1, Math.ceil(rows.length / RUNS_PAGE_SIZE))
-  const page = Math.min(paging.key === filterKey ? paging.page : 1, totalPages)
-  const pageRows = rows.slice((page - 1) * RUNS_PAGE_SIZE, page * RUNS_PAGE_SIZE)
-
+  const page = paging.key === filterKey ? paging.page : 1
+  const runsQuery = useQuery({
+    queryKey: ['test-runs-overview', { projectId, activeOnly, page }],
+    queryFn: () =>
+      listAllTestRuns({
+        project_id: projectId || undefined,
+        active_only: activeOnly,
+        page,
+        page_size: RUNS_PAGE_SIZE,
+      }),
+    placeholderData: keepPreviousData,
+  })
+  const isLoading = runsQuery.isLoading
+  const total = runsQuery.data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / RUNS_PAGE_SIZE))
+  // Runs can be deleted while on a later page: if that page no longer exists, step back to
+  // the last one that does (a state update during render, which React re-runs immediately).
+  if (runsQuery.data && runsQuery.data.items.length === 0 && page > totalPages) {
+    setPaging({ key: filterKey, page: totalPages })
+  }
+  // The project list holds up to 100 projects; a run in one beyond that still shows,
+  // just without a project name.
+  const projectsById = new Map(projects.map((p) => [p.id, p]))
+  const pageRows: OverviewRow[] = (runsQuery.data?.items ?? []).map((run) => ({
+    project: projectsById.get(run.project_id) ?? ({ id: run.project_id, name: 'Project' } as Project),
+    run,
+  }))
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Test Runs" description="Test runs across every project you can see." />
@@ -149,18 +159,18 @@ export function TestRunsOverview() {
         loading={isLoading}
         className="bg-[var(--background)]"
         state={
-          !isLoading && rows.length === 0 ? (
+          !isLoading && total === 0 ? (
             <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
               No test runs match these filters.
             </p>
           ) : undefined
         }
       />
-      {rows.length > RUNS_PAGE_SIZE && (
+      {total > RUNS_PAGE_SIZE && (
         <Pagination
           page={page}
           totalPages={totalPages}
-          total={rows.length}
+          total={total}
           noun="run"
           onPageChange={(next) => setPaging({ key: filterKey, page: next })}
         />

@@ -20,7 +20,7 @@ from app.schemas.csv_import import (
     ImportReport,
     ImportRowResult,
 )
-from app.services import field_option_service
+from app.services import field_option_service, tester_visibility
 from app.services.project_service import is_assigned
 from app.services.test_case_service import _last_execution
 
@@ -82,6 +82,21 @@ TEMPLATE_NOTES = (
     "# All other columns are optional. Sub Module nests under Module.\n"
     "# Steps format: 'Action|Expected' pairs separated by ';'.\n"
 )
+
+
+# A plain `db.execute(insert(Model), rows)` is sent by the driver as one single-row
+# INSERT per row (about 16,000 statements for a 2,000-case import with steps), so
+# the import is dominated by database round trips. Asking for the inserted ids back
+# (RETURNING) switches SQLAlchemy to its 'insertmanyvalues' mode: one compiled
+# statement template sent as multi-row INSERTs in batches. (Building the multi-row
+# `.values([...])` clause by hand was ~4x slower: it recompiles every batch.)
+
+
+def _insert_in_chunks(db: Session, model: type, rows: list[dict]) -> None:
+    """Insert dict rows in batched multi-row INSERTs. Rows the caller omits
+    defaults for are filled by the database, as with the single-row path."""
+    table = model.__table__  # type: ignore[attr-defined]
+    list(db.execute(insert(table).returning(table.c.id), rows))
 
 
 def _parse_steps(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
@@ -531,9 +546,9 @@ def _import_test_case_rows(
     error_count = len(error_rows)
 
     if case_rows:
-        db.execute(insert(TestCase), case_rows)
-        db.execute(insert(TestCaseVersion), version_rows)
-        db.execute(insert(TestCaseVersionStep), step_rows)
+        _insert_in_chunks(db, TestCase, case_rows)
+        _insert_in_chunks(db, TestCaseVersion, version_rows)
+        _insert_in_chunks(db, TestCaseVersionStep, step_rows)
 
         # One round trip for the whole batch instead of one UPDATE per row
         # (each row's version_number is always 1 at import time, so the
@@ -589,11 +604,14 @@ def export_test_cases_csv(
     if role_code == "tester" and not is_assigned(db, project, user_id):
         raise ForbiddenError("You are not assigned to this project")
 
-    cases = db.execute(
+    case_query = (
         select(TestCase)
         .where(TestCase.tenant_id == tenant_id, TestCase.project_id == project_id)
         .order_by(TestCase.created_at)
-    ).scalars()
+    )
+    # ADR-093: a scoped Tester's export holds only the cases they may see.
+    case_query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, case_query)
+    cases = db.execute(case_query).scalars()
 
     users_by_id = {
         u.id: u for u in db.execute(select(User).where(User.tenant_id == tenant_id)).scalars()

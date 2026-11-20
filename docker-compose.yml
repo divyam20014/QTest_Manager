@@ -39,6 +39,10 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MFA_DELIVERY_MODE: ${MFA_DELIVERY_MODE:-simulated}
+      # Dev/e2e only: loosens the per-minute sign-in/MFA rate limits (x10) so fast
+      # browser test runs are not throttled. Production must leave this at 1;
+      # validate_for_production() refuses to boot otherwise.
+      AUTH_RATE_LIMIT_MULTIPLIER: ${AUTH_RATE_LIMIT_MULTIPLIER:-10}
       # AI Test Case Generator (ADR-045): Fernet key encrypting tenant AI
       # provider API keys at rest. Required to save/enable AI settings;
       # must stay stable across restarts or previously-saved keys become

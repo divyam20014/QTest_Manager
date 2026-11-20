@@ -187,28 +187,14 @@ def test_user_management_and_last_admin_guard(client: TestClient, platform_admin
     assert reactivate_response.json()["data"]["is_active"] is True
 
 
-def test_gdpr_erase_pseudonymizes_pii(client: TestClient, platform_admin: dict) -> None:
+def test_legacy_gdpr_erase_endpoint_is_gone(client: TestClient, platform_admin: dict) -> None:
+    """ADR-086: the bare, unconfirmed /gdpr-erase was replaced by POST /users/{id}/erase
+    (dry run by default, typed email confirmation); see tests/test_user_erasure.py."""
     bootstrap = _bootstrap_tenant(client, platform_admin)
     tenant_id = bootstrap["tenant"]["id"]
     _login_and_verify(client, tenant_id, "admin@horizon.com", "AdminPassw0rd!")
-
-    create_response = client.post(
-        "/api/v1/users",
-        json={
-            "email": "tester@horizon.com",
-            "name": "Tester One",
-            "role": "tester",
-            "password": "TesterPassw0rd!",
-        },
-    )
-    tester_id = create_response.json()["data"]["id"]
-
-    erase_response = client.post(f"/api/v1/users/{tester_id}/gdpr-erase")
-    assert erase_response.status_code == 200
-    erased = erase_response.json()["data"]
-    assert erased["name"].startswith("user_")
-    assert erased["email"].endswith("@erased.invalid")
-    assert erased["is_active"] is False
+    response = client.post(f"/api/v1/users/{tenant_id}/gdpr-erase")
+    assert response.status_code in (404, 405)
 
 
 def test_manager_can_list_users_but_tester_cannot(client: TestClient, platform_admin: dict) -> None:

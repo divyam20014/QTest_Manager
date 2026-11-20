@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID
 
@@ -10,7 +10,7 @@ from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
-from app.models.project import Project
+from app.models.project import Project, ProjectMember
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_data_set import TestDataSetRow
 from app.schemas.execution import (
@@ -591,22 +591,9 @@ def get_test_run(
     return run
 
 
-def list_test_runs(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
-) -> list[TestRunSummaryOut]:
-    project = _get_project_or_404(db, tenant_id, project_id)
-    _require_project_access(db, project, role_code, user_id)
-
-    runs = list(
-        db.execute(
-            select(TestRun)
-            .where(TestRun.tenant_id == tenant_id, TestRun.project_id == project_id)
-            .order_by(TestRun.created_at.desc())
-        ).scalars()
-    )
+def _run_summaries(db: Session, runs: list[TestRun]) -> list[TestRunSummaryOut]:
     if not runs:
         return []
-
     run_ids = [r.id for r in runs]
     case_counts: dict[UUID, int] = dict(
         db.execute(
@@ -617,7 +604,6 @@ def list_test_runs(
         .tuples()
         .all()
     )
-
     return [
         TestRunSummaryOut(
             id=run.id,
@@ -632,6 +618,71 @@ def list_test_runs(
         )
         for run in runs
     ]
+
+
+def list_test_runs(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> list[TestRunSummaryOut]:
+    project = _get_project_or_404(db, tenant_id, project_id)
+    _require_project_access(db, project, role_code, user_id)
+
+    runs = list(
+        db.execute(
+            select(TestRun)
+            .where(TestRun.tenant_id == tenant_id, TestRun.project_id == project_id)
+            .order_by(TestRun.created_at.desc())
+        ).scalars()
+    )
+    return _run_summaries(db, runs)
+
+
+RUN_DEFAULT_PAGE_SIZE = 50
+RUN_MAX_PAGE_SIZE = 100
+
+
+def list_test_runs_all_projects(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    *,
+    project_id: UUID | None = None,
+    active_only: bool = False,
+    page: int = 1,
+    page_size: int = RUN_DEFAULT_PAGE_SIZE,
+) -> tuple[list[TestRunSummaryOut], int]:
+    """ADR-078: one page of runs across every project the caller may see, newest first,
+    plus how many match in all. The Test Runs overview used to ask each project for
+    all of its runs and page the merge in the browser.
+
+    Visibility is `_require_project_access`'s rule as a filter: Admin and Manager see
+    every project in the tenant; anyone else only projects they own or belong to.
+    With `project_id`, that project is checked exactly as the per-project list does."""
+    query = select(TestRun).where(TestRun.tenant_id == tenant_id)
+    if project_id is not None:
+        project = _get_project_or_404(db, tenant_id, project_id)
+        _require_project_access(db, project, role_code, user_id)
+        query = query.where(TestRun.project_id == project_id)
+    elif role_code not in ("admin", "manager"):
+        owned = select(Project.id).where(
+            Project.tenant_id == tenant_id, Project.owner_id == user_id
+        )
+        member_of = select(ProjectMember.project_id).where(ProjectMember.user_id == user_id)
+        query = query.where(or_(TestRun.project_id.in_(owned), TestRun.project_id.in_(member_of)))
+    if active_only:
+        query = query.where(TestRun.finished_at.is_(None))
+
+    total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
+    page_size = min(max(page_size, 1), RUN_MAX_PAGE_SIZE)
+    page = max(page, 1)
+    runs = list(
+        db.execute(
+            query.order_by(TestRun.created_at.desc(), TestRun.id)
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        ).scalars()
+    )
+    return _run_summaries(db, runs), total
 
 
 def to_out(db: Session, run: TestRun) -> TestRunOut:
@@ -984,6 +1035,44 @@ def finish_test_run(db: Session, tenant_id: UUID, actor_user_id: UUID, run_id: U
     return run
 
 
+def reopen_test_run(db: Session, tenant_id: UUID, actor_user_id: UUID, run_id: UUID) -> TestRun:
+    """ADR-075: undo a finish. A finished run is locked, so blocking the last open
+    case (which auto-finishes the run) used to leave that case permanently
+    blocked, and a run finished by mistake could never be continued. Reopening
+    clears `finished_at` and nothing else: case statuses, step verdicts and
+    timings are untouched, and the run does not re-finish by itself -- auto-finish
+    only runs when a verdict is recorded or a case is blocked, so the tester can
+    first unblock a case or continue a step. Same permission as finish/pause/
+    resume (`testrun.finish`, checked by the route). The audit trail keeps both
+    the original `testrun.finished` event and this `testrun.reopened` one."""
+    # Lock the run row so a reopen racing an auto-finish serializes: whichever
+    # commits second sees the other's result.
+    run = db.execute(
+        select(TestRun)
+        .where(TestRun.tenant_id == tenant_id, TestRun.id == run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+    if run is None:
+        raise NotFoundError("Test run not found")
+    if run.finished_at is None:
+        raise ConflictError("Test run is not finished")
+
+    previous_finished_at = run.finished_at
+    run.finished_at = None
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="testrun.reopened",
+        entity_type="test_run",
+        entity_id=run.id,
+        metadata={"previous_finished_at": previous_finished_at.isoformat()},
+    )
+    db.commit()
+    return run
+
+
 def block_run_case(
     db: Session,
     tenant_id: UUID,
@@ -1056,6 +1145,31 @@ def unblock_run_case(
     ).scalar_one()
     previous_reason = run_case.blocked_reason
     run_case.blocked_reason = None
+    # ADR-075: the step timer does not run while a case is blocked. Blocking stamps
+    # `completed_at`, so the time spent blocked is now - completed_at; moving the
+    # open step's `opened_at` forward by that much makes both the live elapsed
+    # clock and the recorded duration (closed_at - opened_at) exclude it. Steps
+    # that already have a verdict keep their recorded times.
+    unblocked_at = datetime.now(UTC)
+    blocked_for = (
+        max(unblocked_at - run_case.completed_at, timedelta(0))
+        if run_case.completed_at is not None
+        else timedelta(0)
+    )
+    open_steps = (
+        db.execute(
+            select(ExecutionStep).where(
+                ExecutionStep.test_run_case_id == run_case.id,
+                ExecutionStep.opened_at.is_not(None),
+                ExecutionStep.verdict.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for open_step_row in open_steps:
+        if open_step_row.opened_at is not None:
+            open_step_row.opened_at = open_step_row.opened_at + blocked_for
     db.flush()
     _recompute_run_case_status(db, run_case)
 
@@ -1066,7 +1180,11 @@ def unblock_run_case(
         action="testrun.case_unblocked",
         entity_type="test_run_case",
         entity_id=run_case.id,
-        metadata={"previous_reason": previous_reason, "status": run_case.status},
+        metadata={
+            "previous_reason": previous_reason,
+            "status": run_case.status,
+            "blocked_seconds": int(blocked_for.total_seconds()),
+        },
     )
     db.commit()
     return run_case

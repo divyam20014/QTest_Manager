@@ -144,6 +144,48 @@ export interface DefectFilters {
   test_case_id?: string
 }
 
+// ADR-078: one page of the same listing plus how many match in all, and the number of
+// matching defects per status (under every filter except status) for the status tabs.
+export interface DefectPageParams {
+  project_id?: string
+  status?: string
+  severity?: string
+  reported_by?: string
+  created_from?: string
+  created_to?: string
+  page?: number
+  page_size: number
+}
+
+export interface DefectPage {
+  items: Defect[]
+  total: number
+}
+
+export interface DefectStatusCounts {
+  counts: Record<string, number>
+  total: number
+}
+
+function queryString(params: Record<string, string | number | undefined>): string {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  const qs = query.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export function listDefectsPage(params: DefectPageParams): Promise<DefectPage> {
+  return apiFetch<DefectPage>(`/defects${queryString({ ...params })}`)
+}
+
+export function getDefectStatusCounts(
+  filters: Omit<DefectPageParams, 'status' | 'page' | 'page_size'> = {},
+): Promise<DefectStatusCounts> {
+  return apiFetch<DefectStatusCounts>(`/defects/status-counts${queryString({ ...filters })}`)
+}
+
 export function listDefects(filters: DefectFilters = {}): Promise<Defect[]> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {

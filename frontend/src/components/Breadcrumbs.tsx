@@ -1,7 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
-import manifest from '@/content/docs/manifest.json'
+import { listDocs } from '@/api/docs'
+import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
 // Maps a static path segment to a readable label. Dynamic segments (ids)
@@ -23,6 +25,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   users: 'Users & Roles',
   roles: 'Roles & Permissions',
   environments: 'Environments',
+  'access-rules': 'Access Rules',
   'audit-logs': 'Audit Logs',
   settings: 'Settings',
   account: 'My Account',
@@ -54,6 +57,16 @@ function isId(segment: string) {
 export function Breadcrumbs() {
   const location = useLocation()
   const segments = location.pathname.split('/').filter(Boolean)
+  const { user } = useAuth()
+  // /brd/:docId -- the document's own title comes from the (cached) document
+  // list the viewer already fetches, so no second request in practice.
+  const onDoc = segments[0] === 'brd' && segments.length > 1
+  const docList = useQuery({
+    queryKey: ['brd-docs', user?.user_id],
+    queryFn: listDocs,
+    enabled: onDoc && !!user,
+    staleTime: 60_000,
+  })
 
   if (segments.length === 0) {
     return <span className="text-sm text-[var(--muted-foreground)]">Dashboard</span>
@@ -61,12 +74,10 @@ export function Breadcrumbs() {
 
   const crumbs = segments.map((segment, index) => {
     const path = '/' + segments.slice(0, index + 1).join('/')
-    // /brd/:docId -- the document's own title (the viewer's manifest).
     const docTitle =
-      segments[0] === 'brd' && index === 1 ? manifest.documents.find((d) => d.id === segment)?.title : undefined
+      segments[0] === 'brd' && index === 1 ? docList.data?.documents.find((d) => d.slug === segment)?.title : undefined
     const label =
-      docTitle ??
-      (isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
+      docTitle ?? (isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
     return { path, label }
   })
 
@@ -74,10 +85,7 @@ export function Breadcrumbs() {
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">
       {/* Below `sm`, only the current page stays visible -- the full trail
           was overflowing into the header's action icons on narrow viewports. */}
-      <Link
-        to="/"
-        className="hidden shrink-0 text-[var(--muted-foreground)] hover:text-[var(--foreground)] sm:inline"
-      >
+      <Link to="/" className="hidden shrink-0 text-[var(--muted-foreground)] hover:text-[var(--foreground)] sm:inline">
         Dashboard
       </Link>
       {crumbs.map((crumb, index) => {
@@ -85,11 +93,17 @@ export function Breadcrumbs() {
         return (
           <span
             key={crumb.path}
-            className={cn('flex min-w-0 items-center gap-1', !isLast && 'hidden sm:flex')}
+            // When the trail is too wide for the header (the right-hand controls take most of
+            // it), the parent crumbs give way first (a much higher shrink weight) so the
+            // current page keeps its full title; the current page only truncates once the
+            // parents are already gone.
+            className={cn('flex min-w-0 items-center gap-1', !isLast && 'hidden shrink-[100] sm:flex')}
           >
             <ChevronRight className="hidden size-3.5 shrink-0 text-[var(--muted-foreground)] sm:block" />
             {isLast || (index === 0 && NO_LIST_PAGE.has(segments[0])) ? (
               <span
+                title={crumb.label}
+                aria-current={isLast ? 'page' : undefined}
                 className={cn(
                   'truncate',
                   isLast ? 'font-medium text-[var(--foreground)]' : 'text-[var(--muted-foreground)]',
@@ -100,6 +114,7 @@ export function Breadcrumbs() {
             ) : (
               <Link
                 to={crumb.path}
+                title={crumb.label}
                 className="truncate text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               >
                 {crumb.label}

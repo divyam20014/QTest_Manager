@@ -1,5 +1,6 @@
+from app.models.access_rule import AccessRule
 from app.models.ai_usage import AIUsageLog
-from app.models.audit import AuditLog
+from app.models.audit import AuditChainCheckpoint, AuditLog
 from app.models.background_job import BackgroundJob
 from app.models.comment import Comment, CommentMention
 from app.models.defect import Defect, DefectLink
@@ -24,6 +25,7 @@ from app.models.identity import (
 )
 from app.models.marketing import MarketingLead
 from app.models.notification import Notification
+from app.models.platform_audit import PlatformAuditEvent
 from app.models.project import Project, ProjectMember
 from app.models.report_schedule import ReportSchedule
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
@@ -50,6 +52,7 @@ __all__ = [
     "Tenant",
     "PlatformAdmin",
     "PlatformAdminRecoveryCode",
+    "PlatformAuditEvent",
     "PlatformSession",
     "Role",
     "Permission",
@@ -68,6 +71,7 @@ __all__ = [
     "ExecutionStep",
     "Defect",
     "DefectLink",
+    "AuditChainCheckpoint",
     "AuditLog",
     "IdempotencyKey",
     "Requirement",
@@ -90,6 +94,7 @@ __all__ = [
     "SsoConfig",
     "ScimToken",
     "ServiceToken",
+    "AccessRule",
     "FieldOption",
     "StatusLabel",
     "CustomFieldDefinition",

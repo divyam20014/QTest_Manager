@@ -198,3 +198,17 @@ class DefectOut(BaseModel):
     links: list[DefectLinkOut] = []
     execution_evidence: ExecutionEvidenceOut | None = None
     custom_fields: dict[str, object] = {}
+
+
+class DefectListResponse(BaseModel):
+    """One page of defects (`GET /defects?page_size=...`) with the total that match."""
+
+    items: list[DefectOut]
+    total: int
+
+
+class DefectStatusCountsOut(BaseModel):
+    """How many matching defects there are in each status (`GET /defects/status-counts`)."""
+
+    counts: dict[str, int]
+    total: int
