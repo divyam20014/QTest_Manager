@@ -78,6 +78,15 @@ and attach evidence (screenshots, logs) or comments directly on a step. A
 failed step can be linked directly to a new or existing defect without
 leaving the console.
 
+**When a run finishes.** A run finishes by itself once every case is complete: blocked,
+or every step recorded with no failure. A case with a failed step keeps the run open on
+purpose, so the tester can re-run the failed step after the fix and mark it Pass; the run
+page then says which cases are holding it open. If you are done and some cases stay
+failed, a manager or admin finishes the run with **Finish Run**. A finished run is locked;
+**Reopen Run** (manager or admin) makes it active again without changing any result.
+
+**Cockpit mode.** The **Cockpit mode** button in the console header switches the console to a dark, denser layout with larger Pass/Fail/Ignore/Block buttons and the step timer and blocked state pinned at the top. It is off by default, only affects the Execution Console, ignores the app light/dark theme, and is remembered in this browser. Printing always uses the light look.
+
 ## Defects
 
 Log defects (manually, or linked from a failed execution step), track status
@@ -100,6 +109,14 @@ you reported was closed. It polls automatically — no need to refresh the
 page. Clicking a notification marks it read and takes you to the relevant
 test case or defect.
 
+## Release freezes
+
+If your organization has set a release freeze, a banner on the page shows the reason and when it ends. While it is active, changes covered by the freeze (for example editing test cases or recording results) are refused with the same reason instead of "try again". You can still view everything and run reports. Admins are not affected.
+
+## Documentation
+
+**Documentation** in the sidebar opens the in-app guides (this user guide, the product vision and spec, requirement traceability and the architecture diagrams) after you sign in; they are loaded from the server for your session, not stored in the app. Administrators also see the administration, deployment and engineering references; if you open a link to one you are not allowed to read, you get a "No access" page.
+
 ## Your account
 
 From the account menu: view your own profile, your own audit history
@@ -108,3 +125,7 @@ Admin can deactivate your account or, when you leave the organization,
 pseudonymize your personal details while preserving the historical record
 you contributed to (your past test case edits, audit entries, etc. remain,
 attributed to an anonymized placeholder rather than your real name/email).
+
+## What a Tester sees when visibility is limited (ADR-093)
+
+Your Admin can limit what Testers see. If **assigned cases only** is on, you see only test cases assigned to you, or in a test run assigned to you or started by you; everything else is simply not listed, and opening one by link shows "not found". If **Reports are hidden**, the Reports menu is gone and report pages show a no-access message, but your Dashboard still shows your projects, defects and activity. Ask your Admin or Manager to assign you a case if one you need is missing.

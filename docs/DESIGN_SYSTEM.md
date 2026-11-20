@@ -21,6 +21,8 @@ Single reference for how the signed-in QTestHub application looks and behaves. I
 
 All colours are CSS custom properties on `:root`, overridden for dark mode. Dark values live in **two** blocks (OS preference and forced `data-theme="dark"`); the test suite fails if the two drift or if a status/chart token lacks a dark value.
 
+**Which theme applies, and when.** The saved choice (`localStorage` key `qtesthub:theme`, written by the theme toggle through `useThemePreference`) wins over the OS preference; with nothing saved the OS preference applies. `public/theme-init.js` sets `<html data-theme>` from that rule **before first paint**, loaded from `index.html` as a separate file because the production Content-Security-Policy is `script-src 'self'` (an inline script would be blocked). That makes the choice apply to every page, including the signed-out sign-in, sign-up, invite and Platform Admin pages; before it, only the signed-in shell applied the saved choice. The marketing site keeps its own palette and is unaffected. `themeInit.test.ts` keeps the script and the store in step; `e2e/theme-public-pages.spec.ts` checks the pages in a real browser with the OS preference set opposite to the saved choice.
+
 | Role | Token(s) | Light | Notes |
 |---|---|---|---|
 | Page / text | `--background`, `--foreground` | `#ffffff` / `#0a0a0a` | |
@@ -212,3 +214,13 @@ Page headers (Phase C), the Dashboard (Phase D), status colours and chart colour
 - **Print / PDF:** an element marked `qth-shell-chrome` is hidden when printing (the sidebar, header, mobile tab bar and More sheet carry it); a screen-specific "do not print" block uses its own class (`brd-noprint`). Put new app chrome behind `qth-shell-chrome`.
 - **Tables and code in prose:** wide tables and code blocks scroll inside their own focusable region (`tabindex="0"`, labelled) instead of widening the page; keep that pattern for any new long-form content.
 - **Organisation domain default:** the New Project form pre-selects the tenant's primary insurance domain (`projectDomainFor`, from the branding query) -- a default only, never a restriction.
+
+## Execution Console cockpit mode (issue 45, ADR-094)
+
+An opt-in dark mode for the Execution Console only. A button with `aria-pressed` (label "Cockpit mode") in the console header adds the `.cockpit` class to the console wrapper; the choice is stored in `localStorage` (`qtesthub:cockpit`, `src/lib/cockpitMode.ts`, try/catch wrapped) and defaults to off. It is independent of the app light/dark theme: the `.cockpit` block in `src/index.css` redefines the same semantic tokens (`--background`, `--foreground`, `--muted`, `--border`, `--primary`, `--status-*`, `--tactile-*`, `--elevation-*`) so every existing component adapts, and a dark-theme user gets the identical set. The elevation tokens are redeclared because `var()` inside a custom property resolves where it is declared.
+
+**When to use it:** long execution sessions, dim rooms, wall displays. Do not extend `.cockpit` to other screens; print output inside it reverts to the light tokens (`@media print`).
+
+**Layout when on:** denser panels (embossed `--tactile-surface-raised` with the same radii, softer shadows), verdict buttons at least 56px high on desktop (48px on phones, never below 44px) that wrap instead of clipping, a header with progress, the live step timer, blocked/paused state (icon + label) and "Step N of M" that is sticky below the xl breakpoint, and a `prefers-reduced-motion` rule that disables transitions.
+
+**Contrast (WCAG AA, computed):** surfaces `#0b1018` (base), `#1a2333` (raised), `#141c29` (muted). Text: foreground `#e8edf5` 16.22:1 / 13.41:1 / 14.55:1; muted text `#a9b4c6` 9.11:1 / 7.53:1 / 8.17:1; link `#8ab8f5` 9.31:1 / 7.70:1. UI: border `#6a7a93` 4.37:1 on base, 3.62:1 on raised (needs 3:1); primary/ring `#7cb3f4` 8.73:1. Fills: Pass `#04140d` on `#3dd68c` 10.08:1, Fail/destructive `#0b1018` on `#f87171` 6.89:1. Status text on its tint: good 8.16, warning 7.48, serious 5.88, critical 7.10, neutral 6.80, info 7.69. `e2e/cockpit-mode.spec.ts` runs axe (all impacts) with cockpit on at 390 and 1280 and checks computed heading/status contrast.

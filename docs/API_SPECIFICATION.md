@@ -6,6 +6,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 - Base path: `/api/v1`.
 - Auth: HTTP-only session cookie, set by `/auth/login` after MFA verification.
 - Response envelope: `{ "data": ..., "error": null }` on success, `{ "data": null, "error": { "code": "...", "message": "..." } }` on failure. No fake/mocked success responses (engineering principle).
+- Malformed ids (path, query or body) are a `422` with `{ "data": null, "error": { "code": "validation_error", "message": "..." } }` (request validation errors use the same envelope as every other error, ADR-088); a value the database rejects is `422` with code `invalid_value`. A well-formed id that does not exist or belongs to another tenant stays `404`. Never `5xx`.
 - All list endpoints are tenant-scoped automatically via session context; `tenant_id` is never a request parameter.
 - Pagination: `?page=&page_size=` on all list endpoints, `{ "items": [...], "total": N }` under `data`.
 
@@ -17,19 +18,35 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 
 ## Platform Administration (no tenant context)
 
+Step-up (ADR-083): the routes marked *Step-up required* answer **403** with error code `step_up_required` unless a TOTP or recovery code was verified on the session within `PLATFORM_STEP_UP_MINUTES` (completing MFA at sign-in counts); call `POST /platform/auth/step-up`, then repeat the request.
+
 Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth/*` (password, then authenticator code or recovery code). Every route below requires a fully authenticated (`mfa_verified`) session carried in the `qth_platform_session` HttpOnly, SameSite=Strict cookie (`Path=/api/v1/platform`); an `Authorization: Basic` header is rejected with 401. State-changing requests carrying a browser `Origin` outside `CORS_ALLOW_ORIGINS` get 403.
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | POST | /platform/auth/login | Password step: `{email, password}` → sets the pre-MFA `qth_platform_session` cookie (stage `password_ok`, 10 min, grants no API access). Rate limited 10/min/IP; 5 wrong passwords lock the account 15 min (ADR-074) | public |
-| GET | /platform/auth/me | Current platform session: `{email, stage, mfa_enrolled, recovery_codes_remaining}`; 401 when signed out/expired | platform session (any stage) |
-| POST | /platform/auth/mfa/enroll/start | First-time setup: returns a *pending* `{secret, otpauth_uri, issuer, account}` (refused with 409 once MFA is enabled) | platform session (`password_ok`) |
-| POST | /platform/auth/mfa/enroll/verify | `{code}` confirms the first authenticator code, enables MFA, returns the 10 single-use `recovery_codes` **once** and rotates to a fully authenticated session | platform session (`password_ok`) |
+| GET | /platform/auth/me | Current platform session: `{email, stage, mfa_enrolled, recovery_codes_remaining, step_up_expires_at}` (`step_up_expires_at` is null when a step-up is needed); 401 when signed out/expired (an idle session answers 401 with code `session_idle_expired`; a User-Agent or, when enabled, IP change revokes the session with a generic 401, ADR-083) | platform session (any stage) |
+| POST | /platform/auth/mfa/enroll/start | First-time setup: body `{enrolment_code}` (the one-time code issued with the account, ADR-080); returns a *pending* `{secret, otpauth_uri, issuer, account}`. Wrong/expired/absent code -> 401 `Invalid or expired enrolment code` (counted towards the MFA lockout, code not consumed); 409 once MFA is enabled | platform session (`password_ok`) |
+| POST | /platform/auth/mfa/enroll/verify | `{code, enrolment_code}` re-checks the enrolment code, confirms the first authenticator code, consumes the enrolment code, enables MFA, returns the 10 single-use `recovery_codes` **once** and rotates to a fully authenticated session | platform session (`password_ok`) |
 | POST | /platform/auth/mfa/verify | `{code}` (6-digit TOTP) **or** `{recovery_code}` (consumed) → fully authenticated session (token rotated). 5 wrong codes lock the account 15 min and revoke its sessions | platform session (`password_ok`, enrolled) |
+| POST | /platform/auth/step-up | ADR-083: `{code}` (current TOTP, replay-protected) **or** `{recovery_code}`; stamps the session's `step_up_at` and returns `{step_up_expires_at}` (valid `PLATFORM_STEP_UP_MINUTES`, default 5). A wrong code counts toward the MFA lockout (generic 401; five failures lock the account and revoke every session). Audited `step_up_ok` / `step_up_failed`. Rate limited 10/min/IP | platform session (`mfa_verified`) |
+| GET | /platform/auth/sessions | ADR-083: the caller's own live sessions: `[{id, created_at, last_seen_at, ip_address, user_agent (truncated), current}]`. Never a token or token hash | platform session (`mfa_verified`) |
+| DELETE | /platform/auth/sessions/{id} | ADR-083: sign out one of YOUR sessions; returns `{revoked, current}` (revoking the current one clears the cookie). Another admin's, an unknown or an already revoked id is 404. Audited `session_revoked` | platform session (`mfa_verified`) |
 | POST | /platform/auth/logout | Revokes the session and clears the cookie | any |
+| POST | /platform/auth/password/change | Self-service: `{current_password, new_password, code}` **or** `{..., recovery_code}`. Needs the current password and a fresh (replay-protected) authenticator code or unused recovery code; new password follows the platform policy (422) and must differ from the current one (422). Revokes the admin's OTHER sessions and keeps this one. Wrong current password counts toward the 5-strikes/15-min lockout, wrong code toward the MFA lockout (generic 401). Rate limited 5/min/IP (ADR-081) | platform session (`mfa_verified`) |
+| POST | /platform/auth/password/reset | Complete an admin-issued reset: `{email, reset_code, new_password, code \| recovery_code}` (the authenticator factor is needed when MFA is enabled). Success sets the password, consumes the code and revokes sessions (it does not sign in). Wrong/expired code or unknown email -> generic 401 `Invalid or expired reset code`, counted toward the lockout, the code is not burned. Rate limited 10/min/IP (ADR-081) | public |
 | POST | /platform/tenants | Create tenant + first Admin user (ADR-008); every new tenant is seeded with a default Trial subscription (ADR-053); optional `primary_domain` (Motor/Health/Travel/Life/Property/Other, else 422; ADR-073) | platform_owner |
 | GET | /platform/tenants | List tenants (each includes `primary_domain`, ADR-073) | platform_owner |
 | PATCH | /platform/tenants/{id}/status | approve/suspend tenant | platform_owner |
-| POST | /platform/admins/{id}/reset-mfa | Clear another platform admin's MFA (lost device) and revoke their sessions; they re-enrol at next sign-in. 409 for your own account (ADR-074) | platform_owner |
+| POST | /platform/admins/{id}/reset-mfa | **Step-up required (ADR-083).** Clear another platform admin's MFA (lost device) and revoke their sessions; they re-enrol at next sign-in using the fresh one-time `enrolment_code` returned **once** in this response (ADR-080). 409 for your own account (ADR-074) | platform_owner |
+| POST | /platform/admins/{id}/enrolment-code | **Step-up required (ADR-083).** Issue a new one-time enrolment code for an admin who has not enrolled yet (replaces any earlier code); returns it once as `enrolment_code`. 409 for your own account or an enrolled admin, 404 unknown (ADR-080) | platform_owner |
+| POST | /platform/admins | **Step-up required (ADR-083).** Create a platform admin `{email, password}`; returns the one-time enrolment code once (ADR-080) | platform_owner |
+| PATCH | /platform/admins/{id} | `{is_active}`. **Deactivating needs a step-up (ADR-083)**; reactivating does not | platform_owner |
+| POST | /platform/admins/{id}/password-reset-code | **Step-up required (ADR-083).** Issue a one-time password-reset code for another admin (replaces any earlier one): returns it once as `password_reset_code`, revokes the target's sessions at once and blocks their old password until the code is used (`PLATFORM_PASSWORD_RESET_CODE_TTL_HOURS`, default 24). The list exposes only `password_reset_code_active` / `password_reset_code_expires_at`. 409 for your own account or a deactivated admin, 404 unknown. Rate limited 10/min/IP (ADR-081) | platform_owner |
+| GET | /platform/audit-events | Read-only platform audit trail (ADR-082), newest first: `event_type`, `outcome` (`success`\|`failure`), `actor_email` (substring), `page`, `page_size` (max 100). Items carry `id`, `created_at`, `event_type`, `actor_admin_id`, `actor_email`, `target_admin_id`, `ip`, `outcome`, `details` (whitelisted keys only); never any secret, code, hash or token. Platform session required, 401 otherwise. Rate limited 60/min/IP | platform_owner |
+| GET | /platform/audit-events/verify | Re-walks the platform audit hash chain, then checks the signed checkpoints; returns `{valid, checked_count, broken_at_id, checkpoints_checked, checkpoint_failure}` (same shape as the tenant verify; `checkpoint_failure` is `null` or `{checkpoint_id, reason}`). Rate limited 10/min/IP (ADR-082, ADR-085) | platform_owner |
+| GET | /platform/audit-events/checkpoints | Signed checkpoints of the platform chain, oldest first (ADR-085). Rate limited 30/min/IP | platform_owner |
+| POST | /platform/audit-events/checkpoints | Anchors the current platform chain head in a new signed checkpoint. Returns `{created, reason, checkpoint}`; `created=false, reason="no_new_events"` when nothing changed since the last one. 409 if the chain or an earlier checkpoint already fails verification. Platform session required, no step-up. Rate limited 10/min/IP | platform_owner |
+| GET | /platform/audit-events/checkpoints/export | The same list as a downloadable JSON document `{scope, exported_at, checkpoints}` to store off-box. Rate limited 10/min/IP | platform_owner |
 | GET | /platform/plans | list the subscription-plan catalog (Tier 1, ADR-053) | platform_owner |
 | GET | /platform/tenants/{id}/subscription | view a tenant's current subscription | platform_owner |
 | PUT | /platform/tenants/{id}/subscription | assign/update a tenant's plan/status/seat count — schema/record-keeping only, no payment gateway (Tier 1, ADR-053) | platform_owner |
@@ -51,7 +68,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | PATCH | /users/{id} | edit profile/role | admin |
 | DELETE | /users/{id} | deactivate (blocked if last admin) | admin |
 | POST | /users/{id}/reset-password | admin-initiated password reset; revokes all of that user's existing sessions (ADR-032) | admin |
-| POST | /users/{id}/gdpr-erase | pseudonymize PII (ADR-009) | admin |
+| POST | /users/{id}/erase | erase a user's personal data (ADR-086). Body `{dry_run (default true), confirm_email}`. A dry run returns `{dry_run, erased:false, changes, retained, notes}` with per-table counts and changes nothing; a real run (`dry_run=false`) needs `confirm_email` equal to the user's current email (422 otherwise) and anonymises the user in one transaction: name -> "Erased user", email -> `erased-<id>@erased.invalid`, account closed, sessions revoked, notifications removed, invites and report-schedule addresses cleaned, audit event `user.erased` (ids and counts only). 409 for yourself, the last active Admin, or an already-erased user; 404 for an unknown or other-tenant id. Rate-limited. User objects now carry `erased_at`. Replaces the removed `/users/{id}/gdpr-erase` | admin (`user.erase`) |
 | GET | /users/me/history | self-service account history (creation, profile/role edits, password resets, own login/MFA events) (ADR-039) | all (scoped to caller's own account) |
 | POST | /users/invite | create a single-use, time-limited invite (no `users` row exists until accepted); "simulated" email mode returns the token directly (Tier 1, ADR-053) | admin |
 | POST | /users/invite/{token}/accept | public, no auth — sets the invitee's own password and activates the account | any (unauthenticated) |
@@ -91,6 +108,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | /projects/{id}/test-cases | list; supports `search`/`priority`/`status`/`assignee_id`/`sort`/`page`/`page_size`, returns `{items, total}` (ADR-034) | all (assigned) |
+| GET | /test-cases | the same listing and the same `search`/`priority`/`status`/`assignee_id`/`module_id`/`sort`/`page`/`page_size`, across every project the caller may see; each item carries its `project_id` (ADR-077). Admin and Manager: every project in the tenant. Anyone else: only projects they own or belong to, exactly the per-project rule | all (assigned projects) |
 | POST | /projects/{id}/test-cases | create (status=draft, version 1); accepts optional `Idempotency-Key` header (ADR-040) | all (assigned) |
 | GET | /test-cases/{id} | detail incl. current version+steps | all (assigned) |
 | GET | /test-cases/{id}/versions | version history (ADR-003) | all (assigned) |
@@ -134,6 +152,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 ## Test Execution (FR-EXEC)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
+| GET | /test-runs | one page of runs across every project the caller may see, newest first, as `{items, total}` (`items` are the same lightweight summaries, each with its `project_id`). Filters `project_id`, `active_only`; `page`, `page_size` (default 50, max 100). Admin and Manager: every project in the tenant; anyone else: projects they own or belong to; a `project_id` they may not open is 403. Soft-deleted runs are excluded (ADR-078) | all (assigned projects) |
 | GET | /projects/{id}/test-runs | list runs for a project (lightweight summary, no per-case rollups) | all (assigned) |
 | POST | /projects/{id}/test-runs | create run, bundle cases (pins versions) | all (assigned) |
 | GET | /test-runs/{id} | run detail + case rollups | all (assigned) |
@@ -144,9 +163,10 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | POST | /test-runs/{id}/pause | pause a run; blocks further step open/verdict until resumed (ADR-036) | manager, admin |
 | POST | /test-runs/{id}/resume | resume a paused run (ADR-036) | manager, admin |
 | POST | /test-runs/{id}/finish | set finished_at, lock. A run also finishes **automatically** when every case is complete (blocked, or every step recorded and the case not failed — a failed case keeps the run open for the re-run after the fix); audit event `testrun.finished` carries `auto: true` (ADR-070) | manager, admin |
+| POST | /test-runs/{id}/reopen | undo a finish: clears `finished_at` only (case statuses, verdicts and timings are untouched, and the run does not re-finish until the next verdict or block). 409 if the run is not finished; 404 for another tenant's or a soft-deleted run; audit event `testrun.reopened` with `previous_finished_at` (ADR-075) | manager, admin |
 | DELETE | /test-runs/{id} | **soft delete** (`deleted_at`/`deleted_by`); the run leaves lists, counts, dashboards and reports, data is retained and included in tenant exports; audit `testrun.deleted` (ADR-070) | testrun.delete (admin, manager) |
 | POST | /test-run-cases/{id}/block | mark a run case **Blocked** with a required `reason` (3-1000 chars); same rights as recording a verdict (assignee for a Tester); 409 on a finished/paused run or an already-blocked case; verdicts/step-open are refused while blocked; audit `testrun.case_blocked` (ADR-070) | executionstep.record |
-| POST | /test-run-cases/{id}/unblock | re-open a blocked case; status is recomputed from its step verdicts; 409 if not blocked or the run is finished; audit `testrun.case_unblocked` (ADR-070) | executionstep.record |
+| POST | /test-run-cases/{id}/unblock | re-open a blocked case; status is recomputed from its step verdicts; 409 if not blocked or the run is finished; audit `testrun.case_unblocked` (ADR-070) with `blocked_seconds`; the time spent blocked is removed from the open step's timer by moving its `opened_at` forward (ADR-076) | executionstep.record |
 | GET | /test-run-cases/{id}/context | run/project/case display context for the Execution Console (ADR-036) | all (assigned) |
 | GET | /test-run-cases/{id}/steps | step list + current verdicts/timings | all (assigned) |
 | POST | /execution-steps/{id}/open | mark step opened (starts timer); idempotent, rejects if run finished/paused | all (assigned) |
@@ -156,7 +176,8 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | DELETE | /defects/{id} | **soft delete**; the defect leaves lists, counts, dashboards and reports, row/links/history retained and included in tenant exports; audit `defect.deleted` (ADR-070) | defect.delete (admin, manager; project-scoped role overrides apply) |
-| GET | /defects | filter by project/status/severity/test_run_id/test_case_id/reported_by/created_from/created_to (ADR-037) | all (scoped) |
+| GET | /defects | filter by project/status/severity/test_run_id/test_case_id/reported_by/created_from/created_to (ADR-037). Without `page_size` it returns every match as a plain list (the run, project and test case screens use that). With `page_size` (1-100, plus `page`) it returns one page, newest first, as `{items, total}`; `test_run_id` and `test_case_id` apply to the plain list only (ADR-078) | all (scoped) |
+| GET | /defects/status-counts | `{counts: {status: n}, total}` for the matching defects under every filter except status (`project_id`/`severity`/`reported_by`/`created_from`/`created_to`), same visibility as the list; feeds the Defects page's status tabs (ADR-078) | all (scoped) |
 | POST | /defects | create (standalone, in-run, or from execution_steps.id); accepts optional `Idempotency-Key` header (ADR-040) | all |
 | GET | /defects/{id} | detail incl. links, execution evidence, test case version + traceability chain (ADR-037) | all (scoped) |
 | GET | /defects/{id}/history | status-change/creation history from audit_logs (ADR-037) | all (scoped) |
@@ -167,9 +188,9 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 ## Reporting & Dashboard (FR-REP, FR-DASH)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | /dashboard/summary | KPI cards incl. active projects, approved test case count, critical defect count (ADR-038) | all (scoped) |
+| GET | /dashboard/summary | KPI cards incl. active projects, approved test case count, critical defect count (ADR-038). Optional `project_id` narrows every figure to that one project, still limited to what the caller may see (a project outside their scope gives zeros) (ADR-079) | all (scoped) |
 | GET | /dashboard/domain-distribution | FR-DASH-002 chart data, now incl. per-domain pass percentage (ADR-038) | all (scoped) |
-| GET | /dashboard/activity-stream | last 10 actions | all (scoped) |
+| GET | /dashboard/activity-stream | last 10 actions. Optional `project_id` keeps only events whose entity belongs to that project, found among the latest 200 tenant events, so a quiet project can show fewer than 10; empty for a project the caller may not see (ADR-079) | all (scoped) |
 | GET | /reports/aggregate | multi-axis pivot (metric, groupBy); metric now incl. `test_case_status`, `defect_root_cause` (Phase 6, ADR-048); accepts `project_id`/`domain`/`assignee_id`/`date_from`/`date_to`/`priority`/`status` filters (ADR-038) | all (scoped; restricted for tester) |
 | GET | /reports/execution-trend | daily pass/fail/ignore step-verdict counts over a trailing window (`days`, default 30), optional `project_id` (ADR-038) | all (scoped) |
 | GET | /reports/defect-trend | daily opened-vs-closed defect counts over a trailing window (`days`, default 30), optional `project_id` (Phase 6, ADR-048, GAP-77) | all (scoped) |
@@ -187,7 +208,10 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 |---|---|---|---|
 | GET | /audit-logs | filterable (action, entity_type, entity_id, user_id, date_from, date_to), paginated (max 200/page), full record incl. metadata/prev_hash (ADR-029, ADR-039), read-only | admin (`audit.view`) |
 | GET | /audit-logs/export | CSV export of the full (unpaginated, capped at 50k rows) filtered audit trail — same filters as the list endpoint (ADR-039) | admin (`audit.view`) |
-| GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side; returns valid/checked_count/broken_at_id (ADR-029) | admin (`audit.view`) |
+| GET | /audit-logs/verify-chain | re-walks and recomputes the full hash chain server-side (streamed, flat memory), then checks the signed checkpoints; optional `?since_checkpoint=true` starts after the newest verified checkpoint and reports `skipped_count` (ADR-087); returns valid/checked_count/broken_at_id plus `checkpoints_checked` and `checkpoint_failure` (`null` or `{checkpoint_id, reason}`, reason one of `signature_invalid`, `anchor_missing`, `anchor_hash_mismatch`, `count_mismatch`, `checkpoint_chain_broken`); `valid` is false if either part fails (ADR-029, ADR-085) | admin (`audit.view`) |
+| GET | /audit-logs/checkpoints | the tenant's signed audit checkpoints, oldest first; the scope is always the caller's own tenant (ADR-085) | admin (`audit.view`) |
+| POST | /audit-logs/checkpoints | anchors the tenant chain head in a new HMAC-signed checkpoint; returns `{created, reason, checkpoint}` (`created=false`, `reason="no_new_events"` when unchanged); 409 if the chain or an earlier checkpoint already fails verification (ADR-085) | admin (`audit.view`) |
+| GET | /audit-logs/checkpoints/export | the tenant's checkpoints as a downloadable JSON document `{scope, exported_at, checkpoints}` (hashes, counts and ids only) for off-box storage (ADR-085) | admin (`audit.view`) |
 | GET | /settings | tenant self-service settings (`default_currency_code`, `default_timezone`, `ai_enabled`, `ai_provider`, `ai_api_key_configured`, `ip_allowlist`, `primary_domain`) (AI/SaaS roadmap Phase 1/3, ADR-043/ADR-045, GAP-80/GAP-72; `ip_allowlist` is Tier 4, ADR-054, PV-11.3) | admin (`tenant.settings.manage`) |
 | PATCH | /settings | update tenant settings; partial updates supported, audit-logged (`tenant.settings_updated`); `ai_api_key` is write-only (never returned), `""` clears it; enabling AI requires a key already configured; `ip_allowlist` is a full replace (CIDR list, `[]` clears it); `primary_domain` (ADR-073): send a value to set it, `null` to clear it, omit it to leave it unchanged (an unknown value is a 422); the change is recorded in the audit event as `{from, to}` | admin (`tenant.settings.manage`) |
 | GET | /settings/subscription | read-only view of the tenant's current plan/status/seat count — assignment is platform-admin-only (Tier 1, ADR-053) | admin (`tenant.settings.manage`) |
@@ -208,3 +232,31 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | DELETE | /scim-tokens/{id} | revoke a SCIM token | admin (`sso.manage`) |
 | GET/POST/PUT/PATCH/DELETE | /scim/v2/{tenant_id}/Users[/{id}] | minimal SCIM 2.0 server, Users only, bearer-token authenticated (not session-cookie); DELETE deactivates, never hard-deletes (ADR-054) | SCIM bearer token |
 | PATCH | /platform/tenants/{id}/data-region | set a tenant's data-residency metadata (`us`/`eu`/`apac`/...); readiness only, no per-region deployment exists (Tier 4, ADR-054, PV-11.6, see `docs/DATA_RESIDENCY.md`) | platform admin |
+
+## Access rules: release freezes and environment restrictions (ADR-092)
+Off by default. `access_rule.manage` is Admin only. Blocked mutations return `403` with error code `blocked_by_access_rule` and the rule's reason as the message.
+
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| GET | /access-rules | list the tenant's rules | admin (`access_rule.manage`) |
+| POST | /access-rules | create a rule: `name`, `rule_type` (`freeze_window` or `environment_restriction`), optional `project_id`, `environment` (required for environment restrictions), `starts_at`/`ends_at` (timezone-aware, stored UTC; both required for a freeze, optional allowed window for an environment rule), `blocked_actions` (permission codes or prefixes, validated), `exempt_roles` (`admin` is always kept), `reason`, `enabled` | admin (`access_rule.manage`) |
+| GET | /access-rules/{id} | one rule | admin (`access_rule.manage`) |
+| PATCH | /access-rules/{id} | change any field (send null to clear `project_id` or a window bound); toggling `enabled` is audited as enabled/disabled | admin (`access_rule.manage`) |
+| DELETE | /access-rules/{id} | delete a rule | admin (`access_rule.manage`) |
+| POST | /access-rules/preview | dry run: would `action_code` for `role_code` (optionally `project_id`, `environment`, `at`) be blocked, and by which rule id and reason | admin (`access_rule.manage`) |
+| GET | /access-rules/active | only the rules restricting the caller's own role right now (`reason`, `ends_at`, `blocked_actions`), for UI banners; an Admin always gets an empty list | any signed-in user |
+
+## In-app Documents (ADR-089)
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| GET | /docs | the documents the caller may open: `{groups: [{id, title}], documents: [{slug, title, description, group, audience, min_level, source}]}`; sensitive documents are not listed for non-Admins. `Cache-Control: private, no-store`; rate-limited | any signed-in user |
+| GET | /docs/{slug} | one document: the summary fields plus `content` (Markdown). 404 for an unknown slug, 403 for a sensitive document without Admin, 422 for a slug that is not lowercase letters, digits and hyphens (path-traversal attempts). `Cache-Control: private, no-store`; rate-limited | any signed-in user; sensitive documents need `tenant.settings.manage` (Admin) |
+
+## Tester visibility switches (ADR-093)
+
+| Method | Path | Notes | Access |
+|---|---|---|---|
+| GET/PATCH | /settings | two extra booleans, both default `false`: `testers_see_assigned_cases_only` (a Tester sees only cases assigned to them, in runs assigned to them or started by them), `reports_hidden_from_testers` (a Tester gets 403 from every `/reports/*` endpoint). Each change is audited as `tenant.setting_changed` with `{key, value}` | admin (`tenant.settings.manage`) |
+| GET | /auth/me | adds `tester_case_scope` and `reports_hidden`, effective for the caller (always false for Manager/Admin) | any signed-in user |
+
+With the case switch on, a Tester gets 404 (not 403) for a case outside their scope on detail, history, versions, attachments and comments, and the case is left out of `/test-cases`, `/projects/{id}/test-cases` (totals and paging included), `/search`, module counts, requirement detail, the CSV/XLSX export and the dashboard counts. `/dashboard/*` stays open to Testers when Reports are hidden.
