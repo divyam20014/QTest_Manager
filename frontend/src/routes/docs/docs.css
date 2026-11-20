@@ -353,7 +353,17 @@
   .brd-diagram-source {
     display: none;
   }
+  .brd-diagram {
+    background: #fff !important;
+    border-color: #999 !important;
+  }
   .brd-diagram-canvas {
     overflow: visible;
+    background: #fff !important;
+  }
+  /* Mermaid draws with its dark palette when the app is dark; paper is white,
+     so flip the picture back to a light one (invert + hue-rotate keeps hues). */
+  :root[data-theme='dark'] .brd-diagram-canvas svg {
+    filter: invert(1) hue-rotate(180deg);
   }
 }

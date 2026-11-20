@@ -17,6 +17,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/admin/roles': 'Roles & Permissions',
   '/admin/audit-logs': 'Audit Logs',
   '/admin/environments': 'Environments',
+  '/admin/access-rules': 'Access Rules',
   '/settings': 'Settings',
   '/account': 'My Account',
 }

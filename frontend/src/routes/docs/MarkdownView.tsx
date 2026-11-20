@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
 
-import type { MeResponse } from '@/api/auth'
-import { canViewDoc, findDocBySourceLink } from '@/routes/docs/docsManifest'
+import type { DocSummary } from '@/api/docs'
+import { findDocBySourceLink } from '@/routes/docs/docsManifest'
 import { MermaidDiagram } from '@/routes/docs/MermaidDiagram'
 
 const REMARK_PLUGINS = [remarkGfm]
@@ -23,7 +23,7 @@ function textOf(node: ReactNode): string {
  * (react-markdown shows it as text and no rehype-raw is used), URLs go through
  * react-markdown's own sanitiser, and external links open in a new tab.
  */
-export function MarkdownView({ source, user }: { source: string; user: MeResponse | null }) {
+export function MarkdownView({ source, docs }: { source: string; docs: readonly DocSummary[] }) {
   const components: Components = {
     pre({ children }) {
       const child = Children.toArray(children)[0]
@@ -58,10 +58,12 @@ export function MarkdownView({ source, user }: { source: string; user: MeRespons
       // A relative link: another bundled document, or a repo file the viewer
       // does not carry (code, diagram sources) -- shown as plain text, never as
       // a link that would 404.
-      const target = findDocBySourceLink(href)
-      if (target && canViewDoc(user, target)) {
+      // `docs` is only what this user may open, so a link to a document they
+      // cannot read is shown as plain text.
+      const target = findDocBySourceLink(href, docs)
+      if (target) {
         const hash = href.includes('#') ? `#${href.split('#')[1]}` : ''
-        return <Link to={`/brd/${target.id}${hash}`}>{children}</Link>
+        return <Link to={`/brd/${target.slug}${hash}`}>{children}</Link>
       }
       return (
         <span className="brd-unlinked" title="Not available in the in-app viewer">

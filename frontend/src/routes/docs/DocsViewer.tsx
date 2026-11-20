@@ -3,6 +3,8 @@ import { BookOpen, Copy, Download, Printer } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 
+import { ApiError, isForbidden } from '@/api/client'
+import { getDoc, listDocs, type DocSummary } from '@/api/docs'
 import { NoAccess } from '@/components/NoAccess'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -12,16 +14,7 @@ import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
-import {
-  canViewDoc,
-  DEFAULT_DOC_ID,
-  DOC_GROUPS,
-  docFileName,
-  findDoc,
-  loadDocText,
-  visibleDocs,
-  type DocEntry,
-} from '@/routes/docs/docsManifest'
+import { DEFAULT_DOC_ID, docFileName } from '@/routes/docs/docsManifest'
 import { MarkdownView } from '@/routes/docs/MarkdownView'
 import './docs.css'
 
@@ -59,7 +52,7 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function downloadMarkdown(doc: DocEntry, text: string) {
+function downloadMarkdown(doc: Pick<DocSummary, 'slug' | 'source'>, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }))
   const link = document.createElement('a')
   link.href = url
@@ -71,40 +64,39 @@ function downloadMarkdown(doc: DocEntry, text: string) {
 }
 
 /**
- * BRD gap Phase 4 / ADR-072 (FR-BRD-01/02): the in-app documentation viewer.
- * `/brd` opens the default document; `/brd/:docId` a specific one. Documents
- * are curated, bundled with the app and filtered by audience: user-facing ones
- * are open to every signed-in user, the engineering set to Admin and Manager.
+ * BRD gap Phase 4 / ADR-072 (FR-BRD-01/02), served by the API since ADR-089.
+ * `/brd` opens the default document; `/brd/:docId` a specific one. The list
+ * and the text come from `/docs` behind the session: user-facing documents are
+ * open to every signed-in user, the sensitive set (admin, deployment, schema,
+ * API, ADRs, known gaps...) to Admin only. A document the user may not read is
+ * not listed, and opening its link directly shows the "No access" screen.
  */
 export function DocsViewer() {
   const { docId } = useParams()
-  const { user } = useAuth()
   const location = useLocation()
 
   if (!docId) return <Navigate to={`/brd/${DEFAULT_DOC_ID}${location.hash}`} replace />
-
-  const doc = findDoc(docId)
-  if (!doc) {
-    return (
-      <div className="flex flex-col gap-4">
-        <PageHeader title="Documentation" description="Product and engineering documents." />
-        <EmptyState
-          title="Document not found"
-          description="That document doesn't exist in the in-app viewer."
-          action={
-            <Link to="/brd" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-              Back to documentation
-            </Link>
-          }
-        />
-      </div>
-    )
-  }
-  if (!canViewDoc(user, doc)) return <NoAccess />
-  return <DocPage doc={doc} />
+  return <DocPage slug={docId} />
 }
 
-function DocPage({ doc }: { doc: DocEntry }) {
+function DocNotFound() {
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Documentation" description="Product and engineering documents." />
+      <EmptyState
+        title="Document not found"
+        description="That document doesn't exist in the in-app viewer."
+        action={
+          <Link to="/brd" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            Back to documentation
+          </Link>
+        }
+      />
+    </div>
+  )
+}
+
+function DocPage({ slug }: { slug: string }) {
   const { user } = useAuth()
   const location = useLocation()
   const { show: showToast } = useToast()
@@ -115,15 +107,25 @@ function DocPage({ doc }: { doc: DocEntry }) {
   const [toc, setToc] = useState<TocItem[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
+  // Keyed by user so a cached document is never shown to someone else who
+  // signs in on the same browser tab.
   const textQuery = useQuery({
-    queryKey: ['brd-doc', doc.id],
-    queryFn: () => loadDocText(doc),
-    staleTime: Infinity,
-    retry: 1,
+    queryKey: ['brd-doc', user?.user_id, slug],
+    queryFn: () => getDoc(slug),
+    staleTime: 60_000,
+    // 403/404 are answers, not glitches: do not retry them.
+    retry: (count, error) =>
+      !(error instanceof ApiError && (error.status === 403 || error.status === 404)) && count < 1,
   })
-  const markdown = textQuery.data
-
-  const docs = visibleDocs(user)
+  const listQuery = useQuery({
+    queryKey: ['brd-docs', user?.user_id],
+    queryFn: listDocs,
+    staleTime: 60_000,
+  })
+  const doc = textQuery.data
+  const markdown = doc?.content
+  const docs = listQuery.data?.documents ?? []
+  const docGroups = listQuery.data?.groups ?? []
 
   // Build the table of contents from the rendered headings (their ids come
   // from rehype-slug), then jump to #section if the URL carries one.
@@ -131,7 +133,13 @@ function DocPage({ doc }: { doc: DocEntry }) {
     const article = articleRef.current
     if (!article || markdown === undefined) return
     const headings = Array.from(article.querySelectorAll<HTMLHeadingElement>('h1, h2, h3')).filter((h) => h.id)
-    setToc(headings.map((h) => ({ id: h.id, text: h.textContent ?? '', level: Number(h.tagName[1]) })))
+    setToc(
+      headings.map((h) => ({
+        id: h.id,
+        text: h.textContent ?? '',
+        level: Number(h.tagName[1]),
+      })),
+    )
     setActiveId(headings[0]?.id ?? null)
     if (location.hash) {
       const target = document.getElementById(decodeURIComponent(location.hash.slice(1)))
@@ -141,7 +149,7 @@ function DocPage({ doc }: { doc: DocEntry }) {
     }
     // Only when the document (not the hash) changes; hash clicks are native.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markdown, doc.id])
+  }, [markdown, slug])
 
   // Highlight the section being read.
   useEffect(() => {
@@ -169,19 +177,28 @@ function DocPage({ doc }: { doc: DocEntry }) {
   async function onCopy() {
     if (markdown === undefined) return
     const ok = await copyText(markdown)
-    showToast(ok ? 'success' : 'error', ok ? 'Markdown copied to the clipboard' : 'Could not copy — try Download instead')
+    showToast(
+      ok ? 'success' : 'error',
+      ok ? 'Markdown copied to the clipboard' : 'Could not copy — try Download instead',
+    )
   }
 
-  const groups = DOC_GROUPS.map((group) => ({
-    group,
-    items: docs.filter((d) => d.group === group.id),
-  })).filter((g) => g.items.length > 0)
+  const groups = docGroups
+    .map((group) => ({
+      group,
+      items: docs.filter((d) => d.group === group.id),
+    }))
+    .filter((g) => g.items.length > 0)
 
   const disabled = markdown === undefined
+
+  if (isForbidden(textQuery.error)) return <NoAccess />
+  if (textQuery.error instanceof ApiError && textQuery.error.status === 404) return <DocNotFound />
 
   return (
     <div className="brd-doc flex flex-col gap-4">
       <PageHeader
+        className="brd-noprint"
         title="Documentation"
         description="Product guides and engineering references, read inside QTestHub."
         actions={
@@ -193,7 +210,7 @@ function DocPage({ doc }: { doc: DocEntry }) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => markdown !== undefined && downloadMarkdown(doc, markdown)}
+              onClick={() => doc && downloadMarkdown(doc, doc.content)}
               disabled={disabled}
             >
               <Download className="size-4" aria-hidden="true" /> Download .md
@@ -224,11 +241,11 @@ function DocPage({ doc }: { doc: DocEntry }) {
                   <p className="qth-type-overline px-2 text-[var(--muted-foreground)]">{group.title}</p>
                   <ul className="flex flex-col gap-0.5">
                     {items.map((item) => (
-                      <li key={item.id}>
+                      <li key={item.slug}>
                         <Link
-                          to={`/brd/${item.id}`}
-                          aria-current={item.id === doc.id ? 'page' : undefined}
-                          className={cn('brd-nav-link', item.id === doc.id && 'brd-nav-link-active')}
+                          to={`/brd/${item.slug}`}
+                          aria-current={item.slug === slug ? 'page' : undefined}
+                          className={cn('brd-nav-link', item.slug === slug && 'brd-nav-link-active')}
                         >
                           {item.title}
                         </Link>
@@ -292,11 +309,11 @@ function DocPage({ doc }: { doc: DocEntry }) {
             <article
               ref={articleRef}
               id="brd-article"
-              aria-label={doc.title}
+              aria-label={doc?.title}
               className="brd-prose brd-print-area"
-              data-doc={doc.id}
+              data-doc={slug}
             >
-              <MarkdownView source={markdown} user={user} />
+              <MarkdownView source={markdown} docs={docs} />
             </article>
           )}
         </div>
