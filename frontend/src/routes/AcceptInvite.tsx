@@ -36,7 +36,9 @@ export function AcceptInvite() {
     <main id="main-content" className="flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-base text-[var(--foreground)]">Accept Invite</CardTitle>
+          <CardTitle as="h1" className="text-base text-[var(--foreground)]">
+            Accept Invite
+          </CardTitle>
           <p className="text-sm text-[var(--muted-foreground)]">
             Set your password to activate your QTestHub account.
           </p>

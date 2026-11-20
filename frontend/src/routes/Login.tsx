@@ -190,7 +190,9 @@ export function Login() {
     <main id="main-content" className="flex min-h-svh flex-col items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-base text-[var(--foreground)]">QTestHub</CardTitle>
+          <CardTitle as="h1" className="text-base text-[var(--foreground)]">
+            QTestHub
+          </CardTitle>
           <p className="text-sm text-[var(--muted-foreground)]">
             {step === 'email' && 'Sign in to your organization'}
             {step === 'org-picker' && 'Choose your organization'}

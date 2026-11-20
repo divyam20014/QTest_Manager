@@ -462,3 +462,107 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ------------------------------------------------------------------
+   Execution Console "cockpit" mode (issue 45, ADR-094). Opt-in dark
+   token set scoped to the .cockpit wrapper, independent of the app
+   light/dark theme (a dark-theme user gets the same set). Contrast
+   (WCAG AA) is documented in docs/DESIGN_SYSTEM.md and asserted by
+   e2e/cockpit-mode.spec.ts. Elevation tokens are redefined here because
+   var() inside custom properties resolves where it is declared (:root).
+   ------------------------------------------------------------------ */
+.cockpit {
+  color-scheme: dark;
+  --background: #0b1018;
+  --foreground: #e8edf5;
+  --muted: #141c29;
+  --muted-foreground: #a9b4c6;
+  --border: #6a7a93;
+  --primary: #7cb3f4;
+  --primary-foreground: #0b1018;
+  --destructive: #f87171;
+  --destructive-foreground: #0b1018;
+  --success-solid: #3dd68c;
+  --success-solid-foreground: #04140d;
+  --ring: #7cb3f4;
+  --brand: #7cb3f4;
+  --brand-foreground: #0b1018;
+  --brand-muted: #16263f;
+  --link: #8ab8f5;
+  --status-good: #3dd68c;
+  --status-good-bg: #0f2a20;
+  --status-warning: #f5a623;
+  --status-warning-bg: #332308;
+  --status-serious: #f87171;
+  --status-serious-bg: #3a1414;
+  --status-critical: #e391d6;
+  --status-critical-bg: #321830;
+  --status-neutral: #a9b4c6;
+  --status-neutral-bg: #232b39;
+  --status-info: #8ab8f5;
+  --status-info-bg: #12233d;
+  --tactile-surface: #121a27;
+  --tactile-surface-raised: #1a2333;
+  --tactile-highlight: rgba(255, 255, 255, 0.05);
+  --tactile-shadow-dark: rgba(0, 0, 0, 0.6);
+  --tactile-shadow-darker: rgba(0, 0, 0, 0.75);
+  --elevation-raised-sm: -2px -2px 5px var(--tactile-highlight), 3px 3px 6px var(--tactile-shadow-dark);
+  --elevation-raised-md: -4px -4px 9px var(--tactile-highlight), 5px 5px 12px var(--tactile-shadow-dark);
+  --elevation-raised-lg: -6px -6px 14px var(--tactile-highlight), 8px 8px 20px var(--tactile-shadow-darker);
+  --elevation-pressed-sm: inset 2px 2px 5px var(--tactile-shadow-dark), inset -2px -2px 5px var(--tactile-highlight);
+  --elevation-pressed-md: inset 3px 3px 8px var(--tactile-shadow-darker), inset -3px -3px 8px var(--tactile-highlight);
+  color: var(--foreground);
+  background: var(--tactile-surface);
+  border-radius: var(--radius-panel);
+  padding: 0.5rem;
+}
+.cockpit .cockpit-panel {
+  background: var(--tactile-surface-raised);
+  box-shadow: var(--elevation-raised-md);
+}
+.cockpit .cockpit-dense { padding: 0.75rem; }
+.cockpit .cockpit-verdicts button { min-height: 3.5rem; font-size: 1.125rem; font-weight: 600; padding-inline: 1.5rem; }
+.cockpit .cockpit-verdicts kbd { opacity: 0.85; }
+.cockpit .cockpit-verdicts > div { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+.cockpit .cockpit-verdicts > div > p { white-space: normal; }
+.cockpit .cockpit-verdicts > div > div { flex-wrap: wrap; }
+.cockpit .cockpit-verdicts > div > div > button { flex: 1 1 7rem; }
+.cockpit .cockpit-track { height: 0.75rem; background: #2a3548; box-shadow: var(--elevation-pressed-sm); }
+.cockpit .cockpit-statusbar { font-size: 1rem; font-weight: 600; }
+@media (max-width: 1279.98px) {
+  .cockpit .cockpit-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--tactile-surface-raised);
+  }
+}
+@media (max-width: 767.98px) {
+  .cockpit { padding: 0.25rem; }
+  .cockpit .cockpit-verdicts button { min-height: 3rem; font-size: 1rem; padding-inline: 0.75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cockpit * { transition: none !important; animation: none !important; }
+}
+/* Print stays light: the console is an on-screen tool, never printed dark. */
+@media print {
+  .cockpit {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #0a0a0a;
+    --muted: #f4f4f5;
+    --muted-foreground: #5f5f68;
+    --border: #e4e4e7;
+    --primary: #111827;
+    --primary-foreground: #f9fafb;
+    --tactile-surface: #ffffff;
+    --tactile-surface-raised: #ffffff;
+    --elevation-raised-sm: none;
+    --elevation-raised-md: none;
+    --elevation-raised-lg: none;
+    --elevation-pressed-sm: none;
+    --elevation-pressed-md: none;
+    background: #ffffff;
+    color: #0a0a0a;
+  }
+}

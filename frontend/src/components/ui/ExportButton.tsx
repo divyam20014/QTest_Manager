@@ -29,7 +29,9 @@ export function ExportButton({
   size?: 'default' | 'sm'
   className?: string
   disabled?: boolean
-  /** Distinguishes several identical buttons on one page for assistive tech. */
+  /** What is being exported, e.g. "test cases". Distinguishes several identical
+   * buttons on one page for assistive tech; the accessible name is
+   * "<label> (<context>)" so it always contains the visible text (WCAG 2.5.3). */
   ariaLabel?: string
 }) {
   const [busy, setBusy] = useState(false)
@@ -63,7 +65,7 @@ export function ExportButton({
       onClick={run}
       disabled={disabled || busy}
       aria-busy={busy}
-      aria-label={ariaLabel && !busy ? ariaLabel : undefined}
+      aria-label={ariaLabel && !busy ? `${label} (${ariaLabel})` : undefined}
     >
       {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
       {busy ? 'Preparing…' : label}

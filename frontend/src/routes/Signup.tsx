@@ -44,7 +44,7 @@ export function Signup() {
     <main id="main-content" className="flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-base text-[var(--foreground)]">
+          <CardTitle as="h1" className="text-base text-[var(--foreground)]">
             Start your free trial
           </CardTitle>
           <p className="text-sm text-[var(--muted-foreground)]">

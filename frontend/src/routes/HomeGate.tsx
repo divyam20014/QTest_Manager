@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom'
 
-import { useAuth } from '@/lib/auth'
+import { hasSessionHint, useAuth } from '@/lib/auth'
 import { MarketingRoute } from '@/routes/MarketingRoute'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
 
@@ -11,7 +11,10 @@ export function HomeGate() {
   const { isAuthenticated, isLoading } = useAuth()
   const { pathname } = useLocation()
 
-  if (pathname === '/' && !isLoading && !isAuthenticated) {
+  // Perf (ADR-091): a visitor with no session hint sees the home page at once
+  // instead of waiting on the /auth/me round trip; a signed-in user (hint set)
+  // keeps the old behaviour and never flashes the marketing page.
+  if (pathname === '/' && ((!isLoading && !isAuthenticated) || (isLoading && !hasSessionHint()))) {
     return <MarketingRoute />
   }
 

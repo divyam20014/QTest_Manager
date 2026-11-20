@@ -134,6 +134,9 @@
 }
 
 .lp-section { padding-block: 80px; }
+/* Perf (ADR-091): off-screen sections skip style/layout/paint until near the
+   viewport; `auto` remembers the real height once rendered. */
+.qth-landing .lp-section { content-visibility: auto; contain-intrinsic-size: auto 900px; }
 @media (min-width: 1024px) { .lp-section { padding-block: 104px; } }
 .lp-section.lp-section-tight { padding-block: 64px; }
 .lp-section.lp-section-flush-top { padding-top: 0; }

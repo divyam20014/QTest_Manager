@@ -167,7 +167,11 @@ function DesktopTable<T>({
                 </th>
               ),
             )}
-            {rowActions && <th className="px-4 py-2 font-medium"></th>}
+            {rowActions && (
+              <th className="px-4 py-2 font-medium">
+                <span className="sr-only">Actions</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>

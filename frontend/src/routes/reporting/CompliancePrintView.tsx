@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, Navigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 import { fetchComplianceDetail } from '@/api/reporting'
+import { NoAccess } from '@/components/NoAccess'
 import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
-import { isManagerOrAbove } from '@/api/auth'
+import { canAccessPath } from '@/lib/routeAccess'
+import { cn } from '@/lib/utils'
 import { STATUS_DISPLAY } from '@/routes/testcases/statusDisplay'
 
 export function CompliancePrintView() {
   const { user } = useAuth()
   const [periodFrom, setPeriodFrom] = useState('')
   const [periodTo, setPeriodTo] = useState('')
-  const canView = isManagerOrAbove(user)
+  // Same rule as the sidebar entry and the route table (report.compliance_export).
+  const canView = canAccessPath(user, '/reporting/print')
 
   const reportQuery = useQuery({
     queryKey: ['reports', 'compliance-detail', periodFrom, periodTo],
@@ -25,20 +28,32 @@ export function CompliancePrintView() {
     enabled: canView,
   })
 
-  if (!canView) return <Navigate to="/reporting" replace />
+  if (!canView)
+    return (
+      <main id="main-content">
+        <NoAccess />
+      </main>
+    )
 
   const report = reportQuery.data
 
+  // A sheet of paper: fixed white/black on screen too, whatever the app theme (the
+  // report is a document to print, and black text on the dark theme was unreadable).
   return (
-    <div className="compliance-print mx-auto max-w-4xl p-6 text-black">
+    <main
+      id="main-content"
+      className="compliance-print mx-auto min-h-svh max-w-4xl bg-white p-6 text-black"
+    >
       <style>{`
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
           .compliance-print { color: #000 !important; max-width: 100% !important; }
           .compliance-print table { break-inside: avoid; }
-          .compliance-print section { break-inside: avoid-page; }
+          .compliance-print section { break-inside: avoid-page; overflow: visible !important; }
         }
+        /* A wide table scrolls inside the sheet on a phone instead of spilling off it. */
+        .compliance-print section { overflow-x: auto; }
         .compliance-print table { width: 100%; border-collapse: collapse; font-size: 12px; }
         .compliance-print th, .compliance-print td {
           border: 1px solid #000; padding: 4px 8px; text-align: left;
@@ -46,9 +61,9 @@ export function CompliancePrintView() {
         .compliance-print th { background: #e5e5e5; }
       `}</style>
 
-      <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
+      <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-300 pb-4">
         <div>
-          <Link to="/reporting" className="text-xs text-[var(--muted-foreground)] hover:underline">
+          <Link to="/reporting" className="text-xs text-neutral-700 hover:underline">
             ← Back to Reporting
           </Link>
           <h1 className="text-lg font-semibold">Compliance Report (Print / PDF)</h1>
@@ -59,19 +74,22 @@ export function CompliancePrintView() {
             type="date"
             value={periodFrom}
             onChange={(e) => setPeriodFrom(e.target.value)}
-            className="w-40"
+            className="w-40 border-neutral-400 bg-white text-black"
           />
           <Input
             aria-label="Period to"
             type="date"
             value={periodTo}
             onChange={(e) => setPeriodTo(e.target.value)}
-            className="w-40"
+            className="w-40 border-neutral-400 bg-white text-black"
           />
           <button
             type="button"
             onClick={() => window.print()}
-            className={buttonVariants({ variant: 'outline' })}
+            className={cn(
+              buttonVariants({ variant: 'outline' }),
+              'border-neutral-400 bg-white text-black hover:bg-neutral-100 hover:text-black',
+            )}
           >
             Print / Save as PDF
           </button>
@@ -93,7 +111,7 @@ export function CompliancePrintView() {
             </p>
           </header>
 
-          <section className="mb-6">
+          <section className="mb-6" tabIndex={0} aria-label="Summary">
             <h2 className="mb-2 text-base font-semibold">Summary</h2>
             <table>
               <thead>
@@ -238,6 +256,6 @@ export function CompliancePrintView() {
           ))}
         </>
       )}
-    </div>
+    </main>
   )
 }

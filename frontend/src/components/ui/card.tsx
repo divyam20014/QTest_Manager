@@ -21,11 +21,12 @@ export const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEleme
 CardHeader.displayName = 'CardHeader'
 
 // UX-023: the heading level is configurable (default h2, since every page has
-// one h1 and card titles are its direct sections). Use `as="h3"` for a card
+// one h1 and card titles are its direct sections). `as="h1"` is for the
+// standalone sign-in style screens whose card IS the page. Use `as="h3"` for a card
 // nested under another section heading so levels never skip.
 export const CardTitle = forwardRef<
   HTMLHeadingElement,
-  HTMLAttributes<HTMLHeadingElement> & { as?: 'h2' | 'h3' | 'h4' }
+  HTMLAttributes<HTMLHeadingElement> & { as?: 'h1' | 'h2' | 'h3' | 'h4' }
 >(({ className, as: Tag = 'h2', ...props }, ref) => (
   <Tag ref={ref} className={cn('text-sm font-medium text-[var(--muted-foreground)]', className)} {...props} />
 ))

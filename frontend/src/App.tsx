@@ -5,15 +5,15 @@ import { RouteBoundary } from '@/components/RouteBoundary'
 import { lazyRoute } from '@/lib/lazyRoute'
 
 import { usePageTitleFromRoute } from '@/lib/usePageTitle'
-import { AcceptInvite } from '@/routes/AcceptInvite'
-import { AppShell } from '@/routes/AppShell'
-import { Login } from '@/routes/Login'
-import { Signup } from '@/routes/Signup'
 import { NotFound } from '@/routes/NotFound'
 import { HomeGate } from '@/routes/HomeGate'
 import { MarketingRoute } from '@/routes/MarketingRoute'
 import { MARKETING_PATHS } from '@/routes/marketingPaths'
 
+const AcceptInvite = lazyRoute(() => import('@/routes/AcceptInvite'), 'AcceptInvite')
+const AppShell = lazyRoute(() => import('@/routes/AppShell'), 'AppShell')
+const Login = lazyRoute(() => import('@/routes/Login'), 'Login')
+const Signup = lazyRoute(() => import('@/routes/Signup'), 'Signup')
 const PlatformAdmin = lazyRoute(() => import('@/routes/PlatformAdmin'), 'PlatformAdmin')
 const Dashboard = lazyRoute(() => import('@/routes/Dashboard'), 'Dashboard')
 const MyAccount = lazyRoute(() => import('@/routes/MyAccount'), 'MyAccount')
@@ -24,6 +24,7 @@ const ExecutionOverview = lazyRoute(() => import('@/routes/execution/ExecutionOv
 const TestRunDetail = lazyRoute(() => import('@/routes/execution/TestRunDetail'), 'TestRunDetail')
 const TestRunsList = lazyRoute(() => import('@/routes/execution/TestRunsList'), 'TestRunsList')
 const TestRunsOverview = lazyRoute(() => import('@/routes/execution/TestRunsOverview'), 'TestRunsOverview')
+const AccessRules = lazyRoute(() => import('@/routes/admin/AccessRules'), 'AccessRules')
 const AuditLogs = lazyRoute(() => import('@/routes/admin/AuditLogs'), 'AuditLogs')
 const Environments = lazyRoute(() => import('@/routes/admin/Environments'), 'Environments')
 const RolesPermissions = lazyRoute(() => import('@/routes/admin/RolesPermissions'), 'RolesPermissions')
@@ -50,6 +51,7 @@ export function App() {
   const { pathname } = useLocation()
   return (
     <RouteBoundary resetKey={pathname}>
+    <Suspense fallback={null}>
     <Routes>
       {MARKETING_PATHS.map((path) => (
         <Route key={path} path={path} element={<MarketingRoute />} />
@@ -96,6 +98,7 @@ export function App() {
           <Route path="/admin/roles" element={<RolesPermissions />} />
           <Route path="/admin/audit-logs" element={<AuditLogs />} />
           <Route path="/admin/environments" element={<Environments />} />
+          <Route path="/admin/access-rules" element={<AccessRules />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/account" element={<MyAccount />} />
           <Route path="/brd" element={<DocsViewer />} />
@@ -105,6 +108,7 @@ export function App() {
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
     </RouteBoundary>
   )
 }

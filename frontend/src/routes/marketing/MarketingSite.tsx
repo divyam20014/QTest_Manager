@@ -2,22 +2,24 @@ import '@fontsource-variable/inter/index.css'
 import './marketing.css'
 
 import { ArrowRight } from 'lucide-react'
-import { type ComponentType, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type ComponentType, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { MarketingFooter } from './MarketingFooter'
 import { MarketingNav } from './MarketingNav'
-import AboutPage from './pages/AboutPage'
-import ContactPage from './pages/ContactPage'
-import FeaturesPage from './pages/FeaturesPage'
 import HomePage from './pages/HomePage'
-import PlatformPage from './pages/PlatformPage'
-import PricingPage from './pages/PricingPage'
-import QualityIntelligencePage from './pages/QualityIntelligencePage'
-import RequestDemoPage from './pages/RequestDemoPage'
-import SecurityPage from './pages/SecurityPage'
-import SolutionsPage from './pages/SolutionsPage'
 import { prefersReducedMotion, useRevealOnScroll } from './utils'
+
+// Only the home page ships in the first chunk; the other pages load on demand.
+const AboutPage = lazy(() => import('./pages/AboutPage'))
+const ContactPage = lazy(() => import('./pages/ContactPage'))
+const FeaturesPage = lazy(() => import('./pages/FeaturesPage'))
+const PlatformPage = lazy(() => import('./pages/PlatformPage'))
+const PricingPage = lazy(() => import('./pages/PricingPage'))
+const QualityIntelligencePage = lazy(() => import('./pages/QualityIntelligencePage'))
+const RequestDemoPage = lazy(() => import('./pages/RequestDemoPage'))
+const SecurityPage = lazy(() => import('./pages/SecurityPage'))
+const SolutionsPage = lazy(() => import('./pages/SolutionsPage'))
 
 const PAGES: Record<string, ComponentType> = {
   '/': HomePage,
@@ -76,12 +78,23 @@ function StickyDemoBar({ pathname }: { pathname: string }) {
   )
 }
 
+function PageMounted({ onMount }: { onMount: () => void }) {
+  useEffect(() => {
+    onMount()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return null
+}
+
 /** The public marketing website: one lazily loaded chunk, so signed-in app
  * users never download it. */
 export default function MarketingSite() {
   const { pathname, hash } = useLocation()
   const Page = PAGES[pathname] ?? HomePage
-  const rootRef = useRevealOnScroll<HTMLDivElement>(pathname)
+  // `pageReady` bumps when a (lazily loaded) page commits, so the reveal observer
+  // re-scans for its `.lp-reveal` elements instead of missing them.
+  const [pageReady, setPageReady] = useState(0)
+  const rootRef = useRevealOnScroll<HTMLDivElement>(`${pathname}:${pageReady}`)
   const previousPath = useRef<string | null>(null)
 
   useLayoutEffect(() => {
@@ -133,7 +146,10 @@ export default function MarketingSite() {
       {/* Remounting on navigation closes any open menu. */}
       <MarketingNav key={pathname + hash} />
       <main id="lp-main" tabIndex={-1} className="outline-none">
-        <Page />
+        <Suspense fallback={null}>
+          <Page />
+          <PageMounted key={pathname} onMount={() => setPageReady((n) => n + 1)} />
+        </Suspense>
       </main>
       <MarketingFooter />
       <StickyDemoBar pathname={pathname} />
