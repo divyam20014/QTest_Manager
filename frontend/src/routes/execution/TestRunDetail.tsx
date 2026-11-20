@@ -14,6 +14,7 @@ import {
   getTestRun,
   pauseTestRun,
   removeTestRunCase,
+  rerunFailedTestRun,
   resumeTestRun,
   updateTestRun,
   type RunType,
@@ -95,6 +96,17 @@ export function TestRunDetail() {
     },
   })
 
+  // ADR-096: a new run with only the failed and blocked cases. Errors (an access-rule
+  // block, nothing to rerun) are shown inline with their reason, not as a generic retry.
+  const rerunMutation = useMutation({
+    mutationFn: () => rerunFailedTestRun(runId!),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ['test-runs'] })
+      showToast('success', 'Rerun created with the failed and blocked cases')
+      navigate(`/test-runs/${created.id}`)
+    },
+  })
+
   // ADR-070: soft delete -- the run leaves every list and report; its data is retained.
   const deleteMutation = useMutation({
     mutationFn: () => deleteTestRun(runId!),
@@ -155,6 +167,10 @@ export function TestRunDetail() {
   const executionStarted = run.cases.some((rc) => rc.started_at !== null)
   const canEdit = canManage && !run.finished_at && !executionStarted
   const finishError = finishMutation.error instanceof ApiError ? finishMutation.error.message : null
+  const rerunError = rerunMutation.error instanceof ApiError ? rerunMutation.error.message : null
+  const canRerun =
+    hasPermission(user, 'testrun.create') &&
+    run.cases.some((rc) => rc.status === 'failed' || rc.status === 'blocked')
   const usersById = new Map((usersQuery.data ?? []).map((u) => [u.id, u.name]))
 
   const caseColumns: ResponsiveColumn<(typeof run.cases)[number]>[] = [
@@ -255,6 +271,11 @@ export function TestRunDetail() {
               Resume Run
             </Button>
           )}
+          {canRerun && (
+            <Button variant="outline" onClick={() => rerunMutation.mutate()} disabled={rerunMutation.isPending}>
+              {rerunMutation.isPending ? 'Creating rerun…' : 'Rerun failed'}
+            </Button>
+          )}
           {canManage && run.finished_at && (
             <Button
               variant="outline"
@@ -326,6 +347,7 @@ export function TestRunDetail() {
         </div>
       )}
       <FormError>{finishError}</FormError>
+      <FormError>{rerunError}</FormError>
 
       <ResponsiveTable
         label="Test cases in this run"

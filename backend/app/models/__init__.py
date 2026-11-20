@@ -29,6 +29,7 @@ from app.models.platform_audit import PlatformAuditEvent
 from app.models.project import Project, ProjectMember
 from app.models.report_schedule import ReportSchedule
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.saved_view import SavedView
 from app.models.scim_token import ScimToken
 from app.models.service_token import ServiceToken
 from app.models.shared_step import SharedStep
@@ -100,6 +101,7 @@ __all__ = [
     "CustomFieldDefinition",
     "CustomFieldValue",
     "ReportSchedule",
+    "SavedView",
     "TestDataSet",
     "TestDataSetRow",
     "TestSuite",

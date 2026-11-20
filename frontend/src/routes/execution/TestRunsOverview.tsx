@@ -5,6 +5,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { listAllTestRuns, type TestRunSummary } from '@/api/execution'
 import { listProjects, type Project } from '@/api/projects'
 import { FilterBar } from '@/components/table/FilterBar'
+import { ViewsMenu } from '@/components/table/ViewsMenu'
+import { useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -80,6 +82,13 @@ export function TestRunsOverview() {
   // seeing finished runs at all.
   const [activeOnly, setActiveOnly] = useState(searchParams.get('status') === 'in_progress')
 
+  // ADR-096: saved views map onto this page's two local filters.
+  const applyView = (view: ViewState) => {
+    setProjectId(view.filters.projectId ?? '')
+    setActiveOnly(view.filters.activeOnly === 'true')
+  }
+  useApplyDefaultView('test_runs', Boolean(projectId) || activeOnly, applyView)
+
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all'],
     queryFn: () => listProjects({ page_size: 100 }),
@@ -122,7 +131,19 @@ export function TestRunsOverview() {
     <div className="flex flex-col gap-4">
       <PageHeader title="Test Runs" description="Test runs across every project you can see." />
 
-      <FilterBar activeCount={(projectId ? 1 : 0) + (activeOnly ? 1 : 0)} onClear={() => { setProjectId(''); setActiveOnly(false) }} desktopClear={false}>
+      <FilterBar activeCount={(projectId ? 1 : 0) + (activeOnly ? 1 : 0)} onClear={() => { setProjectId(''); setActiveOnly(false) }}
+        desktopClear={false}
+        saved={
+          <ViewsMenu
+            listKey="test_runs"
+            current={{
+              filters: { ...(projectId ? { projectId } : {}), ...(activeOnly ? { activeOnly: 'true' } : {}) },
+              sort: null,
+            }}
+            onApply={applyView}
+          />
+        }
+      >
         <div className="flex flex-col gap-1.5">
           <label htmlFor="runs-project" className="text-xs text-[var(--muted-foreground)]">
             Project

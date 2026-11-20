@@ -25,6 +25,8 @@ import { Pagination } from '@/components/ui/pagination'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { useRowContextMenu } from '@/components/table/RowContextMenu'
 import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
+import { ViewsMenu } from '@/components/table/ViewsMenu'
+import { compactFilters, useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
 import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
@@ -130,6 +132,10 @@ const DEFECT_TABLE_COLUMNS: ResponsiveColumn<Defect>[] = [
 
 const DEFECTS_PAGE_SIZE = 50
 
+// ADR-096: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
+const DEFECT_VIEW_KEYS = ['projectId', 'status', 'severity', 'reportedBy', 'createdFrom', 'createdTo'] as const
+const DEFECT_VIEW_RESET = Object.fromEntries(DEFECT_VIEW_KEYS.map((k) => [k, ''])) as Record<string, string>
+
 export function DefectsList() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -152,6 +158,9 @@ export function DefectsList() {
     [],
   )
   const urlFilters = useUrlFilters(filterDefaults)
+  const applyView = (view: ViewState) =>
+    urlFilters.setFilters({ ...DEFECT_VIEW_RESET, ...view.filters })
+  useApplyDefaultView('defects', urlFilters.active.length > 0, applyView)
   const projectId = urlFilters.values.projectId
   const status = urlFilters.values.status as DefectStatus | ''
   const severity = urlFilters.values.severity as Severity | ''
@@ -276,13 +285,20 @@ export function DefectsList() {
           urlFilters.setFilters({ projectId: '', severity: '', reportedBy: '', createdFrom: '', createdTo: '' })
         }
         saved={
-          <SavedFiltersMenu
-            current={urlFilters.values}
-            saved={savedFilters.saved}
-            onSave={savedFilters.save}
-            onApply={(f) => urlFilters.setFilters(f)}
-            onRemove={savedFilters.remove}
-          />
+          <>
+            <SavedFiltersMenu
+              current={urlFilters.values}
+              saved={savedFilters.saved}
+              onSave={savedFilters.save}
+              onApply={(f) => urlFilters.setFilters(f)}
+              onRemove={savedFilters.remove}
+            />
+            <ViewsMenu
+              listKey="defects"
+              current={{ filters: compactFilters(urlFilters.values, DEFECT_VIEW_KEYS), sort: null }}
+              onApply={applyView}
+            />
+          </>
         }
         toolbar={
           <ColumnVisibilityMenu

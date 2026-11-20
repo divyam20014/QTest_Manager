@@ -43,6 +43,10 @@ class TestRun(Base, TenantScopedMixin):
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    # ADR-096: set on a run created by 'rerun failed only'; points at the source run.
+    original_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("test_runs.id"), nullable=True
+    )
 
 
 class TestRunCase(Base, TenantScopedMixin):

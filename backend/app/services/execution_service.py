@@ -734,6 +734,7 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
         created_at=run.created_at,
         finished_at=run.finished_at,
         paused_at=run.paused_at,
+        original_run_id=run.original_run_id,
         cases=case_outs,
     )
 
@@ -1210,3 +1211,84 @@ def delete_test_run(
         metadata={"name": run.name, "was_finished": run.finished_at is not None},
     )
     db.commit()
+
+
+def rerun_failed(
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, run_id: UUID
+) -> TestRun:
+    """ADR-096: new run holding only the failed/blocked run cases of `run_id`.
+    Copies name/type/assignee/data row; links back via original_run_id.
+    Each case is pinned to its current version if still approved, else to
+    the version the original run executed."""
+    source = _get_run_or_404(db, tenant_id, run_id)
+    _authorize_run_access(db, tenant_id, role_code, actor_user_id, source)
+    rerun_cases = list(
+        db.execute(
+            select(TestRunCase)
+            .where(
+                TestRunCase.test_run_id == source.id,
+                TestRunCase.status.in_(("failed", "blocked")),
+            )
+            .order_by(TestRunCase.id)
+        ).scalars()
+    )
+    if not rerun_cases:
+        raise ConflictError("This run has no failed or blocked test cases to rerun")
+
+    run = TestRun(
+        tenant_id=tenant_id,
+        project_id=source.project_id,
+        name=f"{source.name} (rerun)",
+        run_type=source.run_type,
+        executed_by=actor_user_id,
+        original_run_id=source.id,
+    )
+    db.add(run)
+    db.flush()
+
+    for rc in rerun_cases:
+        case = db.execute(select(TestCase).where(TestCase.id == rc.test_case_id)).scalar_one()
+        version_id = (
+            case.current_version_id
+            if case.status == "approved" and case.current_version_id is not None
+            else rc.test_case_version_id
+        )
+        new_rc = TestRunCase(
+            tenant_id=tenant_id,
+            test_run_id=run.id,
+            test_case_id=rc.test_case_id,
+            test_case_version_id=version_id,
+            test_data_row_id=rc.test_data_row_id,
+            status="pending",
+            assigned_to=rc.assigned_to,
+        )
+        db.add(new_rc)
+        db.flush()
+        for step in db.execute(
+            select(TestCaseVersionStep)
+            .where(TestCaseVersionStep.test_case_version_id == version_id)
+            .order_by(TestCaseVersionStep.step_number)
+        ).scalars():
+            db.add(
+                ExecutionStep(
+                    tenant_id=tenant_id,
+                    test_run_case_id=new_rc.id,
+                    test_case_version_step_id=step.id,
+                )
+            )
+
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="testrun.rerun_created",
+        entity_type="test_run",
+        entity_id=run.id,
+        metadata={
+            "original_run_id": str(source.id),
+            "name": run.name,
+            "case_count": len(rerun_cases),
+        },
+    )
+    db.commit()
+    return run

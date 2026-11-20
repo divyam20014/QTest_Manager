@@ -1,3 +1,4 @@
+import { VersionDiffView } from './VersionDiffView'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -609,38 +610,7 @@ function VersionHistoryCard({
               </Select>
             </div>
 
-            {compareQuery.data && (
-              <div className="mt-3 flex flex-col gap-2 text-xs">
-                {compareQuery.data.title_changed && (
-                  <p>
-                    <span className="font-medium">Title:</span>{' '}
-                    <span className="line-through text-[var(--muted-foreground)]">
-                      {compareQuery.data.old_title}
-                    </span>{' '}
-                    → {compareQuery.data.new_title}
-                  </p>
-                )}
-                <ul className="flex flex-col gap-1">
-                  {compareQuery.data.steps.map((s) => (
-                    <li
-                      key={s.step_number}
-                      className={
-                        s.change === 'added'
-                          ? 'text-[var(--status-good)]'
-                          : s.change === 'removed'
-                            ? 'text-[var(--status-serious)] line-through'
-                            : s.change === 'modified'
-                              ? 'text-[var(--status-warning)]'
-                              : 'text-[var(--muted-foreground)]'
-                      }
-                    >
-                      Step {s.step_number} ({s.change}): {s.new_action ?? s.old_action} →{' '}
-                      {s.new_expected ?? s.old_expected}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {compareQuery.data && <VersionDiffView compare={compareQuery.data} />}
           </div>
         )}
       </CardContent>

@@ -41,6 +41,7 @@ export interface TestRun {
   created_at: string
   finished_at: string | null
   paused_at: string | null
+  original_run_id?: string | null
   cases: TestRunCase[]
 }
 
@@ -169,6 +170,11 @@ export function finishTestRun(runId: string): Promise<TestRun> {
 // ADR-075: undo a finish so a blocked case can be unblocked / work can continue.
 export function reopenTestRun(runId: string): Promise<TestRun> {
   return apiFetch<TestRun>(`/test-runs/${runId}/reopen`, { method: 'POST' })
+}
+
+// ADR-096: new run containing only this run's failed and blocked cases.
+export function rerunFailedTestRun(runId: string): Promise<TestRun> {
+  return apiFetch<TestRun>(`/test-runs/${runId}/rerun-failed`, { method: 'POST' })
 }
 
 export function getRunCaseContext(runCaseId: string): Promise<RunCaseContext> {

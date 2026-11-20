@@ -164,6 +164,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | POST | /test-runs/{id}/resume | resume a paused run (ADR-036) | manager, admin |
 | POST | /test-runs/{id}/finish | set finished_at, lock. A run also finishes **automatically** when every case is complete (blocked, or every step recorded and the case not failed — a failed case keeps the run open for the re-run after the fix); audit event `testrun.finished` carries `auto: true` (ADR-070) | manager, admin |
 | POST | /test-runs/{id}/reopen | undo a finish: clears `finished_at` only (case statuses, verdicts and timings are untouched, and the run does not re-finish until the next verdict or block). 409 if the run is not finished; 404 for another tenant's or a soft-deleted run; audit event `testrun.reopened` with `previous_finished_at` (ADR-075) | manager, admin |
+| POST | /test-runs/{id}/rerun-failed | create a new run with only this run's `failed` and `blocked` cases (open or finished source). Copies type, assignees and data rows, name `<name> (rerun)`, sets `original_run_id`; response is the new run. 409 when nothing failed or blocked; 403 `blocked_by_access_rule` during a freeze; 404 for another tenant's run; audit `testrun.rerun_created` (ADR-096) | `testrun.create`, project member |
 | DELETE | /test-runs/{id} | **soft delete** (`deleted_at`/`deleted_by`); the run leaves lists, counts, dashboards and reports, data is retained and included in tenant exports; audit `testrun.deleted` (ADR-070) | testrun.delete (admin, manager) |
 | POST | /test-run-cases/{id}/block | mark a run case **Blocked** with a required `reason` (3-1000 chars); same rights as recording a verdict (assignee for a Tester); 409 on a finished/paused run or an already-blocked case; verdicts/step-open are refused while blocked; audit `testrun.case_blocked` (ADR-070) | executionstep.record |
 | POST | /test-run-cases/{id}/unblock | re-open a blocked case; status is recomputed from its step verdicts; 409 if not blocked or the run is finished; audit `testrun.case_unblocked` (ADR-070) with `blocked_seconds`; the time spent blocked is removed from the open step's timer by moving its `opened_at` forward (ADR-076) | executionstep.record |
@@ -260,3 +261,16 @@ Off by default. `access_rule.manage` is Admin only. Blocked mutations return `40
 | GET | /auth/me | adds `tester_case_scope` and `reports_hidden`, effective for the caller (always false for Manager/Admin) | any signed-in user |
 
 With the case switch on, a Tester gets 404 (not 403) for a case outside their scope on detail, history, versions, attachments and comments, and the case is left out of `/test-cases`, `/projects/{id}/test-cases` (totals and paging included), `/search`, module counts, requirement detail, the CSV/XLSX export and the dashboard counts. `/dashboard/*` stays open to Testers when Reports are hidden.
+
+## Saved views (ADR-096)
+
+Private per-user filter sets for the Test Cases, Defects and Test Runs lists. Any signed-in user; only the owner's views are visible (another user's id is 404). Rate limited.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /saved-views?list_key= | the caller's views, optionally for one list (`test_cases`, `defects`, `test_runs`) |
+| POST | /saved-views | `{list_key, name (1-60), filters, sort?, is_default?}`. 422 for an unknown filter key, wrong value type, bad sort or filters over 2KB; 409 for a duplicate name or more than 25 views for that list |
+| PATCH | /saved-views/{id} | rename, change filters or sort, set or clear `is_default` (setting it clears the previous default for that list) |
+| DELETE | /saved-views/{id} | delete |
+
+Allowed filter keys (string values): test_cases `search, priority, status, assigneeId, moduleId` (+ `sort` such as `title` or `-priority`); defects `projectId, status, severity, reportedBy, createdFrom, createdTo`; test_runs `projectId, activeOnly` (`true`/`false`).

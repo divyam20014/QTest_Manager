@@ -257,6 +257,7 @@ Index: `(owner_type, owner_id)`.
 | paused_at | TIMESTAMPTZ NULL | |
 | deleted_at | TIMESTAMPTZ NULL | soft delete (ADR-070, migration `d1e2f3a4b5c6`); every ORM SELECT excludes non-null rows |
 | deleted_by | UUID NULL FK users | who deleted it |
+| original_run_id | UUID NULL FK test_runs | set on a run created by rerun-failed, points at the source run (ADR-096, migration `c6e2a8f4b1d7`) |
 
 ### `test_run_cases`
 One row per test case bundled into a run; pins the version (ADR-003).
@@ -345,6 +346,19 @@ Index: `(linkable_type, linkable_id)`, `(defect_id)`.
 | created_at / updated_at | TIMESTAMPTZ NOT NULL | |
 
 Index `ix_access_rules_tenant_enabled (tenant_id, enabled)`. The migration also seeds the `access_rule.manage` permission to the Admin role.
+
+### `saved_views` (ADR-096, migration `c6e2a8f4b1d7`)
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID NOT NULL FK tenants | RLS |
+| user_id | UUID NOT NULL FK users | owner; views are private |
+| list_key | TEXT NOT NULL CHECK IN ('test_cases','defects','test_runs') | |
+| name | VARCHAR(60) NOT NULL | UNIQUE (user_id, list_key, name) |
+| filters | JSONB NOT NULL DEFAULT '{}' | allowlisted keys with string values, max 2KB (validated in the API) |
+| sort | VARCHAR(50) NULL | |
+| is_default | BOOLEAN NOT NULL DEFAULT false | partial unique index on (user_id, list_key) WHERE is_default |
+| created_at, updated_at | TIMESTAMPTZ NOT NULL | |
 
 ## Audit (FR-ADM-002) — insert-only, hash-chained (ADR-006)
 

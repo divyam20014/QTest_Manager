@@ -81,6 +81,7 @@ class TestRunOut(BaseModel):
     created_at: datetime
     finished_at: datetime | None
     paused_at: datetime | None
+    original_run_id: UUID | None = None
     cases: list[TestRunCaseOut]
 
 

@@ -8,6 +8,7 @@ from app.core.auth import (
     get_current_context,
     require_permission,
     require_project_permission,
+    require_resource_permission,
 )
 from app.core.db import get_db
 from app.core.responses import envelope
@@ -165,6 +166,19 @@ def reopen_test_run(
     db: Session = Depends(get_db),
 ) -> dict:
     run = execution_service.reopen_test_run(db, ctx.tenant_id, ctx.user_id, run_id)
+    return envelope(execution_service.to_out(db, run).model_dump(mode="json"))
+
+
+@router.post("/test-runs/{run_id}/rerun-failed")
+def rerun_failed_test_run(
+    run_id: UUID,
+    ctx: SessionContext = Depends(
+        require_resource_permission("testrun.create", "test_run", id_param="run_id")
+    ),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-096: create a new run from the failed/blocked cases of this one."""
+    run = execution_service.rerun_failed(db, ctx.tenant_id, ctx.role_code, ctx.user_id, run_id)
     return envelope(execution_service.to_out(db, run).model_dump(mode="json"))
 
 

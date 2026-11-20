@@ -21,6 +21,8 @@ import {
 import { listUsers } from '@/api/users'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { FilterBar } from '@/components/table/FilterBar'
+import { ViewsMenu } from '@/components/table/ViewsMenu'
+import { compactFilters, useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -59,6 +61,10 @@ const DEFAULT_VALUES: TestCaseFormValues = {
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
 const PAGE_SIZE = 10
+
+// ADR-096: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
+const TC_VIEW_KEYS = ['search', 'priority', 'status', 'assigneeId', 'moduleId'] as const
+const TC_VIEW_RESET = Object.fromEntries(TC_VIEW_KEYS.map((k) => [k, ''])) as Record<string, string>
 
 export function TestCasesList() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -88,6 +94,9 @@ export function TestCasesList() {
     [],
   )
   const urlFilters = useUrlFilters(filterDefaults)
+  const applyView = (view: ViewState) =>
+    urlFilters.setFilters({ ...TC_VIEW_RESET, ...view.filters, sort: view.sort ?? 'created_at', page: '1' })
+  useApplyDefaultView('test_cases', urlFilters.active.length > 0, applyView)
   const search = urlFilters.values.search
   const priority = urlFilters.values.priority as Priority | ''
   const status = urlFilters.values.status as TestCaseStatus | ''
@@ -357,6 +366,16 @@ export function TestCasesList() {
           setShowDeprecated(false)
         }}
         desktopClear={false}
+        saved={
+          <ViewsMenu
+            listKey="test_cases"
+            current={{
+              filters: compactFilters(urlFilters.values, TC_VIEW_KEYS),
+              sort: urlFilters.values.sort === 'created_at' ? null : urlFilters.values.sort,
+            }}
+            onApply={applyView}
+          />
+        }
         primary={
           <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
             <label htmlFor="tc-search" className="text-xs text-[var(--muted-foreground)]">

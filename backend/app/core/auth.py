@@ -235,7 +235,7 @@ def require_project_permission(code: str):
     return _checker
 
 
-def require_resource_permission(code: str, resource_type: str):
+def require_resource_permission(code: str, resource_type: str, id_param: str | None = None):
     """RBAC Phase 3: resource-id-keyed sibling of `require_project_permission`,
     for routes where the resource is addressed by its own id
     (`test_case_id`/`defect_id`) rather than by a `project_id` path param.
@@ -256,7 +256,7 @@ def require_resource_permission(code: str, resource_type: str):
     exactly as before and are untouched by this.
     """
 
-    id_param = f"{resource_type}_id"
+    id_param = id_param or f"{resource_type}_id"
 
     def _checker(
         request: Request,

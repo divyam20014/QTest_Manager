@@ -35,6 +35,7 @@ from app.api import (
     reporting,
     requirements,
     roles,
+    saved_views,
     scim,
     search,
     service_tokens,
@@ -259,6 +260,7 @@ app.include_router(access_rules.router, prefix="/api/v1")
 app.include_router(roles.router, prefix="/api/v1")
 app.include_router(ci.router, prefix="/api/v1")
 app.include_router(report_schedule.router, prefix="/api/v1")
+app.include_router(saved_views.router, prefix="/api/v1")
 app.include_router(shared_steps.router, prefix="/api/v1")
 app.include_router(test_data_sets.router, prefix="/api/v1")
 app.include_router(test_suites.router, prefix="/api/v1")

@@ -87,6 +87,16 @@ failed, a manager or admin finishes the run with **Finish Run**. A finished run 
 
 **Cockpit mode.** The **Cockpit mode** button in the console header switches the console to a dark, denser layout with larger Pass/Fail/Ignore/Block buttons and the step timer and blocked state pinned at the top. It is off by default, only affects the Execution Console, ignores the app light/dark theme, and is remembered in this browser. Printing always uses the light look.
 
+**Rerun failed.** On a run that has failed or blocked cases, **Rerun failed** (anyone who can create runs) makes a new run named "<name> (rerun)" holding only those cases, with the same assignees, and opens it. Passed and ignored cases are left out and the original run is unchanged. If a release freeze is active the button shows the reason instead of creating the run.
+
+
+## Saved views
+
+The Test Cases, Defects and Test Runs lists have a **Views** menu next to the filters. Set your filters, type a name and choose **Save current**. Pick a view to apply it, use the star to make it your default (applied when you open the list with no filters in the address), the pencil to rename and the bin to delete. Views are private to you and are not shared. You can keep 25 per list.
+
+## Comparing test case versions
+
+On a test case, **Compare Versions** shows a summary such as "1 step changed, 1 added", then each changed field and step with a text label (Added, Removed, Changed) and the changed words underlined or struck through. Unchanged steps are hidden behind a button.
 ## Defects
 
 Log defects (manually, or linked from a failed execution step), track status
