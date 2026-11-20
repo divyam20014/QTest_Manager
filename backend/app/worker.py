@@ -11,7 +11,12 @@ import time
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.logging import configure_logging, logger
-from app.services import defect_service, job_service, report_schedule_service
+from app.services import (
+    audit_checkpoint_service,
+    defect_service,
+    job_service,
+    report_schedule_service,
+)
 
 settings = get_settings()
 
@@ -29,12 +34,17 @@ _SLA_SWEEP_INTERVAL_SECONDS = 300.0
 # late schedule from drifting far past its due time.
 _REPORT_SCHEDULE_SWEEP_INTERVAL_SECONDS = 900.0
 
+# ADR-085: signed audit-chain checkpoints. Cadence comes from
+# AUDIT_CHECKPOINT_INTERVAL_SECONDS (0 disables); a scope with no new events
+# is skipped, so a short interval costs one cheap head lookup per scope.
+
 
 def run_forever() -> None:
     configure_logging(settings.log_level, service_name="qtesthub-worker")
     logger.info("QTestHub background worker starting up")
     last_sla_sweep = 0.0
     last_report_sweep = 0.0
+    last_checkpoint_run = time.monotonic()
     while True:
         db = SessionLocal()
         try:
@@ -69,6 +79,28 @@ def run_forever() -> None:
                     logger.info(f"Report-schedule sweep sent {sent} report(s)")
             except Exception:
                 logger.exception("Unhandled error in report-schedule sweep")
+                db.rollback()
+            finally:
+                db.close()
+
+        checkpoint_interval = settings.audit_checkpoint_interval_seconds
+        if checkpoint_interval > 0 and now - last_checkpoint_run >= checkpoint_interval:
+            last_checkpoint_run = now
+            db = SessionLocal()
+            try:
+                runs = audit_checkpoint_service.run_checkpoints(db)
+                made = sum(r.status == "created" for r in runs)
+                if made:
+                    logger.info(f"Audit checkpoint run wrote {made} checkpoint(s)")
+                for run in runs:
+                    if run.status in ("refused", "error"):
+                        logger.error(
+                            "security_event=audit_checkpoint_not_written scope=%s status=%s",
+                            run.scope,
+                            run.status,
+                        )
+            except Exception:
+                logger.exception("Unhandled error in audit checkpoint run")
                 db.rollback()
             finally:
                 db.close()

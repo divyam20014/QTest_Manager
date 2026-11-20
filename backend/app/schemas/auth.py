@@ -48,6 +48,10 @@ class MeResponse(BaseModel):
     # real permissions. Exposing the actual permission set lets those
     # checks test capability instead of a hardcoded role name.
     permissions: list[str] = []
+    # ADR-093: effective for THIS caller (a Manager/Admin always gets False), so
+    # the UI can hide Reports / explain a scoped repository without extra calls.
+    reports_hidden: bool = False
+    tester_case_scope: bool = False
 
 
 class SessionOut(BaseModel):

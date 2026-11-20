@@ -357,13 +357,17 @@ def test_audit_logs_router_exposes_zero_mutation_routes() -> None:
     DELETE route under /audit-logs at all, so there's nothing to even
     attempt tampering through -- not just that such an attempt would fail."""
     mutating_methods = {"PUT", "PATCH", "DELETE", "POST"}
+    # ADR-085: POST /audit-logs/checkpoints appends a signed checkpoint over the
+    # chain head. It never edits or deletes an audit row, writes no audit rows of
+    # its own, and needs audit.view. Nothing broader is allowed.
+    allowed = {("POST", "/api/v1/audit-logs/checkpoints")}
     offending: list[str] = []
     for route in app.routes:
         if not isinstance(route, APIRoute):
             continue
         if not route.path.startswith("/api/v1/audit-logs"):
             continue
-        found = route.methods & mutating_methods
+        found = {m for m in route.methods & mutating_methods if (m, route.path) not in allowed}
         if found:
             offending.append(f"{found} {route.path}")
     assert offending == [], f"Mutation route(s) found under /audit-logs: {offending}"

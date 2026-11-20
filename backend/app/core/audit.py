@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -37,25 +37,26 @@ def record_audit_event(
         text("SELECT pg_advisory_xact_lock(hashtext(:tenant_id))"), {"tenant_id": str(tenant_id)}
     )
 
-    # Tiebreak on `id` as well as `created_at`: two events can land on the
-    # same timestamp (Python-computed before insert, not DB-generated), and
-    # without a secondary sort key Postgres's order for ties is undefined.
-    # `verify_chain` below walks rows in (created_at, id) order, so this
-    # query must agree with that ordering (reversed) or a tied pair can be
-    # chained in one order here and re-walked in the other order there,
-    # which looks like tamper/corruption even though nothing was tampered.
-    prev_hash = (
-        db.execute(
-            select(AuditLog.record_hash)
-            .where(AuditLog.tenant_id == tenant_id)
-            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
-        )
-        .scalars()
-        .first()
-        or GENESIS_HASH
-    )
+    # The chain order must equal the order `verify_chain` re-walks: (created_at, id).
+    # `id` is a random UUID, so it can only break a tie arbitrarily -- and the
+    # Python clock ticks coarsely on some platforms (about 1-16 ms on Windows), so
+    # back-to-back events can get the same timestamp. A tied pair was then chained
+    # in write order but re-walked in random-UUID order, which looked like tampering
+    # on an untouched log. So under the advisory lock above, each event is stamped
+    # strictly later than the chain head, whatever the clock says (this also covers a
+    # clock that steps backwards). `id` still sorts the query deterministically but
+    # never decides the order, because no two events in a tenant share a timestamp.
+    head = db.execute(
+        select(AuditLog.record_hash, AuditLog.created_at)
+        .where(AuditLog.tenant_id == tenant_id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(1)
+    ).first()
+    prev_hash = head.record_hash if head else GENESIS_HASH
 
     created_at = datetime.now(UTC)
+    if head is not None and created_at <= head.created_at:
+        created_at = head.created_at + timedelta(microseconds=1)
     payload = {
         "tenant_id": str(tenant_id),
         "user_id": str(user_id) if user_id else None,

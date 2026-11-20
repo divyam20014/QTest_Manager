@@ -13,6 +13,9 @@ export interface MeResponse {
   // exist. Prefer `permissions` for access checks; use `role` for display.
   role: string
   permissions: string[]
+  // ADR-093: effective for this user (always false for Manager/Admin).
+  reports_hidden?: boolean
+  tester_case_scope?: boolean
 }
 
 export function hasPermission(user: MeResponse | null, permission: string): boolean {

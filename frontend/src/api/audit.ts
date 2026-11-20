@@ -14,11 +14,51 @@ export interface AuditLogEntry {
   created_at: string
 }
 
+// ADR-085: signed checkpoints over the audit chain.
+export type CheckpointFailureReason =
+  | 'signature_invalid'
+  | 'anchor_missing'
+  | 'anchor_hash_mismatch'
+  | 'count_mismatch'
+  | 'checkpoint_chain_broken'
+
+export interface CheckpointFailure {
+  checkpoint_id: string
+  reason: CheckpointFailureReason
+}
+
 export interface ChainVerificationResult {
   valid: boolean
   checked_count: number
   broken_at_id: string | null
+  checkpoints_checked: number
+  checkpoint_failure: CheckpointFailure | null
 }
+
+export interface AuditCheckpoint {
+  id: string
+  scope: string
+  last_record_id: string
+  last_created_at: string
+  record_count: number
+  head_hash: string
+  prev_checkpoint_hash: string
+  checkpoint_hash: string
+  signature: string
+  created_at: string
+}
+
+export interface CreateCheckpointResult {
+  created: boolean
+  reason: string | null
+  checkpoint: AuditCheckpoint | null
+}
+
+export function createAuditCheckpoint(): Promise<CreateCheckpointResult> {
+  return apiFetch<CreateCheckpointResult>('/audit-logs/checkpoints', { method: 'POST' })
+}
+
+export const AUDIT_CHECKPOINT_EXPORT_PATH = '/audit-logs/checkpoints/export'
 
 export interface AuditLogFilters {
   action?: string

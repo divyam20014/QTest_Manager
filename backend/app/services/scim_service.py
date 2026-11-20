@@ -39,6 +39,7 @@ from app.schemas.scim import (
     ScimUserOut,
     ScimUserReplaceRequest,
 )
+from app.services.user_service import refuse_if_erased
 
 _DEFAULT_SCIM_ROLE = "tester"
 
@@ -118,6 +119,7 @@ def replace_user(
     ).scalar_one_or_none()
     if user is None:
         raise NotFoundError("User not found")
+    refuse_if_erased(user)
 
     if req.userName is not None:
         user.email = req.userName
@@ -149,6 +151,7 @@ def patch_user(db: Session, tenant_id: UUID, user_id: UUID, req: ScimPatchReques
     ).scalar_one_or_none()
     if user is None:
         raise NotFoundError("User not found")
+    refuse_if_erased(user)
 
     for operation in req.Operations:
         if operation.op.lower() != "replace":

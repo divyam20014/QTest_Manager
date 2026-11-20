@@ -1,14 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, require_permission
 from app.core.db import get_db
 from app.core.responses import envelope
-from app.services import audit_service
+from app.schemas.audit import AuditCheckpointOut, CreateCheckpointResult
+from app.services import audit_checkpoint_service, audit_service
 
 router = APIRouter(prefix="/audit-logs", tags=["audit"])
 
@@ -71,8 +72,58 @@ def export_audit_logs(
 
 @router.get("/verify-chain")
 def verify_chain(
+    since_checkpoint: bool = False,
     ctx: SessionContext = Depends(require_permission("audit.view")),
     db: Session = Depends(get_db),
 ) -> dict:
-    result = audit_service.verify_chain(db, ctx.tenant_id)
+    result = audit_service.verify_chain(db, ctx.tenant_id, since_checkpoint=since_checkpoint)
     return envelope(result.model_dump(mode="json"))
+
+
+# ADR-085: signed checkpoints. The scope is always derived from the session's
+# tenant (never from input), so a tenant only ever sees its own.
+@router.get("/checkpoints")
+def list_checkpoints(
+    ctx: SessionContext = Depends(require_permission("audit.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    rows = audit_checkpoint_service.list_checkpoints(
+        db, audit_checkpoint_service.tenant_scope(ctx.tenant_id)
+    )
+    return envelope([AuditCheckpointOut.model_validate(r).model_dump(mode="json") for r in rows])
+
+
+@router.post("/checkpoints")
+def create_checkpoint(
+    ctx: SessionContext = Depends(require_permission("audit.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    checkpoint = audit_checkpoint_service.create_checkpoint(
+        db, audit_checkpoint_service.tenant_scope(ctx.tenant_id)
+    )
+    result = CreateCheckpointResult(
+        created=checkpoint is not None,
+        reason=None if checkpoint else "no_new_events",
+        checkpoint=AuditCheckpointOut.model_validate(checkpoint) if checkpoint else None,
+    )
+    return envelope(result.model_dump(mode="json"))
+
+
+@router.get("/checkpoints/export")
+def export_checkpoints(
+    ctx: SessionContext = Depends(require_permission("audit.view")),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """A JSON document operators store off-box (object-lock/WORM bucket, ticket,
+    SIEM). It carries only hashes, counts and ids, never audit content."""
+    scope = audit_checkpoint_service.tenant_scope(ctx.tenant_id)
+    rows = audit_checkpoint_service.list_checkpoints(db, scope)
+    body = {
+        "scope": scope,
+        "exported_at": datetime.now(UTC).isoformat(),
+        "checkpoints": [AuditCheckpointOut.model_validate(r).model_dump(mode="json") for r in rows],
+    }
+    return JSONResponse(
+        body,
+        headers={"Content-Disposition": 'attachment; filename="audit_checkpoints.json"'},
+    )

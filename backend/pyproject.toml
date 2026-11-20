@@ -8,6 +8,12 @@ select = ["E", "F", "I", "UP", "B"]
 # rule's premise (mutable default args) doesn't apply to FastAPI's DI system.
 ignore = ["B008"]
 
+# The demo seed script is mostly prose data (titles, descriptions, steps). Wrapping
+# those strings by hand risks silently changing the seeded text, so only the
+# line-length rule is relaxed for that one file.
+[tool.ruff.lint.per-file-ignores]
+"scripts/seed_demo_tenant.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = false

@@ -125,9 +125,7 @@ def enforce_mfa_verified(session_row: SessionModel) -> bool:
 PolicyRule = Callable[[Any, Any], bool | None]
 
 
-def _ip_allowlist_ctx_rule(
-    ctx: Any, resource: Any = None, *, db: Session, **_: Any
-) -> bool | None:
+def _ip_allowlist_ctx_rule(ctx: Any, resource: Any = None, *, db: Session, **_: Any) -> bool | None:
     from app.core.auth import client_ip  # local import avoids a cycle with auth.py
 
     request = resource if resource is not None else None
@@ -172,8 +170,12 @@ def _resource_not_locked_ctx_rule(
     defect_id = request.path_params.get("defect_id") if request is not None else None
     if defect_id is None:
         return None  # not applicable -- this rule is only wired to defect_id routes
+    try:
+        defect_uuid = UUID(str(defect_id))
+    except ValueError:
+        return None  # malformed id: path validation answers it with a 422 (ADR-088)
     status = db.execute(
-        select(Defect.status).where(Defect.tenant_id == ctx.tenant_id, Defect.id == UUID(defect_id))
+        select(Defect.status).where(Defect.tenant_id == ctx.tenant_id, Defect.id == defect_uuid)
     ).scalar_one_or_none()
     if status is None:
         return None  # let the service layer raise its own NotFoundError
@@ -185,10 +187,56 @@ def _resource_not_locked_ctx_rule(
     return True
 
 
+def _access_rules_ctx_rule(
+    ctx: Any,
+    resource: Any = None,
+    *,
+    db: Session,
+    permission_code: str | None = None,
+    project_id: UUID | None = None,
+    **_: Any,
+) -> bool | None:
+    """RBAC Phase 4 (ADR-092): tenant time/environment access rules (release
+    freeze windows). `resource` is the inbound Request (same convention as the
+    other ctx rules). Only mutating requests are ever evaluated; a tenant with
+    no enabled rules is never affected. Raises `blocked_by_access_rule`."""
+    from app.core import access_rules
+
+    if resource is None or permission_code is None:
+        return None
+    access_rules.enforce(
+        db,
+        tenant_id=ctx.tenant_id,
+        role_code=ctx.role_code,
+        action_code=permission_code,
+        method=resource.method,
+        path_params=resource.path_params,
+        project_id=project_id,
+    )
+    return True
+
+
 _CTX_POLICY_RULES: dict[str, Callable[..., bool | None]] = {
     "ip_allowlist": _ip_allowlist_ctx_rule,
     "resource_not_locked": _resource_not_locked_ctx_rule,
+    "access_rules": _access_rules_ctx_rule,
 }
+
+
+def apply_access_rules(
+    ctx: Any,
+    request: Request,
+    db: Session,
+    permission_code: str,
+    project_id: UUID | None = None,
+) -> None:
+    """Called by the `require_*permission` dependencies after the permission
+    check passes. Read-only methods return before touching the database."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    _CTX_POLICY_RULES["access_rules"](
+        ctx, request, db=db, permission_code=permission_code, project_id=project_id
+    )
 
 
 def require_policy(*rule_names: str):

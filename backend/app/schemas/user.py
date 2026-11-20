@@ -46,6 +46,9 @@ class UserOut(BaseModel):
     # across every session this user has ever had, or null if they've
     # never logged in.
     last_login_at: datetime | None = None
+    # ADR-086: set once the user's personal data has been erased; name/email
+    # are then placeholders and clients should not present them as contact data.
+    erased_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -74,3 +77,22 @@ class UserInviteOut(BaseModel):
 
 class InviteAcceptRequest(BaseModel):
     password: StrongPassword
+
+
+class UserEraseRequest(BaseModel):
+    """ADR-086. `dry_run` defaults to true so a bare call can never erase
+    anything; a real run must also repeat the user's current email."""
+
+    dry_run: bool = True
+    confirm_email: str | None = None
+
+
+class UserErasePreview(BaseModel):
+    user_id: UUID
+    dry_run: bool
+    erased: bool
+    # What is changed (or, for a dry run, would be changed), by table.
+    changes: dict[str, int]
+    # What is deliberately kept, by table (authorship stays as the pseudonymous user id).
+    retained: dict[str, int]
+    notes: list[str]

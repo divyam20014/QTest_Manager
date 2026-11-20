@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.db import get_db, set_tenant_context
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.policy import (
+    apply_access_rules,
     enforce_ip_allowlist,
     enforce_mfa_verified,
     resolve_project_id_for_resource,
@@ -84,9 +85,7 @@ def _load_role_and_permissions(
     if user_row is None or not user_row.is_active:
         raise UnauthorizedError("User not found or deactivated")
 
-    role_row = db.execute(
-        select(Role.code, Role.name).where(Role.id == user_row.role_id)
-    ).one()
+    role_row = db.execute(select(Role.code, Role.name).where(Role.id == user_row.role_id)).one()
 
     permission_codes = set(
         db.execute(
@@ -163,9 +162,14 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
 
 
 def require_permission(code: str):
-    def _checker(ctx: SessionContext = Depends(get_current_context)) -> SessionContext:
+    def _checker(
+        request: Request,
+        ctx: SessionContext = Depends(get_current_context),
+        db: Session = Depends(get_db),
+    ) -> SessionContext:
         if code not in ctx.permissions:
             raise ForbiddenError(f"Missing permission: {code}")
+        apply_access_rules(ctx, request, db, code)  # RBAC Phase 4 (ADR-092)
         return ctx
 
     return _checker
@@ -218,12 +222,14 @@ def require_project_permission(code: str):
 
     def _checker(
         project_id: UUID,
+        request: Request,
         ctx: SessionContext = Depends(get_current_context),
         db: Session = Depends(get_db),
     ) -> SessionContext:
         effective = get_effective_permissions_for_project(db, ctx, project_id)
         if code not in effective:
             raise ForbiddenError(f"Missing permission: {code}")
+        apply_access_rules(ctx, request, db, code, project_id)  # RBAC Phase 4 (ADR-092)
         return ctx
 
     return _checker
@@ -257,10 +263,17 @@ def require_resource_permission(code: str, resource_type: str):
         ctx: SessionContext = Depends(get_current_context),
         db: Session = Depends(get_db),
     ) -> SessionContext:
+        # GAP-89/ADR-088: a malformed id here is not this dependency's error to
+        # raise (it used to be a bare `UUID(raw)` -> ValueError -> 500). Treat it as
+        # unresolvable and let FastAPI's own path validation return the 422.
         raw_id = request.path_params.get(id_param)
+        try:
+            resource_id = UUID(str(raw_id)) if raw_id is not None else None
+        except ValueError:
+            resource_id = None
         project_id = (
-            resolve_project_id_for_resource(db, ctx.tenant_id, resource_type, UUID(raw_id))
-            if raw_id is not None
+            resolve_project_id_for_resource(db, ctx.tenant_id, resource_type, resource_id)
+            if resource_id is not None
             else None
         )
         effective = (
@@ -270,6 +283,7 @@ def require_resource_permission(code: str, resource_type: str):
         )
         if code not in effective:
             raise ForbiddenError(f"Missing permission: {code}")
+        apply_access_rules(ctx, request, db, code, project_id)  # RBAC Phase 4 (ADR-092)
         return ctx
 
     return _checker

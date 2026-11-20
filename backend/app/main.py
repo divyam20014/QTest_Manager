@@ -4,13 +4,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
+from sqlalchemy.exc import DataError
 
 from app.api import (
+    access_rules,
     ai,
     attachments,
     audit,
@@ -19,6 +22,7 @@ from app.api import (
     comments,
     csv_import,
     defects,
+    docs,
     execution,
     export,
     field_customization,
@@ -49,12 +53,14 @@ from app.api import (
 from app.api import (
     settings as settings_api,
 )
+from app.core.auth import client_ip
 from app.core.config import get_settings, validate_for_production
 from app.core.db import engine
 from app.core.errors import AppError
 from app.core.logging import configure_logging, logger, request_id_var
 from app.core.rate_limit import limiter
 from app.core.responses import envelope
+from app.services.platform_audit_service import client_ip_var
 
 settings = get_settings()
 # Deployment-hardening pass: fail loudly at import time (before the app
@@ -116,6 +122,17 @@ async def correlation_id(request: Request, call_next):
 
 
 @app.middleware("http")
+async def platform_audit_client_ip(request: Request, call_next):
+    # ADR-082: lets the platform audit trail record the caller's IP from
+    # anywhere in the service layer without threading `request` through it.
+    token = client_ip_var.set(client_ip(request))
+    try:
+        return await call_next(request)
+    finally:
+        client_ip_var.reset(token)
+
+
+@app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
@@ -135,6 +152,42 @@ def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content={"data": None, "error": {"code": exc.code, "message": exc.message}},
+    )
+
+
+# ADR-088: FastAPI's default 422 body is `{"detail": [...]}`, which is not this
+# API's envelope (the frontend showed "Request failed"). Same status, enveloped.
+@app.exception_handler(RequestValidationError)
+def handle_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    first = exc.errors()[0] if exc.errors() else {}
+    where = ".".join(str(part) for part in first.get("loc", ()) if part != "body")
+    message = first.get("msg", "Invalid request")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "data": None,
+            "error": {
+                "code": "validation_error",
+                "message": f"{where}: {message}" if where else message,
+            },
+        },
+    )
+
+
+# ADR-088: a value the database refuses to adapt/cast (e.g. a malformed UUID that
+# slipped past schema typing into a raw query) is a bad request, not a server
+# fault. Never echoes the driver message.
+@app.exception_handler(DataError)
+def handle_db_data_error(request: Request, exc: DataError) -> JSONResponse:
+    logger.warning(
+        "DataError on %s %s: %s", request.method, request.url.path, type(exc.orig).__name__
+    )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "data": None,
+            "error": {"code": "invalid_value", "message": "A supplied value is malformed."},
+        },
     )
 
 
@@ -183,6 +236,7 @@ app.include_router(execution.router, prefix="/api/v1")
 app.include_router(defects.router, prefix="/api/v1")
 app.include_router(reporting.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
+app.include_router(docs.router, prefix="/api/v1")
 app.include_router(attachments.router, prefix="/api/v1")
 app.include_router(comments.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
@@ -201,6 +255,7 @@ app.include_router(field_customization.router, prefix="/api/v1")
 app.include_router(templates.router, prefix="/api/v1")
 app.include_router(test_data.router, prefix="/api/v1")
 app.include_router(service_tokens.router, prefix="/api/v1")
+app.include_router(access_rules.router, prefix="/api/v1")
 app.include_router(roles.router, prefix="/api/v1")
 app.include_router(ci.router, prefix="/api/v1")
 app.include_router(report_schedule.router, prefix="/api/v1")

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +38,7 @@ def to_out(db: Session, user: User) -> UserOut:
         is_active=user.is_active,
         created_at=user.created_at,
         last_login_at=last_login_at,
+        erased_at=user.pseudonymized_at,
     )
 
 
@@ -127,10 +128,16 @@ def _get_user_or_404(db: Session, tenant_id: UUID, user_id: UUID) -> User:
     return user
 
 
+def refuse_if_erased(user: User) -> None:
+    if user.pseudonymized_at is not None:
+        raise ConflictError("This user's personal data has been erased; the account is closed")
+
+
 def update_user(
     db: Session, tenant_id: UUID, actor_user_id: UUID, user_id: UUID, req: UserUpdateRequest
 ) -> User:
     user = _get_user_or_404(db, tenant_id, user_id)
+    refuse_if_erased(user)
 
     # Any role change away from the system Admin role -- whether via the
     # legacy `role` code or a `role_id` pointing at any other role,
@@ -175,6 +182,7 @@ def reset_password(
     the target user so a credential reset (e.g. after suspected compromise)
     can't be bypassed by an already-open session."""
     user = _get_user_or_404(db, tenant_id, user_id)
+    refuse_if_erased(user)
     user.password_hash = hash_password(new_password)
 
     now = datetime.now(UTC)
@@ -189,29 +197,6 @@ def reset_password(
         tenant_id=tenant_id,
         user_id=actor_user_id,
         action="user.password_reset",
-        entity_type="user",
-        entity_id=user.id,
-    )
-    db.commit()
-    return user
-
-
-def gdpr_erase(db: Session, tenant_id: UUID, actor_user_id: UUID, user_id: UUID) -> User:
-    """Pseudonymizes PII while retaining the row for audit continuity
-    (ADR-009). Does not physically delete the user or touch audit_logs."""
-    user = _get_user_or_404(db, tenant_id, user_id)
-
-    pseudonym = f"user_{uuid4().hex}"
-    user.name = pseudonym
-    user.email = f"{pseudonym}@erased.invalid"
-    user.pseudonymized_at = datetime.now(UTC)
-    user.is_active = False
-
-    record_audit_event(
-        db,
-        tenant_id=tenant_id,
-        user_id=actor_user_id,
-        action="user.gdpr_erased",
         entity_type="user",
         entity_id=user.id,
     )

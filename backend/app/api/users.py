@@ -10,16 +10,17 @@ from app.core.auth import (
     require_permission,
 )
 from app.core.db import get_db
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limiter, scaled
 from app.core.responses import envelope
 from app.schemas.user import (
     InviteAcceptRequest,
     PasswordResetRequest,
     UserCreateRequest,
+    UserEraseRequest,
     UserInviteRequest,
     UserUpdateRequest,
 )
-from app.services import audit_service, user_invite_service, user_service
+from app.services import audit_service, user_erasure_service, user_invite_service, user_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -86,14 +87,19 @@ def reset_password(
     return envelope(user_service.to_out(db, user).model_dump())
 
 
-@router.post("/{user_id}/gdpr-erase")
-def gdpr_erase(
+# ADR-086 (GAP-03): replaces the earlier bare `/gdpr-erase` endpoint. Dry run by
+# default; a real run needs the user's email typed back and user.erase (Admin only).
+@router.post("/{user_id}/erase")
+@limiter.limit(scaled(10))
+def erase_user(
     user_id: UUID,
-    ctx: SessionContext = Depends(require_permission("user.manage")),
+    req: UserEraseRequest,
+    request: Request,
+    ctx: SessionContext = Depends(require_permission("user.erase")),
     db: Session = Depends(get_db),
 ) -> dict:
-    user = user_service.gdpr_erase(db, ctx.tenant_id, ctx.user_id, user_id)
-    return envelope(user_service.to_out(db, user).model_dump())
+    result = user_erasure_service.erase_user(db, ctx.tenant_id, ctx.user_id, user_id, req)
+    return envelope(result.model_dump(mode="json"))
 
 
 # Tier 1 / ADR-053 (SR-2.4/5.11, SAAS-GAP-8): replaces admin-sets-the-

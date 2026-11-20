@@ -13,7 +13,7 @@ from app.core.auth import (
 )
 from app.core.db import get_db, get_identify_db
 from app.core.logging import logger
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limiter, scaled
 from app.core.responses import envelope
 from app.models.identity import User
 from app.schemas.auth import (
@@ -26,7 +26,13 @@ from app.schemas.auth import (
     TenantMatchOut,
 )
 from app.schemas.platform import TenantCreateRequest, TenantCreateResponse, TenantOut
-from app.services import auth_service, identify_service, platform_service, sample_data_service
+from app.services import (
+    auth_service,
+    identify_service,
+    platform_service,
+    sample_data_service,
+    tester_visibility,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -67,7 +73,7 @@ def signup(req: TenantCreateRequest, request: Request, db: Session = Depends(get
 # is no tenant row to attribute the event to. A security-relevant log line
 # (below) covers the same need without forcing a schema change.
 @router.post("/identify")
-@limiter.limit("8/minute")
+@limiter.limit(scaled(8))
 def identify(
     req: IdentifyRequest, request: Request, db: Session = Depends(get_identify_db)
 ) -> dict:
@@ -85,7 +91,7 @@ def identify(
 
 
 @router.post("/login")
-@limiter.limit("10/minute")
+@limiter.limit(scaled(10))
 def login(
     req: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)
 ) -> dict:
@@ -100,7 +106,7 @@ def login(
 
 
 @router.post("/mfa/verify")
-@limiter.limit("10/minute")
+@limiter.limit(scaled(10))
 def verify_mfa(
     req: MfaVerifyRequest, request: Request, response: Response, db: Session = Depends(get_db)
 ) -> dict:
@@ -132,6 +138,8 @@ def me(ctx: SessionContext = Depends(get_current_context), db: Session = Depends
             name=user.name,
             role=ctx.display_role,
             permissions=sorted(ctx.permissions),
+            reports_hidden=tester_visibility.reports_hidden(db, ctx.tenant_id, ctx.role_code),
+            tester_case_scope=tester_visibility.case_scope_active(db, ctx.tenant_id, ctx.role_code),
         ).model_dump()
     )
 

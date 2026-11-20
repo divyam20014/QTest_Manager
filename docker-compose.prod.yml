@@ -55,6 +55,8 @@ services:
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-no-reply@example.com}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:?Set CORS_ALLOW_ORIGINS in .env, e.g. https://app.example.com}
       AI_CREDENTIAL_ENCRYPTION_KEY: ${AI_CREDENTIAL_ENCRYPTION_KEY:?Set AI_CREDENTIAL_ENCRYPTION_KEY in .env}
+      # ADR-085: signs audit-chain checkpoints; keep it outside the database.
+      AUDIT_CHECKPOINT_HMAC_KEY: ${AUDIT_CHECKPOINT_HMAC_KEY:?Set AUDIT_CHECKPOINT_HMAC_KEY in .env (>= 32 chars, unique)}
       SENTRY_DSN: ${SENTRY_DSN:-}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
@@ -103,6 +105,8 @@ services:
       ENVIRONMENT: production
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      # ADR-085: the worker writes the periodic audit checkpoints.
+      AUDIT_CHECKPOINT_HMAC_KEY: ${AUDIT_CHECKPOINT_HMAC_KEY:?Set AUDIT_CHECKPOINT_HMAC_KEY in .env (>= 32 chars, unique)}
     depends_on:
       api:
         condition: service_healthy

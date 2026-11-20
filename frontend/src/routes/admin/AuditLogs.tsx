@@ -1,7 +1,16 @@
 import { useState } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 
-import { AUDIT_PAGE_SIZE, auditExportUrl, listAuditLogs, verifyAuditChain, type AuditLogEntry } from '@/api/audit'
+import {
+  AUDIT_CHECKPOINT_EXPORT_PATH,
+  AUDIT_PAGE_SIZE,
+  auditExportUrl,
+  createAuditCheckpoint,
+  listAuditLogs,
+  verifyAuditChain,
+  type AuditLogEntry,
+} from '@/api/audit'
+import { downloadFile } from '@/api/client'
 import { listUsers } from '@/api/users'
 import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/select'
+import { checkpointStatusText, createdCheckpointText } from '@/lib/auditCheckpoints'
 import { humanizeActionCode, humanizeKey } from '@/lib/labels'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
@@ -78,6 +88,18 @@ export function AuditLogs() {
     enabled: verifyRequested,
   })
 
+  // ADR-085: signed checkpoints. The page is already gated on audit.view, which
+  // is also what the API requires for these three calls.
+  const checkpointMutation = useMutation({
+    mutationFn: createAuditCheckpoint,
+    onSuccess: () => {
+      if (verifyRequested) void verifyQuery.refetch()
+    },
+  })
+  const exportCheckpointsMutation = useMutation({
+    mutationFn: () => downloadFile(AUDIT_CHECKPOINT_EXPORT_PATH, 'audit_checkpoints.json'),
+  })
+
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
@@ -99,13 +121,51 @@ export function AuditLogs() {
             >
               {verifyQuery.isFetching ? 'Verifying…' : 'Verify Chain Integrity'}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => checkpointMutation.mutate()}
+              disabled={checkpointMutation.isPending}
+            >
+              {checkpointMutation.isPending ? 'Creating…' : 'Create checkpoint'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportCheckpointsMutation.mutate()}
+              disabled={exportCheckpointsMutation.isPending}
+            >
+              Export checkpoints
+            </Button>
           </>
         }
       />
 
+      <div role="status" aria-live="polite" data-testid="audit-checkpoint-result" className="text-xs empty:hidden">
+        {checkpointMutation.isError && (
+          <span className="text-[var(--status-serious)]">
+            {checkpointMutation.error instanceof Error
+              ? checkpointMutation.error.message
+              : 'Could not create the checkpoint.'}
+          </span>
+        )}
+        {checkpointMutation.data && (
+          <span>
+            {createdCheckpointText(
+              checkpointMutation.data.created,
+              checkpointMutation.data.checkpoint?.record_count ?? null,
+            )}
+          </span>
+        )}
+        {exportCheckpointsMutation.isError && (
+          <span className="text-[var(--status-serious)]">Could not export the checkpoints.</span>
+        )}
+      </div>
+
       {verifyRequested && verifyQuery.data && (
         <div
           role={verifyQuery.data.valid ? 'status' : 'alert'}
+          data-testid="audit-verify-result"
           className={`rounded-md border p-3 text-xs ${
             verifyQuery.data.valid
               ? 'border-[var(--status-good)] bg-[var(--status-good-bg)] text-[var(--status-good)]'
@@ -114,7 +174,12 @@ export function AuditLogs() {
         >
           {verifyQuery.data.valid
             ? `Chain verified: ${verifyQuery.data.checked_count} records, hashes consistent, no gaps (ADR-006).`
-            : `Chain integrity FAILED at record ${verifyQuery.data.broken_at_id} — ${verifyQuery.data.checked_count} records checked.`}
+            : verifyQuery.data.broken_at_id
+              ? `Chain integrity FAILED at record ${verifyQuery.data.broken_at_id} — ${verifyQuery.data.checked_count} records checked.`
+              : `Chain links are consistent (${verifyQuery.data.checked_count} records), but verification FAILED.`}
+          <p data-testid="audit-checkpoint-status" className="mt-1">
+            {checkpointStatusText(verifyQuery.data)}
+          </p>
         </div>
       )}
 
@@ -239,7 +304,9 @@ export function AuditLogs() {
                 <th className="px-4 py-2 font-medium">Action</th>
                 <th className="px-4 py-2 font-medium">Entity</th>
                 <th className="px-4 py-2 font-medium">Record Hash</th>
-                <th className="px-4 py-2 font-medium"></th>
+                <th className="px-4 py-2 font-medium">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>

@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
-from app.models.mixins import TenantScopedMixin
+from app.models.mixins import TenantScopedMixin, UUIDPKMixin
 
 
 class AuditLog(Base, TenantScopedMixin):
@@ -42,3 +42,24 @@ class AuditLog(Base, TenantScopedMixin):
     prev_hash: Mapped[str] = mapped_column(String, nullable=False)
     record_hash: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditChainCheckpoint(Base, UUIDPKMixin):
+    """ADR-085: an HMAC-signed anchor over the head of one hash chain
+    (scope 'platform' or 'tenant:<uuid>'). Insert-only for the app role. It holds
+    only ids, counts and hashes -- never audit content -- so it has no RLS;
+    the API filters by scope. No FK to tenants: it outlives its tenant."""
+
+    __tablename__ = "audit_chain_checkpoints"
+
+    scope: Mapped[str] = mapped_column(String, nullable=False)
+    last_record_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    last_created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    head_hash: Mapped[str] = mapped_column(String, nullable=False)
+    prev_checkpoint_hash: Mapped[str] = mapped_column(String, nullable=False)
+    checkpoint_hash: Mapped[str] = mapped_column(String, nullable=False)
+    signature: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

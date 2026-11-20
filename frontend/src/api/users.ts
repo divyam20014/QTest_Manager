@@ -10,6 +10,8 @@ export interface User {
   is_active: boolean
   created_at: string
   last_login_at: string | null
+  // ADR-086: set once the user's personal data has been erased.
+  erased_at?: string | null
 }
 
 export interface UserCreateRequest {
@@ -77,5 +79,26 @@ export function acceptInvite(token: string, password: string): Promise<User> {
   return apiFetch<User>(`/users/invite/${encodeURIComponent(token)}/accept`, {
     method: 'POST',
     body: JSON.stringify({ password }),
+  })
+}
+
+// ADR-086 (GAP-03): erase a user's personal data. Dry run by default; a real run
+// must repeat the user's email.
+export interface UserErasePreview {
+  user_id: string
+  dry_run: boolean
+  erased: boolean
+  changes: Record<string, number>
+  retained: Record<string, number>
+  notes: string[]
+}
+
+export function eraseUser(
+  userId: string,
+  req: { dry_run: boolean; confirm_email?: string },
+): Promise<UserErasePreview> {
+  return apiFetch<UserErasePreview>(`/users/${userId}/erase`, {
+    method: 'POST',
+    body: JSON.stringify(req),
   })
 }

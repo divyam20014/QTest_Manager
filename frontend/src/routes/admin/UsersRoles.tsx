@@ -7,6 +7,7 @@ import { listRoles } from '@/api/roles'
 import {
   createUser,
   deactivateUser,
+  eraseUser,
   inviteUser,
   listUsers,
   resetPassword,
@@ -23,6 +24,7 @@ import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { hasPermission } from '@/api/auth'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useIsMobile } from '@/lib/useMediaQuery'
@@ -45,6 +47,8 @@ export function UsersRoles() {
   const [createOpen, setCreateOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [resetTarget, setResetTarget] = useState<User | null>(null)
+  const [eraseTarget, setEraseTarget] = useState<User | null>(null)
+  const canErase = hasPermission(currentUser, 'user.erase')
   const { show: showToast } = useToast()
   const { ask, dialog: confirmDialog } = useConfirm()
 
@@ -67,7 +71,7 @@ export function UsersRoles() {
   // trip per keystroke isn't warranted.
   const filteredUsers = (usersQuery.data ?? [])
     .filter((u) => {
-      if (search && !`${u.name} ${u.email}`.toLowerCase().includes(search.toLowerCase())) return false
+      if (search && !`${u.name} ${u.erased_at ? '' : u.email}`.toLowerCase().includes(search.toLowerCase())) return false
       if (roleFilter && u.role_id !== roleFilter) return false
       if (statusFilter === 'active' && !u.is_active) return false
       if (statusFilter === 'inactive' && u.is_active) return false
@@ -150,16 +154,21 @@ export function UsersRoles() {
       key: 'status',
       header: 'Status',
       card: 'badge',
-      cell: (u) => <Badge tone={u.is_active ? 'positive' : 'neutral'}>{u.is_active ? 'Active' : 'Deactivated'}</Badge>,
+      cell: (u) =>
+        u.erased_at ? (
+          <Badge tone="neutral">Erased</Badge>
+        ) : (
+          <Badge tone={u.is_active ? 'positive' : 'neutral'}>{u.is_active ? 'Active' : 'Deactivated'}</Badge>
+        ),
     },
     {
       key: 'email',
       header: 'Email',
       cardFull: true,
-      cell: (u) => u.email,
+      cell: (u) => (u.erased_at ? <span className="text-[var(--muted-foreground)]">Erased</span> : u.email),
       cardCell: (u) => (
         <span className="block min-w-0 [overflow-wrap:anywhere]">
-          {u.email}
+          {u.erased_at ? <span className="text-[var(--muted-foreground)]">Erased</span> : u.email}
         </span>
       ),
     },
@@ -170,7 +179,7 @@ export function UsersRoles() {
         <Select
           aria-label={`Role for ${u.name}`}
           value={u.role_id}
-          disabled={u.id === currentUser?.user_id}
+          disabled={u.id === currentUser?.user_id || !!u.erased_at}
           onChange={(e) => roleMutation.mutate({ id: u.id, roleId: e.target.value })}
           className="w-40 max-md:w-full"
         >
@@ -321,9 +330,11 @@ export function UsersRoles() {
         }
         rowActions={(u) => (
           <div className="flex flex-wrap justify-end gap-2 md:flex-nowrap">
-            <Button variant="outline" size="sm" onClick={() => setResetTarget(u)}>
-              Reset Password
-            </Button>
+            {!u.erased_at && (
+              <Button variant="outline" size="sm" onClick={() => setResetTarget(u)}>
+                Reset Password
+              </Button>
+            )}
             {u.is_active && u.id !== currentUser?.user_id && (
               <Button
                 variant="outline"
@@ -340,9 +351,19 @@ export function UsersRoles() {
                 Deactivate
               </Button>
             )}
-            {!u.is_active && (
+            {!u.is_active && !u.erased_at && (
               <Button variant="outline" size="sm" onClick={() => activateMutation.mutate(u.id)}>
                 Activate
+              </Button>
+            )}
+            {canErase && !u.erased_at && u.id !== currentUser?.user_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Erase personal data for ${u.name}`}
+                onClick={() => setEraseTarget(u)}
+              >
+                Erase personal data
               </Button>
             )}
           </div>
@@ -356,6 +377,7 @@ export function UsersRoles() {
         user={resetTarget}
         onClose={() => setResetTarget(null)}
       />
+      <EraseUserDialog user={eraseTarget} onClose={() => setEraseTarget(null)} />
     </div>
   )
 }
@@ -402,6 +424,133 @@ function ResetPasswordDialog({ user, onClose }: { user: User | null; onClose: ()
           </Button>
           <Button size="sm" disabled={resetMutation.isPending} onClick={() => resetMutation.mutate()}>
             {resetMutation.isPending ? 'Resetting…' : 'Reset Password'}
+          </Button>
+        </DialogFooter>
+      </div>
+    </Dialog>
+  )
+}
+
+const ERASE_LABELS: Record<string, string> = {
+  users: 'Profile (name and email replaced)',
+  sessions_revoked: 'Active sessions signed out',
+  mfa_challenges_deleted: 'Verification codes deleted',
+  notifications_deleted: 'Notifications deleted',
+  notifications_naming_user_redacted: 'Others’ notifications naming them, redacted',
+  user_invites_anonymised: 'Invites for their email anonymised',
+  report_schedule_recipients_removed: 'Report schedules: address removed',
+}
+const RETAINED_LABELS: Record<string, string> = {
+  audit_logs_as_actor: 'Audit entries they performed',
+  audit_logs_about_user: 'Audit entries about them',
+  comments: 'Comments they wrote',
+  defects_reported: 'Defects they reported',
+}
+
+// ADR-086 (GAP-03): irreversible anonymisation. Shows the server's dry-run
+// preview first, and only enables the real run once the user's current email
+// has been typed back.
+function EraseUserDialog({ user, onClose }: { user: User | null; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
+  const [typed, setTyped] = useState('')
+
+  const previewQuery = useQuery({
+    queryKey: ['user-erase-preview', user?.id],
+    queryFn: () => eraseUser(user!.id, { dry_run: true }),
+    enabled: !!user,
+    retry: false,
+    gcTime: 0,
+  })
+
+  const eraseMutation = useMutation({
+    mutationFn: () => eraseUser(user!.id, { dry_run: false, confirm_email: typed.trim() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      handleClose()
+      showToast('success', 'Personal data erased')
+    },
+    // No onError toast -- `serverError` below renders this inline.
+  })
+
+  const serverError =
+    eraseMutation.error instanceof ApiError
+      ? eraseMutation.error.message
+      : previewQuery.error instanceof ApiError
+        ? previewQuery.error.message
+        : null
+
+  function handleClose() {
+    setTyped('')
+    eraseMutation.reset()
+    onClose()
+  }
+
+  if (!user) return null
+  const preview = previewQuery.data
+  const emailOk = typed.trim().toLowerCase() === user.email.toLowerCase()
+
+  return (
+    <Dialog open={!!user} onClose={handleClose} title={`Erase personal data — ${user.name}`}>
+      <div className="flex flex-col gap-3 text-sm" data-testid="erase-dialog">
+        <p className="text-[var(--muted-foreground)]">
+          This permanently replaces the user’s name and email with a placeholder, deactivates the
+          account and signs them out. It cannot be undone. Their comments, defects, test cases and
+          runs are kept and shown as “Erased user”. Audit log entries are never changed, and older
+          ones may still contain the email or name that was typed at the time.
+        </p>
+        {previewQuery.isLoading && <p role="status">Checking what would change…</p>}
+        {preview && (
+          <div className="flex flex-col gap-2" role="group" aria-label="Erasure preview">
+            <p className="text-xs font-semibold uppercase text-[var(--muted-foreground)]">
+              Will change
+            </p>
+            <ul className="flex flex-col gap-1">
+              {Object.entries(preview.changes).map(([key, n]) => (
+                <li key={key} className="flex justify-between gap-3">
+                  <span>{ERASE_LABELS[key] ?? key}</span>
+                  <span className="font-medium tabular-nums">{n}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs font-semibold uppercase text-[var(--muted-foreground)]">Kept</p>
+            <ul className="flex flex-col gap-1">
+              {Object.entries(preview.retained).map(([key, n]) => (
+                <li key={key} className="flex justify-between gap-3">
+                  <span>{RETAINED_LABELS[key] ?? key}</span>
+                  <span className="font-medium tabular-nums">{n}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="erase-confirm-email">Type the user’s email to confirm</Label>
+          <Input
+            id="erase-confirm-email"
+            type="email"
+            inputMode="email"
+            autoComplete="off"
+            spellCheck={false}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+          />
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Expected: <span className="break-all font-mono">{user.email}</span>
+          </p>
+        </div>
+        <FormError>{serverError}</FormError>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={handleClose} disabled={eraseMutation.isPending}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={!preview || !emailOk || eraseMutation.isPending}
+            onClick={() => eraseMutation.mutate()}
+          >
+            {eraseMutation.isPending ? 'Erasing…' : 'Erase personal data'}
           </Button>
         </DialogFooter>
       </div>
