@@ -7,6 +7,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { MarketingFooter } from './MarketingFooter'
 import { MarketingNav } from './MarketingNav'
+import { BackToTop, ScrollProgress, SectionRail } from './PageChrome'
 import HomePage from './pages/HomePage'
 import { prefersReducedMotion, useRevealOnScroll } from './utils'
 
@@ -102,7 +103,13 @@ export default function MarketingSite() {
     previousPath.current = pathname
     const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null
     if (target) {
-      target.scrollIntoView({ behavior: samePage && !prefersReducedMotion() ? 'smooth' : 'auto', block: 'start' })
+      target.scrollIntoView({
+        behavior: samePage && !prefersReducedMotion() ? 'smooth' : 'auto',
+        block: 'start',
+      })
+      // Keyboard and screen-reader users continue from the section they chose.
+      if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1')
+      target.focus({ preventScroll: true })
       // Web fonts and images settle after first paint and move the content
       // above the target, so keep it lined up for a moment. This stops as soon
       // as the reader scrolls, taps or types.
@@ -144,7 +151,9 @@ export default function MarketingSite() {
         Skip to content
       </a>
       {/* Remounting on navigation closes any open menu. */}
+      <div className="lp-nav-spacer" aria-hidden="true" />
       <MarketingNav key={pathname + hash} />
+      <ScrollProgress />
       <main id="lp-main" tabIndex={-1} className="outline-none">
         <Suspense fallback={null}>
           <Page />
@@ -153,6 +162,8 @@ export default function MarketingSite() {
       </main>
       <MarketingFooter />
       <StickyDemoBar pathname={pathname} />
+      <BackToTop />
+      {pathname === '/' && <SectionRail ready={pageReady} />}
     </div>
   )
 }

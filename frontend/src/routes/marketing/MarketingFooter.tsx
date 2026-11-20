@@ -1,12 +1,16 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
+import { HOME_SECTIONS } from './homeSections'
 import { LogoMark } from './shared'
 import { CURRENT_YEAR } from './utils'
 
 // Only destinations that exist. Documentation, help center, product updates,
 // privacy policy and terms pages don't exist yet, so they are not linked.
-const COLUMNS: Array<{ title: string; links: Array<{ to: string; label: string }> }> = [
+const COLUMNS: Array<{
+  title: string
+  links: Array<{ to: string; label: string }>
+}> = [
   {
     title: 'Product',
     links: [
@@ -72,6 +76,17 @@ export function MarketingFooter() {
           </FooterColumn>
         ))}
       </div>
+      <nav aria-label="Home page sections" className="border-t border-[var(--lp-border)]">
+        <ul className="lp-container flex flex-wrap gap-x-5 gap-y-1 py-5 text-[13px]">
+          {HOME_SECTIONS.slice(1).map(({ id, label }) => (
+            <li key={id}>
+              <Link to={`/#${id}`} className="lp-footer-link inline-flex min-h-8 items-center">
+                {label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
       <div className="border-t border-[var(--lp-border)]">
         <p className="lp-container py-6 text-[13px] text-[var(--lp-ink-3)]">
           Copyright © {CURRENT_YEAR} QTestHub. All rights reserved.

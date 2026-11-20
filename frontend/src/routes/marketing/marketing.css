@@ -61,7 +61,7 @@
 }
 
 .qth-landing [id] {
-  scroll-margin-top: 84px;
+  scroll-margin-top: 80px;
 }
 
 .lp-container {
@@ -207,13 +207,15 @@
 .lp-dark .lp-text-link:hover { color: #c7d2fe; }
 
 /* ---------- nav ---------- */
+.lp-nav-spacer { height: 64px; }
 .lp-nav {
-  position: sticky;
+  position: fixed;
+  inset-inline: 0;
   top: 0;
   z-index: 50;
   background: var(--lp-navy-900);
   border-bottom: 1px solid transparent;
-  transition: background-color 200ms ease, border-color 200ms ease;
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
 }
 .lp-nav[data-scrolled="true"] {
   background: rgba(16, 24, 40, 0.88);
@@ -263,9 +265,16 @@
 .lp-mobile-menu {
   border-top: 1px solid var(--lp-dark-border);
   background: var(--lp-navy-900);
-  max-height: calc(100svh - 64px);
+  max-height: calc(100svh - 56px);
+  overscroll-behavior: contain;
   overflow-y: auto;
   animation: lp-menu-in 180ms ease-out;
+}
+.lp-mobile-menu[data-closing="true"] {
+  animation: lp-menu-out 160ms ease-in forwards;
+}
+@keyframes lp-menu-out {
+  to { opacity: 0; transform: translateY(-6px); }
 }
 @keyframes lp-menu-in {
   from { opacity: 0; transform: translateY(-6px); }
@@ -655,4 +664,160 @@ select.lp-input {
   }
   .qth-landing[data-reveal="on"] .lp-reveal { opacity: 1; transform: none; }
   .lp-card-hover:hover, .lp-card-dark:hover, .lp-btn-primary:hover { transform: none; }
+}
+
+/* ---------- navigation polish ---------- */
+/* The header is fixed over a 64px spacer, so condensing never moves content. */
+.lp-nav-bar { height: 64px; transition: height 200ms ease; }
+.lp-nav[data-condensed="true"] .lp-nav-bar { height: 56px; }
+.lp-nav[data-condensed="true"] { box-shadow: 0 10px 24px -14px rgba(2, 6, 23, 0.7); }
+
+/* Animated underline for nav links. */
+.lp-nav-link { position: relative; }
+.lp-nav-link::after {
+  content: "";
+  position: absolute;
+  inset-inline: 12px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: #a5b4fc;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 200ms ease;
+}
+.lp-nav-link:hover::after, .lp-nav-link[aria-current="page"]::after { transform: scaleX(1); }
+
+.lp-progress {
+  position: fixed;
+  top: 0;
+  inset-inline: 0;
+  z-index: 55;
+  height: 3px;
+  background: linear-gradient(90deg, #818cf8, #60a5fa);
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.lp-top-btn {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--lp-fixed-bottom, 0px) + 16px + env(safe-area-inset-bottom));
+  z-index: 39;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--lp-navy-900);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 10px 24px -10px rgba(2, 6, 23, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  opacity: 0;
+  transform: translateY(12px);
+  visibility: hidden;
+  transition: opacity 200ms ease, transform 200ms ease, visibility 0s linear 200ms, box-shadow 120ms ease;
+  cursor: pointer;
+}
+.lp-top-btn[data-visible="true"] { opacity: 1; transform: none; visibility: visible; transition-delay: 0s; }
+.lp-top-btn:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45); }
+/* Fixed-UI stack: anything pinned to the bottom edge adds its height to
+   --lp-fixed-bottom (the phone demo bar does below); floating buttons sit above it. */
+.qth-landing { --lp-fixed-bottom: 0px; }
+@media (max-width: 639px) {
+  .qth-landing:has(.lp-sticky-cta[data-visible="true"]) { --lp-fixed-bottom: calc(68px + env(safe-area-inset-bottom)); }
+}
+
+/* Progress rail: dots linking to each home section, desktop only. */
+.lp-rail { display: none; }
+@media (min-width: 1280px) {
+  .lp-rail { display: block; position: fixed; right: 14px; top: 50%; translate: 0 -50%; z-index: 38; }
+  .lp-rail ol { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0; }
+  .lp-rail-dot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-height: 24px; padding-inline: 6px; border-radius: 999px; }
+  .lp-rail-pip {
+    width: 9px; height: 9px; border-radius: 999px;
+    background: #6366f1;
+    box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(15, 23, 42, 0.45);
+    transition: transform 180ms ease;
+  }
+  .lp-rail-dot[aria-current="location"] .lp-rail-pip { transform: scale(1.5); background: #4338ca; }
+  .lp-rail-dot:not([aria-current]) .lp-rail-pip { background: #94a3b8; }
+  .lp-rail-label {
+    opacity: 0; transform: translateX(6px); pointer-events: none;
+    padding: 3px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap;
+    color: #fff; background: var(--lp-navy-900);
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .lp-rail-dot:hover .lp-rail-label, .lp-rail-dot:focus-visible .lp-rail-label { opacity: 1; transform: none; }
+  .lp-rail-dot:focus-visible { outline: 2px solid var(--lp-indigo-strong); outline-offset: 2px; }
+}
+
+/* Compact sections pill (below 1280px), bottom-left, mirrors the back-to-top button. */
+.lp-sections {
+  position: fixed; left: 16px; z-index: 39;
+  bottom: calc(var(--lp-fixed-bottom, 0px) + 16px + env(safe-area-inset-bottom));
+  opacity: 0; transform: translateY(12px); visibility: hidden;
+  transition: opacity 200ms ease, transform 200ms ease, visibility 0s linear 200ms;
+}
+.lp-sections[data-visible="true"] { opacity: 1; transform: none; visibility: visible; transition-delay: 0s; }
+.lp-sections-btn {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 16px;
+  border-radius: 999px; font-size: 14px; font-weight: 600; color: #fff; background: var(--lp-navy-900);
+  border: 1px solid rgba(255, 255, 255, 0.28); cursor: pointer;
+  box-shadow: 0 10px 24px -10px rgba(2, 6, 23, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.lp-sections-btn:active { box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45); transform: translateY(1px); }
+.lp-sections-list {
+  position: absolute; left: 0; bottom: calc(100% + 8px); width: min(280px, calc(100vw - 32px));
+  max-height: min(70vh, calc(100dvh - var(--lp-fixed-bottom, 0px) - 140px)); overflow-y: auto;
+  overscroll-behavior: contain; padding: 4px; border-radius: 14px;
+  background: var(--lp-navy-900); border: 1px solid var(--lp-dark-border);
+  box-shadow: 0 24px 48px -16px rgba(2, 6, 23, 0.7); animation: lp-menu-in 160ms ease-out;
+}
+.lp-sections-list ol { list-style: none; margin: 0; padding: 0; }
+.lp-sections-list .lp-rail-dot {
+  display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 12px; text-align: left;
+  min-height: 44px; padding-inline: 12px; border-radius: 10px; color: var(--lp-on-dark); font-size: 14px; font-weight: 500;
+}
+.lp-sections-list .lp-rail-dot:hover { background: rgba(255, 255, 255, 0.07); }
+.lp-sections-list .lp-rail-dot[aria-current="location"] { background: rgba(129, 140, 248, 0.2); color: #fff; }
+.lp-sections-list .lp-rail-pip { width: 8px; height: 8px; border-radius: 999px; background: #64748b; box-shadow: none; }
+.lp-sections-list .lp-rail-dot[aria-current="location"] .lp-rail-pip { background: #a5b4fc; transform: none; }
+.lp-sections-list .lp-rail-pip { order: -1; flex: none; }
+.lp-sections-list .lp-rail-label { opacity: 1; transform: none; background: none; padding: 0; }
+/* Edge hint where the list scrolls on very short screens. */
+.lp-sections-list { background: linear-gradient(var(--lp-navy-900) 30%, transparent) top / 100% 24px no-repeat local,
+  linear-gradient(transparent, rgba(255, 255, 255, 0.16)) bottom / 100% 14px no-repeat scroll, var(--lp-navy-900); }
+.lp-sections-list .lp-rail-dot:focus-visible { outline: 2px solid var(--lp-electric); outline-offset: -2px; }
+.lp-sections-btn:focus-visible { outline: 2px solid var(--lp-electric); outline-offset: 2px; }
+@media (min-width: 1280px) { .lp-sections { display: none; } }
+
+/* "Next section" cue at the end of the hero. */
+.lp-next {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  margin-top: 28px; min-height: 44px; padding: 6px 14px;
+  font-size: 13px; font-weight: 600; color: var(--lp-on-dark-2); border-radius: 10px;
+}
+.lp-next:hover { color: #fff; }
+.lp-next-icon { animation: lp-nudge 2s ease-in-out infinite; }
+@keyframes lp-nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+
+/* Hero entrance: secondary elements only, so the headline (the LCP) is never hidden. */
+.lp-enter { animation: lp-rise 700ms 120ms cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes lp-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* Tactile press: raised on hover, pressed in on :active. */
+.lp-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.28); }
+.lp-card-hover:active { transform: translateY(0); box-shadow: inset 0 1px 3px rgba(30, 41, 99, 0.18); }
+.qth-landing [tabindex="-1"]:focus { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-nav-bar, .lp-nav::after, .lp-top-btn { transition: none; }
+  .lp-enter, .lp-next-icon { animation: none; }
+  .lp-btn:active:not(:disabled), .lp-card-hover:active { transform: none; }
+  .lp-top-btn, .lp-top-btn[data-visible="true"], .lp-sections, .lp-sections[data-visible="true"] { transform: none; }
+  .lp-sections-btn:active { transform: none; }
+  .lp-progress { transition: none; }
 }

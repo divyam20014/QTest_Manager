@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 
 import { LogoMark } from './shared'
+import { prefersReducedMotion } from './utils'
 
 interface MenuLink {
   to: string
@@ -29,19 +30,54 @@ const MENUS: Array<{ id: string; label: string; links: MenuLink[] }> = [
     id: 'platform',
     label: 'Platform',
     links: [
-      { to: '/platform', label: 'Platform Overview', description: 'How QTestHub connects the QA lifecycle', icon: LayoutGrid },
-      { to: '/features', label: 'Features', description: 'Every module, in detail', icon: Sparkles },
-      { to: '/quality-intelligence', label: 'Quality Intelligence', description: 'Insights for better release decisions', icon: Cpu },
-      { to: '/security', label: 'Security', description: 'Access control, isolation and audit', icon: ShieldCheck },
+      {
+        to: '/platform',
+        label: 'Platform Overview',
+        description: 'How QTestHub connects the QA lifecycle',
+        icon: LayoutGrid,
+      },
+      {
+        to: '/features',
+        label: 'Features',
+        description: 'Every module, in detail',
+        icon: Sparkles,
+      },
+      {
+        to: '/quality-intelligence',
+        label: 'Quality Intelligence',
+        description: 'Insights for better release decisions',
+        icon: Cpu,
+      },
+      {
+        to: '/security',
+        label: 'Security',
+        description: 'Access control, isolation and audit',
+        icon: ShieldCheck,
+      },
     ],
   },
   {
     id: 'solutions',
     label: 'Solutions',
     links: [
-      { to: '/solutions#qa-managers', label: 'For QA Managers', description: 'Visibility into progress and quality', icon: BarChart3 },
-      { to: '/solutions#qa-teams', label: 'For QA Teams', description: 'Structured planning and execution', icon: UsersRound },
-      { to: '/solutions#engineering', label: 'For Engineering Organizations', description: 'Delivery risk and governance', icon: Briefcase },
+      {
+        to: '/solutions#qa-managers',
+        label: 'For QA Managers',
+        description: 'Visibility into progress and quality',
+        icon: BarChart3,
+      },
+      {
+        to: '/solutions#qa-teams',
+        label: 'For QA Teams',
+        description: 'Structured planning and execution',
+        icon: UsersRound,
+      },
+      {
+        to: '/solutions#engineering',
+        label: 'For Engineering Organizations',
+        description: 'Delivery risk and governance',
+        icon: Briefcase,
+      },
     ],
   },
 ]
@@ -64,9 +100,23 @@ export function MarketingNav() {
   const navRef = useRef<HTMLElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const mobileRef = useRef<HTMLDivElement>(null)
+  const [closing, setClosing] = useState(false)
+
+  const closeMobile = (returnFocus = true) => {
+    if (returnFocus) toggleRef.current?.focus()
+    if (prefersReducedMotion()) {
+      setMobileOpen(false)
+      return
+    }
+    setClosing(true)
+    window.setTimeout(() => {
+      setMobileOpen(false)
+      setClosing(false)
+    }, 160)
+  }
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8)
+    const onScroll = () => setScrolled(window.scrollY > 24)
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
@@ -93,10 +143,31 @@ export function MarketingNav() {
   useEffect(() => {
     if (!mobileOpen) return
     mobileRef.current?.querySelector<HTMLElement>('a, button')?.focus()
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setMobileOpen(false)
-        toggleRef.current?.focus()
+        closeMobile()
+        return
+      }
+      if (event.key !== 'Tab') return
+      // Keep Tab inside the menu and its toggle while it is open.
+      const items = [
+        toggleRef.current,
+        ...(mobileRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? []),
+      ].filter((el): el is HTMLElement => !!el)
+      const first = items[0]
+      const last = items[items.length - 1]
+      const current = document.activeElement
+      if (event.shiftKey && current === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault()
+        first.focus()
+      } else if (!items.includes(current as HTMLElement)) {
+        event.preventDefault()
+        first.focus()
       }
     }
     const onResize = () => {
@@ -105,14 +176,16 @@ export function MarketingNav() {
     document.addEventListener('keydown', onKey)
     window.addEventListener('resize', onResize)
     return () => {
+      document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', onResize)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileOpen])
 
   return (
-    <header ref={navRef} className="lp-nav" data-scrolled={scrolled || mobileOpen}>
-      <nav aria-label="Primary" className="lp-container flex h-16 items-center justify-between gap-4">
+    <header ref={navRef} className="lp-nav" data-scrolled={scrolled || mobileOpen} data-condensed={scrolled}>
+      <nav aria-label="Primary" className="lp-container lp-nav-bar flex items-center justify-between gap-4">
         <Link to="/" className="flex shrink-0 items-center gap-2.5 text-white" aria-label="QTestHub home">
           <LogoMark />
           <span className="text-[17px] font-semibold tracking-tight">QTestHub</span>
@@ -182,11 +255,11 @@ export function MarketingNav() {
           <button
             ref={toggleRef}
             type="button"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-white hover:bg-white/10 lg:hidden"
+            className="inline-flex size-11 items-center justify-center rounded-lg text-white hover:bg-white/10 lg:hidden"
             aria-expanded={mobileOpen}
             aria-controls="lp-mobile-menu"
             aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-            onClick={() => setMobileOpen((v) => !v)}
+            onClick={() => (mobileOpen && !closing ? closeMobile(false) : setMobileOpen(true))}
           >
             {mobileOpen ? <X className="size-5" aria-hidden="true" /> : <Menu className="size-5" aria-hidden="true" />}
           </button>
@@ -194,7 +267,14 @@ export function MarketingNav() {
       </nav>
 
       {mobileOpen && (
-        <div id="lp-mobile-menu" ref={mobileRef} className="lp-mobile-menu lg:hidden">
+        <div
+          id="lp-mobile-menu"
+          ref={mobileRef}
+          role="dialog"
+          aria-label="Site menu"
+          data-closing={closing}
+          className="lp-mobile-menu lg:hidden"
+        >
           <div className="lp-container grid gap-6 py-5">
             {MENUS.map((menu) => (
               <div key={menu.id}>
@@ -206,7 +286,7 @@ export function MarketingNav() {
                     <li key={to}>
                       <Link
                         to={to}
-                        className="block rounded-lg px-3 py-2.5 text-[15px] font-medium text-[var(--lp-on-dark)] hover:bg-white/5"
+                        className="flex min-h-11 items-center rounded-lg px-3 text-[15px] font-medium text-[var(--lp-on-dark)] hover:bg-white/5"
                         aria-current={isCurrent(to, pathname, hash) ? 'page' : undefined}
                       >
                         {label}
@@ -221,7 +301,7 @@ export function MarketingNav() {
                 <li key={link.to}>
                   <NavLink
                     to={link.to}
-                    className="block rounded-lg px-3 py-2.5 text-[15px] font-medium text-[var(--lp-on-dark)] hover:bg-white/5"
+                    className="flex min-h-11 items-center rounded-lg px-3 text-[15px] font-medium text-[var(--lp-on-dark)] hover:bg-white/5"
                   >
                     {link.label}
                   </NavLink>

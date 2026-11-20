@@ -1,4 +1,4 @@
-import { ArrowRight, PlayCircle } from 'lucide-react'
+import { ArrowRight, ChevronDown, PlayCircle } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -9,6 +9,7 @@ import {
   DifferentiatorsSection,
   EnterpriseSection,
   FaqSection,
+  IntelligenceSection,
   LifecycleSection,
   PillarStrip,
   ProblemSection,
@@ -115,7 +116,7 @@ function HomeHero() {
           </Suspense>
         )}
 
-        <ul className="mx-auto mt-9 grid max-w-5xl grid-cols-2 gap-3 lg:grid-cols-4">
+        <ul className="lp-enter mx-auto mt-9 grid max-w-5xl grid-cols-2 gap-3 lg:grid-cols-4">
           {HERO_METRICS.map((metric) => (
             <li key={metric.label} className="lp-metric">
               <p className="lp-metric-value">
@@ -132,6 +133,10 @@ function HomeHero() {
         <div className="mt-9">
           <HeroTour />
         </div>
+        <Link to="/#lp-problem-title" className="lp-next">
+          <span>See why teams switch</span>
+          <ChevronDown className="lp-next-icon size-5" aria-hidden="true" />
+        </Link>
       </div>
     </section>
   )
@@ -147,8 +152,8 @@ function PricingTeaser() {
             Quality Management That Scales With Your Organization.
           </h2>
           <p className="lp-lead mt-4">
-            Whether you&rsquo;re an individual QA professional, a growing software team or a large enterprise,
-            QTestHub offers flexible engagement options.
+            Whether you&rsquo;re an individual QA professional, a growing software team or a large enterprise, QTestHub
+            offers flexible engagement options.
           </p>
         </div>
         <PricingTiers />
@@ -172,6 +177,7 @@ export default function HomePage() {
       <LifecycleSection soft />
       <DifferentiatorsSection />
       <RolesSection />
+      <IntelligenceSection />
       <EnterpriseSection />
       <PricingTeaser />
       <WhySection />
