@@ -13,6 +13,8 @@ class TenantSettingsOut(BaseModel):
     ai_api_key_configured: bool
     ip_allowlist: list[str]
     primary_domain: str | None = None
+    testers_see_assigned_cases_only: bool = False
+    reports_hidden_from_testers: bool = False
 
 
 class TenantSettingsUpdateRequest(BaseModel):
@@ -28,6 +30,9 @@ class TenantSettingsUpdateRequest(BaseModel):
     # BRD gap Phase 4 / ADR-073: send the field to set it, send null to clear
     # it, omit it to leave it unchanged (distinguished via model_fields_set).
     primary_domain: TenantPrimaryDomain | None = None
+    # ADR-093: Tester visibility switches (Admin only via tenant.settings.manage).
+    testers_see_assigned_cases_only: bool | None = None
+    reports_hidden_from_testers: bool | None = None
 
     @field_validator("default_currency_code")
     @classmethod

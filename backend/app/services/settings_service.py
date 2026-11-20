@@ -32,6 +32,8 @@ def to_out(tenant: Tenant) -> TenantSettingsOut:
         ai_api_key_configured=tenant.ai_api_key_encrypted is not None,
         ip_allowlist=tenant.ip_allowlist or [],
         primary_domain=tenant.primary_domain,
+        testers_see_assigned_cases_only=tenant.testers_see_assigned_cases_only,
+        reports_hidden_from_testers=tenant.reports_hidden_from_testers,
     )
 
 
@@ -92,6 +94,24 @@ def update_settings(
         changes["primary_domain"] = {"from": tenant.primary_domain, "to": req.primary_domain}
         tenant.primary_domain = req.primary_domain
 
+    changed_visibility = False
+    # ADR-093: one `tenant.setting_changed` event per flipped switch (key and
+    # new boolean only), in addition to the generic settings_updated event.
+    for key in ("testers_see_assigned_cases_only", "reports_hidden_from_testers"):
+        new_value = getattr(req, key)
+        if new_value is not None and new_value != getattr(tenant, key):
+            setattr(tenant, key, new_value)
+            record_audit_event(
+                db,
+                tenant_id=tenant_id,
+                user_id=actor_user_id,
+                action="tenant.setting_changed",
+                entity_type="tenant",
+                entity_id=tenant_id,
+                metadata={"key": key, "value": new_value},
+            )
+            changed_visibility = True
+
     if changes:
         record_audit_event(
             db,
@@ -102,6 +122,8 @@ def update_settings(
             entity_id=tenant_id,
             metadata=changes,
         )
+        db.commit()
+    elif changed_visibility:
         db.commit()
 
     return to_out(tenant)

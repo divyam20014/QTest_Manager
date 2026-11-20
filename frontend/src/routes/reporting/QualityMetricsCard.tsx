@@ -137,7 +137,7 @@ export function QualityMetricsCard({ projectId }: { projectId?: string }) {
           <ExportButton
             path={qualityMetricsExportXlsxPath(days, projectId, runType)}
             fallbackName="quality_metrics.xlsx"
-            ariaLabel="Export quality metrics to Excel"
+            ariaLabel="quality metrics"
           />
         </div>
       </CardHeader>

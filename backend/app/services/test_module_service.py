@@ -10,6 +10,7 @@ from app.models.project import Project
 from app.models.test_case import TestCase
 from app.models.test_module import TestModule
 from app.schemas.test_module import TestModuleCreateRequest, TestModuleOut, TestModuleUpdateRequest
+from app.services import tester_visibility
 from app.services.project_service import is_assigned
 
 
@@ -39,11 +40,16 @@ def _get_module_or_404(db: Session, tenant_id: UUID, module_id: UUID) -> TestMod
     return module
 
 
-def _to_out(db: Session, module: TestModule) -> TestModuleOut:
+def _to_out(
+    db: Session, module: TestModule, viewer: tuple[str, UUID] | None = None
+) -> TestModuleOut:
     set_tenant_context(db, str(module.tenant_id))
-    count = db.execute(
-        select(func.count()).select_from(TestCase).where(TestCase.module_id == module.id)
-    ).scalar_one()
+    count_query = select(func.count()).select_from(TestCase).where(TestCase.module_id == module.id)
+    if viewer is not None:  # ADR-093: a scoped Tester's tree counts only their cases
+        count_query = tester_visibility.scope_case_query(
+            db, module.tenant_id, viewer[0], viewer[1], count_query
+        )
+    count = db.execute(count_query).scalar_one()
     return TestModuleOut(
         id=module.id,
         project_id=module.project_id,
@@ -64,7 +70,7 @@ def list_modules(
         .where(TestModule.tenant_id == tenant_id, TestModule.project_id == project_id)
         .order_by(TestModule.name)
     ).scalars()
-    return [_to_out(db, m) for m in rows]
+    return [_to_out(db, m, (role_code, user_id)) for m in rows]
 
 
 def _validate_parent(

@@ -22,7 +22,7 @@ from app.schemas.requirement import (
     RequirementUpdateRequest,
     RequirementVersionOut,
 )
-from app.services import custom_field_service
+from app.services import custom_field_service, tester_visibility
 from app.services.project_service import is_assigned
 
 DEFAULT_PAGE_SIZE = 20
@@ -101,14 +101,23 @@ def to_out(db: Session, req: Requirement) -> RequirementOut:
     )
 
 
-def to_detail_out(db: Session, req: Requirement) -> RequirementDetailOut:
+def to_detail_out(
+    db: Session, req: Requirement, viewer: tuple[str, UUID] | None = None
+) -> RequirementDetailOut:
+    """`viewer` = (role_code, user_id): a scoped Tester (ADR-093) only receives the
+    linked cases they may see."""
     base = to_out(db, req)
-    links = db.execute(
+    link_query = (
         select(RequirementTestCaseLink, TestCase)
         .join(TestCase, TestCase.id == RequirementTestCaseLink.test_case_id)
         .where(RequirementTestCaseLink.requirement_id == req.id)
         .order_by(RequirementTestCaseLink.linked_at)
-    ).all()
+    )
+    if viewer is not None:
+        link_query = tester_visibility.scope_case_query(
+            db, req.tenant_id, viewer[0], viewer[1], link_query
+        )
+    links = db.execute(link_query).all()
     linked = [
         LinkedTestCaseOut(
             test_case_id=case.id,

@@ -141,6 +141,7 @@ export function Settings() {
             label: 'Data',
             content: (
               <div className="flex flex-col gap-4">
+                <TesterVisibilityCard />
                 <AISettingsCard />
                 <SubscriptionCard />
                 <ExportCard />
@@ -769,6 +770,75 @@ export function AISettingsCard() {
   }
 
   return <AISettingsForm initial={settingsQuery.data} />
+}
+
+// ADR-093: two per-tenant switches (both off by default) that narrow what Testers see.
+function TesterVisibilityCard() {
+  const queryClient = useQueryClient()
+  const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings })
+  const { show: showToast } = useToast()
+  const saveMutation = useMutation({
+    mutationFn: (req: { testers_see_assigned_cases_only?: boolean; reports_hidden_from_testers?: boolean }) =>
+      updateSettings(req),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['settings'], data)
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      showToast('success', 'Tester visibility saved')
+    },
+  })
+  const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null
+  const initial = settingsQuery.data
+  if (!initial) return null
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tester Visibility</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex max-w-xl flex-col gap-4 text-sm">
+          <p className="rounded-md border border-[var(--border)] p-2 text-xs" role="note">
+            Warning: changing these switches takes effect immediately for every Tester in your
+            organization. Managers and Admins are not affected.
+          </p>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={initial.testers_see_assigned_cases_only}
+              disabled={saveMutation.isPending}
+              onChange={(e) => saveMutation.mutate({ testers_see_assigned_cases_only: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium">Testers see only test cases assigned to them</span>
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                A Tester then sees only cases assigned to them, or placed in a test run assigned to
+                them or started by them. Other cases disappear from lists, search, counts and
+                exports, and open as not found.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={initial.reports_hidden_from_testers}
+              disabled={saveMutation.isPending}
+              onChange={(e) => saveMutation.mutate({ reports_hidden_from_testers: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium">Hide Reports from Testers</span>
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                Testers lose the Reports menu and the report pages. The Dashboard still works, but
+                without the status chart and execution trend.
+              </span>
+            </span>
+          </label>
+          <FormError>{serverError}</FormError>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 function AISettingsForm({ initial }: { initial: TenantSettings }) {

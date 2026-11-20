@@ -9,6 +9,8 @@ export interface TenantSettings {
   ai_api_key_configured: boolean
   ip_allowlist: string[]
   primary_domain: TenantDomain | null
+  testers_see_assigned_cases_only: boolean
+  reports_hidden_from_testers: boolean
 }
 
 export interface TenantSettingsUpdateRequest {
@@ -19,6 +21,8 @@ export interface TenantSettingsUpdateRequest {
   ip_allowlist?: string[]
   // Omit to leave unchanged; null clears it.
   primary_domain?: TenantDomain | null
+  testers_see_assigned_cases_only?: boolean
+  reports_hidden_from_testers?: boolean
 }
 
 export function getSettings(): Promise<TenantSettings> {

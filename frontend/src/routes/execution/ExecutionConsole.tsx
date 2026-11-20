@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Ban, Bug, CheckCircle2, ChevronDown, CircleDot, XCircle } from 'lucide-react'
+import { AlertTriangle, Ban, Bug, CheckCircle2, ChevronDown, CircleDot, Gauge, PauseCircle, XCircle } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
+import { ApiError } from '@/api/client'
 import { listDefects, type Defect } from '@/api/defects'
 import {
   blockRunCase,
@@ -26,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth'
+import { useCockpitMode } from '@/lib/cockpitMode'
 import { describeClock, formatClock, formatDurationMs } from '@/lib/duration'
 import { humanizeKey } from '@/lib/labels'
 import { levelTone, RUN_CASE_STATUS_TONE, VERDICT_TONE } from '@/lib/statusTones'
@@ -48,6 +50,7 @@ export function ExecutionConsole() {
   const [quickViewDefectId, setQuickViewDefectId] = useState<string | null>(null)
   // ADR-070 "Block Case": the reason dialog.
   const [blockOpen, setBlockOpen] = useState(false)
+  const [cockpit, setCockpit] = useCockpitMode()
   const { show: showToast } = useToast()
   const { user } = useAuth()
 
@@ -190,8 +193,15 @@ export function ExecutionConsole() {
       // every P/F/I keypress -- a toast per step would be noisy, not
       // helpful, during a long execution run.
     },
-    onError: () =>
-      showToast('error', 'Could not record that verdict -- the step was not updated. Try again.'),
+    onError: (error) =>
+      showToast(
+        'error',
+        // A refusal carries its reason (e.g. "This test case is not assigned to
+        // you"); "try again" would be wrong advice for it.
+        error instanceof ApiError && error.status === 403
+          ? error.message
+          : 'Could not record that verdict -- the step was not updated. Try again.',
+      ),
   })
 
   function handleDefectDialogClose() {
@@ -269,10 +279,10 @@ export function ExecutionConsole() {
   const progressPercent = steps.length ? Math.round((answeredCount / steps.length) * 100) : 0
 
   return (
-    <div className="flex flex-col gap-4 xl:h-[calc(100vh-7.5rem)] xl:flex-row">
+    <div className={cn('flex flex-col gap-4 xl:h-[calc(100vh-7.5rem)] xl:flex-row', cockpit && 'cockpit gap-2')}>
       {/* Left panel: test case navigation within this run. On a phone it is a
           collapsed "cases in this run" header so the steps come first. */}
-      <aside className="flex shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)] xl:w-64">
+      <aside aria-label="Test cases in this run" className={cn('flex shrink-0 flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--background)] xl:w-64', cockpit && 'cockpit-panel')}>
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] p-3 max-xl:border-b-0 max-xl:py-1">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Test Run</p>
@@ -324,15 +334,55 @@ export function ExecutionConsole() {
       </aside>
 
       {/* Main panel: step execution */}
-      <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-[var(--border)] bg-[var(--background)] xl:overflow-hidden">
-        <div className="shrink-0 border-b border-[var(--border)] p-4">
-          <h1 className="break-words text-lg font-semibold">{context?.test_case_title ?? 'Execution Console'}</h1>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+      <div className={cn('flex min-w-0 flex-1 flex-col rounded-lg border border-[var(--border)] bg-[var(--background)] xl:overflow-hidden', cockpit && 'cockpit-panel')}>
+        <div className={cn('shrink-0 border-b border-[var(--border)] p-4', cockpit && 'cockpit-header cockpit-dense')}>
+          <div className="flex items-start justify-between gap-2">
+            <h1 className="min-w-0 break-words text-lg font-semibold">{context?.test_case_title ?? 'Execution Console'}</h1>
+            <button
+              type="button"
+              aria-pressed={cockpit}
+              onClick={() => setCockpit(!cockpit)}
+              className={cn(
+                'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]',
+                cockpit ? 'bg-[var(--primary)] text-[var(--primary-foreground)]' : 'text-[var(--foreground)] hover:bg-[var(--muted)]',
+              )}
+            >
+              <Gauge className="size-4" aria-hidden="true" />
+              Cockpit mode
+            </button>
+          </div>
+          <div className={cn('mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]', cockpit && 'cockpit-track')}>
             <div className="h-full bg-[var(--primary)] transition-all" style={{ width: `${progressPercent}%` }} />
           </div>
           <p className="mt-1 text-xs text-[var(--muted-foreground)]">
             {answeredCount}/{steps.length} steps complete
           </p>
+          {cockpit && (
+            <div className="cockpit-statusbar mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+              {blocked ? (
+                <span className="inline-flex items-center gap-1.5 text-[var(--status-critical)]">
+                  <Ban className="size-4" aria-hidden="true" />
+                  Blocked
+                </span>
+              ) : context?.run_paused ? (
+                <span className="inline-flex items-center gap-1.5 text-[var(--status-warning)]">
+                  <PauseCircle className="size-4" aria-hidden="true" />
+                  Run paused
+                </span>
+              ) : null}
+              {currentStep && currentStep.opened_at && blocked && (
+                <span className="text-[var(--muted-foreground)]">Timer paused while blocked</span>
+              )}
+              {currentStep && currentStep.opened_at && !blocked && !runLocked && (
+                <LiveElapsed openedAt={currentStep.opened_at} cockpit />
+              )}
+              {currentStep && (
+                <span className="text-[var(--muted-foreground)]">
+                  Step {currentStep.step_number} of {steps.length}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 p-4 xl:overflow-y-auto">
@@ -384,6 +434,8 @@ export function ExecutionConsole() {
                 onVerdict={(verdict) => verdictMutation.mutate({ stepId: step.id, verdict })}
                 isSubmitting={verdictMutation.isPending}
                 disabled={!!runLocked || blocked}
+                timerPaused={blocked}
+                hideTimer={cockpit}
               />
             ))}
           </div>
@@ -438,7 +490,7 @@ export function ExecutionConsole() {
           <div
             role="group"
             aria-label="Record a verdict for the current step"
-            className="shrink-0 border-t border-[var(--border)] bg-[var(--background)] p-3 max-xl:sticky max-xl:bottom-0 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] max-xl:z-30 max-xl:rounded-b-lg max-xl:shadow-[0_-6px_16px_-8px_rgb(0_0_0/0.25)]"
+            className={cn('shrink-0 border-t border-[var(--border)] bg-[var(--background)] p-3 max-xl:sticky max-xl:bottom-0 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] max-xl:z-30 max-xl:rounded-b-lg max-xl:shadow-[0_-6px_16px_-8px_rgb(0_0_0/0.25)]', cockpit && 'cockpit-verdicts')}
           >
             <div className="flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch max-md:gap-2">
               <p className="min-w-0 truncate text-sm text-[var(--muted-foreground)] max-md:line-clamp-2 max-md:whitespace-normal">
@@ -475,7 +527,7 @@ export function ExecutionConsole() {
       </div>
 
       {/* Right panel: execution info + defect details */}
-      <aside className="flex shrink-0 flex-col gap-3 xl:w-72 xl:overflow-y-auto">
+      <aside aria-label="Execution details" className="flex shrink-0 flex-col gap-3 xl:w-72 xl:overflow-y-auto">
         <Card>
           <CardHeader>
             <CardTitle>Execution Info</CardTitle>
@@ -586,7 +638,7 @@ function computeElapsedSeconds(openedAt: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(openedAt).getTime()) / 1000))
 }
 
-function LiveElapsed({ openedAt }: { openedAt: string }) {
+function LiveElapsed({ openedAt, cockpit = false }: { openedAt: string; cockpit?: boolean }) {
   const [seconds, setSeconds] = useState(() => computeElapsedSeconds(openedAt))
 
   useEffect(() => {
@@ -600,7 +652,7 @@ function LiveElapsed({ openedAt }: { openedAt: string }) {
     <span
       role="timer"
       aria-label={`Time on this step: ${describeClock(seconds)}`}
-      className="mt-1 inline-flex items-center gap-1 text-xs tabular-nums text-[var(--muted-foreground)] max-md:text-sm"
+      className={cn('inline-flex items-center gap-1 tabular-nums', cockpit ? 'text-[var(--foreground)]' : 'mt-1 text-xs text-[var(--muted-foreground)] max-md:text-sm')}
     >
       <span aria-hidden="true">{formatClock(seconds)} elapsed</span>
     </span>
@@ -615,6 +667,8 @@ function StepCard({
   onVerdict,
   isSubmitting,
   disabled,
+  timerPaused,
+  hideTimer,
 }: {
   step: ExecutionStep
   isCurrent: boolean
@@ -623,6 +677,9 @@ function StepCard({
   onVerdict: (verdict: Verdict) => void
   isSubmitting: boolean
   disabled: boolean
+  // ADR-075: the step timer does not run while the case is blocked.
+  timerPaused: boolean
+  hideTimer?: boolean
 }) {
   return (
     <div
@@ -652,9 +709,15 @@ function StepCard({
               ))}
             </div>
           )}
-          {isCurrent && step.opened_at && !step.verdict && (
+          {isCurrent && step.opened_at && !step.verdict && !hideTimer && (
             <div>
-              <LiveElapsed openedAt={step.opened_at} />
+              {timerPaused ? (
+                <span className="mt-1 inline-flex text-xs text-[var(--muted-foreground)] max-md:text-sm">
+                  Timer paused while blocked
+                </span>
+              ) : (
+                <LiveElapsed openedAt={step.opened_at} />
+              )}
             </div>
           )}
         </div>

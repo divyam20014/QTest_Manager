@@ -8,6 +8,7 @@ from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.test_case import TestCase
 from app.schemas.search import SearchResponse, SearchResultEntry
+from app.services import tester_visibility
 from app.services.reporting_service import _accessible_project_ids
 
 MAX_RESULTS_PER_TYPE = 10
@@ -30,7 +31,7 @@ def search(
 
     results: list[SearchResultEntry] = []
 
-    tc_rows = db.execute(
+    tc_query = (
         select(TestCase.id, TestCase.title, TestCase.project_id, Project.name)
         .join(Project, Project.id == TestCase.project_id)
         .where(
@@ -39,7 +40,11 @@ def search(
             _project_filter(TestCase.project_id),
         )
         .limit(MAX_RESULTS_PER_TYPE)
-    ).all()
+    )
+    tc_query = tester_visibility.scope_case_query(
+        db, tenant_id, role_code, user_id, tc_query
+    )  # ADR-093
+    tc_rows = db.execute(tc_query).all()
     results += [
         SearchResultEntry(type="test_case", id=tid, title=title, project_id=pid, project_name=pname)
         for tid, title, pid, pname in tc_rows

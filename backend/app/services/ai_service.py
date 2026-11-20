@@ -26,7 +26,13 @@ from app.schemas.ai import (
     RootCauseSuggestionOut,
 )
 from app.schemas.test_case import StepIn, TestCaseCreateRequest
-from app.services import plan_limits, project_service, requirement_service, test_case_service
+from app.services import (
+    plan_limits,
+    project_service,
+    requirement_service,
+    test_case_service,
+    tester_visibility,
+)
 
 _STOPWORDS = {
     "the", "a", "an", "is", "are", "was", "were", "what", "which", "who",
@@ -459,12 +465,17 @@ def _build_assistant_context(
 
     if keywords:
         ilike_clauses_tc = [TestCase.title.ilike(f"%{kw}%") for kw in keywords]
-        cases = db.execute(
+        case_query = (
             select(TestCase)
             .where(TestCase.tenant_id == tenant_id, TestCase.project_id.in_(project_ids))
             .where(or_(*ilike_clauses_tc))
             .limit(_MAX_ITEMS_PER_KIND)
-        ).scalars()
+        )
+        # ADR-093: the assistant never reveals cases a scoped Tester cannot see.
+        case_query = tester_visibility.scope_case_query(
+            db, tenant_id, role_code, user_id, case_query
+        )
+        cases = db.execute(case_query).scalars()
         for c in cases:
             lines.append(
                 f"Test case '{c.title}' (project '{project_names.get(c.project_id, '?')}'): "

@@ -34,7 +34,7 @@ import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
 import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartPanel } from '@/components/ui/ChartPanel'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -44,7 +44,7 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Select } from '@/components/ui/select'
 import { ChartSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth'
-import { isManagerOrAbove } from '@/api/auth'
+import { hasPermission } from '@/api/auth'
 import { pivotAggregateRows } from './aggregate'
 import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
@@ -175,7 +175,8 @@ export function Reporting() {
     value,
     count: aggregateData.reduce((sum, row) => sum + (Number(row[value]) || 0), 0),
   }))
-  const canExport = isManagerOrAbove(user)
+  // The four compliance exports are all gated by report.compliance_export at the API.
+  const canExport = hasPermission(user, 'report.compliance_export')
   const exportPeriod = {
     periodFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
     periodTo: dateTo ? new Date(dateTo).toISOString() : undefined,
@@ -221,101 +222,95 @@ export function Reporting() {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FilterBar
-            activeCount={[projectId, domain, assigneeId, priority, status, dateFrom || dateTo].filter(Boolean).length}
-            onClear={() => {
-              setProjectId('')
-              setDomain('')
-              setAssigneeId('')
-              setPriority('')
-              setStatus('')
-              setDateFrom('')
-              setDateTo('')
-            }}
-            desktopClear={false}
-          >
-            <FilterField label="Project">
-            <Select
-              aria-label="Project"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="w-44"
-            >
-              <option value="">All projects</option>
-              {projectsQuery.data?.items.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-            </FilterField>
-            <FilterField label="Domain">
-            <Select aria-label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)} className="w-36">
-              <option value="">All domains</option>
-              {DOMAINS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </Select>
-            </FilterField>
-            <FilterField label="Assignee">
-            <Select
-              aria-label="Assignee"
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-              className="w-44"
-            >
-              <option value="">All assignees</option>
-              {usersQuery.data?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </Select>
-            </FilterField>
-            <FilterField label="Priority">
-            <Select
-              aria-label="Priority"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className="w-36"
-            >
-              <option value="">All priorities</option>
-              {priorityFilterOptions.map((p) => (
-                <option key={p.code} value={p.code}>
-                  {p.label}
-                </option>
-              ))}
-            </Select>
-            </FilterField>
-            <FilterField label="Status">
-            <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
-              <option value="">All statuses</option>
-              {TEST_CASE_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </Select>
-            </FilterField>
-            <DateRangePicker
-              idPrefix="reporting-date"
-              fromValue={dateFrom}
-              toValue={dateTo}
-              onChange={(from, to) => {
-                setDateFrom(from)
-                setDateTo(to)
-              }}
-            />
-          </FilterBar>
-        </CardContent>
-      </Card>
+      <FilterBar
+        activeCount={[projectId, domain, assigneeId, priority, status, dateFrom || dateTo].filter(Boolean).length}
+        onClear={() => {
+          setProjectId('')
+          setDomain('')
+          setAssigneeId('')
+          setPriority('')
+          setStatus('')
+          setDateFrom('')
+          setDateTo('')
+        }}
+        desktopClear={false}
+      >
+        <FilterField label="Project">
+        <Select
+          aria-label="Project"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+          className="w-44"
+        >
+          <option value="">All projects</option>
+          {projectsQuery.data?.items.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </Select>
+        </FilterField>
+        <FilterField label="Domain">
+        <Select aria-label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)} className="w-36">
+          <option value="">All domains</option>
+          {DOMAINS.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </Select>
+        </FilterField>
+        <FilterField label="Assignee">
+        <Select
+          aria-label="Assignee"
+          value={assigneeId}
+          onChange={(e) => setAssigneeId(e.target.value)}
+          className="w-44"
+        >
+          <option value="">All assignees</option>
+          {usersQuery.data?.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name}
+            </option>
+          ))}
+        </Select>
+        </FilterField>
+        <FilterField label="Priority">
+        <Select
+          aria-label="Priority"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          className="w-36"
+        >
+          <option value="">All priorities</option>
+          {priorityFilterOptions.map((p) => (
+            <option key={p.code} value={p.code}>
+              {p.label}
+            </option>
+          ))}
+        </Select>
+        </FilterField>
+        <FilterField label="Status">
+        <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
+          <option value="">All statuses</option>
+          {TEST_CASE_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s.replace(/_/g, ' ')}
+            </option>
+          ))}
+        </Select>
+        </FilterField>
+        <DateRangePicker
+          idPrefix="reporting-date"
+          fromValue={dateFrom}
+          toValue={dateTo}
+          onChange={(from, to) => {
+            setDateFrom(from)
+            setDateTo(to)
+          }}
+        />
+      </FilterBar>
+
 
       <ChartPanel
         title="Project &amp; Test Case Distribution by Domain"
@@ -552,7 +547,7 @@ export function Reporting() {
           <ExportButton
             path={aggregateExportXlsxPath(metric, groupBy, filters)}
             fallbackName={`report_${metric}.xlsx`}
-            ariaLabel="Export aggregate report to Excel"
+            ariaLabel="aggregate report"
             disabled={aggregateData.length === 0}
           />
         }

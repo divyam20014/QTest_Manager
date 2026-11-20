@@ -42,6 +42,13 @@ class Tenant(Base, UUIDPKMixin):
         String, nullable=False, default="gemini", server_default="gemini"
     )
     ai_api_key_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ADR-093: Tester visibility switches, both OFF by default.
+    testers_see_assigned_cases_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    reports_hidden_from_testers: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # BRD gap Phase 4 / ADR-073 (FR-AUTH-04): the organisation's primary

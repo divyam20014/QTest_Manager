@@ -71,7 +71,9 @@ def get_requirement(
     requirement = requirement_service.get_requirement(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id
     )
-    return envelope(requirement_service.to_detail_out(db, requirement).model_dump(mode="json"))
+    return envelope(requirement_service.to_detail_out(
+            db, requirement, (ctx.role_code, ctx.user_id)
+        ).model_dump(mode="json"))
 
 
 @router.get("/requirements/{requirement_id}/history")
@@ -133,7 +135,9 @@ def link_test_case(
     requirement = requirement_service.link_test_case(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id, req.test_case_id
     )
-    return envelope(requirement_service.to_detail_out(db, requirement).model_dump(mode="json"))
+    return envelope(requirement_service.to_detail_out(
+            db, requirement, (ctx.role_code, ctx.user_id)
+        ).model_dump(mode="json"))
 
 
 @router.delete("/requirements/{requirement_id}/test-cases/{test_case_id}")
@@ -146,4 +150,6 @@ def unlink_test_case(
     requirement = requirement_service.unlink_test_case(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id, test_case_id
     )
-    return envelope(requirement_service.to_detail_out(db, requirement).model_dump(mode="json"))
+    return envelope(requirement_service.to_detail_out(
+            db, requirement, (ctx.role_code, ctx.user_id)
+        ).model_dump(mode="json"))

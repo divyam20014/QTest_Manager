@@ -1,10 +1,11 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Check, X } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { fetchActivityStream, fetchAggregateReport, fetchDashboardSummary, fetchExecutionTrend } from '@/api/reporting'
 import { listDefects, type Severity } from '@/api/defects'
+import { listProjects } from '@/api/projects'
 import { Badge } from '@/components/ui/badge'
 import { ChartLegend, ChartPanel, RangeControl } from '@/components/ui/ChartPanel'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -12,10 +13,12 @@ import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { GaugeDial } from '@/components/ui/GaugeDial'
+import { Select } from '@/components/ui/select'
 import { ChartSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { TactileButton } from '@/components/ui/TactileButton'
 import { humanizeActionCode } from '@/lib/labels'
 import { longDay } from '@/routes/dashboardFormat'
+import { useAuth } from '@/lib/auth'
 import { levelTone } from '@/lib/statusTones'
 import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
@@ -267,20 +270,61 @@ export function Dashboard() {
   })
   // One retry (not the default three with back-off) so a failing API shows the
   // error state with its Retry button within ~2s instead of ~7s of skeletons.
-  const summaryQuery = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: fetchDashboardSummary, retry: 1 })
-  const activityQuery = useQuery({ queryKey: ['dashboard', 'activity'], queryFn: fetchActivityStream, retry: 1 })
+  // ADR-079: the whole Dashboard can be narrowed to one project. The choice lives in the URL
+  // (`?project=<id>`) so it can be shared and survives a reload.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const projectsQuery = useQuery({ queryKey: ['projects', 'all'], queryFn: () => listProjects({ page_size: 100 }) })
+  const projects = projectsQuery.data?.items ?? []
+  const requestedProject = searchParams.get('project') ?? ''
+  // An id that is not one of the caller's projects (deleted, or someone else's link) is ignored;
+  // until the list loads the URL value is trusted so a deep link does not fire unfiltered requests first.
+  const projectId =
+    requestedProject && (projectsQuery.isLoading || projects.some((p) => p.id === requestedProject))
+      ? requestedProject
+      : ''
+  const projectFilter = projectId || undefined
+  const selectedProject = projects.find((p) => p.id === projectId)
+  function chooseProject(id: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (id) next.set('project', id)
+        else next.delete('project')
+        return next
+      },
+      { replace: true },
+    )
+  }
+  // ADR-093: Testers may be denied the report endpoints; those two widgets are then hidden.
+  const reportsHidden = !!useAuth().user?.reports_hidden
+  const summaryQuery = useQuery({
+    queryKey: ['dashboard', 'summary', projectId],
+    queryFn: () => fetchDashboardSummary(projectFilter),
+    retry: 1,
+  })
+  const activityQuery = useQuery({
+    queryKey: ['dashboard', 'activity', projectId],
+    queryFn: () => fetchActivityStream(projectFilter),
+    retry: 1,
+  })
   const trendQuery = useQuery({
-    queryKey: ['dashboard', 'execution-trend', trendDays],
-    queryFn: () => fetchExecutionTrend(trendDays),
+    queryKey: ['dashboard', 'execution-trend', trendDays, projectId],
+    queryFn: () => fetchExecutionTrend(trendDays, projectFilter),
     placeholderData: keepPreviousData,
     retry: 1,
+    enabled: !reportsHidden,
   })
   const statusQuery = useQuery({
-    queryKey: ['dashboard', 'test-case-status'],
-    queryFn: () => fetchAggregateReport('test_case_status', 'project'),
+    queryKey: ['dashboard', 'test-case-status', projectId],
+    queryFn: () => fetchAggregateReport('test_case_status', 'project', { projectId: projectFilter }),
+    retry: 1,
+    enabled: !reportsHidden,
+  })
+  const defectsQuery = useQuery({
+    queryKey: ['dashboard', 'defects-all', projectId],
+    queryFn: () => listDefects({ project_id: projectFilter }),
     retry: 1,
   })
-  const defectsQuery = useQuery({ queryKey: ['dashboard', 'defects-all'], queryFn: () => listDefects(), retry: 1 })
 
   const summary = summaryQuery.data
 
@@ -365,7 +409,36 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Dashboard" description="Current testing status and project health at a glance." />
+      <PageHeader
+        title="Dashboard"
+        description={
+          selectedProject
+            ? `Current testing status for ${selectedProject.name}.`
+            : 'Current testing status and project health at a glance.'
+        }
+        actions={
+          projects.length > 1 ? (
+            <div className="flex items-center gap-2">
+              <label htmlFor="dashboard-project" className="text-sm text-[var(--muted-foreground)]">
+                Project
+              </label>
+              <Select
+                id="dashboard-project"
+                className="w-56 max-md:w-full"
+                value={projectId}
+                onChange={(e) => chooseProject(e.target.value)}
+              >
+                <option value="">All projects</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : undefined
+        }
+      />
 
       {summary &&
         !onboardingDismissed &&
@@ -491,6 +564,7 @@ export function Dashboard() {
           </CardContent>
         </EmbossedCard>
 
+        {!reportsHidden && (
         <ChartPanel
           title="Test Case Status"
           summary={
@@ -537,7 +611,9 @@ export function Dashboard() {
             </div>
           )}
         </ChartPanel>
+        )}
 
+        {!reportsHidden && (
         <ChartPanel
           className="md:col-span-2 lg:col-span-1"
           title="Execution Trend"
@@ -585,6 +661,7 @@ export function Dashboard() {
             </div>
           )}
         </ChartPanel>
+        )}
       </Section>
 
       <EmbossedCard>

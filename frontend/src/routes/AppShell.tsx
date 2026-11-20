@@ -18,6 +18,7 @@ import {
   ScrollText,
   Settings as SettingsIcon,
   ShieldCheck,
+  Snowflake,
   Users,
 } from 'lucide-react'
 import { type ComponentType, type CSSProperties, useEffect, useRef, useState } from 'react'
@@ -35,6 +36,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { MobileTabBar, MoreSheet } from '@/components/MobileNav'
 import { NoAccess } from '@/components/NoAccess'
 import { UserMenu } from '@/components/UserMenu'
+import { AccessRuleBanner } from '@/components/AccessRuleBanner'
 import { canAccessPath } from '@/lib/routeAccess'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
@@ -99,6 +101,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: '/admin/roles', label: 'Roles & Permissions', icon: KeyRound },
       { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText },
       { to: '/admin/environments', label: 'Environments', icon: Layers },
+      { to: '/admin/access-rules', label: 'Access Rules', icon: Snowflake },
       { to: '/settings', label: 'Settings', icon: SettingsIcon },
     ],
   },
@@ -274,6 +277,7 @@ export function AppShell() {
         Skip to main content
       </a>
       <aside
+        aria-label="Sidebar"
         className={cn(
           'qth-shell-chrome',
           // Mobile redesign Phase 1: below md the sidebar is replaced by the
@@ -373,6 +377,7 @@ export function AppShell() {
         </header>
         <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-6">
           <RouteBoundary resetKey={location.pathname}>
+            <AccessRuleBanner />
             {/* Restricted screens are blocked here, before the route element
                 renders, so a user who may not open one never downloads it or
                 fires its data requests. The API still enforces access. */}
