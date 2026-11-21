@@ -54,3 +54,41 @@ describe('theme-init.js', () => {
     vi.restoreAllMocks()
   })
 })
+
+describe('theme-init.js colour themes', () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute('style')
+    localStorage.clear()
+  })
+  it('maps preset ids to data-theme', () => {
+    for (const id of ['cobalt', 'sage', 'indigo']) expect(run(id, false)).toBe(id)
+  })
+  it('injects validated custom tokens and the colour scheme', () => {
+    localStorage.clear()
+    localStorage.setItem(STORAGE_KEY, 'custom')
+    localStorage.setItem(
+      'qtesthub:theme-custom',
+      JSON.stringify({ v: 1, scheme: 'dark', tokens: { '--primary': '#112233', '--tactile-highlight': 'rgba(255, 255, 255, 0.06)' } }),
+    )
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    new Function(script)()
+    const root = document.documentElement
+    expect(root.getAttribute('data-theme')).toBe('custom')
+    expect(root.style.getPropertyValue('--primary')).toBe('#112233')
+    expect(root.style.colorScheme).toBe('dark')
+    vi.unstubAllGlobals()
+  })
+  it('refuses a custom cache with a bad value and falls back to the OS', () => {
+    localStorage.setItem(STORAGE_KEY, 'custom')
+    localStorage.setItem(
+      'qtesthub:theme-custom',
+      JSON.stringify({ v: 1, scheme: 'light', tokens: { '--primary': 'url(javascript:alert(1))' } }),
+    )
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    document.documentElement.removeAttribute('data-theme')
+    new Function(script)()
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(document.documentElement.style.getPropertyValue('--primary')).toBe('')
+    vi.unstubAllGlobals()
+  })
+})

@@ -224,3 +224,20 @@ An opt-in dark mode for the Execution Console only. A button with `aria-pressed`
 **Layout when on:** denser panels (embossed `--tactile-surface-raised` with the same radii, softer shadows), verdict buttons at least 56px high on desktop (48px on phones, never below 44px) that wrap instead of clipping, a header with progress, the live step timer, blocked/paused state (icon + label) and "Step N of M" that is sticky below the xl breakpoint, and a `prefers-reduced-motion` rule that disables transitions.
 
 **Contrast (WCAG AA, computed):** surfaces `#0b1018` (base), `#1a2333` (raised), `#141c29` (muted). Text: foreground `#e8edf5` 16.22:1 / 13.41:1 / 14.55:1; muted text `#a9b4c6` 9.11:1 / 7.53:1 / 8.17:1; link `#8ab8f5` 9.31:1 / 7.70:1. UI: border `#6a7a93` 4.37:1 on base, 3.62:1 on raised (needs 3:1); primary/ring `#7cb3f4` 8.73:1. Fills: Pass `#04140d` on `#3dd68c` 10.08:1, Fail/destructive `#0b1018` on `#f87171` 6.89:1. Status text on its tint: good 8.16, warning 7.48, serious 5.88, critical 7.10, neutral 6.80, info 7.69. `e2e/cockpit-mode.spec.ts` runs axe (all impacts) with cockpit on at 390 and 1280 and checks computed heading/status contrast.
+
+## Colour themes (ADR-100)
+
+| Theme | `data-theme` | Scheme | Primary | Accent |
+|---|---|---|---|---|
+| System | light or dark from the OS | - | - | - |
+| Light / Dark | `light` / `dark` | light / dark | defaults | defaults |
+| Cobalt & Sunshine | `cobalt` | light, cool cloud-white surfaces | cobalt #0047ab | sunshine #ffc93c |
+| Sage & Tangerine | `sage` | dark, charcoal surfaces | sage #9caf88 | tangerine #f28500 |
+| Indigo & Aqua | `indigo` | light, lavender-mist surfaces | indigo #4b3fb5 | aqua #2ec4b6 |
+| Custom | `custom` | user's base mode | user's | user's |
+
+New tokens: `--accent` / `--accent-foreground` (a fill with its text; never used as text), `--border-strong` (3:1 boundary) and `--control-border` (defined only by colour themes; inputs use `var(--control-border, var(--border))`), `--overlay-backdrop` (dim behind dialogs). Everything else is the existing token set, redefined per theme. No component hard-codes a colour (the `designSystem.test.ts` ratchet still holds); preview swatches live in `src/lib/themes.ts`.
+
+**Adding a theme.** Add its inputs to `PRESET_INPUTS` in `src/lib/themeDerive.ts`, generate its `:root[data-theme="..."]` block from `deriveTheme()` into `index.css`, add the id to `THEME_CHOICES`, `THEME_LABELS` and `isPreset` users in `src/lib/themes.ts`, and to the preset list in `public/theme-init.js`. `src/test/themes.test.ts` then checks contrast and drift.
+
+Dialogs: header title + 44px close button, body padding 24px (16px phone), sticky footer with 44px actions right-aligned (stacked on phones, primary last), max height 90vh with internal scroll, bottom sheet with handle below `md`.

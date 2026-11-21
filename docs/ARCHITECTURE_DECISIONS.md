@@ -1407,3 +1407,27 @@ Definitions are shown permanently on each tile (not hover-only). The metrics are
 **Not included.** Drag and drop; a free-form or resizable grid; sharing an individual dashboard with chosen users; widget-level cross filters; a per-user choice of home page (`/` stays the default Dashboard).
 
 **Follow-up:** the separate "Dashboards" sidebar entry was removed. The home Overview (`/`) and custom dashboards share one "Dashboard" entry through a View switcher; `/dashboards` remains as the "Manage" page, reached from the switcher.
+
+## ADR-100: Colour themes, Appearance picker and custom palette
+
+**Decision.** Besides System, Light and Dark (unchanged), users can pick three preset themes (Cobalt & Sunshine, Sage & Tangerine, Indigo & Aqua) or build up to three custom themes. The choice is stored per browser, not per account.
+
+**Mechanism.**
+1. *One derivation.* `frontend/src/lib/themeDerive.ts` (pure, no imports) turns base mode + primary + accent + surface tint into the full token set: surfaces, `--border`, `--border-strong`/`--control-border` (3:1), foregrounds, `--primary`, `--accent` (+ foregrounds), `--link`, `--ring`, status colours (same hues as the defaults, so a status reads the same everywhere and always keeps its icon and label), chart chrome, tactile shadows and the sidebar. The presets are the same function run on `PRESET_INPUTS`; the output is committed as `:root[data-theme="cobalt|sage|indigo"]` blocks in `index.css` (static CSS, so no flash and no script needed). A unit test fails if a block drifts from the function.
+2. *Contrast policy.* Foreground on a fill is white or a tinted near-black, whichever reads better (yellow and aqua never carry white). Primary is moved darker (light base) or lighter (dark base) until it is 3:1 against every surface; link, muted text and the sidebar text are moved until 4.5:1 against every surface they can sit on; the ring and control border reach 3:1. Each adjustment is reported to the user ("Primary was darkened ...") and the editor shows an "AA pass" badge with the lowest ratio and a details list. `accent` is a fill only (never text, never a sole indicator).
+3. *Application.* `<html data-theme>` is `light`, `dark`, `cobalt`, `sage`, `indigo` or `custom`. Custom sets the derived tokens as inline custom properties on `<html>` plus `color-scheme`. `public/theme-init.js` runs before first paint on every page (app, login, signup, platform admin, marketing, docs): it maps the stored id to `data-theme` and, for Custom, validates and injects the tokens cached under `qtesthub:theme-custom` (names `--[a-z0-9-]`, values `#rrggbb` or `rgba(...)` only). `useThemePreference()` still returns the resolved light/dark scheme (charts, Mermaid); `useThemeChoice()` returns the full choice.
+4. *Storage.* `qtesthub:theme` (system = key removed), `qtesthub:custom-themes` (`{v:1, activeId, themes[<=3]}`: id, name <= 24 chars, base, `#rrggbb` primary/accent, tint), `qtesthub:theme-custom` (derived cache). Everything read back is validated strictly and invalid entries are dropped; every access is in try/catch and the theme still applies for the page view when storage is blocked.
+5. *Unchanged.* Cockpit mode keeps its own token set (and `--control-border: var(--border)`); print stays light.
+6. *Dialog polish.* Shared `Dialog`/`DialogFooter`: 24px desktop / 16px phone padding, 44px close button, sticky footer with 44px actions (stacked full width on phones, primary last), token backdrop (`--overlay-backdrop`) with blur, bottom sheet with handle on phones. Menus use 40px items and raised-surface panels.
+
+**Contrast (WCAG ratios, all asserted by `src/test/themes.test.ts`; worst surface):**
+
+| Theme | Body | Muted | Primary btn | Accent btn | Link | Primary / ring | Control border |
+|---|---|---|---|---|---|---|---|
+| Cobalt & Sunshine | 17.8 | 5.08 | 8.44 | 12.33 | 6.82 | 7.17 | 3.03 |
+| Sage & Tangerine | 14.99 | 5.99 | 7.93 | 7.25 | 4.88 | 5.67 | 3.02 |
+| Indigo & Aqua | 17.88 | 5.21 | 7.84 | 8.88 | 6.33 | 6.37 | 3.06 |
+
+Light and Dark are unchanged (new tokens `--accent`, `--accent-foreground`, `--border-strong` only; their soft `--border` is not held to 3:1). 200 random plus extreme inputs (#ffff00, #000000, #ffffff ...) all reach AA through the derivation.
+
+**Not included.** Per-account sync of the choice across devices; theme export/import; an exit animation for dialogs (entrance only, none under reduced motion); a high-contrast theme.

@@ -65,7 +65,7 @@ function RowContextMenuPortal({
     <div
       ref={ref}
       role="menu"
-      className="qth-animate-in fixed z-50 min-w-[160px] rounded-md border border-[var(--border)] bg-[var(--background)] p-1 shadow-lg"
+      className="qth-animate-in fixed z-50 min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--tactile-surface-raised)] p-1.5 shadow-lg"
       style={{ left: x, top: y, animation: 'qth-fade-in 0.1s ease-out' }}
     >
       {items.map((item) => (
@@ -79,7 +79,7 @@ function RowContextMenuPortal({
             onClose()
           }}
           className={cn(
-            'block w-full rounded-md px-3 py-1.5 text-left text-sm hover:bg-[var(--muted)] disabled:opacity-50',
+            'flex min-h-10 w-full items-center rounded-md px-3 text-left text-sm hover:bg-[var(--muted)] focus-visible:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50',
             item.destructive && 'text-[var(--destructive)]',
           )}
         >

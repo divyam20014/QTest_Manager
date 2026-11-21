@@ -60,7 +60,7 @@ export function UserMenu({
       {open && (
         <div
           id={menuId}
-          className="absolute right-0 top-full z-[30] mt-2 w-52 rounded-md border border-[var(--border)] bg-[var(--background)] p-1 shadow-md"
+          className="absolute right-0 top-full z-[30] mt-2 w-52 rounded-lg border border-[var(--border)] bg-[var(--tactile-surface-raised)] p-1.5 shadow-md"
         >
           <div className="px-2 py-1.5 text-xs text-[var(--muted-foreground)]">
             Signed in as <span className="font-medium text-[var(--foreground)]">{name}</span>
@@ -69,7 +69,7 @@ export function UserMenu({
           <Link
             to="/account"
             onClick={() => setOpen(false)}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
+            className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--muted)] focus-visible:bg-[var(--muted)]"
           >
             <UserCog className="size-4" />
             My Account
@@ -77,7 +77,7 @@ export function UserMenu({
           <button
             type="button"
             onClick={onLogout}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[var(--muted)]"
+            className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--muted)] focus-visible:bg-[var(--muted)]"
           >
             <LogOut className="size-4" />
             Logout

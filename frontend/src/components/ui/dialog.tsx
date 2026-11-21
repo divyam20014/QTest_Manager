@@ -64,7 +64,7 @@ function DiscardPrompt({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: (
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="qth-discard-title"
-      className="absolute inset-0 z-30 flex items-center justify-center rounded-[inherit] bg-black/40 p-4"
+      className="absolute inset-0 z-30 flex items-center justify-center rounded-[inherit] bg-[var(--overlay-backdrop)] p-4"
     >
       <div className="qth-raised-md flex w-full max-w-sm flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--tactile-surface-raised)] p-4">
         <h3 id="qth-discard-title" className="text-sm font-semibold">
@@ -93,10 +93,11 @@ export function DialogFooter({ children, className }: { children: ReactNode; cla
   return (
     <div
       className={cn(
-        'flex justify-end gap-2',
-        'max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-5 max-md:-mb-5 max-md:mt-2 max-md:border-t max-md:border-[var(--border)] max-md:bg-[var(--tactile-surface-raised)] max-md:px-5 max-md:py-3',
-        // Buttons share the width on a phone: big, equal thumb targets.
-        'max-md:[&>button]:flex-1',
+        // Sticky on every size so the primary action never scrolls away; padding
+        // mirrors the body (24px desktop, 16px phone); actions are 44px tall.
+        'sticky -bottom-5 z-10 -mx-6 -mb-5 mt-5 flex justify-end gap-2 border-t border-[var(--border)] bg-[var(--tactile-surface-raised)] px-6 py-4 [&>button]:min-h-11',
+        // Phone: stacked, full width, primary last (bottom).
+        'max-md:-mx-4 max-md:flex-col max-md:px-4 max-md:[&>button]:w-full',
         className,
       )}
     >
@@ -129,7 +130,7 @@ export function Dialog({
 
   return (
     <div
-      className="qth-animate-in fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[1px] md:items-center md:p-4"
+      className="qth-animate-in fixed inset-0 z-50 flex items-end justify-center bg-[var(--overlay-backdrop)] backdrop-blur-sm md:items-center md:p-4"
       style={{ animation: 'qth-fade-in 0.15s ease-out' }}
       onClick={guard.requestClose}
       role="presentation"
@@ -168,7 +169,7 @@ export function Dialog({
           onClick={guard.requestClose}
           aria-label="Close dialog"
           inert={guard.confirming}
-          className="absolute right-4 top-4 z-20 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:right-1.5 max-md:top-2 max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
+          className="absolute right-2 top-1.5 z-20 flex size-11 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:right-1.5 max-md:top-2"
         >
           <X className="size-4 max-md:size-5" />
         </button>
@@ -176,11 +177,11 @@ export function Dialog({
           aria-hidden="true"
           className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[var(--border)] md:hidden"
         />
-        <h2 className="shrink-0 border-b border-[var(--border)] px-5 py-4 pr-10 text-sm font-semibold max-md:pr-14 max-md:text-base">
+        <h2 className="shrink-0 border-b border-[var(--border)] px-6 py-4 pr-16 text-sm font-semibold max-md:px-4 max-md:text-base">
           {title}
         </h2>
         <DirtyContext.Provider value={guard.setDirty}>
-          <div inert={guard.confirming} className="overflow-y-auto overscroll-contain px-5 py-5">
+          <div inert={guard.confirming} className="overflow-y-auto overscroll-contain px-6 py-5 max-md:px-4">
             {children}
           </div>
         </DirtyContext.Provider>
@@ -218,7 +219,7 @@ export function Drawer({
 
   return (
     <div
-      className="qth-animate-in fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-[1px]"
+      className="qth-animate-in fixed inset-0 z-50 flex justify-end bg-[var(--overlay-backdrop)] backdrop-blur-sm"
       style={{ animation: 'qth-fade-in 0.15s ease-out' }}
       onClick={guard.requestClose}
       role="presentation"

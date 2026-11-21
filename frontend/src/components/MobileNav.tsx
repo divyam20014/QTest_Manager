@@ -168,7 +168,7 @@ export function MoreSheet({
     <>
       {open && (
         <div
-          className="qth-shell-chrome qth-animate-in fixed inset-0 z-50 flex items-end bg-black/40 backdrop-blur-[1px] md:hidden"
+          className="qth-shell-chrome qth-animate-in fixed inset-0 z-50 flex items-end bg-[var(--overlay-backdrop)] backdrop-blur-sm md:hidden"
           style={{ animation: 'qth-fade-in 0.15s ease-out' }}
           onClick={onClose}
           role="presentation"

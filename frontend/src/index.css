@@ -32,6 +32,14 @@
   --success-solid-foreground: #ffffff;
   --ring: #a1a1aa;
   --radius: 0.625rem;
+  color-scheme: light;
+  /* ADR-100: --accent is the second brand colour (always paired with
+     --accent-foreground, never used as text); --border-strong is a 3:1 control
+     boundary. --control-border is only defined by the colour themes, so the
+     default Light/Dark inputs keep the soft --border. */
+  --accent: #5b9dee;
+  --accent-foreground: #0a0a0a;
+  --border-strong: #82828c;
 
   /* Brand accent -- used for active nav states, links, primary data
      emphasis. Distinct from --primary (the neutral ink/button color)
@@ -171,6 +179,7 @@
   --z-backdrop: 40; /* mobile nav backdrop */
   --z-overlay: 50; /* dialogs, drawers, sidebar, tab bar sheets */
   --z-toast: 100; /* toasts, skip link */
+  --overlay-backdrop: rgba(8, 10, 18, 0.5); /* dim behind dialogs, sheets and drawers */
 
   /* Motion. All durations collapse to 0 under prefers-reduced-motion. */
   --motion-fast: 120ms;
@@ -203,6 +212,10 @@
     --success-solid: #3dd68c;
     --success-solid-foreground: #0a0a0a;
     --ring: #52525b;
+    color-scheme: dark;
+    --accent: #5b9dee;
+    --accent-foreground: #0a0a0a;
+    --border-strong: #71717a;
 
     --brand: #5b9dee;
     --brand-foreground: #0a0a0a;
@@ -256,6 +269,10 @@
   --success-solid: #3dd68c;
   --success-solid-foreground: #0a0a0a;
   --ring: #52525b;
+  color-scheme: dark;
+  --accent: #5b9dee;
+  --accent-foreground: #0a0a0a;
+  --border-strong: #71717a;
 
   --brand: #5b9dee;
   --brand-foreground: #0a0a0a;
@@ -287,6 +304,174 @@
   --tactile-highlight: rgba(255, 255, 255, 0.06);
   --tactile-shadow-dark: rgba(0, 0, 0, 0.65);
   --tactile-shadow-darker: rgba(0, 0, 0, 0.8);
+}
+
+/* ADR-100 colour themes. GENERATED from src/lib/themeDerive.ts (PRESET_INPUTS):
+   cobalt = Cobalt & Sunshine, sage = Sage & Tangerine, indigo = Indigo & Aqua.
+   Each block sets the complete token set, so nothing leaks in from the
+   prefers-color-scheme block above (same specificity, later wins). Contrast is
+   asserted by src/test/themes.test.ts. To add a theme: add it to PRESET_INPUTS,
+   regenerate the block, and register it in src/lib/themes.ts. */
+:root[data-theme="cobalt"] {
+  color-scheme: light;
+  --background: #f8fafc;
+  --foreground: #0e131b;
+  --muted: #e7edf6;
+  --muted-foreground: #5c6470;
+  --border: #d2dcea;
+  --border-strong: #7489a7;
+  --control-border: #7489a7;
+  --primary: #0047ab;
+  --primary-foreground: #ffffff;
+  --accent: #ffc93c;
+  --accent-foreground: #0d1116;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success-solid: #047857;
+  --success-solid-foreground: #ffffff;
+  --ring: #0047ab;
+  --brand: #0047ab;
+  --brand-foreground: #ffffff;
+  --brand-muted: #dfe8f4;
+  --link: #0047ab;
+  --sidebar-bg: #111e32;
+  --sidebar-bg-raised: #162841;
+  --sidebar-foreground: #bfcad9;
+  --sidebar-foreground-muted: #93a2b6;
+  --sidebar-border: #1f385c;
+  --sidebar-active-bg: #1d3658;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-accent: #ffc93c;
+  --status-good: #0a7050;
+  --status-good-bg: #e6f6ef;
+  --status-warning: #b45309;
+  --status-warning-bg: #fef3e2;
+  --status-serious: #b91c1c;
+  --status-serious-bg: #fde8e8;
+  --status-critical: #7c1d6f;
+  --status-critical-bg: #f7e6f4;
+  --status-neutral: #52525b;
+  --status-neutral-bg: #f1f1f3;
+  --status-info: #1d4ed8;
+  --status-info-bg: #e8f0fe;
+  --chart-grid: #d2dcea;
+  --chart-axis-text: #5c6470;
+  --chart-axis-line: #7489a7;
+  --chart-tooltip-bg: #f6f8fb;
+  --chart-tooltip-border: #7489a7;
+  --tactile-surface: #ebf0f7;
+  --tactile-surface-raised: #f6f8fb;
+  --tactile-highlight: rgba(255, 255, 255, 0.9);
+  --tactile-shadow-dark: rgba(134, 154, 182, 0.55);
+  --tactile-shadow-darker: rgba(112, 135, 169, 0.45);
+}
+
+:root[data-theme="sage"] {
+  color-scheme: dark;
+  --background: #1a1e20;
+  --foreground: #f1f2f4;
+  --muted: #272c30;
+  --muted-foreground: #a5afb6;
+  --border: #3f464a;
+  --border-strong: #72797d;
+  --control-border: #72797d;
+  --primary: #9caf88;
+  --primary-foreground: #0d1316;
+  --accent: #f28500;
+  --accent-foreground: #0d1316;
+  --destructive: #f87171;
+  --destructive-foreground: #0a0a0a;
+  --success-solid: #3dd68c;
+  --success-solid-foreground: #0a0a0a;
+  --ring: #9caf88;
+  --brand: #9caf88;
+  --brand-foreground: #0d1316;
+  --brand-muted: #343b35;
+  --link: #9caf88;
+  --sidebar-bg: #121516;
+  --sidebar-bg-raised: #191d1f;
+  --sidebar-foreground: #bfced9;
+  --sidebar-foreground-muted: #8ba1b1;
+  --sidebar-border: #2e3438;
+  --sidebar-active-bg: #2c3135;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-accent: #f28500;
+  --status-good: #3dd68c;
+  --status-good-bg: #0f2a20;
+  --status-warning: #f5a623;
+  --status-warning-bg: #332308;
+  --status-serious: #f87171;
+  --status-serious-bg: #3a1414;
+  --status-critical: #e391d6;
+  --status-critical-bg: #321830;
+  --status-neutral: #a1a1aa;
+  --status-neutral-bg: #232326;
+  --status-info: #8ab8f5;
+  --status-info-bg: #12233d;
+  --chart-grid: #3f464a;
+  --chart-axis-text: #a5afb6;
+  --chart-axis-line: #72797d;
+  --chart-tooltip-bg: #2a3034;
+  --chart-tooltip-border: #72797d;
+  --tactile-surface: #202427;
+  --tactile-surface-raised: #2a3034;
+  --tactile-highlight: rgba(255, 255, 255, 0.06);
+  --tactile-shadow-dark: rgba(0, 0, 0, 0.65);
+  --tactile-shadow-darker: rgba(0, 0, 0, 0.8);
+}
+
+:root[data-theme="indigo"] {
+  color-scheme: light;
+  --background: #f8f7fd;
+  --foreground: #110e1b;
+  --muted: #eae5f8;
+  --muted-foreground: #615c70;
+  --border: #d7cfec;
+  --border-strong: #8a7bb4;
+  --control-border: #8a7bb4;
+  --primary: #4b3fb5;
+  --primary-foreground: #ffffff;
+  --accent: #2ec4b6;
+  --accent-foreground: #100d16;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success-solid: #047857;
+  --success-solid-foreground: #ffffff;
+  --ring: #4b3fb5;
+  --brand: #4b3fb5;
+  --brand-foreground: #ffffff;
+  --brand-muted: #e7e5f6;
+  --link: #4b3fb5;
+  --sidebar-bg: #141132;
+  --sidebar-bg-raised: #1a1641;
+  --sidebar-foreground: #c2bfd9;
+  --sidebar-foreground-muted: #8f8bb1;
+  --sidebar-border: #251f5c;
+  --sidebar-active-bg: #231d58;
+  --sidebar-active-foreground: #ffffff;
+  --sidebar-accent: #2ec4b6;
+  --status-good: #0a7050;
+  --status-good-bg: #e6f6ef;
+  --status-warning: #b45309;
+  --status-warning-bg: #fef3e2;
+  --status-serious: #b91c1c;
+  --status-serious-bg: #fde8e8;
+  --status-critical: #7c1d6f;
+  --status-critical-bg: #f7e6f4;
+  --status-neutral: #52525b;
+  --status-neutral-bg: #f1f1f3;
+  --status-info: #1d4ed8;
+  --status-info-bg: #e8f0fe;
+  --chart-grid: #d7cfec;
+  --chart-axis-text: #615c70;
+  --chart-axis-line: #8a7bb4;
+  --chart-tooltip-bg: #f7f5fc;
+  --chart-tooltip-border: #8a7bb4;
+  --tactile-surface: #ede9f9;
+  --tactile-surface-raised: #f7f5fc;
+  --tactile-highlight: rgba(255, 255, 255, 0.9);
+  --tactile-shadow-dark: rgba(146, 134, 182, 0.55);
+  --tactile-shadow-darker: rgba(126, 112, 169, 0.45);
 }
 
 /* Default border colour. It must live in a cascade layer: an unlayered rule
@@ -485,6 +670,7 @@ body {
   --success-solid: #3dd68c;
   --success-solid-foreground: #04140d;
   --ring: #7cb3f4;
+  --control-border: var(--border);
   --brand: #7cb3f4;
   --brand-foreground: #0b1018;
   --brand-muted: #16263f;

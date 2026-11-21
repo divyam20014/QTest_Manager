@@ -167,7 +167,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   return (
     <div
-      className="qth-animate-in fixed inset-0 z-[100] flex items-start justify-center bg-black/40 p-4 pt-[12vh] backdrop-blur-[1px]"
+      className="qth-animate-in fixed inset-0 z-[100] flex items-start justify-center bg-[var(--overlay-backdrop)] p-4 pt-[12vh] backdrop-blur-sm"
       style={{ animation: 'qth-fade-in 0.12s ease-out' }}
       role="presentation"
       onClick={onClose}

@@ -159,3 +159,7 @@ attributed to an anonymized placeholder rather than your real name/email).
 ## What a Tester sees when visibility is limited (ADR-093)
 
 Your Admin can limit what Testers see. If **assigned cases only** is on, you see only test cases assigned to you, or in a test run assigned to you or started by you; everything else is simply not listed, and opening one by link shows "not found". If **Reports are hidden**, the Reports menu is gone and report pages show a no-access message, but your Dashboard still shows your projects, defects and activity. Ask your Admin or Manager to assign you a case if one you need is missing.
+
+## Appearance (ADR-100)
+
+Open **Appearance** (the palette icon in the header, or More on a phone) to choose System, Light, Dark, Cobalt & Sunshine, Sage & Tangerine, Indigo & Aqua or Custom. The change applies at once, including the sign-in page. Custom opens "Create your theme": pick a light or dark base, a primary and an accent colour (colour picker, hex, or the palette swatches) and an optional surface tint; the theme is adjusted automatically to meet WCAG AA and you are told when a colour had to change. You can keep up to three named custom themes. The choice is remembered in this browser only, not in your account.
