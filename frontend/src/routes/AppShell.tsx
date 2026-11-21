@@ -315,8 +315,12 @@ export function AppShell() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-3 pb-4">
-          {visibleSections.map((section) => (
+          {visibleSections.map((section, index) => (
             <div key={section.label} className="flex flex-col gap-1">
+              {/* Icon rail: headings become thin dividers (no layout shift between sections). */}
+              {collapsed && index > 0 && (
+                <hr aria-hidden="true" className="mx-2 mb-1 border-0 border-t border-[var(--sidebar-border)]" />
+              )}
               {!collapsed && (
                 <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--sidebar-foreground-muted)]">
                   {section.label}

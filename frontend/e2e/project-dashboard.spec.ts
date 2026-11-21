@@ -64,7 +64,8 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   const scoped: string[] = []
   page.on('request', (r) => {
     const u = r.url()
-    if (/\/api\/v1\/(dashboard|reports|defects)/.test(u)) scoped.push(u)
+    // The phone tab bar's badge count is deliberately tenant-wide (ADR-104).
+    if (/\/api\/v1\/(dashboard|reports|defects)/.test(u) && !u.endsWith('/defects/status-counts')) scoped.push(u)
   })
   await page.goto(`/projects/${a}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Alpha Project' })).toBeVisible()

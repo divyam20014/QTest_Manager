@@ -40,7 +40,7 @@ test('mobile shell: bottom tab bar navigates and the More sheet opens, traps foc
   await expect(sheet).toBeVisible()
   await expect(sheet.getByRole('link', { name: 'Projects' })).toBeVisible()
   await expect(sheet.getByRole('button', { name: 'Ask AI' })).toBeVisible()
-  await expect(sheet.getByRole('button', { name: /mode$/ })).toBeVisible()
+  await expect(sheet.getByRole('button', { name: 'Appearance' })).toBeVisible()
   await expect(sheet.getByRole('button', { name: 'Sign out' })).toBeVisible()
 
   await page.keyboard.press('Escape')

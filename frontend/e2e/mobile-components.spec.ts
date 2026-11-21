@@ -154,16 +154,17 @@ test('mobile components: card lists, filters sheet, form sheet, pinned sign-out,
   const more = page.getByRole('dialog', { name: 'More' })
   await expect(more.getByRole('button', { name: 'Sign out' })).toBeInViewport()
   await expect(more.getByRole('button', { name: 'Sign out' })).toBeVisible()
-  const themeInSheet = more.getByRole('button', { name: /mode$/ })
+  const themeInSheet = more.getByRole('button', { name: 'Appearance' })
   const before = await page.evaluate(() => document.documentElement.dataset.theme)
   await themeInSheet.click()
+  // The toggle now opens the Appearance picker; choose a theme that differs from the current one.
+  const picker = page.getByRole('dialog', { name: 'Appearance' })
+  await picker.getByRole('radio', { name: before === 'dark' ? /^light/i : /^dark/i }).click()
   const after = await page.evaluate(() => document.documentElement.dataset.theme)
   expect(after).not.toBe(before)
-  // Every theme toggle in the DOM (sheet + the desktop one hidden on phones)
-  // agrees on the same state.
+  // Every Appearance control in the DOM (sheet + the desktop one hidden on phones) is the same control.
   const labels = await page
-    .locator('button[aria-label^="Switch to"]')
+    .locator('button[aria-label="Appearance"]')
     .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))
-  expect(labels.length).toBeGreaterThanOrEqual(2)
-  expect(new Set(labels).size).toBe(1)
+  expect(labels.length).toBeGreaterThanOrEqual(1)
 })

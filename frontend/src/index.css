@@ -752,3 +752,34 @@ body {
     color: #0a0a0a;
   }
 }
+
+/* ADR-104: interactive summary cards (dashboard KPI tiles, widget cards).
+   24px padding on desktop, 16px on phones, inner gaps (8px) smaller than the
+   edge padding. Nested radius: an inner element with its own radius uses
+   outer radius minus padding, never below 0. Hover lifts 4px (200ms ease) and
+   steps the shadow up; pressed settles back down. Motion is off under
+   prefers-reduced-motion. Data tables, forms and dense lists do not use this. */
+.qth-card-interactive {
+  --card-pad: 1.5rem;
+  --card-inner-radius: max(0px, calc(var(--radius-panel) - var(--card-pad)));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: var(--card-pad);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+@media (max-width: 639px) {
+  .qth-card-interactive { --card-pad: 1rem; }
+}
+.qth-card-interactive > * { padding: 0; }
+@media (hover: hover) {
+  .qth-card-interactive:hover { transform: translateY(-4px); box-shadow: var(--elevation-raised-lg); }
+}
+.qth-card-interactive:active { transform: translateY(0); box-shadow: var(--elevation-pressed-sm); }
+@media (prefers-reduced-motion: reduce) {
+  .qth-card-interactive,
+  .qth-card-interactive:hover,
+  .qth-card-interactive:active { transition: none; transform: none; }
+}

@@ -26,13 +26,6 @@ import { useThemePreference } from '@/lib/useThemePreference'
 import { cn } from '@/lib/utils'
 import { categoricalColor } from '@/routes/reporting/palette'
 
-// Tactile hover affordance for clickable dashboard tiles -- a lift via
-// transform rather than overriding EmbossedCard's own box-shadow token
-// (safer than fighting CSS specificity between the raised-elevation
-// utility class and a Tailwind hover:shadow override).
-const TILE_INTERACTIVE =
-  'transition-transform duration-150 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] rounded-xl'
-
 // Clicking a KPI, chart segment, or activity row should take you to the
 // filtered list it summarizes, not just display a number (UX review
 // bug #17) -- a route per entity_type the activity stream can report on.
@@ -199,10 +192,11 @@ interface Kpi {
 function KpiTile({ kpi, index }: { kpi: Kpi; index: number }) {
   return (
     <EmbossedCard
-      className={cn('qth-animate-in relative h-full cursor-pointer', TILE_INTERACTIVE)}
+      interactive
+      className={cn('qth-animate-in relative h-full')}
       style={{ animation: `qth-slide-in 0.25s ease-out ${index * 30}ms backwards` }}
     >
-      <CardHeader>
+      <CardHeader className="p-0">
         <CardTitle>
           <Link
             to={kpi.href}
@@ -212,14 +206,14 @@ function KpiTile({ kpi, index }: { kpi: Kpi; index: number }) {
           </Link>
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-1">
+      <CardContent className="flex flex-col gap-1 p-0">
         <p className="text-3xl font-semibold tabular-nums">{kpi.value}</p>
         <p className="text-xs text-[var(--muted-foreground)]">{kpi.detail}</p>
         {kpi.secondary && (
           <Link
             to={kpi.secondary.href}
             className={cn(
-              'relative z-10 mt-1 inline-flex w-fit items-center rounded-md text-xs font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:min-h-11 max-md:text-sm',
+              'relative z-10 mt-1 inline-flex w-fit items-center rounded-[var(--card-inner-radius)] text-xs font-medium hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:min-h-11 max-md:text-sm',
               kpi.secondary.tone === 'critical' ? 'text-[var(--status-serious)]' : 'text-[var(--link)]',
             )}
           >

@@ -382,6 +382,7 @@ export function DashboardView() {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
+              variant="outline"
               disabled={draft.length >= MAX_WIDGETS}
               onClick={() => setDialog({ index: null })}
             >

@@ -10,12 +10,14 @@ import { cn } from '@/lib/utils'
  * hero widgets, not dense list/table screens (texture + soft shadow at
  * that density reads as noise, not polish).
  */
-export const EmbossedCard = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
+export const EmbossedCard = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { interactive?: boolean }>(
+  ({ className, interactive, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
         'qth-texture qth-raised-md rounded-xl bg-[var(--tactile-surface)]',
+        // ADR-104: summary cards that are one link get padding, border, lift and pressed state.
+        interactive && 'qth-card-interactive',
         className,
       )}
       {...props}

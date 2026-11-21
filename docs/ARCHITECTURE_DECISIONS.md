@@ -1490,3 +1490,17 @@ A visitor with the `qtesthub:session-hint` key on `/` gets the app default inste
 **Inputs.** `PasswordInput` adds a show/hide toggle (`aria-pressed`, label "Show characters", input name/autocomplete untouched). `PasswordStrengthMeter` (text plus bar, `role=status`, pure `passwordStrength()` in `lib/passwordStrength.ts`) appears on the sign-up, accept-invite and password reset/change flows only. `FormField` already wires `aria-invalid`, `aria-describedby` and `role=alert`; the sign-in email field now does too.
 
 **Skipped.** Quantity steppers (no quantity field exists), tag input and date masks (no field needs them). The one-time-code field stays a single input. Only the most-used submit buttons got `loading`; the rest still use `disabled`.
+
+## ADR-104: Interactive cards, phone tab bar behaviour and the desktop icon rail
+
+**Status:** accepted.
+
+**Primary-button audit.** One primary (default-variant) button per visible group, found by scanning every route and component for default-variant `<Button>`. Only one real conflict: Dashboard editing (`DashboardView`) showed "Save layout" and "Add widget" together, so "Add widget" is now outline. Everything else already had one primary per toolbar or dialog footer (list pages: the create action; dialogs: the confirm action; destructive actions use the destructive variant). Per-card inline "Add" buttons on Project detail and Settings were left as the primary of their own card form.
+
+**Cards.** Only clickable summary cards (dashboard KPI tiles via `EmbossedCard interactive`, class `.qth-card-interactive`): 24px padding (16px under 640px), 8px inner gap, 1px token border, token shadow, hover lift 4px over 200ms ease with the shadow stepping up (hover devices only), pressed state settles back, focus ring on the stretched link, all motion removed under `prefers-reduced-motion`. A tile is one primary link (stretched `::after`) plus at most one secondary link above it; no nested anchors. Inner radius is `max(0, panel radius - padding)` (`--card-inner-radius`). Data tables, forms and dense lists are untouched; the ProjectsList cards are phone renderings of the data table, so they were not changed.
+
+**Phone tab bar.** A transform-based sliding indicator (200ms, instant under reduced motion) over five equal columns. Badges: Defects shows open defects (New + Open from the cached `/defects/status-counts`), More shows unread notifications (same cache key as the bell); both hidden at 0, and the badge text is `aria-hidden` with an sr-only suffix (accessible name "Defects, 1 open"). Hide-on-scroll (`lib/scrollDirection.ts`, pure and unit tested): hides after scrolling down more than 48px in one run, returns on any upward scroll or at the top. It never hides on the Execution Console (`/test-run-cases/*`, pinned verdict bar), while the More sheet or any modal dialog is open, while keyboard focus is inside the bar, or under reduced motion.
+
+**Desktop icon rail.** The collapsed sidebar (64px, persisted in localStorage, tooltip on hover and keyboard focus, active accent bar) gained thin dividers in place of section headings. Expanded state unchanged.
+
+**Skipped.** Two-level sidebar, floating sidebar, scroll-direction logic on desktop, card treatment for list/table rows.

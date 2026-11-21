@@ -11,12 +11,18 @@ import {
   User,
   X,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { type ComponentType, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
+import { getDefectStatusCounts } from '@/api/defects'
+import { getUnreadCount } from '@/api/notifications'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useOverlayBehavior } from '@/components/ui/useOverlayBehavior'
+import { useAuth } from '@/lib/auth'
+import { canAccessPath } from '@/lib/routeAccess'
+import { INITIAL_SCROLL_STATE, nextScrollState } from '@/lib/scrollDirection'
 import { cn } from '@/lib/utils'
 
 // Mobile redesign Phase 1: below `md` the desktop sidebar is replaced by a
@@ -52,6 +58,48 @@ const PRIMARY_PATHS = new Set(MOBILE_TABS.map((t) => t.to))
 
 const SAFE_BOTTOM = { paddingBottom: 'env(safe-area-inset-bottom)' }
 
+// Pinned action bars (the Execution Console's verdict bar sits just above this
+// bar) must never lose their anchor, so the bar never hides there.
+const NEVER_HIDE_PATH = /^\/test-run-cases\//
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/** True while the bar should slide away: scrolled down >48px, and not exempt. */
+function useScrollHidden(exempt: boolean): boolean {
+  const [hidden, setHidden] = useState(false)
+  useEffect(() => {
+    if (exempt) return
+    let state = { ...INITIAL_SCROLL_STATE, lastY: window.scrollY }
+    function onScroll() {
+      if (prefersReducedMotion() || document.querySelector('[role="dialog"][aria-modal="true"]')) {
+        state = { ...INITIAL_SCROLL_STATE, lastY: window.scrollY }
+        setHidden(false)
+        return
+      }
+      state = nextScrollState(state, window.scrollY)
+      setHidden(state.hidden)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [exempt])
+  return hidden
+}
+
+function TabBadge({ count }: { count: number }) {
+  if (count <= 0) return null
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="tab-badge"
+      className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--destructive)] px-1 text-[11px] font-semibold leading-none text-[var(--destructive-foreground)]"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
+
 export function MobileTabBar({
   moreOpen,
   onMore,
@@ -59,48 +107,101 @@ export function MobileTabBar({
   moreOpen: boolean
   onMore: () => void
 }) {
+  const { user } = useAuth()
+  const location = useLocation()
+  const [focusWithin, setFocusWithin] = useState(false)
+  const canSeeDefects = !!user && canAccessPath(user, '/defects')
+  // Same cache key as the desktop bell, so the unread count is shared.
+  const unread = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: getUnreadCount,
+    enabled: !!user,
+    staleTime: 30_000,
+  })
+  const defectCounts = useQuery({
+    queryKey: ['defects', 'status-counts', 'tab-bar'],
+    queryFn: () => getDefectStatusCounts(),
+    enabled: canSeeDefects,
+    staleTime: 60_000,
+  })
+  const openDefects = canSeeDefects ? (defectCounts.data?.counts.New ?? 0) + (defectCounts.data?.counts.Open ?? 0) : 0
+  const unreadCount = unread.data?.count ?? 0
+
+  const exempt = moreOpen || focusWithin || NEVER_HIDE_PATH.test(location.pathname)
+  const scrollHidden = useScrollHidden(exempt)
+  const hidden = scrollHidden && !exempt
+
+  const activeIndex = moreOpen
+    ? MOBILE_TABS.length
+    : MOBILE_TABS.findIndex((t) => (t.end ? location.pathname === t.to : location.pathname.startsWith(t.to)))
+
   const itemClass = (active: boolean) =>
     cn(
-      'flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[11px] font-medium leading-tight transition-colors motion-reduce:transition-none',
+      'relative z-10 flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-[11px] font-medium leading-tight transition-colors motion-reduce:transition-none',
       'outline-offset-[-2px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]',
-      active
-        ? 'qth-pressed-sm bg-[var(--tactile-surface)] text-[var(--foreground)]'
-        : 'text-[var(--muted-foreground)] active:bg-[var(--muted)]',
+      active ? 'text-[var(--foreground)]' : 'text-[var(--muted-foreground)] active:bg-[var(--muted)]',
     )
 
   return (
     <nav
       aria-label="Primary"
-      className="qth-shell-chrome qth-raised-md fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--tactile-surface-raised)] md:hidden"
+      data-hidden={hidden ? 'true' : 'false'}
+      onFocusCapture={(e) => setFocusWithin(e.target.matches(':focus-visible'))}
+      onBlurCapture={() => setFocusWithin(false)}
+      className={cn(
+        'qth-shell-chrome qth-raised-md fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[var(--tactile-surface-raised)] transition-transform duration-200 ease-out motion-reduce:transition-none md:hidden',
+        hidden && 'translate-y-full',
+      )}
       style={{
         ...SAFE_BOTTOM,
         paddingLeft: 'env(safe-area-inset-left)',
         paddingRight: 'env(safe-area-inset-right)',
       }}
     >
-      <div className="flex items-stretch gap-1 px-2 py-1.5">
-        {MOBILE_TABS.map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            end={tab.end}
-            aria-label={tab.label}
-            className={({ isActive }) => itemClass(isActive && !moreOpen)}
-          >
-            <tab.icon className="size-5 shrink-0" aria-hidden="true" />
-            <span className="max-w-full truncate">{tab.label}</span>
-          </NavLink>
-        ))}
+      <div className="relative flex items-stretch gap-1 px-2 py-1.5">
+        {/* Sliding indicator: five equal columns, so a pure transform moves it. */}
+        <span
+          aria-hidden="true"
+          data-testid="tab-indicator"
+          data-index={activeIndex}
+          className="qth-pressed-sm pointer-events-none absolute inset-y-1.5 left-2 rounded-xl bg-[var(--tactile-surface)] transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none"
+          style={{
+            width: 'calc((100% - 1rem - 1rem) / 5)',
+            transform: `translateX(calc(${Math.max(activeIndex, 0)} * (100% + 0.25rem)))`,
+            opacity: activeIndex < 0 ? 0 : 1,
+          }}
+        />
+        {MOBILE_TABS.map((tab) => {
+          const badge = tab.to === '/defects' ? openDefects : 0
+          return (
+            <NavLink
+              key={tab.to}
+              to={tab.to}
+              end={tab.end}
+              className={({ isActive }) => itemClass(isActive && !moreOpen)}
+            >
+              <span className="relative">
+                <tab.icon className="size-5 shrink-0" aria-hidden="true" />
+                <TabBadge count={badge} />
+              </span>
+              <span className="max-w-full truncate">{tab.label}</span>
+              {badge > 0 && <span className="sr-only">, {badge} open</span>}
+            </NavLink>
+          )
+        })}
         <button
           type="button"
           onClick={onMore}
-          aria-label="More"
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
           className={itemClass(moreOpen)}
         >
-          <Menu className="size-5 shrink-0" aria-hidden="true" />
+          <span className="relative">
+            <Menu className="size-5 shrink-0" aria-hidden="true" />
+            <TabBadge count={unreadCount} />
+          </span>
           <span>More</span>
+          {unreadCount > 0 && <span className="sr-only">, {unreadCount} unread</span>}
         </button>
       </div>
     </nav>

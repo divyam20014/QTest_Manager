@@ -245,3 +245,6 @@ Dialogs: header title + 44px close button, body padding 24px (16px phone), stick
 ## Buttons (ADR-103)
 
 One default-variant primary per screen or dialog; the rest outline or ghost; destructive stays distinct. Label = the outcome ("Create test run"). Phone sizes: primary 48px, others 44px. `<Button loading>` for pending mutations (spinner, aria-busy, disabled, label kept). Passwords use `PasswordInput`; new-password flows add `PasswordStrengthMeter`.
+## Cards and navigation (ADR-104)
+
+Interactive summary cards (`EmbossedCard interactive`): 24px padding (16px on phones), 8px inner gaps, 1px border, hover lift 4px / 200ms, pressed and focus-visible states, no motion under reduced motion; one primary link per card. Phone tab bar: sliding indicator, count badges (Defects open, More unread), hides after 48px of downward scroll but never on the Execution Console, with focus inside, or under reduced motion. Collapsed desktop sidebar is a 64px icon rail with thin dividers and tooltips on hover and focus.
