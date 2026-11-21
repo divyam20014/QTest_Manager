@@ -161,7 +161,7 @@ export function ViewsMenu({
                     >
                       <span className="truncate">{v.name}</span>
                       {v.is_default && (
-                        <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 text-[10px] text-[var(--muted-foreground)]">
+                        <span className="shrink-0 rounded-full border border-[var(--border)] px-1.5 text-[11px] text-[var(--muted-foreground)]">
                           Default
                         </span>
                       )}

@@ -48,6 +48,8 @@ def test_admin_can_read_and_update_settings(client: TestClient, platform_admin: 
         "ai_api_key_configured": False,
         "ip_allowlist": [],
         "primary_domain": None,
+        "reports_hidden_from_testers": False,
+        "testers_see_assigned_cases_only": False,
     }
 
     updated = client.patch(

@@ -101,9 +101,7 @@ def test_unassigned_tester_cannot_rerun_and_other_tenant_gets_404(
     client: TestClient, platform_admin: dict
 ) -> None:
     tenant_id, project, case = _setup_admin_project_and_case(client, platform_admin)
-    tester_id = _create_user(
-        client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!"
-    )
+    _create_user(client, "tester@horizon.com", "Tester One", "tester", "TesterPassw0rd!")
     # Not a project member: project access is enforced like run creation.
     run = _make_run(client, project["id"], [case["id"]])
     _fail_case(client, run["cases"][0]["id"])

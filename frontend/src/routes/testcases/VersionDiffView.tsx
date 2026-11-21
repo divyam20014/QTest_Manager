@@ -20,7 +20,7 @@ function WordDiff({ before, after }: { before?: string | null; after?: string | 
           return (
             <ins
               key={i}
-              className="rounded-sm bg-[color-mix(in_srgb,var(--status-good)_22%,transparent)] px-0.5 underline decoration-[var(--status-good)] decoration-2 underline-offset-2"
+              className="rounded-md bg-[color-mix(in_srgb,var(--status-good)_22%,transparent)] px-0.5 underline decoration-[var(--status-good)] decoration-2 underline-offset-2"
             >
               <span className="sr-only">added: </span>
               {seg.text}
@@ -30,7 +30,7 @@ function WordDiff({ before, after }: { before?: string | null; after?: string | 
         return (
           <del
             key={i}
-            className="rounded-sm bg-[color-mix(in_srgb,var(--status-serious)_22%,transparent)] px-0.5 line-through decoration-[var(--status-serious)] decoration-2"
+            className="rounded-md bg-[color-mix(in_srgb,var(--status-serious)_22%,transparent)] px-0.5 line-through decoration-[var(--status-serious)] decoration-2"
           >
             <span className="sr-only">removed: </span>
             {seg.text}

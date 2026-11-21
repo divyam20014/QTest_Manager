@@ -63,7 +63,9 @@ describe('design tokens', () => {
 // shrink; when you remove some, lower the number (or delete the entry).
 const HARD_CODED_COLOUR_BASELINE: Record<string, number> = {
   'routes/admin/Settings.tsx': 1,
-  'routes/reporting/CompliancePrintView.tsx': 1,
+  // Deliberately fixed white/black print sheet (black table borders, grey header,
+  // neutral rules); theme tokens would change it in dark mode. Must not grow.
+  'routes/reporting/CompliancePrintView.tsx': 7,
   // Mermaid's themeVariables take literal colours (it cannot resolve CSS
   // variables); this one dark-theme edge-label background keeps the diagram
   // labels at AA contrast. Must not grow.

@@ -362,7 +362,7 @@ export function ReportBuilder() {
             {fields.length > 1 && (
               <ol className="flex flex-wrap gap-2" aria-label="Column order">
                 {fields.map((k, i) => (
-                  <li key={k} className="flex items-center gap-1 rounded border px-2 py-1 text-xs">
+                  <li key={k} className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
                     <span>{fieldMap.get(k)?.label ?? k}</span>
                     <button
                       type="button"
