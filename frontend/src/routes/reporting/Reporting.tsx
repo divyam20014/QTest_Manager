@@ -51,6 +51,7 @@ import { useThemePreference } from '@/lib/useThemePreference'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { categoricalColor, CATEGORICAL_DARK, SEQUENTIAL_BLUE_LIGHT } from './palette'
 import { ExportButton } from '@/components/ui/ExportButton'
+import { DefectLeakageCard } from './DefectLeakageCard'
 import { QAManagerIntelligenceCard } from './QAManagerIntelligenceCard'
 import { QualityMetricsCard } from './QualityMetricsCard'
 
@@ -476,6 +477,8 @@ export function Reporting() {
       </ChartPanel>
 
       <QualityMetricsCard projectId={projectId || undefined} />
+
+      <DefectLeakageCard projectId={projectId || undefined} />
 
       <EmbossedCard>
         <CardHeader>

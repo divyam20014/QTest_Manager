@@ -37,7 +37,7 @@ export function deleteTestSuite(suiteId: string): Promise<{ deleted: boolean }> 
 
 export function createRunFromSuite(
   suiteId: string,
-  req: { name: string; run_type: RunType },
+  req: { name: string; run_type: RunType; exclude_quarantined?: boolean },
 ): Promise<TestRun> {
   return apiFetch<TestRun>(`/test-suites/${suiteId}/create-run`, {
     method: 'POST',

@@ -196,6 +196,10 @@ The authoring-level document (ADR-001).
 | status | TEXT NOT NULL CHECK IN ('draft','ready_for_review','approved','deprecated') | ADR-001 |
 | assignee_id | UUID NULL FK users | |
 | current_version_id | UUID NULL FK test_case_versions | set after first version created |
+| quarantined | BOOLEAN NOT NULL DEFAULT false | manual flaky-test quarantine (ADR-097, migration `d7f3b9a1c5e2`) |
+| quarantine_reason | TEXT NULL | required (3-500 chars) when quarantining, cleared on release |
+| quarantined_by | UUID NULL FK users | who quarantined it |
+| quarantined_at | TIMESTAMPTZ NULL | when |
 | created_by | UUID NOT NULL FK users | |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | |
 

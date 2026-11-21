@@ -21,6 +21,7 @@ import {
 } from '@/api/testCases'
 import { listModules } from '@/api/modules'
 import { listUsers } from '@/api/users'
+import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -641,7 +642,12 @@ export function TestRepository() {
       key: 'status',
       header: 'Status',
       card: 'badge',
-      cell: ({ case: tc }) => <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</StatusBadge>,
+      cell: ({ case: tc }) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</StatusBadge>
+          {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
+        </span>
+      ),
     },
     {
       key: 'priority',

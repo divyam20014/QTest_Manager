@@ -82,6 +82,8 @@ export interface TestRunCreateRequest {
   name: string
   run_type: RunType
   test_case_ids: string[]
+  /** ADR-097: skip cases flagged as quarantined (default false). */
+  exclude_quarantined?: boolean
 }
 
 export interface TestRunUpdateRequest {

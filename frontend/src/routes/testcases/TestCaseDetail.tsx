@@ -13,6 +13,7 @@ import {
   compareTestCaseVersions,
   deleteTestCase,
   deprecateTestCase,
+  unquarantineTestCase,
   getTestCase,
   getTestCaseHistory,
   listTestCaseVersions,
@@ -43,7 +44,9 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
-import { isAdmin, isManagerOrAbove } from '@/api/auth'
+import { hasPermission, isAdmin, isManagerOrAbove } from '@/api/auth'
+import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
+import { QuarantineDialog } from '@/components/ui/QuarantineDialog'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
@@ -57,6 +60,7 @@ export function TestCaseDetail() {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
   const [editOpen, setEditOpen] = useState(false)
+  const [quarantineOpen, setQuarantineOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [submitReviewOpen, setSubmitReviewOpen] = useState(false)
@@ -160,6 +164,7 @@ export function TestCaseDetail() {
   if (!testCase) return <EmptyState title="Test case not found" description="It may have been deleted, or you may not have access to it." />
 
   const canApprove = isManagerOrAbove(user)
+  const canQuarantine = hasPermission(user, 'testcase.approve')
   const isAssignedReviewer =
     testCase.reviewer_id === null || testCase.reviewer_id === user?.user_id || isAdmin(user)
   const canActOnReview = canApprove && isAssignedReviewer
@@ -195,6 +200,7 @@ export function TestCaseDetail() {
         meta={
           <>
             <StatusBadge tone={STATUS_DISPLAY[testCase.status].tone}>{STATUS_DISPLAY[testCase.status].label}</StatusBadge>
+            {testCase.quarantined && <QuarantinedBadge title={testCase.quarantine_reason} />}
             <span className="text-xs text-[var(--muted-foreground)]">v{testCase.version_number}</span>
           </>
         }
@@ -228,6 +234,31 @@ export function TestCaseDetail() {
             </Button>
           </>
         )}
+        {canQuarantine &&
+          (testCase.quarantined ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                ask({
+                  title: 'Remove this test case from quarantine?',
+                  description: 'New runs will include it again.',
+                  confirmLabel: 'Remove quarantine',
+                  run: async () => {
+                    await unquarantineTestCase(testCase.id)
+                    invalidate()
+                    queryClient.invalidateQueries({ queryKey: ['reports'] })
+                  },
+                })
+              }
+            >
+              Remove quarantine
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setQuarantineOpen(true)}>
+              Quarantine
+            </Button>
+          ))}
         {testCase.status !== 'deprecated' && canApprove && (
           <Button
             variant="outline"
@@ -368,6 +399,12 @@ export function TestCaseDetail() {
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}
         testCaseId={testCase.id}
+      />
+      <QuarantineDialog
+        testCaseId={testCase.id}
+        title={testCase.title}
+        open={quarantineOpen}
+        onClose={() => setQuarantineOpen(false)}
       />
       <Dialog
         open={submitReviewOpen}

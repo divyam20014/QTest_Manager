@@ -45,6 +45,9 @@ export interface TestCase {
   last_execution_result: string | null
   last_executed_by_name: string | null
   last_execution_date: string | null
+  quarantined: boolean
+  quarantine_reason: string | null
+  quarantined_at: string | null
 }
 
 export interface TestCaseListResponse {
@@ -58,6 +61,7 @@ export interface TestCaseListParams {
   status?: TestCaseStatus | ''
   assignee_id?: string | ''
   module_id?: string
+  quarantined?: 'any' | 'only' | 'exclude'
   sort?: string
   page?: number
   page_size?: number
@@ -120,6 +124,7 @@ export function listTestCases(
   if (params.status) query.set('status', params.status)
   if (params.assignee_id) query.set('assignee_id', params.assignee_id)
   if (params.module_id) query.set('module_id', params.module_id)
+  if (params.quarantined && params.quarantined !== 'any') query.set('quarantined', params.quarantined)
   if (params.sort) query.set('sort', params.sort)
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
@@ -199,6 +204,17 @@ export function assignModule(id: string, moduleId: string | null): Promise<{ ass
     method: 'POST',
     body: JSON.stringify({ module_id: moduleId }),
   })
+}
+
+export function quarantineTestCase(id: string, reason: string): Promise<TestCase> {
+  return apiFetch<TestCase>(`/test-cases/${id}/quarantine`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+export function unquarantineTestCase(id: string): Promise<TestCase> {
+  return apiFetch<TestCase>(`/test-cases/${id}/unquarantine`, { method: 'POST' })
 }
 
 export function deprecateTestCase(id: string): Promise<TestCase> {

@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -44,6 +45,17 @@ class TestCase(Base, TenantScopedMixin):
     )
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    # ADR-097: manual flaky-test quarantine (never set automatically).
+    quarantined: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    quarantine_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    quarantined_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    quarantined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     # Tier 3 (PV-7.3): optional module/folder grouping.
     module_id: Mapped[uuid.UUID | None] = mapped_column(

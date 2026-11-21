@@ -111,6 +111,12 @@ trends/aging, requirement coverage, and (if your organization is tracking
 it) release-readiness and workload views. Compliance-style exports are
 available where your role permits.
 
+## Defect leakage and quarantined tests
+
+On **Reporting**, the **Defect Leakage & Test Effectiveness** card shows how many defects reached users. A defect has *escaped* when it is linked to a release whose release date has passed, or when its environment is named Production or Prod. *Leakage* is escaped defects divided by all defects, and *detection effectiveness* is the rest (all minus escaped, divided by all); both read "No defects" when there is nothing to measure. The card also lists open escaped defects by age, escaped defects by severity, a per-release table and a monthly trend (with a table view), and exports to Excel. Filter by project and by report date.
+
+A Manager or Admin can **Quarantine** a flaky test case from its page or from the Flaky Tests card, giving a reason. A Quarantined badge then shows on the case. Quarantine never deletes anything: the case keeps its history and any verdicts in existing runs still count. When you create a run, tick **Skip quarantined cases** to leave them out. Release readiness and the leakage card always show the quarantined count separately, so a quarantined case cannot hide a failure. Use **Remove quarantine** on the case page when it is stable again.
+
 ## Notifications
 
 The header bell shows unread notifications for three events: someone

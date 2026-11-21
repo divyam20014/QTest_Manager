@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
@@ -181,6 +181,9 @@ def to_out(db: Session, case: TestCase) -> TestCaseOut:
         last_execution_result=last_result,
         last_executed_by_name=last_executed_by_name,
         last_execution_date=last_execution_date,
+        quarantined=case.quarantined,
+        quarantine_reason=case.quarantine_reason,
+        quarantined_at=case.quarantined_at,
     )
 
 
@@ -196,6 +199,7 @@ def _filter_sort_page(
     sort: str,
     page: int,
     page_size: int,
+    quarantined: str | None = None,
 ) -> tuple[list[TestCase], int]:
     """The filters, sorting and paging shared by the per-project and the
     tenant-wide listings, so the two can never disagree about what a filter
@@ -210,6 +214,10 @@ def _filter_sort_page(
         query = query.where(TestCase.assignee_id == assignee_id)
     if module_id:
         query = query.where(TestCase.module_id == module_id)
+    if quarantined == "only":
+        query = query.where(TestCase.quarantined.is_(True))
+    elif quarantined == "exclude":
+        query = query.where(TestCase.quarantined.is_(False))
 
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
 
@@ -237,6 +245,7 @@ def list_test_cases(
     status: str | None = None,
     assignee_id: UUID | None = None,
     module_id: UUID | None = None,
+    quarantined: str | None = None,
     sort: str = "created_at",
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
@@ -256,6 +265,7 @@ def list_test_cases(
         status=status,
         assignee_id=assignee_id,
         module_id=module_id,
+        quarantined=quarantined,
         sort=sort,
         page=page,
         page_size=page_size,
@@ -273,6 +283,7 @@ def list_test_cases_all_projects(
     status: str | None = None,
     assignee_id: UUID | None = None,
     module_id: UUID | None = None,
+    quarantined: str | None = None,
     sort: str = "created_at",
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
@@ -301,6 +312,7 @@ def list_test_cases_all_projects(
         status=status,
         assignee_id=assignee_id,
         module_id=module_id,
+        quarantined=quarantined,
         sort=sort,
         page=page,
         page_size=page_size,
@@ -1022,3 +1034,63 @@ def delete_test_case(
         entity_id=test_case_id,
     )
     db.commit()
+
+
+def _set_quarantine(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    test_case_id: UUID,
+    *,
+    reason: str | None,
+) -> TestCase:
+    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    _authorize_case_access(db, tenant_id, role_code, actor_user_id, case)
+    if reason is not None:
+        if case.quarantined:
+            raise ConflictError("Test case is already quarantined")
+        case.quarantined = True
+        case.quarantine_reason = reason
+        case.quarantined_by = actor_user_id
+        case.quarantined_at = datetime.now(UTC)
+        action, meta = "testcase.quarantined", {"reason_length": len(reason)}
+    else:
+        if not case.quarantined:
+            raise ConflictError("Test case is not quarantined")
+        case.quarantined = False
+        case.quarantine_reason = None
+        case.quarantined_by = None
+        case.quarantined_at = None
+        action, meta = "testcase.unquarantined", {}
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action=action,
+        entity_type="test_case",
+        entity_id=case.id,
+        metadata=meta,
+    )
+    db.commit()
+    return case
+
+
+def quarantine_test_case(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    test_case_id: UUID,
+    reason: str,
+) -> TestCase:
+    """ADR-097: manual only; caller already holds testcase.approve."""
+    return _set_quarantine(
+        db, tenant_id, role_code, actor_user_id, test_case_id, reason=reason.strip()
+    )
+
+
+def unquarantine_test_case(
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, test_case_id: UUID
+) -> TestCase:
+    return _set_quarantine(db, tenant_id, role_code, actor_user_id, test_case_id, reason=None)

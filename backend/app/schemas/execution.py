@@ -13,6 +13,8 @@ class TestRunCreateRequest(BaseModel):
     name: str = Field(min_length=3)
     run_type: RunType
     test_case_ids: list[UUID] = Field(min_length=1)
+    # ADR-097: default False keeps the current behaviour.
+    exclude_quarantined: bool = False
 
 
 class TestRunUpdateRequest(BaseModel):
@@ -28,6 +30,7 @@ class TestRunCaseAddRequest(BaseModel):
     # an empty list) bundles once, unparameterized, exactly as before --
     # fully backward compatible with every existing caller.
     data_row_ids: dict[UUID, list[UUID]] = Field(default_factory=dict)
+    exclude_quarantined: bool = False
 
 
 class TestRunCaseAssignRequest(BaseModel):

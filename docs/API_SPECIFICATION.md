@@ -118,6 +118,8 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | POST | /test-cases/{id}/submit-review | draft → ready_for_review | tester/manager/admin |
 | POST | /test-cases/{id}/approve | → approved | manager, admin |
 | POST | /test-cases/{id}/deprecate | → deprecated (terminal; ADR-034) | manager, admin |
+| POST | /test-cases/{id}/quarantine | flag a flaky case; body `{reason}` 3-500 characters. 409 if already quarantined; audit `testcase.quarantined` (reason length only) (ADR-097) | `testcase.approve` (manager, admin) |
+| POST | /test-cases/{id}/unquarantine | remove the flag; 409 if not quarantined; audit `testcase.unquarantined` | `testcase.approve` |
 | DELETE | /test-cases/{id} | delete (tester: own drafts only) | role-gated per matrix |
 | GET | /test-cases/{id}/attachments | list attachments (ADR-012, GAP-15) | all (assigned) |
 | POST | /test-cases/{id}/attachments | upload (multipart, 10MB cap, file-type allowlist per ADR-034, plus magic-byte/content-signature validation per ADR-040) | testcase.edit (admin/manager/tester) |
@@ -196,6 +198,8 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | GET | /reports/execution-trend | daily pass/fail/ignore step-verdict counts over a trailing window (`days`, default 30), optional `project_id` (ADR-038) | all (scoped) |
 | GET | /reports/defect-trend | daily opened-vs-closed defect counts over a trailing window (`days`, default 30), optional `project_id` (Phase 6, ADR-048, GAP-77) | all (scoped) |
 | GET | /reports/defect-aging | per-severity open-defect count + SLA-breach count, optional `project_id` (Phase 6, ADR-048, GAP-77) | all (scoped) |
+| GET | /reports/defect-leakage | defect leakage and test effectiveness (ADR-097): `project_id`, `date_from`, `date_to` optional. Returns total/escaped defects, `leakage_percentage` and `detection_effectiveness_percentage` (null when no defects), `open_escaped_defects` with `open_escaped_age_buckets`, `escaped_by_severity`, `quarantined_test_cases`, per-release `releases` and monthly `trend`. Escaped = linked to a release dated today or earlier, or environment named production/prod | `report.view`; 403 for a Tester when Reports are hidden or the project is not theirs |
+| GET | /reports/defect-leakage/export.xlsx | same data as an Excel workbook (Defect Leakage and By Release sheets) | `report.view` |
 | GET | /reports/compliance-detail | structured JSON compliance report (summary + per-project detailed test case/defect tables), optional `period_from`/`period_to` — backs the browser print/PDF view (ADR-038) | manager, admin |
 | GET | /reports/compliance-export | CSV compliance summary, now incl. a Reporting Period header row and per-project detailed test case/defect tables, optional `period_from`/`period_to` (ADR-038) | manager, admin |
 | GET | /reports/compliance-export.xlsx | compliance summary as an Excel workbook (Compliance Summary, Period Trend, Quality Metrics, Cycle Time by Project sheets), optional `period_from`/`period_to` (ADR-071) | manager, admin (report.compliance_export) |
@@ -274,3 +278,5 @@ Private per-user filter sets for the Test Cases, Defects and Test Runs lists. An
 | DELETE | /saved-views/{id} | delete |
 
 Allowed filter keys (string values): test_cases `search, priority, status, assigneeId, moduleId` (+ `sort` such as `title` or `-priority`); defects `projectId, status, severity, reportedBy, createdFrom, createdTo`; test_runs `projectId, activeOnly` (`true`/`false`).
+
+Additions in ADR-097: the test case list endpoints take `quarantined=any|only|exclude` and every case payload carries `quarantined`, `quarantine_reason`, `quarantined_at`; run creation (`/projects/{id}/test-runs`, `/test-suites/{id}/create-run`, `/test-runs/{id}/cases`) takes `exclude_quarantined` (default false); `/reports/release-readiness` returns `quarantined_count`; `/reports/flaky-tests` rows return `quarantined`. Saved views for test_cases also accept the filter key `quarantined`.

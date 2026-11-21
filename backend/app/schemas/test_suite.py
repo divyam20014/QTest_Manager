@@ -33,3 +33,4 @@ class TestSuiteOut(BaseModel):
 class CreateRunFromSuiteRequest(BaseModel):
     name: str = Field(min_length=3)
     run_type: RunType
+    exclude_quarantined: bool = False

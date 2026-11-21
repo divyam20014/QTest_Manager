@@ -1,11 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 
 import {
   fetchFlakyTests,
   fetchReleaseReadiness,
   fetchWorkloadSummary,
 } from '@/api/reporting'
+import { hasPermission } from '@/api/auth'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
+import { QuarantineDialog } from '@/components/ui/QuarantineDialog'
+import { useAuth } from '@/lib/auth'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
@@ -14,6 +20,9 @@ import { EmbossedCard } from '@/components/ui/EmbossedCard'
 // score -- a QA manager deciding release go/no-go needs completion, pass
 // rate, open defects, and coverage as separate signals.
 export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) {
+  const { user } = useAuth()
+  const canQuarantine = hasPermission(user, 'testcase.approve')
+  const [target, setTarget] = useState<{ id: string; title: string } | null>(null)
   const readinessQuery = useQuery({
     queryKey: ['reports', 'release-readiness', projectId],
     queryFn: () => fetchReleaseReadiness(projectId),
@@ -58,6 +67,12 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
                 <span className="text-[var(--muted-foreground)]">Requirement coverage</span>
                 <span className="font-medium">{readiness.requirement_coverage_percentage}%</span>
               </div>
+              {(readiness.quarantined_count ?? 0) > 0 && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--muted-foreground)]">Quarantined cases (not counted as passing)</span>
+                  <span className="font-medium">{readiness.quarantined_count}</span>
+                </div>
+              )}
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {Object.entries(readiness.open_defects_by_severity).length === 0 && (
                   <span className="text-xs text-[var(--muted-foreground)]">No open defects</span>
@@ -110,15 +125,36 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
           ) : (
             <ul className="flex flex-col gap-2 text-sm">
               {flaky.map((t) => (
-                <li key={t.test_case_id} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{t.test_case_title}</span>
+                <li key={t.test_case_id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1 truncate">{t.test_case_title}</span>
                   <Badge tone="warning">{Math.round(t.flip_rate * 100)}% flip</Badge>
+                  {t.quarantined ? (
+                    <QuarantinedBadge />
+                  ) : (
+                    canQuarantine && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTarget({ id: t.test_case_id, title: t.test_case_title })}
+                      >
+                        Quarantine
+                      </Button>
+                    )
+                  )}
                 </li>
               ))}
             </ul>
           )}
         </CardContent>
       </EmbossedCard>
+      {target && (
+        <QuarantineDialog
+          testCaseId={target.id}
+          title={target.title}
+          open
+          onClose={() => setTarget(null)}
+        />
+      )}
     </div>
   )
 }

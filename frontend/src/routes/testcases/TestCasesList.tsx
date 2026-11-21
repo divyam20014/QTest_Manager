@@ -25,6 +25,7 @@ import { ViewsMenu } from '@/components/table/ViewsMenu'
 import { compactFilters, useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -63,7 +64,7 @@ const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'de
 const PAGE_SIZE = 10
 
 // ADR-096: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
-const TC_VIEW_KEYS = ['search', 'priority', 'status', 'assigneeId', 'moduleId'] as const
+const TC_VIEW_KEYS = ['search', 'priority', 'status', 'assigneeId', 'moduleId', 'quarantined'] as const
 const TC_VIEW_RESET = Object.fromEntries(TC_VIEW_KEYS.map((k) => [k, ''])) as Record<string, string>
 
 export function TestCasesList() {
@@ -88,6 +89,7 @@ export function TestCasesList() {
       status: '',
       assigneeId: '',
       moduleId: '',
+      quarantined: '',
       sort: 'created_at',
       page: '1',
     }),
@@ -102,6 +104,7 @@ export function TestCasesList() {
   const status = urlFilters.values.status as TestCaseStatus | ''
   const assigneeId = urlFilters.values.assigneeId
   const moduleId = urlFilters.values.moduleId
+  const quarantined = urlFilters.values.quarantined as '' | 'only' | 'exclude'
   const sort = urlFilters.values.sort
   const page = Number(urlFilters.values.page) || 1
   // Bug #8: deprecated cases cluttered the list by default -- hidden on
@@ -143,7 +146,7 @@ export function TestCasesList() {
     enabled: !!projectId,
   })
   const testCasesQuery = useQuery({
-    queryKey: ['test-cases', projectId, { search, priority, status, assigneeId, moduleId, sort, page }],
+    queryKey: ['test-cases', projectId, { search, priority, status, assigneeId, moduleId, quarantined, sort, page }],
     queryFn: () =>
       listTestCases(projectId!, {
         search,
@@ -151,6 +154,7 @@ export function TestCasesList() {
         status,
         assignee_id: assigneeId,
         module_id: moduleId || undefined,
+        quarantined: quarantined || undefined,
         sort,
         page,
         page_size: PAGE_SIZE,
@@ -201,7 +205,7 @@ export function TestCasesList() {
   const total = testCasesQuery.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  function setFilter(key: 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId', value: string) {
+  function setFilter(key: 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId' | 'quarantined', value: string) {
     urlFilters.setFilters({ [key]: value, page: '1' })
   }
 
@@ -221,12 +225,14 @@ export function TestCasesList() {
     priority: 'Priority',
     assigneeId: 'Assignee',
     moduleId: 'Module',
+    quarantined: 'Quarantine',
   }
   const chipDisplayValue: Record<string, string> = {
     status: status ? STATUS_DISPLAY[status]?.label ?? status : '',
     assigneeId:
       assigneeId === user?.user_id ? 'Me' : (usersQuery.data?.find((u) => u.id === assigneeId)?.name ?? assigneeId),
     moduleId: modules.find((m) => m.id === moduleId)?.name ?? moduleId,
+    quarantined: quarantined === 'only' ? 'Only quarantined' : quarantined === 'exclude' ? 'Hide quarantined' : '',
   }
   const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
 
@@ -273,7 +279,12 @@ export function TestCasesList() {
       header: 'Status',
       headerCell: sortHeader('status', 'Status'),
       card: 'badge',
-      cell: (tc) => <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>,
+      cell: (tc) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>
+          {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
+        </span>
+      ),
     },
     {
       key: 'priority',
@@ -360,9 +371,9 @@ export function TestCasesList() {
       />
 
       <FilterBar
-        activeCount={[status, priority, assigneeId, moduleId].filter(Boolean).length + (showDeprecated ? 1 : 0)}
+        activeCount={[status, priority, assigneeId, moduleId, quarantined].filter(Boolean).length + (showDeprecated ? 1 : 0)}
         onClear={() => {
-          urlFilters.setFilters({ status: '', priority: '', assigneeId: '', moduleId: '', page: '1' })
+          urlFilters.setFilters({ status: '', priority: '', assigneeId: '', moduleId: '', quarantined: '', page: '1' })
           setShowDeprecated(false)
         }}
         desktopClear={false}
@@ -422,6 +433,21 @@ export function TestCasesList() {
                 {STATUS_DISPLAY[s].label}
               </option>
             ))}
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="tc-filter-quarantined" className="text-xs text-[var(--muted-foreground)]">
+            Quarantine
+          </label>
+          <Select
+            id="tc-filter-quarantined"
+            className="w-40"
+            value={quarantined}
+            onChange={(e) => setFilter('quarantined', e.target.value)}
+          >
+            <option value="">Any</option>
+            <option value="only">Only quarantined</option>
+            <option value="exclude">Exclude quarantined</option>
           </Select>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -518,7 +544,7 @@ export function TestCasesList() {
               {FILTER_CHIP_LABEL[key]}: {chipDisplayValue[key] ?? urlFilters.values[key]}
               <button
                 type="button"
-                onClick={() => setFilter(key as 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId', '')}
+                onClick={() => setFilter(key as 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId' | 'quarantined', '')}
                 aria-label={`Remove ${FILTER_CHIP_LABEL[key]} filter`}
                 className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] max-md:flex max-md:size-8 max-md:items-center max-md:justify-center"
               >

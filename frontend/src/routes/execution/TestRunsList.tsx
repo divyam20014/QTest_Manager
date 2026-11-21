@@ -15,6 +15,7 @@ import { listTestCases } from '@/api/testCases'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -63,6 +64,7 @@ export function TestRunsList() {
   const [name, setName] = useState('')
   const [runType, setRunType] = useState<RunType>('Regression')
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
+  const [skipQuarantined, setSkipQuarantined] = useState(false)
   const { show: showToast } = useToast()
 
   const projectQuery = useQuery({
@@ -81,6 +83,7 @@ export function TestRunsList() {
     enabled: !!projectId && createOpen,
   })
   const approvedCases = (testCasesQuery.data?.items ?? []).filter((tc) => tc.status === 'approved')
+  const quarantinedCount = approvedCases.filter((tc) => tc.quarantined).length
 
   const createMutation = useMutation({
     mutationFn: (req: TestRunCreateRequest) => createTestRun(projectId!, req),
@@ -97,7 +100,12 @@ export function TestRunsList() {
   }
 
   function submitCreate() {
-    createMutation.mutate({ name, run_type: runType, test_case_ids: selectedCaseIds })
+    createMutation.mutate({
+      name,
+      run_type: runType,
+      test_case_ids: selectedCaseIds,
+      exclude_quarantined: skipQuarantined && quarantinedCount > 0,
+    })
   }
 
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
@@ -164,11 +172,22 @@ export function TestRunsList() {
                       onChange={() => toggleCase(tc.id)}
                     />
                     {tc.title}
+                    {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
                   </label>
                 </li>
               ))}
             </ul>
           </div>
+          {quarantinedCount > 0 && (
+            <label className="flex items-center gap-2 text-sm max-md:min-h-11">
+              <input
+                type="checkbox"
+                checked={skipQuarantined}
+                onChange={(e) => setSkipQuarantined(e.target.checked)}
+              />
+              Skip quarantined cases ({quarantinedCount})
+            </label>
+          )}
           <FormError>{createError}</FormError>
           <DialogFooter>
             <Button

@@ -232,6 +232,8 @@ export interface ReleaseReadinessReport {
   pass_percentage: number
   open_defects_by_severity: Record<string, number>
   requirement_coverage_percentage: number
+  /** ADR-097: cases flagged quarantined; reported separately, never silently counted as passing. */
+  quarantined_count?: number
 }
 
 export function fetchReleaseReadiness(
@@ -267,6 +269,7 @@ export interface FlakyTestEntry {
   run_count: number
   flip_count: number
   flip_rate: number
+  quarantined?: boolean
 }
 
 export interface FlakyTestReport {
@@ -399,4 +402,50 @@ export function qualityMetricsExportXlsxPath(
   runType: QualityRunType = 'Regression'
 ): string {
   return `/reports/quality-metrics/export.xlsx?${qualityParams(days, projectId, runType)}`
+}
+
+export interface LeakageReleaseRow {
+  release_id: string | null
+  release_name: string
+  project_id: string | null
+  release_date: string | null
+  total_defects: number
+  escaped_defects: number
+  leakage_percentage: number | null
+  detection_effectiveness_percentage: number | null
+  open_escaped_defects: number
+  escaped_by_severity: Record<string, number>
+}
+
+export interface DefectLeakageReport {
+  project_id: string | null
+  date_from: string | null
+  date_to: string | null
+  total_defects: number
+  escaped_defects: number
+  leakage_percentage: number | null
+  detection_effectiveness_percentage: number | null
+  open_escaped_defects: number
+  open_escaped_age_buckets: { under_7d: number; d7_to_30: number; over_30d: number }
+  escaped_by_severity: Record<string, number>
+  quarantined_test_cases: number
+  releases: LeakageReleaseRow[]
+  trend: { period: string; total_defects: number; escaped_defects: number; leakage_percentage: number | null }[]
+}
+
+function leakageParams(projectId?: string, dateFrom?: string, dateTo?: string): string {
+  const params = new URLSearchParams()
+  if (projectId) params.set('project_id', projectId)
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo) params.set('date_to', dateTo)
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export function fetchDefectLeakage(projectId?: string, dateFrom?: string, dateTo?: string): Promise<DefectLeakageReport> {
+  return apiFetch<DefectLeakageReport>(`/reports/defect-leakage${leakageParams(projectId, dateFrom, dateTo)}`)
+}
+
+export function defectLeakageExportXlsxPath(projectId?: string, dateFrom?: string, dateTo?: string): string {
+  return `/reports/defect-leakage/export.xlsx${leakageParams(projectId, dateFrom, dateTo)}`
 }

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -391,3 +391,45 @@ def compliance_export_xlsx(
     return _xlsx_response(
         reporting_service.compliance_report_to_xlsx(report, quality), "compliance_summary.xlsx"
     )
+
+
+@router.get("/reports/defect-leakage", dependencies=[Depends(require_reports_not_hidden)])
+def defect_leakage(
+    project_id: UUID | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_defect_leakage(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id=project_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get(
+    "/reports/defect-leakage/export.xlsx", dependencies=[Depends(require_reports_not_hidden)]
+)
+def defect_leakage_export_xlsx(
+    project_id: UUID | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> Response:
+    report = reporting_service.get_defect_leakage(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id=project_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return _xlsx_response(reporting_service.defect_leakage_to_xlsx(report), "defect_leakage.xlsx")

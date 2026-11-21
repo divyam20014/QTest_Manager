@@ -315,6 +315,13 @@ def create_test_run(
     _require_project_access(db, project, role_code, actor_user_id)
 
     cases = _validate_bundlable_cases(db, tenant_id, project_id, req.test_case_ids)
+    excluded_quarantined = 0
+    if req.exclude_quarantined:
+        kept = [c for c in cases if not c.quarantined]
+        excluded_quarantined = len(cases) - len(kept)
+        cases = kept
+        if not cases:
+            raise ValidationAppError("Every selected test case is quarantined")
 
     run = TestRun(
         tenant_id=tenant_id,
@@ -336,7 +343,11 @@ def create_test_run(
         action="testrun.created",
         entity_type="test_run",
         entity_id=run.id,
-        metadata={"name": run.name, "case_count": len(cases)},
+        metadata={
+            "name": run.name,
+            "case_count": len(cases),
+            "excluded_quarantined": excluded_quarantined,
+        },
     )
     db.commit()
     return run
@@ -408,11 +419,15 @@ def add_test_run_cases(
     )
 
     cases = _validate_bundlable_cases(db, tenant_id, run.project_id, req.test_case_ids)
+    if req.exclude_quarantined:
+        cases = [c for c in cases if not c.quarantined]
     cases_by_id = {c.id: c for c in cases}
 
     to_bundle: list[tuple[TestCase, UUID | None]] = []
     duplicates: list[str] = []
     for case_id in req.test_case_ids:
+        if case_id not in cases_by_id:
+            continue  # excluded as quarantined
         selected = req.data_row_ids.get(case_id)
         row_ids: list[UUID | None] = list(selected) if selected else [None]
         for row_id in row_ids:

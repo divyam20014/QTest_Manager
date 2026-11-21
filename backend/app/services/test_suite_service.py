@@ -193,7 +193,12 @@ def create_run_from_suite(
     if not case_ids:
         raise ValidationAppError("This suite has no test cases to run")
 
-    run_req = TestRunCreateRequest(name=req.name, run_type=req.run_type, test_case_ids=case_ids)
+    run_req = TestRunCreateRequest(
+        name=req.name,
+        run_type=req.run_type,
+        test_case_ids=case_ids,
+        exclude_quarantined=req.exclude_quarantined,
+    )
     run = execution_service.create_test_run(
         db, tenant_id, role_code, actor_user_id, suite.project_id, run_req
     )

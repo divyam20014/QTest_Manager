@@ -204,6 +204,7 @@ class ReleaseReadinessReport(BaseModel):
     pass_percentage: float
     open_defects_by_severity: dict[str, int]
     requirement_coverage_percentage: float
+    quarantined_count: int = 0
 
 
 class WorkloadEntry(BaseModel):
@@ -226,6 +227,7 @@ class FlakyTestEntry(BaseModel):
     run_count: int
     flip_count: int
     flip_rate: float
+    quarantined: bool = False
 
 
 class FlakyTestReport(BaseModel):
@@ -293,3 +295,48 @@ class QualityMetricsReport(BaseModel):
     total_test_cases: int
     approved_test_cases: int
     review_gate_coverage_percentage: float | None
+
+
+class LeakageAgeBuckets(BaseModel):
+    under_7d: int = 0
+    d7_to_30: int = 0
+    over_30d: int = 0
+
+
+class LeakageReleaseRow(BaseModel):
+    release_id: UUID | None
+    release_name: str
+    project_id: UUID | None = None
+    release_date: str | None = None
+    total_defects: int
+    escaped_defects: int
+    leakage_percentage: float | None
+    detection_effectiveness_percentage: float | None
+    open_escaped_defects: int
+    escaped_by_severity: dict[str, int]
+
+
+class LeakageTrendPoint(BaseModel):
+    period: str
+    total_defects: int
+    escaped_defects: int
+    leakage_percentage: float | None
+
+
+class DefectLeakageReport(BaseModel):
+    """ADR-097: escaped = linked to a released release OR found in a production
+    environment. Percentages are null when there are no defects."""
+
+    project_id: UUID | None
+    date_from: str | None
+    date_to: str | None
+    total_defects: int
+    escaped_defects: int
+    leakage_percentage: float | None
+    detection_effectiveness_percentage: float | None
+    open_escaped_defects: int
+    open_escaped_age_buckets: LeakageAgeBuckets
+    escaped_by_severity: dict[str, int]
+    quarantined_test_cases: int
+    releases: list[LeakageReleaseRow]
+    trend: list[LeakageTrendPoint]

@@ -119,6 +119,9 @@ class TestCaseOut(BaseModel):
     last_execution_result: str | None = None
     last_executed_by_name: str | None = None
     last_execution_date: datetime | None = None
+    quarantined: bool = False
+    quarantine_reason: str | None = None
+    quarantined_at: datetime | None = None
 
 
 class SubmitForReviewRequest(BaseModel):
@@ -168,3 +171,7 @@ class VersionCompareOut(BaseModel):
     old_description: str
     new_description: str
     steps: list[StepDiff]
+
+
+class QuarantineRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)

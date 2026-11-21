@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -17,7 +17,7 @@ from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink
 from app.models.shared_step import SharedStep
 from app.models.tenant import Tenant
-from app.models.test_asset import Build, Release
+from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import TestCase
 from app.models.test_data_set import TestDataSet
 from app.models.test_module import TestModule
@@ -37,6 +37,7 @@ from app.schemas.reporting import (
     DefectAgingSeverityBucket,
     DefectAgingSummary,
     DefectBacklogSummary,
+    DefectLeakageReport,
     DefectTrendPoint,
     DefectTrendReport,
     DomainDistributionEntry,
@@ -45,6 +46,9 @@ from app.schemas.reporting import (
     FlakyTestEntry,
     FlakyTestReport,
     GroupBy,
+    LeakageAgeBuckets,
+    LeakageReleaseRow,
+    LeakageTrendPoint,
     Metric,
     MostReopenedDefect,
     ProjectStatusBreakdown,
@@ -824,8 +828,10 @@ def get_reopen_summary(
     events, which are the only writer of reopened_count/last_reopened_at."""
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
 
-    query = select(Defect).join(Project, Project.id == Defect.project_id).where(
-        Project.tenant_id == tenant_id
+    query = (
+        select(Defect)
+        .join(Project, Project.id == Defect.project_id)
+        .where(Project.tenant_id == tenant_id)
     )
     if accessible is not None:
         query = query.where(Project.id.in_(accessible))
@@ -934,6 +940,11 @@ def get_release_readiness(
         pass_percentage=pass_pct,
         open_defects_by_severity=open_by_severity,
         requirement_coverage_percentage=coverage.coverage_percentage,
+        quarantined_count=db.execute(
+            select(func.count())
+            .select_from(TestCase)
+            .where(TestCase.project_id == project_id, TestCase.quarantined.is_(True))
+        ).scalar_one(),
     )
 
 
@@ -1021,6 +1032,7 @@ def get_flaky_tests(
             TestRunCase.test_case_version_id,
             TestRunCase.status,
             TestRunCase.completed_at,
+            TestCase.quarantined,
         )
         .join(TestRun, TestRun.id == TestRunCase.test_run_id)
         .join(TestCase, TestCase.id == TestRunCase.test_case_id)
@@ -1034,9 +1046,12 @@ def get_flaky_tests(
 
     by_case: dict[UUID, list[tuple]] = {}
     titles: dict[UUID, str] = {}
-    for test_case_id, title, version_id, status, _completed_at in rows:
+    quarantined_ids: set[UUID] = set()
+    for test_case_id, title, version_id, status, _completed_at, is_quarantined in rows:
         by_case.setdefault(test_case_id, []).append((version_id, status))
         titles[test_case_id] = title
+        if is_quarantined:
+            quarantined_ids.add(test_case_id)
 
     entries = []
     for test_case_id, runs in by_case.items():
@@ -1056,6 +1071,7 @@ def get_flaky_tests(
                 run_count=len(runs),
                 flip_count=flips,
                 flip_rate=round(flips / (len(runs) - 1), 2),
+                quarantined=test_case_id in quarantined_ids,
             )
         )
 
@@ -1757,3 +1773,209 @@ def compliance_report_to_xlsx(
     if quality is not None:
         sheets.extend(quality_metrics_sheets(quality))
     return build_workbook(sheets)
+
+
+PRODUCTION_ENV_NAMES = ("production", "prod")
+
+
+def _pct(numerator: int, denominator: int) -> float | None:
+    return round(numerator / denominator * 100, 1) if denominator else None
+
+
+def get_defect_leakage(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    *,
+    project_id: UUID | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> DefectLeakageReport:
+    """ADR-097. A defect has 'escaped' when it is linked (fixed_in_release_id) to a
+    release that has shipped (release_date set and not in the future), OR its
+    environment (Environment.name, else the legacy free-text column) is 'production'
+    or 'prod' (case-insensitive). Releases have no status column, so the date is the
+    only 'released' signal."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    if project_id is not None:
+        if accessible is not None and project_id not in accessible:
+            raise ForbiddenError("Project not accessible")
+        _get_project_or_404(db, tenant_id, project_id)
+
+    query = (
+        select(
+            Defect.severity,
+            Defect.status,
+            Defect.created_at,
+            Defect.fixed_in_release_id,
+            Environment.name,
+            Defect.environment,
+        )
+        .select_from(Defect)
+        .outerjoin(Environment, Environment.id == Defect.environment_id)
+        .where(Defect.tenant_id == tenant_id)
+    )
+    if project_id is not None:
+        query = query.where(Defect.project_id == project_id)
+    elif accessible is not None:
+        query = query.where(Defect.project_id.in_(accessible))
+    if date_from is not None:
+        start = datetime(date_from.year, date_from.month, date_from.day, tzinfo=UTC)
+        query = query.where(Defect.created_at >= start)
+    if date_to is not None:
+        end = datetime(date_to.year, date_to.month, date_to.day, tzinfo=UTC) + timedelta(days=1)
+        query = query.where(Defect.created_at < end)
+    rows = db.execute(query).all()
+
+    today = datetime.now(UTC).date()
+    rel_query = select(Release.id, Release.name, Release.release_date, Release.project_id).where(
+        Release.tenant_id == tenant_id
+    )
+    if project_id is not None:
+        rel_query = rel_query.where(Release.project_id == project_id)
+    releases = {r.id: r for r in db.execute(rel_query).all()}
+
+    now = datetime.now(UTC)
+    overall_sev: dict[str, int] = {}
+    buckets = LeakageAgeBuckets()
+    per_release: dict[UUID | None, dict[str, Any]] = {}
+    trend: dict[str, list[int]] = {}
+    total = escaped = open_escaped = 0
+
+    for severity, status, created_at, release_id, env_name, env_text in rows:
+        rel = releases.get(release_id) if release_id is not None else None
+        released = rel is not None and rel.release_date is not None and rel.release_date <= today
+        env = (env_name or env_text or "").strip().lower()
+        is_escaped = released or env in PRODUCTION_ENV_NAMES
+        slot = per_release.setdefault(
+            release_id if rel is not None else None,
+            {"total": 0, "escaped": 0, "open": 0, "sev": {}},
+        )
+        month = trend.setdefault(created_at.strftime("%Y-%m"), [0, 0])
+        total += 1
+        slot["total"] += 1
+        month[0] += 1
+        if not is_escaped:
+            continue
+        escaped += 1
+        slot["escaped"] += 1
+        month[1] += 1
+        overall_sev[severity] = overall_sev.get(severity, 0) + 1
+        slot["sev"][severity] = slot["sev"].get(severity, 0) + 1
+        if status in OPEN_DEFECT_STATUSES:
+            open_escaped += 1
+            slot["open"] += 1
+            age_days = (now - created_at).days
+            if age_days < 7:
+                buckets.under_7d += 1
+            elif age_days <= 30:
+                buckets.d7_to_30 += 1
+            else:
+                buckets.over_30d += 1
+
+    release_rows = []
+    for rid, slot in per_release.items():
+        rel = releases.get(rid) if rid is not None else None
+        release_rows.append(
+            LeakageReleaseRow(
+                release_id=rid,
+                release_name=rel.name if rel is not None else "No release",
+                project_id=rel.project_id if rel is not None else None,
+                release_date=rel.release_date.isoformat() if rel and rel.release_date else None,
+                total_defects=slot["total"],
+                escaped_defects=slot["escaped"],
+                leakage_percentage=_pct(slot["escaped"], slot["total"]),
+                detection_effectiveness_percentage=_pct(
+                    slot["total"] - slot["escaped"], slot["total"]
+                ),
+                open_escaped_defects=slot["open"],
+                escaped_by_severity=slot["sev"],
+            )
+        )
+    release_rows.sort(key=lambda r: (r.release_id is None, r.release_date or "", r.release_name))
+
+    case_q = (
+        select(func.count())
+        .select_from(TestCase)
+        .where(TestCase.tenant_id == tenant_id, TestCase.quarantined.is_(True))
+    )
+    if project_id is not None:
+        case_q = case_q.where(TestCase.project_id == project_id)
+    elif accessible is not None:
+        case_q = case_q.where(TestCase.project_id.in_(accessible))
+    case_q = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, case_q)
+    quarantined_cases = db.execute(case_q).scalar_one()
+
+    return DefectLeakageReport(
+        project_id=project_id,
+        date_from=date_from.isoformat() if date_from else None,
+        date_to=date_to.isoformat() if date_to else None,
+        total_defects=total,
+        escaped_defects=escaped,
+        leakage_percentage=_pct(escaped, total),
+        detection_effectiveness_percentage=_pct(total - escaped, total),
+        open_escaped_defects=open_escaped,
+        open_escaped_age_buckets=buckets,
+        escaped_by_severity=overall_sev,
+        quarantined_test_cases=quarantined_cases,
+        releases=release_rows,
+        trend=[
+            LeakageTrendPoint(
+                period=p,
+                total_defects=v[0],
+                escaped_defects=v[1],
+                leakage_percentage=_pct(v[1], v[0]),
+            )
+            for p, v in sorted(trend.items())
+        ],
+    )
+
+
+def defect_leakage_to_xlsx(report: DefectLeakageReport) -> bytes:
+    def val(v: Any) -> Any:
+        return "No defects" if v is None else v
+
+    summary = [
+        ("Total defects", report.total_defects),
+        ("Escaped defects", report.escaped_defects),
+        ("Leakage (%)", val(report.leakage_percentage)),
+        ("Detection effectiveness (%)", val(report.detection_effectiveness_percentage)),
+        ("Open escaped defects", report.open_escaped_defects),
+        ("  Open escaped < 7 days", report.open_escaped_age_buckets.under_7d),
+        ("  Open escaped 7-30 days", report.open_escaped_age_buckets.d7_to_30),
+        ("  Open escaped > 30 days", report.open_escaped_age_buckets.over_30d),
+        ("Quarantined test cases (not counted as passing)", report.quarantined_test_cases),
+    ]
+    by_release = [
+        (
+            r.release_name,
+            r.release_date or "",
+            r.total_defects,
+            r.escaped_defects,
+            val(r.leakage_percentage),
+            val(r.detection_effectiveness_percentage),
+            r.open_escaped_defects,
+        )
+        for r in report.releases
+    ]
+    return build_workbook(
+        [
+            SheetSpec(
+                "Defect Leakage", ["Metric", "Value"], summary, title="QTestHub Defect Leakage"
+            ),
+            SheetSpec(
+                "By Release",
+                [
+                    "Release",
+                    "Release date",
+                    "Total",
+                    "Escaped",
+                    "Leakage (%)",
+                    "Detection effectiveness (%)",
+                    "Open escaped",
+                ],
+                by_release,
+            ),
+        ]
+    )

@@ -49,6 +49,7 @@ FILTER_ALLOWLIST: dict[str, dict[str, Callable[[str], bool]]] = {
         "status": _is_token,
         "assigneeId": _is_uuid,
         "moduleId": _is_uuid,
+        "quarantined": _is_token,
     },
     "defects": {
         "projectId": _is_uuid,

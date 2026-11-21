@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query
@@ -14,6 +15,7 @@ from app.core.db import get_db
 from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
 from app.schemas.test_case import (
+    QuarantineRequest,
     RequestChangesRequest,
     SubmitForReviewRequest,
     TestCaseBulkUpdateRequest,
@@ -33,6 +35,7 @@ def list_test_cases_all_projects(
     status: str | None = Query(default=None),
     assignee_id: UUID | None = Query(default=None),
     module_id: UUID | None = Query(default=None),
+    quarantined: Literal["any", "only", "exclude"] = Query(default="any"),
     sort: str = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=test_case_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
@@ -51,6 +54,7 @@ def list_test_cases_all_projects(
         status=status,
         assignee_id=assignee_id,
         module_id=module_id,
+        quarantined=quarantined,
         sort=sort,
         page=page,
         page_size=page_size,
@@ -67,6 +71,7 @@ def list_test_cases(
     status: str | None = Query(default=None),
     assignee_id: UUID | None = Query(default=None),
     module_id: UUID | None = Query(default=None),
+    quarantined: Literal["any", "only", "exclude"] = Query(default="any"),
     sort: str = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=test_case_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
@@ -84,6 +89,7 @@ def list_test_cases(
         status=status,
         assignee_id=assignee_id,
         module_id=module_id,
+        quarantined=quarantined,
         sort=sort,
         page=page,
         page_size=page_size,
@@ -246,6 +252,31 @@ def deprecate_test_case(
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.deprecate_test_case(db, ctx.tenant_id, ctx.user_id, test_case_id)
+    return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
+
+
+@router.post("/test-cases/{test_case_id}/quarantine")
+def quarantine_test_case(
+    test_case_id: UUID,
+    req: QuarantineRequest,
+    ctx: SessionContext = Depends(require_resource_permission("testcase.approve", "test_case")),
+    db: Session = Depends(get_db),
+) -> dict:
+    case = test_case_service.quarantine_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, req.reason
+    )
+    return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
+
+
+@router.post("/test-cases/{test_case_id}/unquarantine")
+def unquarantine_test_case(
+    test_case_id: UUID,
+    ctx: SessionContext = Depends(require_resource_permission("testcase.approve", "test_case")),
+    db: Session = Depends(get_db),
+) -> dict:
+    case = test_case_service.unquarantine_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+    )
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
 
