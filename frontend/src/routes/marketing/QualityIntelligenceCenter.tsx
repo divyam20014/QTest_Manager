@@ -374,7 +374,7 @@ export default function QualityIntelligenceCenter() {
               markerUnits="userSpaceOnUse"
               orient="auto"
             >
-              <path d="M0 0 L10 5 L0 10 z" fill="#64748b" />
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--lp-on-dark-3)" />
             </marker>
             <marker
               id="lp-qc-arrow-active"
@@ -386,7 +386,7 @@ export default function QualityIntelligenceCenter() {
               markerUnits="userSpaceOnUse"
               orient="auto"
             >
-              <path d="M0 0 L10 5 L0 10 z" fill="#c7d2fe" />
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--lp-on-dark)" />
             </marker>
             <marker
               id="lp-qc-arrow-planned"
@@ -398,7 +398,7 @@ export default function QualityIntelligenceCenter() {
               markerUnits="userSpaceOnUse"
               orient="auto"
             >
-              <path d="M0 0 L10 5 L0 10 z" fill="#f59e0b" />
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--lp-accent-on-dark)" />
             </marker>
           </defs>
           {EDGES.map((edge) => {

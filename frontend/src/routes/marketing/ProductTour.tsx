@@ -80,7 +80,7 @@ export function ProductTour({ id = 'tour' }: { id?: string }) {
         <TourTabs
           tabs={tabs}
           prefix="lp"
-          className="lp-reveal mx-auto mt-10 flex max-w-full gap-1 overflow-x-auto rounded-full border border-[var(--lp-border)] bg-white p-1 [scrollbar-width:none] sm:w-fit"
+          className="lp-reveal mx-auto mt-10 flex max-w-full gap-1 overflow-x-auto rounded-full border border-[var(--lp-border)] bg-[var(--lp-surface)] p-1 [scrollbar-width:none] sm:w-fit"
         />
 
         <div
@@ -122,7 +122,7 @@ export function HeroTour() {
         className="lp-tabs-dark mx-auto flex max-w-full gap-1 overflow-x-auto rounded-full p-1 [scrollbar-width:none] lg:w-fit"
       />
       <p className="mt-3 text-[14px] text-[var(--lp-on-dark-2)]" aria-live="polite">
-        <span className="font-semibold text-white">{current.title}.</span>{' '}
+        <span className="font-semibold text-[var(--lp-on-dark)]">{current.title}.</span>{' '}
         <span className="text-[var(--lp-on-dark-3)]">
           Real product screenshot · sample data from a fictional demo organization.
         </span>

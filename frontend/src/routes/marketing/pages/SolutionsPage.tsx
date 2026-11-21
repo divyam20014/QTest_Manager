@@ -59,7 +59,7 @@ export default function SolutionsPage() {
         lead="A QA manager and a QA engineer have different priorities. QTestHub gives each role what it needs while keeping everyone on the same source of truth."
       />
 
-      <section className="lp-section lp-section-tight bg-white" aria-label="Roles">
+      <section className="lp-section lp-section-tight bg-[var(--lp-surface)]" aria-label="Roles">
         <div className="lp-container">
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {ROLES.map(({ icon: Icon, title, body }, i) => (
@@ -81,7 +81,7 @@ export default function SolutionsPage() {
         <section
           key={group.id}
           id={group.id}
-          className={`lp-section ${i % 2 === 0 ? 'lp-soft' : 'bg-white'}`}
+          className={`lp-section ${i % 2 === 0 ? 'lp-soft' : 'bg-[var(--lp-surface)]'}`}
           aria-labelledby={`${group.id}-title`}
         >
           <div className="lp-container grid items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-14">

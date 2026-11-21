@@ -7,19 +7,13 @@ import type { Availability } from './content'
 export function LogoMark({ className = 'size-8' }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="qth-logo-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#4338ca" />
-          <stop offset="1" stopColor="#3b82f6" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="8" fill="url(#qth-logo-g)" />
-      <circle cx="15" cy="15" r="7" fill="none" stroke="#fff" strokeWidth="2.6" />
-      <path d="M18.5 18.5 L24 24" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+      <rect width="32" height="32" rx="8" fill="var(--sidebar-accent)" />
+      <circle cx="15" cy="15" r="7" fill="none" stroke="var(--accent-foreground)" strokeWidth="2.6" />
+      <path d="M18.5 18.5 L24 24" stroke="var(--accent-foreground)" strokeWidth="2.6" strokeLinecap="round" />
       <path
         d="M12 15.2 l2.1 2.1 l3.9-4.1"
         fill="none"
-        stroke="#fff"
+        stroke="var(--accent-foreground)"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -138,20 +132,20 @@ export function CtaPanel({
   body?: string
 }) {
   return (
-    <section className="lp-section bg-white" aria-labelledby="lp-cta-title">
+    <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-cta-title">
       <div className="lp-container">
         <div className="lp-cta-panel lp-reveal relative overflow-hidden rounded-3xl bg-[var(--lp-navy-900)] px-6 py-16 text-center sm:px-12 lg:py-20">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_70%_at_50%_0%,rgba(67,56,202,0.45),transparent_70%),radial-gradient(40%_50%_at_90%_100%,rgba(59,130,246,0.2),transparent_70%)]"
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_70%_at_50%_0%,color-mix(in_srgb,var(--lp-glow)_45%,transparent),transparent_70%),radial-gradient(40%_50%_at_90%_100%,color-mix(in_srgb,var(--lp-glow)_2%,transparent),transparent_70%)]"
           />
           <div className="relative">
-            <h2 id="lp-cta-title" className="lp-h2 !text-white">
+            <h2 id="lp-cta-title" className="lp-h2 !text-[var(--lp-on-dark)]">
               {title}
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-[17px] text-[var(--lp-on-dark-2)]">{body}</p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
-              <Link to="/request-demo" className="lp-btn lp-btn-primary">
+              <Link to="/request-demo" className="lp-btn lp-btn-light min-h-12">
                 Request a Personalized Demo
                 <ArrowRight className="lp-arrow size-4" aria-hidden="true" />
               </Link>

@@ -50,7 +50,7 @@ const COLUMNS: Array<{
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-[var(--lp-border)] bg-white">
+    <footer className="border-t border-[var(--lp-border)] bg-[var(--lp-surface)]">
       <div className="lp-container grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(4,1fr)]">
         <div className="sm:col-span-2 lg:col-span-1">
           <Link to="/" className="inline-flex items-center gap-2.5 text-[var(--lp-ink)]" aria-label="QTestHub home">
@@ -88,9 +88,17 @@ export function MarketingFooter() {
         </ul>
       </nav>
       <div className="border-t border-[var(--lp-border)]">
-        <p className="lp-container py-6 text-[13px] text-[var(--lp-ink-3)]">
-          Copyright © {CURRENT_YEAR} QTestHub. All rights reserved.
-        </p>
+        <div className="lp-container flex flex-wrap items-center justify-between gap-x-6 gap-y-1 py-4 text-[13px] text-[var(--lp-ink-3)]">
+          <p>Copyright © {CURRENT_YEAR} QTestHub. All rights reserved.</p>
+          <nav aria-label="Legal" className="flex gap-2">
+            <Link to="/privacy" className="lp-footer-link inline-flex min-h-11 items-center px-2">
+              Privacy
+            </Link>
+            <Link to="/terms" className="lp-footer-link inline-flex min-h-11 items-center px-2">
+              Terms
+            </Link>
+          </nav>
+        </div>
       </div>
     </footer>
   )

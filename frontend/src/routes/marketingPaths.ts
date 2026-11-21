@@ -9,6 +9,8 @@ export const MARKETING_PATHS = [
   '/contact',
   '/request-demo',
   '/security',
+  '/privacy',
+  '/terms',
 ] as const
 
 export function isMarketingPath(pathname: string): boolean {

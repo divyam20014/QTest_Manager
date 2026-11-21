@@ -19,7 +19,7 @@ import { delay } from './utils'
 
 export function ProblemSection() {
   return (
-    <section className="lp-section bg-white" aria-labelledby="lp-problem-title">
+    <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-problem-title">
       <div className="lp-container">
         <SectionHeader
           id="lp-problem-title"
@@ -49,7 +49,7 @@ export function ProblemSection() {
 /** Connect / Understand / Control, directly under the home hero. */
 export function PillarStrip() {
   return (
-    <section className="border-b border-[var(--lp-border)] bg-white py-14 lg:py-16" aria-labelledby="lp-pillars-title">
+    <section className="border-b border-[var(--lp-border)] bg-[var(--lp-surface)] py-14 lg:py-16" aria-labelledby="lp-pillars-title">
       <div className="lp-container">
         <h2
           id="lp-pillars-title"
@@ -143,7 +143,7 @@ export function SolutionSection({
 
 export function CapabilitiesSection({ withLink = true }: { withLink?: boolean }) {
   return (
-    <section id="capabilities" className="lp-section bg-white" aria-labelledby="lp-features-title">
+    <section id="capabilities" className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-features-title">
       <div className="lp-container">
         <SectionHeader
           id="lp-features-title"
@@ -180,8 +180,8 @@ export function CapabilitiesSection({ withLink = true }: { withLink?: boolean })
 export function LifecycleSection({ soft = false }: { soft?: boolean }) {
   return (
     <section
-      className={`lp-section ${soft ? 'lp-soft' : 'bg-white'}`}
-      style={{ '--lp-step-ring': soft ? '#f8fafc' : '#ffffff' } as CSSProperties}
+      className={`lp-section ${soft ? 'lp-soft' : 'bg-[var(--lp-surface)]'}`}
+      style={{ '--lp-step-ring': soft ? 'var(--muted)' : 'var(--lp-surface)' } as CSSProperties}
       aria-labelledby="lp-lifecycle-title"
     >
       <div className="lp-container">
@@ -194,7 +194,7 @@ export function LifecycleSection({ soft = false }: { soft?: boolean }) {
         <ol className="relative mt-14 grid gap-8 lg:grid-cols-6 lg:gap-5">
           <span
             aria-hidden="true"
-            className="absolute bottom-6 left-[21px] top-6 w-px bg-gradient-to-b from-indigo-300 via-blue-300 to-indigo-200 lg:bottom-auto lg:left-[8%] lg:right-[8%] lg:top-[21px] lg:h-px lg:w-auto lg:bg-gradient-to-r"
+            className="absolute bottom-6 left-[21px] top-6 w-px bg-gradient-to-b from-[var(--lp-border-strong)] via-[var(--lp-border)] to-[var(--lp-border-strong)] lg:bottom-auto lg:left-[8%] lg:right-[8%] lg:top-[21px] lg:h-px lg:w-auto lg:bg-gradient-to-r"
           />
           {LIFECYCLE.map(({ title, body }, i) => (
             <li
@@ -240,7 +240,7 @@ export function IntelligenceSection({ detailed = false }: { detailed?: boolean }
     <section className="lp-section lp-dark relative overflow-hidden" aria-labelledby="lp-intel-title">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(67,56,202,0.35),transparent_70%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,color-mix(in_srgb,var(--lp-glow)_35%,transparent),transparent_70%)]"
       />
       <div className="lp-container relative">
         <SectionHeader
@@ -258,9 +258,9 @@ export function IntelligenceSection({ detailed = false }: { detailed?: boolean }
                 </span>
                 <AvailabilityBadge status={status} />
               </div>
-              <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-white">{title}</h3>
+              <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-[var(--lp-on-dark)]">{title}</h3>
               <p className="mt-2 text-[14px] leading-relaxed text-[var(--lp-on-dark-2)]">{detailed ? detail : body}</p>
-              {note && <p className="mt-auto pt-4 text-[12px] font-medium text-[#a5b4fc]">{note}</p>}
+              {note && <p className="mt-auto pt-4 text-[12px] font-medium text-[var(--lp-accent-on-dark)]">{note}</p>}
             </li>
           ))}
         </ul>
@@ -279,7 +279,7 @@ export function DifferentiatorsSection() {
     <section className="lp-section lp-dark relative overflow-hidden" aria-labelledby="lp-diff-title">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(67,56,202,0.35),transparent_70%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,color-mix(in_srgb,var(--lp-glow)_35%,transparent),transparent_70%)]"
       />
       <div className="lp-container relative">
         <SectionHeader
@@ -297,9 +297,9 @@ export function DifferentiatorsSection() {
                 </span>
                 <AvailabilityBadge status={status} />
               </div>
-              <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-white">{title}</h3>
+              <h3 className="mt-5 text-[17px] font-semibold tracking-tight text-[var(--lp-on-dark)]">{title}</h3>
               <p className="mt-2 text-[14px] leading-relaxed text-[var(--lp-on-dark-2)]">{body}</p>
-              {note && <p className="mt-auto pt-4 text-[12px] font-medium text-[#a5b4fc]">{note}</p>}
+              {note && <p className="mt-auto pt-4 text-[12px] font-medium text-[var(--lp-accent-on-dark)]">{note}</p>}
             </li>
           ))}
         </ul>
@@ -315,7 +315,7 @@ export function DifferentiatorsSection() {
 
 export function RolesSection({ withLink = true }: { withLink?: boolean }) {
   return (
-    <section className="lp-section bg-white" aria-labelledby="lp-roles-title">
+    <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-roles-title">
       <div className="lp-container">
         <SectionHeader
           id="lp-roles-title"
@@ -415,7 +415,7 @@ export function WhySection() {
 
 export function FaqSection({ items = FAQ, title = 'Frequently Asked Questions' }: { items?: typeof FAQ; title?: string }) {
   return (
-    <section className="lp-section bg-white" aria-labelledby="lp-faq-title">
+    <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-faq-title">
       <div className="lp-container grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
         <div className="lp-reveal">
           <p className="lp-eyebrow">FAQ</p>

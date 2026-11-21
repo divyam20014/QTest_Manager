@@ -109,7 +109,7 @@ test('public pages have no accessibility findings at any impact level, light and
       }
     }, theme)
     const page = await ctx.newPage()
-    for (const route of ['/login', '/signup', '/platform-admin', '/accept-invite/not-a-token', '/']) {
+    for (const route of ['/login', '/signup', '/platform-admin', '/accept-invite/not-a-token', '/', '/privacy', '/terms']) {
       await page.goto(route)
       await page.waitForLoadState('networkidle')
       // The marketing home reveals sections with a fade/slide; scan once settled.

@@ -33,7 +33,7 @@ export default function RequestDemoPage() {
                   <Icon className="size-5" aria-hidden="true" />
                 </span>
                 <div>
-                  <h2 className="text-[16px] font-semibold text-white">{title}</h2>
+                  <h2 className="text-[16px] font-semibold text-[var(--lp-on-dark)]">{title}</h2>
                   <p className="mt-1 text-[14px] text-[var(--lp-on-dark-2)]">{body}</p>
                 </div>
               </li>

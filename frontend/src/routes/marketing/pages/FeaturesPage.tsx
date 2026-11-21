@@ -103,7 +103,7 @@ export default function FeaturesPage() {
         <section
           key={module.id}
           id={module.id}
-          className={`lp-section ${i % 2 === 0 ? 'bg-white' : 'lp-soft'}`}
+          className={`lp-section ${i % 2 === 0 ? 'bg-[var(--lp-surface)]' : 'lp-soft'}`}
           aria-labelledby={`${module.id}-title`}
         >
           <div className="lp-container grid items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-14">
@@ -129,7 +129,7 @@ export default function FeaturesPage() {
         </section>
       ))}
 
-      <section id="access" className="lp-section bg-white" aria-labelledby="lp-access-title">
+      <section id="access" className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-access-title">
         <div className="lp-container grid gap-5 md:grid-cols-2">
           <div className="lp-card lp-reveal p-7">
             <span className="lp-icon">

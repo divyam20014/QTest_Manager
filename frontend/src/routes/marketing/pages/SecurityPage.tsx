@@ -18,7 +18,7 @@ export default function SecurityPage() {
         lead="As testing operations grow, organizations need control, consistency and accountability. These are the security capabilities built into QTestHub today."
       />
 
-      <section className="lp-section bg-white" aria-labelledby="lp-sec-title">
+      <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-sec-title">
         <div className="lp-container">
           <SectionHeader
             id="lp-sec-title"

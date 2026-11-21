@@ -35,8 +35,8 @@
   border-radius: 20px;
   color: var(--lp-on-dark);
   background:
-    radial-gradient(60% 50% at 85% 0%, rgba(67, 56, 202, 0.3), transparent 70%),
-    radial-gradient(40% 40% at 0% 100%, rgba(59, 130, 246, 0.14), transparent 70%),
+    radial-gradient(60% 50% at 85% 0%, color-mix(in srgb, var(--lp-glow) 30%, transparent), transparent 70%),
+    radial-gradient(40% 40% at 0% 100%, color-mix(in srgb, var(--lp-glow) 14%, transparent), transparent 70%),
     var(--lp-navy-900);
   box-shadow: 0 40px 120px -20px rgba(0, 0, 0, 0.8);
   outline: none;
@@ -64,7 +64,7 @@
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: var(--lp-on-dark);
 }
 @media (min-width: 768px) { .lp-wt-heading { font-size: 20px; } }
 .lp-wt-note {
@@ -132,10 +132,10 @@
 
 .lp-wt-ring {
   position: absolute;
-  border: 2px solid #a5b4fc;
+  border: 2px solid var(--lp-accent-on-dark);
   border-radius: 10px;
-  background: rgba(99, 102, 241, 0.1);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28), 0 0 28px rgba(99, 102, 241, 0.55);
+  background: color-mix(in srgb, var(--lp-glow) 10%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-glow) 28%, transparent), 0 0 28px color-mix(in srgb, var(--lp-glow) 55%, transparent);
   animation: lp-wt-ring-in 420ms cubic-bezier(.2, .7, .2, 1) backwards, lp-wt-pulse 2.4s ease-in-out infinite;
 }
 .lp-wt-ring b {
@@ -146,18 +146,18 @@
   place-items: center;
   width: 22px;
   height: 22px;
-  border: 2px solid #fff;
+  border: 2px solid var(--lp-on-dark);
   border-radius: 999px;
   background: var(--lp-indigo-strong);
-  color: #fff;
+  color: var(--primary-foreground);
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
 }
 @keyframes lp-wt-ring-in { from { opacity: 0; transform: scale(1.05); } }
 @keyframes lp-wt-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.28), 0 0 28px rgba(99, 102, 241, 0.55); }
-  50% { box-shadow: 0 0 0 7px rgba(99, 102, 241, 0.12), 0 0 38px rgba(99, 102, 241, 0.72); }
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--lp-glow) 28%, transparent), 0 0 28px color-mix(in srgb, var(--lp-glow) 55%, transparent); }
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--lp-glow) 12%, transparent), 0 0 38px color-mix(in srgb, var(--lp-glow) 72%, transparent); }
 }
 @keyframes lp-wt-fade { from { opacity: 0; } }
 @keyframes lp-wt-in { from { opacity: 0; transform: translateY(12px) scale(0.985); } }
@@ -168,7 +168,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #a5b4fc;
+  color: var(--lp-accent-on-dark);
 }
 .lp-wt-title {
   margin-top: 8px;
@@ -176,7 +176,7 @@
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: var(--lp-on-dark);
 }
 .lp-wt-text { margin-top: 10px; font-size: 15px; color: var(--lp-on-dark-2); text-wrap: pretty; }
 .lp-wt-legend { display: grid; gap: 12px; margin-top: 18px; }
@@ -193,7 +193,7 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
-  color: #fff;
+  color: var(--primary-foreground);
 }
 .lp-wt-scope {
   margin-top: 18px;
@@ -217,7 +217,7 @@
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.03em;
-  color: #fff;
+  color: var(--lp-on-dark);
   text-wrap: balance;
 }
 .lp-wt-end .lp-wt-text { font-size: 16px; }
@@ -241,7 +241,7 @@
   font-weight: 600;
   cursor: pointer;
 }
-.lp-wt-replay:hover { color: #fff; }
+.lp-wt-replay:hover { color: var(--lp-on-dark); }
 
 /* ---------- footer ---------- */
 .lp-wt-foot {
@@ -277,11 +277,11 @@
 .lp-wt-seg::before { background: rgba(255, 255, 255, 0.18); }
 .lp-wt-seg:hover::before { background: rgba(255, 255, 255, 0.3); }
 .lp-wt-seg i {
-  background: #818cf8;
+  background: var(--lp-accent-on-dark);
   transform-origin: left center;
 }
 .lp-wt-seg[data-state="todo"] i { transform: scaleX(0); }
-.lp-wt-seg[data-state="done"] i { background: #6366f1; }
+.lp-wt-seg[data-state="done"] i { background: var(--link); }
 .lp-wt-seg i[data-run="true"] { animation: lp-wt-fill var(--ms) linear backwards; }
 @keyframes lp-wt-fill { from { transform: scaleX(0); } }
 .qth-landing .lp-wt .lp-wt-seg:focus-visible { border-radius: 8px; outline-offset: 1px; }

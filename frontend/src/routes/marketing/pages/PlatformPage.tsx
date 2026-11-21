@@ -18,7 +18,7 @@ export default function PlatformPage() {
         title="One Platform. Every Dimension of Software Quality."
         lead="QTestHub brings your entire quality engineering lifecycle together. Manage requirements, test cases, execution, defects and analytics through one unified platform designed to give teams complete visibility and control."
       >
-        <Link to="/request-demo" className="lp-btn lp-btn-primary">
+        <Link to="/request-demo" className="lp-btn lp-btn-light">
           Request a Demo
           <ArrowRight className="lp-arrow size-4" aria-hidden="true" />
         </Link>

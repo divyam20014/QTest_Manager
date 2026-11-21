@@ -79,7 +79,7 @@ function HomeHero() {
     <section className="lp-hero lp-hero-home" aria-labelledby="lp-hero-title">
       <div className="lp-container pt-12 text-center lg:pt-14">
         <span className="lp-pill">
-          <span className="size-1.5 rounded-full bg-[#60a5fa]" aria-hidden="true" />
+          <span className="size-1.5 rounded-full bg-[var(--lp-accent-on-dark)]" aria-hidden="true" />
           The Intelligence Behind Software Quality
         </span>
         <h1 id="lp-hero-title" className="lp-h1 lp-h1-home mx-auto mt-5 max-w-4xl">
@@ -88,27 +88,25 @@ function HomeHero() {
           <span className="lp-gradient-text">It&rsquo;s Engineered.</span>
         </h1>
         <p className="lp-lead mx-auto mt-5 max-w-2xl">
-          One connected platform to manage testing, understand quality risks, and make better release decisions.
+          One connected platform for QA, engineering and release teams to manage testing, understand quality risks, and make better release decisions.
         </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link to="/request-demo" className="lp-btn lp-btn-pill lp-btn-light">
+        <div className="mt-8 flex flex-col items-center gap-2">
+          <Link to="/request-demo" className="lp-btn lp-btn-pill lp-btn-light min-h-12 w-full sm:w-auto">
             Request a Demo
             <ArrowRight className="lp-arrow size-4" aria-hidden="true" />
           </Link>
+          <p className="text-[14px] text-[var(--lp-on-dark-2)]">Tell us what you need and our team will arrange a demonstration.</p>
           <button
             type="button"
-            className="lp-btn lp-btn-pill lp-btn-primary"
+            className="lp-text-link min-h-11 px-3"
             aria-haspopup="dialog"
             onClick={() => setTourOpen(true)}
             onPointerEnter={loadWalkthrough}
             onFocus={loadWalkthrough}
           >
             <PlayCircle className="size-[18px]" aria-hidden="true" />
-            Explore QTestHub in 2 Minutes
+            Or take the 2-minute product tour
           </button>
-          <Link to="/#tour" className="lp-btn lp-btn-pill lp-btn-ghost-dark">
-            Explore the Platform
-          </Link>
         </div>
         {tourOpen && (
           <Suspense fallback={null}>
@@ -144,7 +142,7 @@ function HomeHero() {
 
 function PricingTeaser() {
   return (
-    <section className="lp-section bg-white" aria-labelledby="lp-pricing-title">
+    <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-pricing-title">
       <div className="lp-container">
         <div className="lp-reveal mx-auto max-w-3xl text-center">
           <p className="lp-eyebrow">Flexible business model</p>

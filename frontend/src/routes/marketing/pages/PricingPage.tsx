@@ -65,7 +65,7 @@ export function PricingTiers() {
               {tier.name}
             </h3>
             {tier.featured && (
-              <span className="rounded-full bg-[#eef2ff] px-2.5 py-1 text-[12px] font-semibold text-[var(--lp-indigo-strong)]">
+              <span className="rounded-full bg-[var(--lp-tint)] px-2.5 py-1 text-[12px] font-semibold text-[var(--lp-indigo-strong)]">
                 For growing teams
               </span>
             )}
@@ -119,7 +119,7 @@ export default function PricingPage() {
         title="Quality Management That Scales With Your Organization."
         lead="Whether you're an individual QA professional, a growing software team or a large enterprise, QTestHub offers flexible engagement options."
       />
-      <section className="lp-section lp-section-tight bg-white" aria-label="Plans">
+      <section className="lp-section lp-section-tight bg-[var(--lp-surface)]" aria-label="Plans">
         <div className="lp-container">
           <PricingTiers />
           <p className="lp-reveal mx-auto mt-8 max-w-2xl text-center text-[15px] text-[var(--lp-ink-2)]">

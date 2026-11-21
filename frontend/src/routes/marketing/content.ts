@@ -391,6 +391,14 @@ export const FAQ = [
     a: 'Absolutely. Submit a demo request and our team will discuss your requirements and arrange a suitable demonstration.',
   },
   {
+    q: 'How is our data protected?',
+    a: 'Each organization is isolated from every other, access is governed by roles that can be scoped to a single project, and changes are recorded in a tamper-evident audit log. The Security page lists the controls in detail.',
+  },
+  {
+    q: 'Can we choose where our data is hosted?',
+    a: 'Not yet. A data region can be recorded for an organization as readiness information, but there is no per-region hosting today. Contact our team if this is a requirement for you.',
+  },
+  {
     q: 'How can we get pricing information?',
     a: 'Contact our team for Professional and Enterprise pricing. You can also create a free organization yourself and explore the platform first.',
   },

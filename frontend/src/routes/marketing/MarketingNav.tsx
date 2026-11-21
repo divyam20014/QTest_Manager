@@ -186,7 +186,7 @@ export function MarketingNav() {
   return (
     <header ref={navRef} className="lp-nav" data-scrolled={scrolled || mobileOpen} data-condensed={scrolled}>
       <nav aria-label="Primary" className="lp-container lp-nav-bar flex items-center justify-between gap-4">
-        <Link to="/" className="flex shrink-0 items-center gap-2.5 text-white" aria-label="QTestHub home">
+        <Link to="/" className="flex shrink-0 items-center gap-2.5 text-[var(--lp-on-dark)]" aria-label="QTestHub home">
           <LogoMark />
           <span className="text-[17px] font-semibold tracking-tight">QTestHub</span>
         </Link>
@@ -247,7 +247,7 @@ export function MarketingNav() {
             Sign In
           </Link>
           <span className="hidden sm:inline-flex">
-            <Link to="/request-demo" className="lp-btn lp-btn-primary lp-btn-sm">
+            <Link to="/request-demo" className="lp-btn lp-btn-light lp-btn-sm">
               Request a Demo
               <ArrowRight className="lp-arrow size-4" aria-hidden="true" />
             </Link>
@@ -255,7 +255,7 @@ export function MarketingNav() {
           <button
             ref={toggleRef}
             type="button"
-            className="inline-flex size-11 items-center justify-center rounded-lg text-white hover:bg-white/10 lg:hidden"
+            className="inline-flex size-11 items-center justify-center rounded-lg text-[var(--lp-on-dark)] hover:bg-white/10 lg:hidden"
             aria-expanded={mobileOpen}
             aria-controls="lp-mobile-menu"
             aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
@@ -312,7 +312,7 @@ export function MarketingNav() {
               <Link to="/login" className="lp-btn lp-btn-ghost-dark">
                 Sign In
               </Link>
-              <Link to="/request-demo" className="lp-btn lp-btn-primary">
+              <Link to="/request-demo" className="lp-btn lp-btn-light">
                 Request a Demo
               </Link>
             </div>

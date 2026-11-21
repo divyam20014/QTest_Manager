@@ -6,8 +6,8 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 24px;
   background:
-    radial-gradient(60% 50% at 50% 0%, rgba(67, 56, 202, 0.34), transparent 70%),
-    radial-gradient(40% 40% at 100% 100%, rgba(59, 130, 246, 0.14), transparent 70%),
+    radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--lp-glow) 34%, transparent), transparent 70%),
+    radial-gradient(40% 40% at 100% 100%, color-mix(in srgb, var(--lp-glow) 14%, transparent), transparent 70%),
     var(--lp-navy-900);
   box-shadow: 0 40px 80px -40px rgba(16, 24, 40, 0.65);
   overflow: hidden;
@@ -25,8 +25,8 @@
 }
 .lp-qc-key { display: flex; gap: 18px; font-size: 13px; color: var(--lp-on-dark-3); }
 .lp-qc-key li { display: inline-flex; align-items: center; gap: 8px; }
-.lp-qc-key i { display: inline-block; width: 22px; height: 0; border-top: 2px solid #a5b4fc; }
-.lp-qc-key .lp-qc-key-dashed { border-top: 2px dashed #f59e0b; }
+.lp-qc-key i { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--lp-accent-on-dark); }
+.lp-qc-key .lp-qc-key-dashed { border-top: 2px dashed var(--status-warning); }
 
 /* ---------- map ---------- */
 /* Phones: the parts stack as a two-column grid; the connections are listed in
@@ -63,22 +63,22 @@
   transition: stroke 200ms ease, opacity 200ms ease;
 }
 .lp-qc-edge[data-state="dim"] { opacity: 0.3; }
-.lp-qc-edge[data-state="active"] { stroke: #a5b4fc; stroke-width: 2.25; }
+.lp-qc-edge[data-state="active"] { stroke: var(--lp-accent-on-dark); stroke-width: 2.25; }
 .lp-qc-edge[data-state="active"]:not([data-planned="true"]) {
   stroke-dasharray: 8 6;
   animation: lp-qc-flow 1s linear infinite;
 }
-.lp-qc-edge[data-planned="true"] { stroke: #f59e0b; stroke-dasharray: 5 6; }
+.lp-qc-edge[data-planned="true"] { stroke: var(--status-warning); stroke-dasharray: 5 6; }
 .lp-qc-edge[data-planned="true"][data-state="active"] { stroke: #fbbf24; }
 @keyframes lp-qc-flow { to { stroke-dashoffset: -14; } }
 
 .lp-qc-elabel {
   font-size: 14px;
   font-weight: 600;
-  fill: #94a3b8;
+  fill: var(--muted-foreground);
   transition: fill 200ms ease, opacity 200ms ease;
 }
-.lp-qc-elabel[data-state="active"] { fill: #e0e7ff; }
+.lp-qc-elabel[data-state="active"] { fill: var(--lp-tint); }
 .lp-qc-elabel[data-state="dim"] { opacity: 0.4; }
 .lp-qc-elabel[data-planned="true"] { fill: #fbbf24; font-style: italic; }
 /* The map is drawn smaller here, so its labels are set larger in map units. */
@@ -95,17 +95,17 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
-  color: #fff;
+  color: var(--lp-on-dark);
   text-align: center;
   cursor: pointer;
   transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 .lp-qc-node:hover { border-color: rgba(165, 180, 252, 0.65); }
-.lp-qc-node[data-related="true"] { border-color: rgba(129, 140, 248, 0.6); }
+.lp-qc-node[data-related="true"] { border-color: color-mix(in srgb, var(--lp-glow) 60%, transparent); }
 .lp-qc-node[aria-pressed="true"] {
-  border-color: #a5b4fc;
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.4), rgba(99, 102, 241, 0.16));
-  box-shadow: 0 0 0 1px rgba(165, 180, 252, 0.7), 0 0 36px -4px rgba(99, 102, 241, 0.85);
+  border-color: var(--lp-accent-on-dark);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lp-glow) 40%, transparent), color-mix(in srgb, var(--lp-glow) 16%, transparent));
+  box-shadow: 0 0 0 1px rgba(165, 180, 252, 0.7), 0 0 36px -4px color-mix(in srgb, var(--lp-glow) 85%, transparent);
 }
 .lp-qc-node[data-planned="true"] {
   border-style: dashed;
@@ -125,19 +125,19 @@
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: rgba(99, 102, 241, 0.22);
-  color: #c7d2fe;
+  background: color-mix(in srgb, var(--lp-glow) 22%, transparent);
+  color: var(--lp-on-dark);
   flex-shrink: 0;
 }
 .lp-qc-node-icon svg { width: 58%; height: 58%; }
-.lp-qc-node[data-planned="true"] .lp-qc-node-icon { background: rgba(245, 158, 11, 0.16); color: #fcd34d; }
+.lp-qc-node[data-planned="true"] .lp-qc-node-icon { background: rgba(245, 158, 11, 0.16); color: var(--lp-on-dark-2); }
 .lp-qc-node-label { font-size: 14px; font-weight: 600; line-height: 1.2; }
 .lp-qc-node-tag {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #fcd34d;
+  color: var(--lp-on-dark-2);
 }
 
 @media (min-width: 768px) {
@@ -175,16 +175,16 @@
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: var(--lp-on-dark);
 }
-.lp-qc-detail-note { margin-top: 6px; font-size: 13px; font-weight: 500; color: #a5b4fc; }
+.lp-qc-detail-note { margin-top: 6px; font-size: 13px; font-weight: 500; color: var(--lp-accent-on-dark); }
 .lp-qc-facts { display: grid; gap: 14px; margin-top: 16px; }
 .lp-qc-facts dt {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #a5b4fc;
+  color: var(--lp-accent-on-dark);
 }
 .lp-qc-facts dd { margin-top: 4px; font-size: 15px; color: var(--lp-on-dark-2); text-wrap: pretty; }
 .lp-qc-links-title {
@@ -193,7 +193,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #a5b4fc;
+  color: var(--lp-accent-on-dark);
 }
 .lp-qc-links { display: grid; gap: 8px; margin-top: 10px; }
 .lp-qc-links li {
@@ -204,7 +204,7 @@
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
 }
-.lp-qc-dir { flex-shrink: 0; width: 16px; height: 16px; margin-top: 3px; color: #a5b4fc; }
+.lp-qc-dir { flex-shrink: 0; width: 16px; height: 16px; margin-top: 3px; color: var(--lp-accent-on-dark); }
 .lp-qc-link-head {
   display: flex;
   flex-wrap: wrap;
@@ -214,7 +214,7 @@
   font-weight: 500;
   color: var(--lp-on-dark);
 }
-.lp-qc-link-head b { font-weight: 700; color: #fff; }
+.lp-qc-link-head b { font-weight: 700; color: var(--lp-on-dark); }
 .lp-qc-link-text { display: block; margin-top: 2px; font-size: 13px; line-height: 1.5; color: var(--lp-on-dark-3); }
 
 .lp-qc-crop {
@@ -235,7 +235,7 @@
   font-size: 15px;
   color: #fde68a;
 }
-.lp-qc-roadmap-title { margin-bottom: 6px; font-weight: 700; color: #fcd34d; }
+.lp-qc-roadmap-title { margin-bottom: 6px; font-weight: 700; color: var(--lp-on-dark-2); }
 
 .lp-qc-stats {
   display: grid;
@@ -256,7 +256,7 @@
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: var(--lp-on-dark);
   font-variant-numeric: tabular-nums;
 }
 .lp-qc-stats dt { margin-top: 2px; font-size: 12.5px; line-height: 1.35; color: var(--lp-on-dark-3); }

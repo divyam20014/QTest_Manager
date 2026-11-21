@@ -281,7 +281,7 @@ export default function TourWalkthrough({ onClose }: { onClose: () => void }) {
             </button>
             <button
               type="button"
-              className="lp-btn lp-btn-sm lp-btn-primary"
+              className="lp-btn lp-btn-sm lp-btn-light"
               onClick={() => go(index + 1)}
               aria-disabled={index === LAST}
             >

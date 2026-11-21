@@ -50,6 +50,23 @@
       }
     }
 
+    // ADR-101: with no explicit saved choice (nothing stored, or System) the public
+    // marketing pages default to Cobalt & Sunshine; every other page keeps the OS
+    // rule below. Keep MARKETING in sync with src/routes/marketingPaths.ts. "/" is
+    // marketing only for a visitor without a session hint (see HomeGate).
+    var MARKETING = /^\/(platform|features|solutions|quality-intelligence|pricing|about|contact|request-demo|security|privacy|terms)\/?$/
+    var path = location.pathname
+    var hinted = false
+    try {
+      hinted = localStorage.getItem('qtesthub:session-hint') === '1'
+    } catch {
+      // Blocked storage: treat as signed out.
+    }
+    if ((stored === null || stored === 'system' || stored === 'custom' || (stored !== 'light' && stored !== 'dark')) && (MARKETING.test(path) || (path === '/' && !hinted))) {
+      root.setAttribute('data-theme', 'cobalt')
+      return
+    }
+
     var dark =
       stored === 'dark' ||
       (stored !== 'light' &&

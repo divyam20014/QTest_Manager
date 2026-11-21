@@ -1431,3 +1431,38 @@ Definitions are shown permanently on each tile (not hover-only). The metrics are
 Light and Dark are unchanged (new tokens `--accent`, `--accent-foreground`, `--border-strong` only; their soft `--border` is not held to 3:1). 200 random plus extreme inputs (#ffff00, #000000, #ffffff ...) all reach AA through the derivation.
 
 **Not included.** Per-account sync of the choice across devices; theme export/import; an exit animation for dialogs (entrance only, none under reduced motion); a high-contrast theme.
+
+## ADR-101: Landing page colour scheme (Cobalt & Sunshine) and landing-page audit
+
+**Decision.** On public marketing routes (`/` for signed-out visitors, `/platform`, `/features`, `/solutions`, `/quality-intelligence`, `/pricing`, `/about`, `/contact`, `/request-demo`, `/security`, `/privacy`, `/terms`) a visitor with no explicit saved theme (nothing stored, or System) gets the Cobalt & Sunshine preset (Cloud surfaces, Cobalt primary, Sunshine accent, dark text on yellow, never white). Any explicit saved choice (Light, Dark, Sage, Indigo, Custom) wins. `public/theme-init.js` applies it before first paint (no flash); `MarketingSite` re-asserts it and hands `<html>` back to the app theme (`refreshTheme`) on leaving. The signed-in app and `/login` etc. keep the OS rule.
+
+**Why.** Cobalt/Sunshine is the preset with the strongest accent-on-dark and CTA contrast (ADR-100) and gives one unmistakable action colour; making it the site default, not a forced theme, keeps the saved choice authoritative.
+
+**Implementation.** `marketing.css` keeps its `--lp-*` variables but they now map onto semantic tokens (`--background`, `--muted`, `--foreground`, `--primary`, `--accent`, `--sidebar-*` for the dark bands, `--status-*`), so all five themes work. Dark bands (nav, hero, Quality Intelligence, differentiators, CTA panel) are theme-aware via the sidebar tokens and never adjacent. Hero/CTA on dark bands use `--accent` with `--accent-foreground`; light surfaces use `--primary`. Translucent white overlays and neutral shadows on always-dark bands stay literal. Contrast of 21 landing pairs in all five themes is asserted by `src/test/marketingContrast.test.ts`.
+
+**No fabricated social proof (rule).** No invented logos, testimonials, ratings or metrics; only claims true of the product and verifiable in this repo. FAQ additions (data protection, data region) state facts from docs (data region is readiness metadata only, no per-region hosting).
+
+**Audit** (pass / fixed / missing):
+
+| Rule | Result |
+|---|---|
+| Plain headline, subheadline names audience | fixed (lead now names QA, engineering and release teams) |
+| Hero visual is a real product screenshot | pass (existing TOUR screenshots) |
+| One primary CTA + quiet secondary | fixed (3 buttons -> 1 CTA, microcopy says what happens, tour as text link) |
+| Outcome headings, hierarchy, spacing | pass (no copy rewrite) |
+| CTA repeated mid/bottom | pass (CtaPanel, sticky mobile CTA) |
+| 65ch body, >=16px | pass (lead 16-18px, max-w on leads) |
+| Social proof | missing (none exists; gap left, nothing invented) |
+| FAQ / objections | fixed (+ security, data region) |
+| Privacy / terms / contact in footer | fixed (links added; `/privacy`, `/terms` are placeholders marked pending legal review) |
+| Forms: labels above, required/optional, errors | pass (8 fields in demo form; trimming is a backlog item) |
+| Nav minimal, ADR-095 behaviour | pass (unchanged) |
+| 44px targets, 48px primary CTA | fixed (hero/CTA min-h-12; legal links 44px) |
+| AA contrast, five themes | fixed (token mapping + test) |
+| Alt text, image sizes, ADR-091 LCP guardrails, reduced motion | pass (untouched) |
+| No horizontal scroll 390/768/1280 | pass at 390/1280 (asserted); 768 not run |
+
+**Still missing.** Real social proof; real legal text (needs counsel); Lighthouse re-run vs issue 40 (score 65, CLS 0.001) not run; indigo/light axe on `/` and a11y-sweep not run (contrast covered by vitest).
+
+**Follow-up.** The section-rail dot is ringed with `--background` then `--foreground` so it reads on light and dark bands in every theme; the demo form requires only name, work email and company (role, team size, requirement and message are optional, matching the backend schema), with required/optional marked and inline errors.
+A visitor with the `qtesthub:session-hint` key on `/` gets the app default instead of cobalt (theme-init.js and MarketingSite); marketing-only paths keep cobalt.

@@ -42,7 +42,7 @@ export default function AboutPage() {
         lead="Software quality is not the responsibility of a single tester or a single team. It is the result of connected people, processes, requirements, decisions and continuous improvement."
       />
 
-      <section className="lp-section bg-white" aria-labelledby="lp-about-story">
+      <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-about-story">
         <div className="lp-container grid gap-12 lg:grid-cols-2 lg:gap-16">
           <div className="lp-reveal grid gap-4 text-[17px] leading-relaxed text-[var(--lp-ink-2)]">
             <h2 id="lp-about-story" className="sr-only">
@@ -98,14 +98,14 @@ export default function AboutPage() {
         <div className="lp-container grid gap-6 md:grid-cols-2">
           <div className="lp-card-dark lp-reveal p-8">
             <p className="lp-eyebrow">Our mission</p>
-            <p className="mt-4 text-[clamp(20px,2.2vw,26px)] font-semibold leading-snug text-white">
+            <p className="mt-4 text-[clamp(20px,2.2vw,26px)] font-semibold leading-snug text-[var(--lp-on-dark)]">
               To simplify and strengthen software quality management by bringing testing workflows, people and quality
               insights together through one unified platform.
             </p>
           </div>
           <div className="lp-card-dark lp-reveal p-8" style={delay(80)}>
             <p className="lp-eyebrow">Our vision</p>
-            <p className="mt-4 text-[clamp(20px,2.2vw,26px)] font-semibold leading-snug text-white">
+            <p className="mt-4 text-[clamp(20px,2.2vw,26px)] font-semibold leading-snug text-[var(--lp-on-dark)]">
               To help organizations move beyond traditional test management towards connected, intelligent and
               measurable quality engineering.
             </p>
@@ -113,7 +113,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="lp-section bg-white" aria-labelledby="lp-about-beliefs">
+      <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-about-beliefs">
         <div className="lp-container">
           <SectionHeader id="lp-about-beliefs" eyebrow="What we believe" title="The Principles Behind QTestHub." />
           <ul className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -152,7 +152,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="lp-section bg-white" aria-labelledby="lp-about-commitment">
+      <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-about-commitment">
         <div className="lp-container lp-reveal mx-auto max-w-3xl text-center">
           <p className="lp-eyebrow">Our commitment</p>
           <h2 id="lp-about-commitment" className="lp-h2 mt-3">

@@ -35,7 +35,7 @@ export default function QualityIntelligencePage() {
         </div>
       </section>
 
-      <section className="lp-section bg-white" aria-labelledby="lp-qi-evidence-title">
+      <section className="lp-section bg-[var(--lp-surface)]" aria-labelledby="lp-qi-evidence-title">
         <div className="lp-container grid items-center gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
           <div className="lp-reveal">
             <p className="lp-eyebrow">Available today</p>
