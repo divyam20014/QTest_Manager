@@ -37,7 +37,7 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
     await expect(admin.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Manage')
     await admin.getByRole('button', { name: 'New dashboard' }).click()
     await admin.getByLabel('Dashboard name').fill('Ops board')
-    await admin.getByRole('button', { name: 'Create', exact: true }).click()
+    await admin.getByRole('button', { name: 'Create dashboard', exact: true }).click()
     await expect(admin.getByRole('heading', { name: 'Ops board', level: 1 })).toBeVisible()
     const dashboardId = admin.url().split('/dashboards/')[1]
     await expect(admin.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Ops board')
@@ -65,7 +65,7 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
 
     // Order is now: Summary tiles, Defect aging, Saved report. Move the report up one.
     await admin.getByRole('button', { name: 'Move Saved report 3 up' }).click()
-    await admin.getByRole('button', { name: 'Save', exact: true }).click()
+    await admin.getByRole('button', { name: 'Save layout', exact: true }).click()
     await expect(admin.getByText('Layout saved').first()).toBeVisible()
 
     await admin.reload()

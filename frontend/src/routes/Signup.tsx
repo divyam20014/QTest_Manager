@@ -7,6 +7,7 @@ import { TENANT_DOMAINS, tenantDomainLabel, type TenantDomain } from '@/api/proj
 import { ApiError } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PasswordInput, PasswordStrengthMeter } from '@/components/ui/password-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -48,15 +49,12 @@ export function Signup() {
             Start your free trial
           </CardTitle>
           <p className="text-sm text-[var(--muted-foreground)]">
-            Your organization starts on the Trial plan with a sample project already set up —
-            no payment required.
+            Your organization starts on the Trial plan with a sample project already set up — no payment required.
           </p>
         </CardHeader>
         <CardContent>
           {signupMutation.isSuccess ? (
-            <p className="text-sm text-[var(--status-good)]">
-              Account created. Redirecting to sign in…
-            </p>
+            <p className="text-sm text-[var(--status-good)]">Account created. Redirecting to sign in…</p>
           ) : (
             <form
               className="flex flex-col gap-4"
@@ -94,8 +92,8 @@ export function Signup() {
                   ))}
                 </Select>
                 <p id="signup-domain-help" className="text-xs text-[var(--muted-foreground)]">
-                  Your main line of insurance. It only pre-selects the domain on new projects, and
-                  you can change it later in Settings.
+                  Your main line of insurance. It only pre-selects the domain on new projects, and you can change it
+                  later in Settings.
                 </p>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -123,21 +121,20 @@ export function Signup() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="signup-password">Password</Label>
-                <Input
+                <PasswordInput
                   id="signup-password"
-                  type="password"
                   autoComplete="new-password"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   required
                 />
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  At least 12 characters, with an uppercase letter, a lowercase letter, and a
-                  digit.
+                  At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.
                 </p>
+                <PasswordStrengthMeter value={adminPassword} />
               </div>
               <FormError>{error}</FormError>
-              <Button type="submit" disabled={signupMutation.isPending}>
+              <Button type="submit" loading={signupMutation.isPending}>
                 {signupMutation.isPending ? 'Creating your organization…' : 'Create Account'}
               </Button>
             </form>

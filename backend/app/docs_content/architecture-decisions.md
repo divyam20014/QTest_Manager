@@ -1478,3 +1478,15 @@ A visitor with the `qtesthub:session-hint` key on `/` gets the app default inste
 **Not in scope.** No customization, no new tables, no backend change. Quick actions (new run, report defect) were skipped.
 
 **Deep links.** Every in-app link to `/projects/:id` (project cards, run and case lists, defect detail) now lands on the Dashboard tab; bookmarks to the old page land there too. The old content is one tab click away.
+
+## ADR-103: Button hierarchy, labels, sizes, states and password inputs
+
+**Status.** Accepted. **Phase A.**
+
+**Rules.** One primary (default variant) action per screen or dialog; others are outline or ghost. Destructive actions use the destructive variant and are never the only primary. Labels say what happens ("Create dashboard", "Save layout", "Confirm identity"), not Submit/OK/Yes/Save. Phones: the default variant is 48px tall (`max-md:min-h-12`), every other button and the password toggle 44px minimum; desktop stays compact.
+
+**States.** `Button` has hover, a token-based pressed state (tactile emboss via `--elevation-pressed-sm` on all variants, so all five themes inherit it), the focus-visible ring, disabled, and `loading` (spinner, `aria-busy`, disabled, label and width kept). `ConfirmDialog` uses `loading` instead of swapping its label; wired on the sign-in, sign-up, accept-invite, dashboard and step-up submit buttons.
+
+**Inputs.** `PasswordInput` adds a show/hide toggle (`aria-pressed`, label "Show characters", input name/autocomplete untouched). `PasswordStrengthMeter` (text plus bar, `role=status`, pure `passwordStrength()` in `lib/passwordStrength.ts`) appears on the sign-up, accept-invite and password reset/change flows only. `FormField` already wires `aria-invalid`, `aria-describedby` and `role=alert`; the sign-in email field now does too.
+
+**Skipped.** Quantity steppers (no quantity field exists), tag input and date masks (no field needs them). The one-time-code field stays a single input. Only the most-used submit buttons got `loading`; the rest still use `disabled`.

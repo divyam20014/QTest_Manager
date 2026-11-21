@@ -6,7 +6,7 @@ import { acceptInvite } from '@/api/users'
 import { ApiError } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { PasswordInput, PasswordStrengthMeter } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { FormError } from '@/components/ui/form-field'
 
@@ -39,15 +39,11 @@ export function AcceptInvite() {
           <CardTitle as="h1" className="text-base text-[var(--foreground)]">
             Accept Invite
           </CardTitle>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Set your password to activate your QTestHub account.
-          </p>
+          <p className="text-sm text-[var(--muted-foreground)]">Set your password to activate your QTestHub account.</p>
         </CardHeader>
         <CardContent>
           {acceptMutation.isSuccess ? (
-            <p className="text-sm text-[var(--status-good)]">
-              Account activated. Redirecting to sign in…
-            </p>
+            <p className="text-sm text-[var(--status-good)]">Account activated. Redirecting to sign in…</p>
           ) : (
             <form
               className="flex flex-col gap-4"
@@ -58,20 +54,19 @@ export function AcceptInvite() {
             >
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="accept-password">New Password</Label>
-                <Input
+                <PasswordInput
                   id="accept-password"
-                  type="password"
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  At least 12 characters, with an uppercase letter, a lowercase letter, and a
-                  digit.
+                  At least 12 characters, with an uppercase letter, a lowercase letter, and a digit.
                 </p>
+                <PasswordStrengthMeter value={password} />
               </div>
               <FormError>{error}</FormError>
-              <Button type="submit" disabled={acceptMutation.isPending || !token}>
+              <Button type="submit" loading={acceptMutation.isPending} disabled={!token}>
                 {acceptMutation.isPending ? 'Activating…' : 'Activate Account'}
               </Button>
             </form>

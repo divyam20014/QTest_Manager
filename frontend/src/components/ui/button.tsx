@@ -1,4 +1,5 @@
 import { type ButtonHTMLAttributes, forwardRef } from 'react'
+import { Loader2 } from 'lucide-react'
 import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
@@ -23,14 +24,18 @@ export const buttonVariants = cva(
         // step, deliberately not the dramatic EmbossedCard/TactileButton
         // treatment, so it reads as "this is the one real button" without
         // adding noise to toolbars full of outline/ghost buttons).
-        default: 'qth-raised-sm qth-tactile-btn bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90',
-        outline: 'border border-[var(--border)] bg-transparent hover:bg-[var(--muted)]',
-        destructive: 'bg-[var(--destructive)] text-[var(--destructive-foreground)] hover:opacity-90',
+        // Phone primary: 48px (min-h-12) -- the one primary action per screen is the
+        // biggest target; every other variant stays at the shared 44px floor.
+        default:
+          'qth-raised-sm qth-tactile-btn bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90 max-md:min-h-12',
+        outline:
+          'border border-[var(--border)] bg-transparent hover:bg-[var(--muted)] active:bg-[var(--muted)] active:shadow-[var(--elevation-pressed-sm)]',
+        destructive: 'bg-[var(--destructive)] text-[var(--destructive-foreground)] hover:opacity-90 active:opacity-75',
         // Solid positive action (Execution Console "Pass"). Same tactile lift as
         // default, with AA-contrast text on the green in both themes.
         success:
           'qth-raised-sm qth-tactile-btn bg-[var(--success-solid)] text-[var(--success-solid-foreground)] hover:opacity-90',
-        ghost: 'hover:bg-[var(--muted)]',
+        ghost: 'hover:bg-[var(--muted)] active:bg-[var(--muted)] active:shadow-[var(--elevation-pressed-sm)]',
       },
       size: {
         default: 'h-9 px-4 py-2',
@@ -48,13 +53,26 @@ export const buttonVariants = cva(
   },
 )
 
-export interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
+  /**
+   * Pending state: shows a spinner, sets aria-busy, disables the button and keeps the
+   * label (and so the width) unchanged. Use for mutation submit buttons.
+   */
+  loading?: boolean
+}
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => (
-    <button ref={ref} className={cn(buttonVariants({ variant, size }), className)} {...props} />
+  ({ className, variant, size, loading, disabled, children, ...props }, ref) => (
+    <button
+      ref={ref}
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading && <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin motion-reduce:animate-none" />}
+      {children}
+    </button>
   ),
 )
 Button.displayName = 'Button'

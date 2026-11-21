@@ -10,6 +10,7 @@ import { API_BASE_URL, ApiError } from '@/api/client'
 import { getSsoStatus } from '@/api/sso'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/auth'
@@ -217,17 +218,19 @@ export function Login() {
                   autoCorrect="off"
                   spellCheck={false}
                   autoFocus
+                  aria-invalid={emailForm.formState.errors.email ? true : undefined}
+                  aria-describedby={emailForm.formState.errors.email ? 'email-error' : undefined}
                   {...emailForm.register('email')}
                 />
                 {emailForm.formState.errors.email && (
-                  <p className="text-xs text-[var(--destructive)]">
+                  <p id="email-error" role="alert" className="text-xs text-[var(--destructive)]">
                     {emailForm.formState.errors.email.message}
                   </p>
                 )}
               </div>
               <FormError>{identifyError}</FormError>
-              <Button type="submit" disabled={identifyMutation.isPending}>
-                {identifyMutation.isPending ? 'Checking…' : 'Continue'}
+              <Button type="submit" loading={identifyMutation.isPending}>
+                {identifyMutation.isPending ? 'Checking…' : 'Continue to password'}
               </Button>
             </form>
           )}
@@ -278,16 +281,15 @@ export function Login() {
               </p>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="password">Password</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   autoComplete="current-password"
                   autoFocus
                   {...passwordForm.register('password')}
                 />
               </div>
               <FormError>{credentialsError}</FormError>
-              <Button type="submit" disabled={loginMutation.isPending}>
+              <Button type="submit" loading={loginMutation.isPending}>
                 {loginMutation.isPending ? 'Signing in…' : 'Sign in'}
               </Button>
               <Button

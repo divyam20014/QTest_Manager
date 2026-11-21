@@ -64,6 +64,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorState } from '@/components/ui/empty-state'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
+import { PasswordInput, PasswordStrengthMeter } from '@/components/ui/password-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -622,10 +623,10 @@ function PlanDialog({ tenant, onClose }: { tenant: Tenant | null; onClose: () =>
           </Button>
           <Button
             size="sm"
-            disabled={!planCode || assignMutation.isPending}
+            loading={assignMutation.isPending} disabled={!planCode}
             onClick={() => assignMutation.mutate()}
           >
-            {assignMutation.isPending ? 'Saving…' : 'Save'}
+            {assignMutation.isPending ? 'Saving…' : 'Save plan'}
           </Button>
         </DialogFooter>
       </div>
@@ -754,9 +755,8 @@ function NewTenantDialog({ open, onClose }: { open: boolean; onClose: () => void
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="admin-password">Temporary Password</Label>
-            <Input
+            <PasswordInput
               id="admin-password"
-              type="password"
               required
               aria-describedby="admin-password-hint"
               value={adminPassword}
@@ -1124,9 +1124,8 @@ function NewAdminDialog({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="new-admin-password">Password</Label>
-          <Input
+          <PasswordInput
             id="new-admin-password"
-            type="password"
             required
             aria-describedby="new-admin-password-hint"
             value={password}
@@ -1503,8 +1502,8 @@ function StepUpHost() {
           <Button type="button" variant="outline" size="sm" onClick={cancel}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" disabled={!ready || stepUpMutation.isPending}>
-            {stepUpMutation.isPending ? 'Verifying…' : 'Confirm'}
+          <Button type="submit" size="sm" loading={stepUpMutation.isPending} disabled={!ready}>
+            {stepUpMutation.isPending ? 'Verifying…' : 'Confirm identity'}
           </Button>
         </DialogFooter>
       </form>
@@ -1575,9 +1574,8 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
       >
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="change-current-password">Current password</Label>
-          <Input
+          <PasswordInput
             id="change-current-password"
-            type="password"
             autoComplete="current-password"
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
@@ -1586,9 +1584,8 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="change-new-password">New password</Label>
-          <Input
+          <PasswordInput
             id="change-new-password"
-            type="password"
             autoComplete="new-password"
             aria-describedby="change-new-password-hint"
             value={next}
@@ -1598,12 +1595,12 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
           <p id="change-new-password-hint" className="text-xs text-[var(--muted-foreground)]">
             {PASSWORD_HINT} It must differ from the current password.
           </p>
+<PasswordStrengthMeter value={next} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="change-confirm-password">Confirm new password</Label>
-          <Input
+          <PasswordInput
             id="change-confirm-password"
-            type="password"
             autoComplete="new-password"
             aria-invalid={mismatch}
             aria-describedby={mismatch ? 'change-confirm-error' : undefined}

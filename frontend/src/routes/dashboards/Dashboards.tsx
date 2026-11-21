@@ -238,8 +238,9 @@ export function Dashboards() {
             <Button type="button" variant="outline" onClick={() => setNameDialog(null)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!name.trim() || create.isPending || rename.isPending}>
-              {nameDialog?.mode === 'rename' ? 'Save' : 'Create'}
+            <Button type="submit" loading={create.isPending || rename.isPending}
+              disabled={!name.trim()}>
+              {nameDialog?.mode === 'rename' ? 'Save name' : 'Create dashboard'}
             </Button>
           </div>
         </form>

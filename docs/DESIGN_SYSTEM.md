@@ -241,3 +241,7 @@ New tokens: `--accent` / `--accent-foreground` (a fill with its text; never used
 **Adding a theme.** Add its inputs to `PRESET_INPUTS` in `src/lib/themeDerive.ts`, generate its `:root[data-theme="..."]` block from `deriveTheme()` into `index.css`, add the id to `THEME_CHOICES`, `THEME_LABELS` and `isPreset` users in `src/lib/themes.ts`, and to the preset list in `public/theme-init.js`. `src/test/themes.test.ts` then checks contrast and drift.
 
 Dialogs: header title + 44px close button, body padding 24px (16px phone), sticky footer with 44px actions right-aligned (stacked on phones, primary last), max height 90vh with internal scroll, bottom sheet with handle below `md`.
+
+## Buttons (ADR-103)
+
+One default-variant primary per screen or dialog; the rest outline or ghost; destructive stays distinct. Label = the outcome ("Create test run"). Phone sizes: primary 48px, others 44px. `<Button loading>` for pending mutations (spinner, aria-busy, disabled, label kept). Passwords use `PasswordInput`; new-password flows add `PasswordStrengthMeter`.

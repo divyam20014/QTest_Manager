@@ -31,7 +31,7 @@ type ConfirmProps = {
 // the typed-confirmation text resets every time the dialog is reopened.
 function ConfirmBody({
   description,
-  confirmLabel = 'Confirm',
+  confirmLabel = 'Confirm action',
   cancelLabel = 'Cancel',
   destructive,
   pending = false,
@@ -62,10 +62,11 @@ function ConfirmBody({
         <Button
           size="sm"
           variant={destructive ? 'destructive' : 'default'}
-          disabled={pending || !textOk}
+          loading={pending}
+          disabled={!textOk}
           onClick={onConfirm}
         >
-          {pending ? 'Working…' : confirmLabel}
+          {confirmLabel}
         </Button>
       </DialogFooter>
     </div>

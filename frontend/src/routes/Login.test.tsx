@@ -82,7 +82,7 @@ describe('Login', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeInTheDocument())
     await user.type(screen.getByLabelText('Email'), 'admin@horizon.com')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to password' }))
 
     expect(await screen.findByText(/signing in to/i)).toBeInTheDocument()
     expect(screen.getByText('Horizon Mutual')).toBeInTheDocument()
@@ -115,7 +115,7 @@ describe('Login', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeInTheDocument())
     await user.type(screen.getByLabelText('Email'), 'shared@example.com')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to password' }))
 
     expect(await screen.findByText(/choose which one to sign in to/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Tenant A' })).toBeInTheDocument()
@@ -135,7 +135,7 @@ describe('Login', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeInTheDocument())
     await user.type(screen.getByLabelText('Email'), 'nobody@example.com')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to password' }))
 
     expect(await screen.findByText('Invalid email or password')).toBeInTheDocument()
     // Stays on the email step -- there is no tenant to log into.
@@ -154,7 +154,7 @@ describe('Login', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeInTheDocument())
     await user.type(screen.getByLabelText('Email'), 'admin@horizon.com')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to password' }))
 
     expect(await screen.findByLabelText('Password')).toBeInTheDocument()
     expect(identifySpy).not.toHaveBeenCalled()
@@ -180,7 +180,7 @@ describe('Login', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeInTheDocument())
     await user.type(screen.getByLabelText('Email'), 'admin@horizon.com')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Continue to password' }))
 
     expect(await screen.findByText('Stale Org')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /switch organization/i }))

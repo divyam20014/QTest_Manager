@@ -363,8 +363,8 @@ export function DashboardView() {
                 <Button type="button" variant="outline" onClick={() => setEditing(false)}>
                   Cancel
                 </Button>
-                <Button type="button" disabled={save.isPending} onClick={() => save.mutate()}>
-                  Save
+                <Button type="button" loading={save.isPending} onClick={() => save.mutate()}>
+                  Save layout
                 </Button>
               </>
             ) : (

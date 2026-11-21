@@ -549,7 +549,7 @@ export function ReportBuilder() {
                 disabled={!name.trim() || save.isPending || (current !== null && !current.can_edit)}
                 onClick={() => save.mutate({ asNew: false })}
               >
-                <Save className="mr-1 size-4" /> Save
+                <Save className="mr-1 size-4" /> Save report
               </Button>
               <Button
                 type="button"

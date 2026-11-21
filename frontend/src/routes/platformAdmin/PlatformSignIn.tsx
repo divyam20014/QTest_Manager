@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { FormError } from '@/components/ui/form-field'
+import { PasswordInput, PasswordStrengthMeter } from '@/components/ui/password-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { copyText } from '@/lib/clipboard'
@@ -180,9 +181,8 @@ function PasswordStep({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="platform-password">Password</Label>
-          <Input
+          <PasswordInput
             id="platform-password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
@@ -294,9 +294,8 @@ function ResetStep({ onBack, onDone }: { onBack: () => void; onDone: () => void 
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="platform-reset-password">New password</Label>
-          <Input
+          <PasswordInput
             id="platform-reset-password"
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
@@ -306,12 +305,12 @@ function ResetStep({ onBack, onDone }: { onBack: () => void; onDone: () => void 
           <p id="platform-reset-password-hint" className="text-xs text-[var(--muted-foreground)]">
             At least 12 characters with an uppercase letter, a lowercase letter and a digit.
           </p>
+<PasswordStrengthMeter value={password} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="platform-reset-confirm">Confirm new password</Label>
-          <Input
+          <PasswordInput
             id="platform-reset-confirm"
-            type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             autoComplete="new-password"
@@ -642,7 +641,7 @@ function EnrolStep({
             className="min-h-11 md:min-h-0"
             disabled={!enrolCodeReady || startMutation.isPending}
           >
-            {startMutation.isPending ? 'Checking…' : 'Continue'}
+            {startMutation.isPending ? 'Checking…' : 'Continue to sign in'}
           </Button>
           <button
             type="button"

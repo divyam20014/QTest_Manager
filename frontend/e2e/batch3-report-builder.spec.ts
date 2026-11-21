@@ -41,7 +41,7 @@ test('Report builder: build, run, save, reload, export, and hidden-from-Testers'
     await expect(admin.getByRole('cell', { name: '3', exact: true })).toBeVisible()
 
     await admin.getByLabel('Report name').fill('High severity count')
-    await admin.getByRole('button', { name: 'Save', exact: true }).click()
+    await admin.getByRole('button', { name: 'Save report', exact: true }).click()
     await expect(admin.getByText('Report saved').first()).toBeVisible()
 
     await admin.reload()

@@ -475,7 +475,7 @@ function PermissionMatrix({
                               disabled={saveMutation.isPending}
                               onClick={() => saveDraft(r)}
                             >
-                              {saveMutation.isPending ? 'Saving…' : 'Save'}
+                              {saveMutation.isPending ? 'Saving…' : 'Save role'}
                             </Button>
                             <Button
                               variant="outline"
