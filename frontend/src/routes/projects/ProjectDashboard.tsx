@@ -1,5 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+
+import { hasPermission } from '@/api/auth'
+import { buttonVariants } from '@/components/ui/button'
+import { useAuth } from '@/lib/auth'
 
 import type { DashboardWidget, WidgetType } from '@/api/dashboards'
 import { getProject } from '@/api/projects'
@@ -14,7 +18,10 @@ import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
 // ADR-102: a fixed, read-only dashboard built from the ADR-099 widget
 // components with this project's id preset. No customization, no new API.
-const SECTIONS: { title: string; widgets: { type: WidgetType; size: DashboardWidget['size'] }[] }[] = [
+const SECTIONS: {
+  title: string
+  widgets: { type: WidgetType; size: DashboardWidget['size'] }[]
+}[] = [
   {
     title: 'Health',
     widgets: [
@@ -41,11 +48,15 @@ const SECTIONS: { title: string; widgets: { type: WidgetType; size: DashboardWid
   },
 ]
 
-const SPAN = { S: 'md:col-span-1', M: 'md:col-span-2', L: 'md:col-span-3' }
+const SPAN = { S: 'lg:col-span-1', M: 'lg:col-span-2', L: 'lg:col-span-3' }
 
 export function ProjectDashboard() {
   const { projectId = '' } = useParams<{ projectId: string }>()
-  const projectQuery = useQuery({ queryKey: ['projects', projectId], queryFn: () => getProject(projectId) })
+  const { user } = useAuth()
+  const projectQuery = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => getProject(projectId),
+  })
   const releasesQuery = useQuery({
     queryKey: ['releases', projectId],
     queryFn: () => listReleases(projectId),
@@ -55,8 +66,17 @@ export function ProjectDashboard() {
   const project = projectQuery.data
   if (projectQuery.isLoading) return <DetailSkeleton />
   if (projectQuery.isError)
-    return <ErrorState message="Could not load this project." error={projectQuery.error} onRetry={() => projectQuery.refetch()} />
-  if (!project) return <EmptyState title="Project not found" description="It may have been deleted, or you may not have access to it." />
+    return (
+      <ErrorState
+        message="Could not load this project."
+        error={projectQuery.error}
+        onRetry={() => projectQuery.refetch()}
+      />
+    )
+  if (!project)
+    return (
+      <EmptyState title="Project not found" description="It may have been deleted, or you may not have access to it." />
+    )
 
   // Latest release of the project (by creation time); the widget falls back to
   // "whole project" when there is none.
@@ -73,6 +93,28 @@ export function ProjectDashboard() {
             <StatusBadge tone="info">{project.domain}</StatusBadge>
           </>
         }
+        actions={
+          <>
+            {hasPermission(user, 'defect.create') && (
+              <Link
+                to={`/defects?projectId=${project.id}&action=create`}
+                className={buttonVariants({ variant: 'outline' })}
+              >
+                Report defect
+              </Link>
+            )}
+            {hasPermission(user, 'testcase.create') && (
+              <Link to={`/projects/${project.id}/test-cases`} className={buttonVariants({ variant: 'outline' })}>
+                New test case
+              </Link>
+            )}
+            {hasPermission(user, 'testrun.create') && (
+              <Link to={`/projects/${project.id}/test-runs`} className={buttonVariants()}>
+                New test run
+              </Link>
+            )}
+          </>
+        }
       />
       <ProjectTabs projectId={project.id} />
       {SECTIONS.map((section) => (
@@ -80,16 +122,25 @@ export function ProjectDashboard() {
           <h2 id={`pd-${section.title.charAt(0)}`} className="text-lg font-semibold">
             {section.title}
           </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {section.widgets.map((w, i) => {
-              const settings: DashboardWidget['settings'] = { project_id: project.id }
+              const settings: DashboardWidget['settings'] = {
+                project_id: project.id,
+              }
               if (w.type === 'execution_trend') settings.days = 30
               if (w.type === 'flaky_tests') settings.top_n = 10
               if (w.type === 'release_readiness' && latest) settings.release_id = latest.id
               return (
-                <div key={w.type} className={SPAN[w.size]}>
+                <div key={w.type} className={`min-w-0 ${SPAN[w.size]}`}>
                   <WidgetView
-                    widget={{ id: `${project.id}-${w.type}`, widget_type: w.type, size: w.size, position: i, settings, project_access: 'ok' }}
+                    widget={{
+                      id: `${project.id}-${w.type}`,
+                      widget_type: w.type,
+                      size: w.size,
+                      position: i,
+                      settings,
+                      project_access: 'ok',
+                    }}
                   />
                 </div>
               )

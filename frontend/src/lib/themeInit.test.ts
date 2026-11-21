@@ -18,6 +18,9 @@ function run(stored: string | null, osDark: boolean) {
   return document.documentElement.getAttribute('data-theme')
 }
 
+// Non-marketing path: marketing pages default to Cobalt (ADR-101), covered elsewhere.
+history.replaceState(null, '', '/projects')
+
 describe('theme-init.js', () => {
   afterEach(() => {
     vi.unstubAllGlobals()

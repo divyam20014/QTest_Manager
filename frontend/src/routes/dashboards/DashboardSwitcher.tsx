@@ -37,7 +37,10 @@ export function DashboardSwitcher({ currentId }: { currentId?: string }) {
         ))}
         {missing && <option value={currentId}>Current dashboard</option>}
       </Select>
-      <Link to="/dashboards" className="whitespace-nowrap text-sm text-[var(--link)] hover:underline">
+      <Link
+        to="/dashboards"
+        className="whitespace-nowrap text-sm max-md:inline-flex max-md:min-h-11 max-md:items-center text-[var(--link)] hover:underline"
+      >
         Manage dashboards
       </Link>
     </div>

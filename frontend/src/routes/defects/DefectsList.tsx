@@ -449,6 +449,7 @@ export function DefectsList() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         projects={projectsQuery.data?.items ?? []}
+        defaultProjectId={projectId}
         onCreated={() => queryClient.invalidateQueries({ queryKey: ['defects'] })}
       />
       <DefectImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
@@ -460,14 +461,17 @@ function NewDefectDialog({
   open,
   onClose,
   projects,
+  defaultProjectId = '',
   onCreated,
 }: {
   open: boolean
   onClose: () => void
   projects: { id: string; name: string }[]
+  /** Preselected project (e.g. from the project Dashboard quick action). */
+  defaultProjectId?: string
   onCreated: () => void
 }) {
-  const [projectId, setProjectId] = useState('')
+  const [projectId, setProjectId] = useState(defaultProjectId)
   const [title, setTitle] = useState('')
   const [severity, setSeverity] = useState<Severity>('Medium')
   const [priority, setPriority] = useState<Priority>('Medium')

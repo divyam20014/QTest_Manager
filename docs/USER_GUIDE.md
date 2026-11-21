@@ -37,7 +37,8 @@ priority, budget, timeline); Testers see the projects they're assigned to.
 Opening a project shows its Dashboard: summary tiles, release readiness,
 trends and risk widgets for that project only, read-only. Use the tabs
 above it to switch to Details (settings, members, builds, suites, plans),
-Requirements, Test Cases, Test Runs or Defects.
+Requirements, Test Cases, Test Runs or Defects. The buttons at the top (New
+test run, New test case, Report defect) take you straight there for this project; you only see the ones your role allows.
 
 ## Requirements
 

@@ -37,7 +37,12 @@ async function seedProject(page: Page, name: string, adminId: string, cases: num
     await post(page, `/test-cases/${tc.id}/approve`)
   }
   for (let i = 1; i <= defects; i++) {
-    await post(page, '/defects', { project_id: created.id, title: `${name} defect ${i}`, severity: 'High', description: 'd' })
+    await post(page, '/defects', {
+      project_id: created.id,
+      title: `${name} defect ${i}`,
+      severity: 'High',
+      description: 'd',
+    })
   }
   return created.id as string
 }
@@ -48,7 +53,7 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   request,
 }) => {
   test.setTimeout(240_000)
-  const t = await seedRoleTenant(request, 'ProjDash')
+  const t = await seedRoleTenant(request, 'ProjDash', { withData: true })
   await loginViaUi(page, t.tenantId, t.adminEmail, t.adminPassword)
   const me = await (await page.request.get(`${API_BASE_URL}/auth/me`)).json()
   const adminId = (me.data?.user_id ?? me.data?.id) as string
@@ -66,7 +71,10 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   for (const h of ['Health', 'Trends', 'Risk & activity']) {
     await expect(page.getByRole('heading', { level: 2, name: h })).toBeVisible()
   }
-  await expect(page.getByRole('link', { name: 'Dashboard', exact: true }).last()).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('link', { name: 'Dashboard', exact: true }).last()).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
   await expect(page.getByText('3 of 3')).toBeVisible({ timeout: 20_000 })
   expect(scoped.length).toBeGreaterThan(0)
   expect(scoped.filter((u) => !u.includes(`project_id=${a}`) && !u.includes(`projectId=${a}`))).toEqual([])
@@ -116,6 +124,50 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   await loginViaUi(tp, t.tenantId, t.tester.email, t.tester.password)
   await tp.goto(`/projects/${a}`)
   await expect(tp.getByRole('heading', { level: 1, name: 'Alpha Project' })).toHaveCount(0)
-  await expect(tp.getByText(/could not load this project|not found|no access/i).first()).toBeVisible({ timeout: 15_000 })
+  await expect(tp.getByText(/could not load this project|not found|no access/i).first()).toBeVisible({
+    timeout: 15_000,
+  })
   await ctx.close()
+
+  // Quick actions: Admin and Manager see all three, one primary (New test run).
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(`/projects/${a}`)
+  await expect(page.getByRole('link', { name: 'New test run' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'New test case' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Report defect' })).toBeVisible()
+  const mctx = await browser.newContext()
+  const mp = await mctx.newPage()
+  await loginViaUi(mp, t.tenantId, t.manager.email, t.manager.password)
+  await mp.goto(`/projects/${t.projectId}`)
+  for (const n of ['New test run', 'New test case', 'Report defect']) {
+    await expect(mp.getByRole('link', { name: n })).toBeVisible({
+      timeout: 20_000,
+    })
+  }
+  await mctx.close()
+
+  // A Tester who is a member sees only the actions their permissions allow.
+  const tctx = await browser.newContext()
+  const tm = await tctx.newPage()
+  await loginViaUi(tm, t.tenantId, t.tester.email, t.tester.password)
+  const perms: string[] = (await (await tm.request.get(`${API_BASE_URL}/auth/me`)).json()).data.permissions
+  await tm.goto(`/projects/${t.projectId}`)
+  await expect(tm.getByRole('navigation', { name: 'Project sections' })).toBeVisible()
+  const wanted: [string, string][] = [
+    ['New test run', 'testrun.create'],
+    ['New test case', 'testcase.create'],
+    ['Report defect', 'defect.create'],
+  ]
+  for (const [label, perm] of wanted) {
+    await expect(tm.getByRole('link', { name: label })).toHaveCount(perms.includes(perm) ? 1 : 0)
+  }
+  // "Report defect" lands on the defect form with this project preselected.
+  if (perms.includes('defect.create')) {
+    await tm.getByRole('link', { name: 'Report defect' }).click()
+    await expect(tm).toHaveURL(new RegExp(`/defects[?]projectId=${t.projectId}`))
+    const dialog = tm.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('combobox').first()).toHaveValue(t.projectId as string)
+  }
+  await tctx.close()
 })
