@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { listDashboards } from '@/api/dashboards'
 import { listDocs } from '@/api/docs'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
@@ -30,6 +31,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   settings: 'Settings',
   account: 'My Account',
   brd: 'Documentation',
+  dashboards: 'Manage',
 }
 
 const ID_LABELS: Record<string, string> = {
@@ -68,18 +70,35 @@ export function Breadcrumbs() {
     staleTime: 60_000,
   })
 
+  // /dashboards/:id -- "Dashboard > <name>" (same cached list the view switcher reads).
+  const onDash = segments[0] === 'dashboards' && segments.length > 1
+  const dashList = useQuery({
+    queryKey: ['dashboards', 'list', user?.user_id],
+    queryFn: listDashboards,
+    enabled: onDash && !!user,
+    staleTime: 30_000,
+  })
+
   if (segments.length === 0) {
     return <span className="text-sm text-[var(--muted-foreground)]">Dashboard</span>
   }
 
-  const crumbs = segments.map((segment, index) => {
-    const path = '/' + segments.slice(0, index + 1).join('/')
-    const docTitle =
-      segments[0] === 'brd' && index === 1 ? docList.data?.documents.find((d) => d.slug === segment)?.title : undefined
-    const label =
-      docTitle ?? (isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
-    return { path, label }
-  })
+  const crumbs = segments
+    .map((segment, index) => {
+      const path = '/' + segments.slice(0, index + 1).join('/')
+      const docTitle =
+        segments[0] === 'brd' && index === 1
+          ? docList.data?.documents.find((d) => d.slug === segment)?.title
+          : undefined
+      const dashName =
+        segments[0] === 'dashboards' && index === 1 ? dashList.data?.find((d) => d.id === segment)?.name : undefined
+      const label =
+        docTitle ??
+        dashName ??
+        (isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
+      return { path, label }
+    })
+    .filter((_, index) => !(onDash && index === 0))
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">

@@ -11,6 +11,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/test-runs': 'Test Runs',
   '/execution': 'Execution',
   '/defects': 'Defects',
+  '/dashboards': 'Manage Dashboards',
   '/reporting': 'Reporting',
   '/reporting/builder': 'Report builder',
   '/reporting/print': 'Compliance Report',
@@ -30,7 +31,6 @@ const SEGMENT_TITLES: Record<string, string> = {
   'test-runs': 'Test Run',
   'test-run-cases': 'Execution Console',
   defects: 'Defect',
-  dashboards: 'Dashboard',
 }
 
 function isId(segment: string) {
@@ -41,6 +41,7 @@ export function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/accept-invite')) return 'Accept Invitation'
   if (pathname === '/brd' || pathname.startsWith('/brd/')) return 'Documentation'
   if (EXACT_TITLES[pathname]) return EXACT_TITLES[pathname]
+  if (pathname.startsWith('/dashboards/')) return 'Dashboard'
 
   const segments = pathname.split('/').filter(Boolean)
   // Walk backwards: the most specific recognizable segment wins (e.g.

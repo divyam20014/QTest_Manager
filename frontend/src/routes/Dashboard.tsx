@@ -14,6 +14,7 @@ import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { GaugeDial } from '@/components/ui/GaugeDial'
 import { Select } from '@/components/ui/select'
+import { DashboardSwitcher } from '@/routes/dashboards/DashboardSwitcher'
 import { ChartSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { TactileButton } from '@/components/ui/TactileButton'
 import { humanizeActionCode } from '@/lib/labels'
@@ -417,7 +418,9 @@ export function Dashboard() {
             : 'Current testing status and project health at a glance.'
         }
         actions={
-          projects.length > 1 ? (
+          <>
+            <DashboardSwitcher />
+            {projects.length > 1 ? (
             <div className="flex items-center gap-2">
               <label htmlFor="dashboard-project" className="text-sm text-[var(--muted-foreground)]">
                 Project
@@ -436,7 +439,8 @@ export function Dashboard() {
                 ))}
               </Select>
             </div>
-          ) : undefined
+          ) : null}
+          </>
         }
       />
 

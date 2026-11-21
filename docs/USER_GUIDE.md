@@ -123,7 +123,7 @@ A Manager or Admin can **Quarantine** a flaky test case from its page or from th
 
 ## Custom dashboards (ADR-099)
 
-Open **Dashboards** in the sidebar to build your own boards. The Dashboard on the home page stays as it is.
+There is one **Dashboard** entry in the sidebar. Use the **View** switcher at the top of the page to move between the built-in **Overview** (the home page, unchanged) and your own or the team default dashboards. **Manage dashboards**, next to the switcher, opens the list where you create, rename and delete them.
 
 1. Choose **New dashboard**, name it (up to 60 characters; 10 dashboards per person) and open it.
 2. Choose **Edit layout**, then **Add widget**. Pick a type (each has a short description), set its project or other options, and choose a size: Small, Medium or Large (1, 2 or 3 of 3 columns; everything stacks on a phone).

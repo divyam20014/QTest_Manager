@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, Plus, Settings2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import {
@@ -23,6 +23,7 @@ import { ErrorState } from '@/components/ui/empty-state'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/select'
+import { DashboardSwitcher } from '@/routes/dashboards/DashboardSwitcher'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuth } from '@/lib/auth'
@@ -351,15 +352,12 @@ export function DashboardView() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        back={
-          <Link to="/dashboards" className="text-xs text-[var(--link)] hover:underline">
-            &larr; All dashboards
-          </Link>
-        }
         title={dash.name}
         meta={dash.is_team_default ? <StatusBadge tone="info">Team default</StatusBadge> : undefined}
         actions={
-          dash.can_edit ? (
+          <>
+            <DashboardSwitcher currentId={dash.id} />
+            {dash.can_edit ? (
             editing ? (
               <>
                 <Button type="button" variant="outline" onClick={() => setEditing(false)}>
@@ -374,7 +372,8 @@ export function DashboardView() {
                 <Settings2 className="mr-1 size-4" aria-hidden="true" /> Edit layout
               </Button>
             )
-          ) : undefined
+            ) : null}
+          </>
         }
       />
 

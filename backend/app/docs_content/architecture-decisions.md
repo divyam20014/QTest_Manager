@@ -1405,3 +1405,5 @@ Definitions are shown permanently on each tile (not hover-only). The metrics are
 **Storage.** `dashboards` and `dashboard_widgets` (RLS, migration `f9b3d5a7c1e2`; widgets cascade with their dashboard).
 
 **Not included.** Drag and drop; a free-form or resizable grid; sharing an individual dashboard with chosen users; widget-level cross filters; a per-user choice of home page (`/` stays the default Dashboard).
+
+**Follow-up:** the separate "Dashboards" sidebar entry was removed. The home Overview (`/`) and custom dashboards share one "Dashboard" entry through a View switcher; `/dashboards` remains as the "Manage" page, reached from the switcher.

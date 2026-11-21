@@ -177,7 +177,12 @@ export function Dashboards() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Dashboards"
+        back={
+          <Link to="/" className="text-xs text-[var(--link)] hover:underline">
+            &larr; Dashboard
+          </Link>
+        }
+        title="Manage dashboards"
         description="Build your own dashboards from a fixed set of widgets. They are private to you."
         actions={
           <Button type="button" disabled={atLimit} onClick={() => openDialog({ mode: 'create' })}>
@@ -228,13 +233,7 @@ export function Dashboards() {
           <label htmlFor="dash-name" className="text-sm font-medium">
             Dashboard name
           </label>
-          <Input
-            id="dash-name"
-            value={name}
-            maxLength={60}
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-          />
+          <Input id="dash-name" value={name} maxLength={60} autoFocus onChange={(e) => setName(e.target.value)} />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setNameDialog(null)}>
               Cancel
