@@ -37,6 +37,7 @@ const RequirementsList = lazyRoute(() => import('@/routes/requirements/Requireme
 const TraceabilityMatrix = lazyRoute(() => import('@/routes/requirements/TraceabilityMatrix'), 'TraceabilityMatrix')
 const CompliancePrintView = lazyRoute(() => import('@/routes/reporting/CompliancePrintView'), 'CompliancePrintView')
 const Reporting = lazyRoute(() => import('@/routes/reporting/Reporting'), 'Reporting')
+const ReportBuilder = lazyRoute(() => import('@/routes/reporting/ReportBuilder'), 'ReportBuilder')
 const TestRepository = lazyRoute(() => import('@/routes/testrepository/TestRepository'), 'TestRepository')
 const TestCaseDetail = lazyRoute(() => import('@/routes/testcases/TestCaseDetail'), 'TestCaseDetail')
 const TestCasesList = lazyRoute(() => import('@/routes/testcases/TestCasesList'), 'TestCasesList')
@@ -93,6 +94,7 @@ export function App() {
           <Route path="/defects" element={<DefectsList />} />
           <Route path="/defects/:defectId" element={<DefectDetail />} />
           <Route path="/reporting" element={<Reporting />} />
+          <Route path="/reporting/builder" element={<ReportBuilder />} />
           <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
           <Route path="/admin/users" element={<UsersRoles />} />
           <Route path="/admin/roles" element={<RolesPermissions />} />

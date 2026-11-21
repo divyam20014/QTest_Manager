@@ -364,6 +364,18 @@ Index `ix_access_rules_tenant_enabled (tenant_id, enabled)`. The migration also 
 | is_default | BOOLEAN NOT NULL DEFAULT false | partial unique index on (user_id, list_key) WHERE is_default |
 | created_at, updated_at | TIMESTAMPTZ NOT NULL | |
 
+### `saved_reports` (ADR-098, migration `e8a4c2f6b9d1`)
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID NOT NULL FK tenants | RLS |
+| user_id | UUID NOT NULL FK users | owner |
+| name | VARCHAR(80) NOT NULL | UNIQUE (user_id, name) |
+| source | TEXT NOT NULL CHECK IN ('test_cases','test_runs','defects') | |
+| definition | JSONB NOT NULL | structured definition, validated against the allowlist on write and on every run; never SQL |
+| is_shared | BOOLEAN NOT NULL DEFAULT false | shared = read, run and export for the tenant; only owner or Admin edit |
+| created_at, updated_at | TIMESTAMPTZ NOT NULL | |
+
 ## Audit (FR-ADM-002) — insert-only, hash-chained (ADR-006)
 
 ### `audit_logs`

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   BarChart3,
+  Table2,
   BookOpen,
   Bug,
   Building2,
@@ -84,6 +85,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Analytics',
     items: [
       { to: '/reporting', label: 'Reports', icon: BarChart3 },
+      { to: '/reporting/builder', label: 'Report builder', icon: Table2 },
       { to: '/reporting/print', label: 'Compliance Reports', icon: ShieldCheck, newTab: true },
     ],
   },

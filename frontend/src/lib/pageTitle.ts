@@ -12,6 +12,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/execution': 'Execution',
   '/defects': 'Defects',
   '/reporting': 'Reporting',
+  '/reporting/builder': 'Report builder',
   '/reporting/print': 'Compliance Report',
   '/admin/users': 'Users & Roles',
   '/admin/roles': 'Roles & Permissions',

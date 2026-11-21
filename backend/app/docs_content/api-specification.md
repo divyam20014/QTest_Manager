@@ -266,6 +266,20 @@ Off by default. `access_rule.manage` is Admin only. Blocked mutations return `40
 
 With the case switch on, a Tester gets 404 (not 403) for a case outside their scope on detail, history, versions, attachments and comments, and the case is left out of `/test-cases`, `/projects/{id}/test-cases` (totals and paging included), `/search`, module counts, requirement detail, the CSV/XLSX export and the dashboard counts. `/dashboard/*` stays open to Testers when Reports are hidden.
 
+## Report builder (ADR-098)
+
+All routes need `report.view` and return 403 to a Tester when Reports are hidden (ADR-093). Definition: `{source: test_cases|test_runs|defects, fields[], filters[{field, op, value}], group_by[], sort{field, dir}}`; unknown keys, fields, operators or wrongly typed values are 422. Limits: 12 fields, 8 filters, 2 group-by, 8KB definition, page size 100, export 5000 rows, 50 saved reports per user, 10s statement timeout.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /report-builder/sources | the allowlist: per source the fields with type, operators, sortable, groupable, options |
+| POST | /report-builder/preview | `{definition, page, page_size}` returns `{columns, rows, total, page, page_size}` |
+| GET | /report-builder/reports | the caller's reports plus reports shared by others |
+| POST | /report-builder/reports | `{name (1-80), definition, is_shared}`; 409 for a duplicate name or the 50 limit; audit `report.saved` |
+| GET / PATCH / DELETE | /report-builder/reports/{id} | read; edit or delete (owner or Admin only, else 403; a private report of someone else is 404); audit `report.saved` / `report.deleted` |
+| POST | /report-builder/reports/{id}/run?page=&page_size= | run the saved definition with the caller's own visibility |
+| GET | /report-builder/reports/{id}/export.csv, export.xlsx | up to 5000 rows; formula-injection safe; audit `report.exported` |
+
 ## Saved views (ADR-096)
 
 Private per-user filter sets for the Test Cases, Defects and Test Runs lists. Any signed-in user; only the owner's views are visible (another user's id is 404). Rate limited.

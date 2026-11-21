@@ -111,6 +111,10 @@ trends/aging, requirement coverage, and (if your organization is tracking
 it) release-readiness and workload views. Compliance-style exports are
 available where your role permits.
 
+## Report builder (ADR-098)
+
+Open Report builder (under Reports, `/reporting/builder`). Pick a source (test cases, test runs or defects), tick the fields to show and reorder them with the arrow buttons, add filters (field, operator, value), optionally group by up to two fields to get a count per group, choose a sort and press Run. Results are paged. Type a name and press Save (or Save as for a copy); tick "Share with workspace" to let colleagues run and export it read only. Saved reports appear under My reports and Shared reports; Export CSV and Export Excel download the saved version (up to 5000 rows). You only ever see data you could already see elsewhere: your projects and, when limited by your admin, your assigned test cases. Not available when Reports are hidden from Testers.
+
 ## Defect leakage and quarantined tests
 
 On **Reporting**, the **Defect Leakage & Test Effectiveness** card shows how many defects reached users. A defect has *escaped* when it is linked to a release whose release date has passed, or when its environment is named Production or Prod. *Leakage* is escaped defects divided by all defects, and *detection effectiveness* is the rest (all minus escaped, divided by all); both read "No defects" when there is nothing to measure. The card also lists open escaped defects by age, escaped defects by severity, a per-release table and a monthly trend (with a table view), and exports to Excel. Filter by project and by report date.

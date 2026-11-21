@@ -362,6 +362,10 @@ The **Documentation** entry in the sidebar (`/brd`) reads the project documents 
 
 The files live once in the repository's `docs/` folder. After editing one, run `npm run docs:sync` (or `python -m scripts.sync_docs` in `backend/`) to refresh the copies under `backend/app/docs_content/`, then rebuild the `api` image. `npm run docs:check` (and a backend test) reports drift.
 
+### Report builder (ADR-098)
+
+Uses the existing Reports permission (`report.view`) and the "Hide Reports from Testers" setting. Reports run with the viewer's own visibility, so sharing never widens access. Admins can edit or delete any saved report; other users only their own. Limits per report: 12 fields, 8 filters, 2 group-by, 5000 exported rows, 10 second query timeout; 50 saved reports per user. Audit events: `report.saved`, `report.deleted`, `report.exported` (name and source only). Scheduled delivery of a saved report is not included.
+
 ### Defect leakage and test quarantine (ADR-097)
 
 The leakage report treats a defect as escaped when it is linked to a release with a release date of today or earlier, or when its environment is named `Production` or `Prod` (case-insensitive). Name your production environment accordingly; there is no separate production flag. Releases without a date never count as shipped. The report follows the same visibility rules as other reports: Testers only see their own projects and nothing at all when **Reports are hidden from Testers** is on.
