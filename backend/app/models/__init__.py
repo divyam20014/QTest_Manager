@@ -3,6 +3,7 @@ from app.models.ai_usage import AIUsageLog
 from app.models.audit import AuditChainCheckpoint, AuditLog
 from app.models.background_job import BackgroundJob
 from app.models.comment import Comment, CommentMention
+from app.models.dashboard import Dashboard, DashboardWidget
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.field_customization import (
@@ -103,6 +104,8 @@ __all__ = [
     "CustomFieldValue",
     "ReportSchedule",
     "SavedReport",
+    "Dashboard",
+    "DashboardWidget",
     "SavedView",
     "TestDataSet",
     "TestDataSetRow",

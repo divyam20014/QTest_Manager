@@ -277,8 +277,9 @@ export interface FlakyTestReport {
   tests: FlakyTestEntry[]
 }
 
-export function fetchFlakyTests(projectId: string): Promise<FlakyTestReport> {
-  return apiFetch<FlakyTestReport>(`/reports/flaky-tests?project_id=${projectId}`)
+export function fetchFlakyTests(projectId: string, limit?: number): Promise<FlakyTestReport> {
+  const extra = limit ? `&limit=${limit}` : ''
+  return apiFetch<FlakyTestReport>(`/reports/flaky-tests?project_id=${projectId}${extra}`)
 }
 
 export interface TraceabilityMatrixEntry {

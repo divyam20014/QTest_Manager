@@ -121,6 +121,16 @@ On **Reporting**, the **Defect Leakage & Test Effectiveness** card shows how man
 
 A Manager or Admin can **Quarantine** a flaky test case from its page or from the Flaky Tests card, giving a reason. A Quarantined badge then shows on the case. Quarantine never deletes anything: the case keeps its history and any verdicts in existing runs still count. When you create a run, tick **Skip quarantined cases** to leave them out. Release readiness and the leakage card always show the quarantined count separately, so a quarantined case cannot hide a failure. Use **Remove quarantine** on the case page when it is stable again.
 
+## Custom dashboards (ADR-099)
+
+Open **Dashboards** in the sidebar to build your own boards. The Dashboard on the home page stays as it is.
+
+1. Choose **New dashboard**, name it (up to 60 characters; 10 dashboards per person) and open it.
+2. Choose **Edit layout**, then **Add widget**. Pick a type (each has a short description), set its project or other options, and choose a size: Small, Medium or Large (1, 2 or 3 of 3 columns; everything stacks on a phone).
+3. Use the up and down arrow buttons to reorder, the size menu to resize, the gear to change settings and the bin to remove (12 widgets per dashboard). **Save** keeps the whole layout at once; **Cancel** discards your edits.
+
+Dashboards are private to you. An Admin can choose **Set as team default** on one of their dashboards; people with no dashboard of their own, and anyone else who wants it, can open it under **Team default** (read only). Widgets show the same data you would see in Reports, so a project you cannot access shows "No access to this project", and when your workspace hides Reports from Testers the report widgets show a note instead.
+
 ## Notifications
 
 The header bell shows unread notifications for three events: someone

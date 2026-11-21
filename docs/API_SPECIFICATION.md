@@ -280,6 +280,20 @@ All routes need `report.view` and return 403 to a Tester when Reports are hidden
 | POST | /report-builder/reports/{id}/run?page=&page_size= | run the saved definition with the caller's own visibility |
 | GET | /report-builder/reports/{id}/export.csv, export.xlsx | up to 5000 rows; formula-injection safe; audit `report.exported` |
 
+## Custom dashboards (ADR-099)
+
+Any signed-in user. A dashboard of another user is 404. The team default is readable by everyone and writable only with `tenant.settings.manage`. Widget types: kpi_summary, execution_trend, status_distribution, defect_aging, open_defects_by_severity, release_readiness, defect_leakage, flaky_tests, recent_activity, saved_report, my_assigned_cases; settings are validated per type and unknown keys are 422. Limits: 10 dashboards per user, 12 widgets, 1 KB settings.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /dashboards | the caller's dashboards plus the team default, with `widget_count`, `is_team_default`, `can_edit` |
+| POST | /dashboards | `{name (1-60)}`; 409 at the 10 limit; audit `dashboard.created` |
+| GET | /dashboards/{id} | dashboard with ordered `widgets[{id, widget_type, size S/M/L, position, settings, project_access ok/denied}]` |
+| PATCH | /dashboards/{id} | `{name}`; own only (team default: Admin only, else 403) |
+| DELETE | /dashboards/{id} | own only (team default: Admin only); audit `dashboard.deleted` |
+| PUT | /dashboards/{id}/widgets | `{widgets[{widget_type, size, settings}]}` replaces the whole ordered list atomically; 422 on a bad type, size, setting, unknown key, invisible project or unknown saved report |
+| POST | /dashboards/{id}/team-default | Admin only. `{enabled: true}` publishes a copy of the dashboard as the single team default (replacing any previous one); `{enabled: false}` on the team default removes it; audit `dashboard.team_default_set` |
+
 ## Saved views (ADR-096)
 
 Private per-user filter sets for the Test Cases, Defects and Test Runs lists. Any signed-in user; only the owner's views are visible (another user's id is 404). Rate limited.

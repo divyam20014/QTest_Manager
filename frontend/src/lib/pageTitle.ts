@@ -30,6 +30,7 @@ const SEGMENT_TITLES: Record<string, string> = {
   'test-runs': 'Test Run',
   'test-run-cases': 'Execution Console',
   defects: 'Defect',
+  dashboards: 'Dashboard',
 }
 
 function isId(segment: string) {

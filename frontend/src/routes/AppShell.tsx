@@ -8,6 +8,7 @@ import {
   ClipboardList,
   FileStack,
   LayoutDashboard,
+  LayoutGrid,
   Layers,
   KeyRound,
   Search,
@@ -69,6 +70,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Workspace',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/dashboards', label: 'Dashboards', icon: LayoutGrid },
       { to: '/projects', label: 'Projects', icon: Building2 },
     ],
   },

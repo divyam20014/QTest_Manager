@@ -36,6 +36,8 @@ const RequirementDetail = lazyRoute(() => import('@/routes/requirements/Requirem
 const RequirementsList = lazyRoute(() => import('@/routes/requirements/RequirementsList'), 'RequirementsList')
 const TraceabilityMatrix = lazyRoute(() => import('@/routes/requirements/TraceabilityMatrix'), 'TraceabilityMatrix')
 const CompliancePrintView = lazyRoute(() => import('@/routes/reporting/CompliancePrintView'), 'CompliancePrintView')
+const Dashboards = lazyRoute(() => import('@/routes/dashboards/Dashboards'), 'Dashboards')
+const DashboardView = lazyRoute(() => import('@/routes/dashboards/DashboardView'), 'DashboardView')
 const Reporting = lazyRoute(() => import('@/routes/reporting/Reporting'), 'Reporting')
 const ReportBuilder = lazyRoute(() => import('@/routes/reporting/ReportBuilder'), 'ReportBuilder')
 const TestRepository = lazyRoute(() => import('@/routes/testrepository/TestRepository'), 'TestRepository')
@@ -75,6 +77,8 @@ export function App() {
         <Route path="/reporting/print" element={<CompliancePrintView />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboards" element={<Dashboards />} />
+          <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
           <Route path="/projects" element={<ProjectsList />} />
           <Route path="/projects/:projectId" element={<ProjectDetail />} />
           <Route path="/projects/:projectId/requirements" element={<RequirementsList />} />

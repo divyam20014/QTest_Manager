@@ -21,6 +21,7 @@ from app.api import (
     ci,
     comments,
     csv_import,
+    dashboards,
     defects,
     docs,
     execution,
@@ -263,6 +264,7 @@ app.include_router(ci.router, prefix="/api/v1")
 app.include_router(report_schedule.router, prefix="/api/v1")
 app.include_router(saved_views.router, prefix="/api/v1")
 app.include_router(report_builder.router, prefix="/api/v1")
+app.include_router(dashboards.router, prefix="/api/v1")
 app.include_router(shared_steps.router, prefix="/api/v1")
 app.include_router(test_data_sets.router, prefix="/api/v1")
 app.include_router(test_suites.router, prefix="/api/v1")

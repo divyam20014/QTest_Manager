@@ -1385,3 +1385,23 @@ Definitions are shown permanently on each tile (not hover-only). The metrics are
 5. *Export.* CSV (UTF-8 with BOM) and XLSX of the saved definition, max 5000 rows; text cells starting with `=`, `+`, `-`, `@`, tab or CR are prefixed with a single quote (shared `safe_cell`).
 
 **Not included.** Scheduling a saved report by email (the schedules table is limited to the compliance report and the worker renders it without a per-user visibility context, so it is not a cheap extension); drag and drop ordering (fields are ordered with arrow buttons); cross-source joins; sum and average; test case type and updated-at fields (not stored on test cases today).
+
+## ADR-099: Custom dashboards and widgets
+
+**Status:** Accepted. **Context:** `/` (Dashboard.tsx) is one fixed layout. Users want their own boards of the charts and tables the product already has, without a layout engine or new dependencies.
+
+**Decisions**
+1. *Fixed layout.* A dashboard is a named, ordered list of widgets on a 3-column grid. Size S, M, L spans 1, 2, 3 columns; every size stacks to one column on phones. Ordering uses move up / move down buttons and a size select. No drag and drop, no new dependency.
+2. *Privacy.* A dashboard belongs to one user (`owner_user_id`). Anyone else gets 404, as if it did not exist. Limits: 10 dashboards per user, 12 widgets per dashboard, name 1-60 characters, settings at most 1 KB.
+3. *Team default.* An Admin (`tenant.settings.manage`) can publish one of their dashboards as the tenant team default: it is stored as a copy with no owner (`is_team_default`), replaces the previous team default, and a unique partial index allows one per tenant. Every user lists and can open it read only; only an Admin can edit, delete or unset it. Users with no dashboards of their own see it under "Team default" on `/dashboards`.
+4. *No new data queries.* The API only stores layouts. Each widget reads its data from the existing endpoints with the viewer's own session, so every visibility rule (project scope, Tester case scope, Reports hidden from Testers) applies unchanged. The frontend keys widget data per user (`['dashboards','widget', userId, ...]`).
+5. *Typed settings.* Per widget type a Pydantic model with `extra="forbid"` validates settings on save (unknown keys and types are 422). A `project_id` must be a project the saver may see. It is re-checked on every read: if the viewer can no longer see it, the widget is returned with `project_access: "denied"` and shows "No access to this project" without calling its endpoint. A `saved_report` widget's `report_id` must be visible to the saver on save; a later 404 shows the inline error.
+6. *Atomic save.* `PUT /dashboards/{id}/widgets` validates the whole list first and replaces it in one transaction; a failure keeps the old layout.
+7. *Reports hidden.* Widgets that read `/reports/*` (execution trend, test case status, defect aging, release readiness, defect leakage, flaky tests, saved report) show a note instead of loading for a Tester when `reports_hidden_from_testers` is on. Summary tiles, recent activity, open defects and my assigned test cases use endpoints that stay open.
+8. *Audit.* `dashboard.created`, `dashboard.deleted`, `dashboard.team_default_set` (set or unset), metadata is the name (plus `enabled` for the team default).
+
+**Catalogue (11 types).** kpi_summary, execution_trend (days 7/14/30/90), status_distribution, defect_aging, open_defects_by_severity (summary severity counts plus defect status counts), release_readiness (project required, release optional), defect_leakage, flaky_tests (project required, top N 1-50), recent_activity, saved_report (report id, first 10 rows), my_assigned_cases (the existing test case listings filtered by assignee). Every widget except saved_report takes an optional `project_id` (required where the endpoint is per project). Charts have the usual "View as table" alternative.
+
+**Storage.** `dashboards` and `dashboard_widgets` (RLS, migration `f9b3d5a7c1e2`; widgets cascade with their dashboard).
+
+**Not included.** Drag and drop; a free-form or resizable grid; sharing an individual dashboard with chosen users; widget-level cross filters; a per-user choice of home page (`/` stays the default Dashboard).

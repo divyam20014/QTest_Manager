@@ -376,6 +376,27 @@ Index `ix_access_rules_tenant_enabled (tenant_id, enabled)`. The migration also 
 | is_shared | BOOLEAN NOT NULL DEFAULT false | shared = read, run and export for the tenant; only owner or Admin edit |
 | created_at, updated_at | TIMESTAMPTZ NOT NULL | |
 
+### `dashboards` (ADR-099, migration `f9b3d5a7c1e2`)
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID NOT NULL FK tenants | RLS |
+| owner_user_id | UUID FK users | NULL only for the team default (CHECK ties it to `is_team_default`) |
+| name | VARCHAR(60) NOT NULL | 1-60 characters |
+| is_team_default | BOOLEAN NOT NULL DEFAULT false | partial UNIQUE index on (tenant_id) WHERE is_team_default: one per tenant |
+| created_at, updated_at | TIMESTAMPTZ NOT NULL | |
+
+### `dashboard_widgets` (ADR-099, migration `f9b3d5a7c1e2`)
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID NOT NULL FK tenants | RLS |
+| dashboard_id | UUID NOT NULL FK dashboards ON DELETE CASCADE | index (dashboard_id, position) |
+| widget_type | VARCHAR(40) NOT NULL | fixed catalogue, validated by the API |
+| size | CHAR(1) NOT NULL CHECK IN ('S','M','L') | 1, 2, 3 columns of 3 |
+| position | INTEGER NOT NULL | order within the dashboard |
+| settings | JSONB NOT NULL DEFAULT '{}' | at most 1 KB, validated per widget type (unknown keys rejected) |
+
 ## Audit (FR-ADM-002) — insert-only, hash-chained (ADR-006)
 
 ### `audit_logs`
