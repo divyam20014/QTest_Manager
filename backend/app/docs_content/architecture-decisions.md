@@ -1466,3 +1466,15 @@ Light and Dark are unchanged (new tokens `--accent`, `--accent-foreground`, `--b
 
 **Follow-up.** The section-rail dot is ringed with `--background` then `--foreground` so it reads on light and dark bands in every theme; the demo form requires only name, work email and company (role, team size, requirement and message are optional, matching the backend schema), with required/optional marked and inline errors.
 A visitor with the `qtesthub:session-hint` key on `/` gets the app default instead of cobalt (theme-init.js and MarketingSite); marketing-only paths keep cobalt.
+
+## ADR-102: Project dashboard as the default project tab
+
+**Status.** Accepted. **Phase 1.**
+
+**Decision.** `/projects/:projectId` opens a read-only Dashboard tab. A tab strip (Dashboard, Details, Requirements, Test Cases, Test Runs, Defects) links the existing project routes; the previous project page (details, members, recent lists, run status chart) moved to `/projects/:projectId/details`. Breadcrumb reads Projects > project name > Dashboard or Details.
+
+**Widgets.** The existing ADR-099 widget components with this project's id preset, in a fixed layout under three headings: Health (summary, release readiness for the project's latest release or the whole project, test case status), Trends (execution trend, defect leakage), Risk & activity (open defects by severity, defect aging, flaky tests, recent activity). Loading, error and Retry behaviour, the hidden-Reports note for Testers and project access are inherited from the widgets; a non-member opening the project gets the same load-error state as before.
+
+**Not in scope.** No customization, no new tables, no backend change. Quick actions (new run, report defect) were skipped.
+
+**Deep links.** Every in-app link to `/projects/:id` (project cards, run and case lists, defect detail) now lands on the Dashboard tab; bookmarks to the old page land there too. The old content is one tab click away.

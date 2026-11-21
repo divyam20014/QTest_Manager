@@ -34,6 +34,11 @@ Projects are the top-level container for test cases, defects, and
 requirements. Managers/Admins can create and configure projects (domain,
 priority, budget, timeline); Testers see the projects they're assigned to.
 
+Opening a project shows its Dashboard: summary tiles, release readiness,
+trends and risk widgets for that project only, read-only. Use the tabs
+above it to switch to Details (settings, members, builds, suites, plans),
+Requirements, Test Cases, Test Runs or Defects.
+
 ## Requirements
 
 Create and version requirements, link them to the test cases that cover

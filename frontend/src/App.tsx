@@ -31,6 +31,7 @@ const RolesPermissions = lazyRoute(() => import('@/routes/admin/RolesPermissions
 const Settings = lazyRoute(() => import('@/routes/admin/Settings'), 'Settings')
 const UsersRoles = lazyRoute(() => import('@/routes/admin/UsersRoles'), 'UsersRoles')
 const ProjectDetail = lazyRoute(() => import('@/routes/projects/ProjectDetail'), 'ProjectDetail')
+const ProjectDashboard = lazyRoute(() => import('@/routes/projects/ProjectDashboard'), 'ProjectDashboard')
 const ProjectsList = lazyRoute(() => import('@/routes/projects/ProjectsList'), 'ProjectsList')
 const RequirementDetail = lazyRoute(() => import('@/routes/requirements/RequirementDetail'), 'RequirementDetail')
 const RequirementsList = lazyRoute(() => import('@/routes/requirements/RequirementsList'), 'RequirementsList')
@@ -80,7 +81,8 @@ export function App() {
           <Route path="/dashboards" element={<Dashboards />} />
           <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
           <Route path="/projects" element={<ProjectsList />} />
-          <Route path="/projects/:projectId" element={<ProjectDetail />} />
+          <Route path="/projects/:projectId" element={<ProjectDashboard />} />
+          <Route path="/projects/:projectId/details" element={<ProjectDetail />} />
           <Route path="/projects/:projectId/requirements" element={<RequirementsList />} />
           <Route
             path="/projects/:projectId/traceability-matrix"

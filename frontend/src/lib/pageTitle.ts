@@ -42,6 +42,8 @@ export function getPageTitle(pathname: string): string {
   if (pathname === '/brd' || pathname.startsWith('/brd/')) return 'Documentation'
   if (EXACT_TITLES[pathname]) return EXACT_TITLES[pathname]
   if (pathname.startsWith('/dashboards/')) return 'Dashboard'
+  if (/^\/projects\/[^/]+$/.test(pathname)) return 'Project Dashboard'
+  if (/^\/projects\/[^/]+\/details$/.test(pathname)) return 'Project Details'
 
   const segments = pathname.split('/').filter(Boolean)
   // Walk backwards: the most specific recognizable segment wins (e.g.

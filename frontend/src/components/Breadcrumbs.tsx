@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { listDashboards } from '@/api/dashboards'
 import { listDocs } from '@/api/docs'
+import { getProject } from '@/api/projects'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +33,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   account: 'My Account',
   brd: 'Documentation',
   dashboards: 'Manage',
+  details: 'Details',
 }
 
 const ID_LABELS: Record<string, string> = {
@@ -79,6 +81,15 @@ export function Breadcrumbs() {
     staleTime: 30_000,
   })
 
+  // /projects/:id/... -- "Projects > <project name> > Dashboard|Details" (shares the project page's cache).
+  const projectId = segments[0] === 'projects' && segments[1] && isId(segments[1]) ? segments[1] : undefined
+  const projectQuery = useQuery({
+    queryKey: ['projects', projectId],
+    queryFn: () => getProject(projectId!),
+    enabled: !!projectId && !!user,
+    staleTime: 30_000,
+  })
+
   if (segments.length === 0) {
     return <span className="text-sm text-[var(--muted-foreground)]">Dashboard</span>
   }
@@ -93,12 +104,14 @@ export function Breadcrumbs() {
       const dashName =
         segments[0] === 'dashboards' && index === 1 ? dashList.data?.find((d) => d.id === segment)?.name : undefined
       const label =
+        (projectId && index === 1 ? projectQuery.data?.name : undefined) ??
         docTitle ??
         dashName ??
         (isId(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
       return { path, label }
     })
     .filter((_, index) => !(onDash && index === 0))
+  if (projectId && segments.length === 2) crumbs.push({ path: location.pathname + '#dashboard', label: 'Dashboard' })
 
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-sm">

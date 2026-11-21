@@ -72,7 +72,7 @@ test('Project drilldown shows run status chart, recent test cases and defects', 
   const projectId = await seedProject(page)
 
   // Empty project first: honest empty states, no chart.
-  await page.goto(`/projects/${projectId}`)
+  await page.goto(`/projects/${projectId}/details`)
   await expect(page.getByRole('heading', { name: 'Test run status' })).toBeVisible()
   await expect(page.getByText('No test runs yet')).toBeVisible()
   await expect(page.getByText('No test cases yet')).toBeVisible()

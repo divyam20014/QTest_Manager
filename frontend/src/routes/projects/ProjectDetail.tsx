@@ -50,6 +50,7 @@ import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { FormError } from '@/components/ui/form-field'
+import { ProjectTabs } from './ProjectTabs'
 import { ProjectDrilldown } from './ProjectDrilldown'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
 import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
@@ -216,6 +217,7 @@ export function ProjectDetail() {
           </>
         }
       />
+      <ProjectTabs projectId={project.id} />
       {confirmDialog}
       <FormError>{deleteError}</FormError>
 
