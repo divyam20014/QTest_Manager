@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -24,8 +24,8 @@ import {
   fetchDomainDistribution,
   fetchExecutionTrend,
   aggregateExportXlsxPath,
-  complianceExportPdfUrl,
-  complianceExportUrl,
+  complianceExportCsvPath,
+  complianceExportPdfPath,
   complianceExportXlsxPath,
   type GroupBy,
   type Metric,
@@ -33,13 +33,13 @@ import {
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { listProjects } from '@/api/projects'
 import { listUsers } from '@/api/users'
-import { buttonVariants } from '@/components/ui/button'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartPanel } from '@/components/ui/ChartPanel'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { ReportTabs } from './ReportTabs'
-import { FilterBar, FilterField } from '@/components/table/FilterBar'
+import { ListFilterField, ListToolbar } from '@/components/list/ListToolbar'
+import type { FilterChip } from '@/components/list/FilterChips'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Select } from '@/components/ui/select'
@@ -52,6 +52,7 @@ import { useThemePreference } from '@/lib/useThemePreference'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { categoricalColor, CATEGORICAL_DARK, SEQUENTIAL_BLUE_LIGHT } from './palette'
 import { ExportButton } from '@/components/ui/ExportButton'
+import { ExportMenu } from '@/components/ui/ExportMenu'
 import { DefectLeakageCard } from './DefectLeakageCard'
 import { QAManagerIntelligenceCard } from './QAManagerIntelligenceCard'
 import { QualityMetricsCard } from './QualityMetricsCard'
@@ -99,6 +100,7 @@ const chartTooltipStyle = {
 
 export function Reporting() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [metric, setMetric] = useState<Metric>('run_status')
   const [groupBy, setGroupBy] = useState<GroupBy>('project')
   const [chartType, setChartType] = useState<'bar' | 'pie' | 'line'>('bar')
@@ -177,11 +179,52 @@ export function Reporting() {
     value,
     count: aggregateData.reduce((sum, row) => sum + (Number(row[value]) || 0), 0),
   }))
-  // The four compliance exports are all gated by report.compliance_export at the API.
+  // The compliance exports are all gated by report.compliance_export at the API.
   const canExport = hasPermission(user, 'report.compliance_export')
   const exportPeriod = {
     periodFrom: dateFrom ? new Date(dateFrom).toISOString() : undefined,
     periodTo: dateTo ? new Date(dateTo).toISOString() : undefined,
+  }
+
+  function clearFilters() {
+    setProjectId('')
+    setDomain('')
+    setAssigneeId('')
+    setPriority('')
+    setStatus('')
+    setDateFrom('')
+    setDateTo('')
+  }
+  const chips: FilterChip[] = [
+    projectId && {
+      key: 'project',
+      label: 'Project',
+      value: projectsQuery.data?.items.find((p) => p.id === projectId)?.name ?? 'Selected project',
+    },
+    domain && { key: 'domain', label: 'Domain', value: domain },
+    assigneeId && {
+      key: 'assignee',
+      label: 'Assignee',
+      value: usersQuery.data?.find((u) => u.id === assigneeId)?.name ?? 'Selected assignee',
+    },
+    priority && {
+      key: 'priority',
+      label: 'Priority',
+      value: priorityFilterOptions.find((o) => o.code === priority)?.label ?? priority,
+    },
+    status && { key: 'status', label: 'Status', value: status.replace(/_/g, ' ') },
+    (dateFrom || dateTo) && { key: 'date', label: 'Dates', value: `${dateFrom || 'any'} to ${dateTo || 'today'}` },
+  ].filter((c): c is FilterChip => Boolean(c))
+  function removeChip(key: string) {
+    if (key === 'project') setProjectId('')
+    else if (key === 'domain') setDomain('')
+    else if (key === 'assignee') setAssigneeId('')
+    else if (key === 'priority') setPriority('')
+    else if (key === 'status') setStatus('')
+    else if (key === 'date') {
+      setDateFrom('')
+      setDateTo('')
+    }
   }
 
   return (
@@ -190,131 +233,94 @@ export function Reporting() {
       <PageHeader
         title="Reporting"
         description="Release readiness, defect and execution analytics."
-        actionsClassName="flex-col md:flex-row [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center [&>a]:justify-center md:[&>a]:min-h-0 max-md:[&>a]:w-full"
         actions={
           canExport && (
-            <>
-            <a
-              href="/reporting/print"
-              className={buttonVariants({ variant: 'outline' })}
-            >
-              Compliance Report (Print / PDF)
-            </a>
-            <a
-              href={complianceExportUrl(exportPeriod)}
-              download
-              className={buttonVariants({ variant: 'outline' })}
-            >
-              Download Compliance CSV
-            </a>
-            <a
-              href={complianceExportPdfUrl(exportPeriod)}
-              download
-              className={buttonVariants({ variant: 'outline' })}
-            >
-              Download Compliance PDF
-            </a>
-            <ExportButton
-              label="Download Compliance Excel"
-              path={complianceExportXlsxPath(exportPeriod)}
-              fallbackName="compliance_summary.xlsx"
-              className="max-md:w-full"
+            <ExportMenu
+              menuLabel="Export compliance report"
+              items={[
+                { label: 'PDF', path: complianceExportPdfPath(exportPeriod), fallbackName: 'compliance_report.pdf' },
+                { label: 'CSV', path: complianceExportCsvPath(exportPeriod), fallbackName: 'compliance_export.csv' },
+                { label: 'Excel', path: complianceExportXlsxPath(exportPeriod), fallbackName: 'compliance_summary.xlsx' },
+                { label: 'Print', onSelect: () => navigate('/reporting/print') },
+              ]}
             />
-            </>
           )
         }
       />
 
-      <FilterBar
-        activeCount={[projectId, domain, assigneeId, priority, status, dateFrom || dateTo].filter(Boolean).length}
-        onClear={() => {
-          setProjectId('')
-          setDomain('')
-          setAssigneeId('')
-          setPriority('')
-          setStatus('')
-          setDateFrom('')
-          setDateTo('')
-        }}
-        desktopClear={false}
-      >
-        <FilterField label="Project">
-        <Select
-          aria-label="Project"
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          className="w-44"
-        >
-          <option value="">All projects</option>
-          {projectsQuery.data?.items.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
-        </FilterField>
-        <FilterField label="Domain">
-        <Select aria-label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)} className="w-36">
-          <option value="">All domains</option>
-          {DOMAINS.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </Select>
-        </FilterField>
-        <FilterField label="Assignee">
-        <Select
-          aria-label="Assignee"
-          value={assigneeId}
-          onChange={(e) => setAssigneeId(e.target.value)}
-          className="w-44"
-        >
-          <option value="">All assignees</option>
-          {usersQuery.data?.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name}
-            </option>
-          ))}
-        </Select>
-        </FilterField>
-        <FilterField label="Priority">
-        <Select
-          aria-label="Priority"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
-          className="w-36"
-        >
-          <option value="">All priorities</option>
-          {priorityFilterOptions.map((p) => (
-            <option key={p.code} value={p.code}>
-              {p.label}
-            </option>
-          ))}
-        </Select>
-        </FilterField>
-        <FilterField label="Status">
-        <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
-          <option value="">All statuses</option>
-          {TEST_CASE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.replace(/_/g, ' ')}
-            </option>
-          ))}
-        </Select>
-        </FilterField>
-        <DateRangePicker
-          idPrefix="reporting-date"
-          fromValue={dateFrom}
-          toValue={dateTo}
-          onChange={(from, to) => {
-            setDateFrom(from)
-            setDateTo(to)
-          }}
-        />
-      </FilterBar>
+      <ListToolbar
+        activeCount={chips.length}
+        onClearFilters={clearFilters}
+        chips={chips}
+        onRemoveChip={removeChip}
+        filters={
+          <>
+            <ListFilterField label="Project">
+              <Select aria-label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                <option value="">All projects</option>
+                {projectsQuery.data?.items.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Domain">
+              <Select aria-label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)}>
+                <option value="">All domains</option>
+                {DOMAINS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Assignee">
+              <Select aria-label="Assignee" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+                <option value="">All assignees</option>
+                {usersQuery.data?.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Priority">
+              <Select aria-label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
+                <option value="">All priorities</option>
+                {priorityFilterOptions.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Status">
+              <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">All statuses</option>
+                {TEST_CASE_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Date range">
+              <DateRangePicker
+                idPrefix="reporting-date"
+                fromValue={dateFrom}
+                toValue={dateTo}
+                onChange={(from, to) => {
+                  setDateFrom(from)
+                  setDateTo(to)
+                }}
+              />
+            </ListFilterField>
+          </>
+        }
+      />
 
-
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 [&>*]:min-w-0">
       <ChartPanel
         title="Project &amp; Test Case Distribution by Domain"
         bodyClassName="h-72"
@@ -340,7 +346,7 @@ export function Reporting() {
         }
         footer={
           domainQuery.data?.length ? (
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
               {domainQuery.data.map((d) => (
                 <div key={d.domain} className="rounded-md border border-[var(--border)] p-3 text-sm">
                   <p className="font-medium">{d.domain}</p>
@@ -478,10 +484,6 @@ export function Reporting() {
           )}
       </ChartPanel>
 
-      <QualityMetricsCard projectId={projectId || undefined} />
-
-      <DefectLeakageCard projectId={projectId || undefined} />
-
       <EmbossedCard>
         <CardHeader>
           <CardTitle>Defect Aging &amp; SLA</CardTitle>
@@ -530,10 +532,20 @@ export function Reporting() {
         </CardContent>
       </EmbossedCard>
 
+      <div className="lg:col-span-2">
+        <QualityMetricsCard projectId={projectId || undefined} />
+      </div>
+
+      <div className="lg:col-span-2">
+        <DefectLeakageCard projectId={projectId || undefined} />
+      </div>
+
       {projectId ? (
-        <QAManagerIntelligenceCard projectId={projectId} />
+        <div className="lg:col-span-2">
+          <QAManagerIntelligenceCard projectId={projectId} />
+        </div>
       ) : (
-        <EmbossedCard>
+        <EmbossedCard className="lg:col-span-2">
           <CardHeader>
             <CardTitle>QA Manager Intelligence</CardTitle>
           </CardHeader>
@@ -546,6 +558,7 @@ export function Reporting() {
       )}
 
       <ChartPanel
+        className="lg:col-span-2"
         title="Aggregate Report"
         bodyClassName="h-80"
         actions={
@@ -714,6 +727,7 @@ export function Reporting() {
             </div>
           )}
       </ChartPanel>
+      </div>
     </div>
   )
 }

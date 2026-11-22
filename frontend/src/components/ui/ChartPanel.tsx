@@ -1,5 +1,6 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 
+import { ChartActions } from '@/components/ui/ChartActions'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { cn } from '@/lib/utils'
@@ -35,6 +36,7 @@ export function ChartPanel({
   children,
   className,
   bodyClassName = 'h-56',
+  png = true,
 }: {
   title: ReactNode
   actions?: ReactNode
@@ -50,16 +52,19 @@ export function ChartPanel({
   children: ReactNode
   className?: string
   bodyClassName?: string
+  /** Offer "Download PNG" in the "..." menu. Turn off for charts that are not SVG. */
+  png?: boolean
 }) {
   const [view, setView] = useState<'chart' | 'table'>('chart')
   const tableId = useId()
+  const bodyRef = useRef<HTMLDivElement>(null)
   const showTable = view === 'table' && table
 
   return (
     <EmbossedCard className={className}>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-x-3 gap-y-2 space-y-0">
         <CardTitle>{title}</CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {actions}
           {table && (
             <button
@@ -72,12 +77,20 @@ export function ChartPanel({
               {view === 'table' ? 'View as chart' : 'View as table'}
             </button>
           )}
+          {table && typeof title === 'string' && (
+            <ChartActions
+              title={title}
+              table={table}
+              png={png && view === 'chart'}
+              getSvg={() => bodyRef.current?.querySelector<SVGSVGElement>('svg.recharts-surface') ?? null}
+            />
+          )}
         </div>
       </CardHeader>
       <CardContent>
         {controls}
         {summary && <p className="sr-only">{summary}</p>}
-        <div id={tableId} className={cn(bodyClassName, showTable && 'overflow-auto')}>
+        <div ref={bodyRef} id={tableId} className={cn(bodyClassName, showTable && 'overflow-auto')}>
           {showTable ? (
             <table className="w-full text-left text-xs">
               <caption className="sr-only">{typeof title === 'string' ? title : 'Chart data'}</caption>
