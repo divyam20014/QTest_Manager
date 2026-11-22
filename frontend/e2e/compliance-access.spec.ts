@@ -49,8 +49,7 @@ test('Compliance Reports is offered to, and opens for, only the roles that can e
   await expect(page.getByTestId('no-access')).toHaveCount(0)
   // ...but without the compliance export buttons it cannot use.
   await expect(page.getByRole('heading', { name: 'Reporting', exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Compliance Report \(Print/ })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Download Compliance CSV' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Export', exact: true })).toHaveCount(0)
 
   // ---- Manager and Admin: link offered, page opens.
   for (const who of [
@@ -62,8 +61,9 @@ test('Compliance Reports is offered to, and opens for, only the roles that can e
     await loginViaUi(p, tenant.tenantId, who.email, who.password)
     await expect(complianceLink(p).first()).toBeVisible()
     await p.goto('/reporting')
-    await expect(p.getByRole('link', { name: /Compliance Report \(Print/ })).toBeVisible()
-    await expect(p.getByRole('link', { name: 'Download Compliance CSV' })).toBeVisible()
+    await p.getByRole('button', { name: 'Export', exact: true }).click()
+    await expect(p.getByRole('menuitem', { name: 'Print' })).toBeVisible()
+    await expect(p.getByRole('menuitem', { name: 'CSV' })).toBeVisible()
     await p.goto('/reporting/print')
     await expect(p.getByRole('heading', { name: /Compliance Report/ }).first()).toBeVisible()
     await expect(p.getByTestId('no-access')).toHaveCount(0)

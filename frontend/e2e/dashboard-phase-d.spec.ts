@@ -2,8 +2,7 @@ import { expect, test } from '@playwright/test'
 
 import { bootstrapTenant, loginViaUi } from './fixtures'
 
-// UI/UX remediation Phase D: Dashboard. Hero pass-rate dial plus four KPI
-// tiles (each with a stretched primary link and an optional second link),
+// UI/UX remediation Phase D: Dashboard. Four KPI cards (each one link, ADR-110),
 // chart panels with a table alternative and a trend range control, charts that
 // follow the app's light/dark toggle, and honest empty / error states.
 
@@ -33,31 +32,24 @@ test('empty tenant: honest empty states, working tile links, no overflow', async
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/')
     await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
-    await expect(page.getByText('Execution Pass %')).toBeVisible()
-    await expect(page.getByText('No executed steps yet')).toBeVisible()
+    await expect(page.getByRole('link', { name: /^Pass rate:/ })).toBeVisible()
     await expect(page.getByText('No test cases yet')).toBeVisible()
     await expect(page.getByText('No execution activity yet')).toBeVisible()
-    await expect(page.getByText('Nothing urgent')).toBeVisible()
+    await expect(page.getByText('Nothing needs attention')).toBeVisible()
     // No chart can be viewed as a table when there is nothing to tabulate.
     await expect(page.getByRole('button', { name: 'View as table' })).toHaveCount(0)
     expect(await overflowOf(page), `overflow at ${width}px`).toBeLessThanOrEqual(0)
   }
 
-  // Primary tile link (the title) and the secondary link go to different places.
+  // The whole KPI card is one link; it has to be keyboard-operable.
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/')
-  await page.getByRole('link', { name: 'Test Cases', exact: true }).click()
+  await page.getByRole('link', { name: /^Test cases:/ }).click()
   await expect(page).toHaveURL(/\/test-repository$/)
   await page.goto('/')
-  await page.getByRole('link', { name: /0 active/ }).click()
-  await expect(page).toHaveURL(/\/projects\?status=Active/)
-
-  // Keyboard: the primary link is a real focusable link.
-  await page.goto('/')
-  const projects = page.getByRole('link', { name: 'Projects', exact: true }).last()
-  await projects.focus()
+  await page.getByRole('link', { name: /^Open defects:/ }).focus()
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/projects$/)
+  await expect(page).toHaveURL(/\/defects$/)
 })
 
 test('a failed summary shows an error state and recovers on retry', async ({ page, request }) => {
@@ -68,7 +60,7 @@ test('a failed summary shows an error state and recovers on retry', async ({ pag
   await expect(page.getByText("Couldn't load this").first()).toBeVisible({ timeout: 15000 })
   await page.unroute('**/api/v1/dashboard/summary')
   await page.getByRole('button', { name: 'Try again' }).first().click()
-  await expect(page.getByText('Execution Pass %')).toBeVisible()
+  await expect(page.getByRole('link', { name: /^Pass rate:/ })).toBeVisible()
 })
 
 test('charts: table view, trend range, and colours follow the app theme toggle', async ({ page, request }) => {
@@ -101,7 +93,7 @@ test('charts: table view, trend range, and colours follow the app theme toggle',
   await page.addInitScript(() => localStorage.setItem('qtesthub:theme', 'dark'))
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/')
-  await expect(page.getByText('Execution Trend')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Execution trend' })).toBeVisible()
   await expect(page.locator('path.recharts-line-curve').first()).toBeVisible()
   const stroke = await page.locator('path.recharts-line-curve').first().getAttribute('stroke')
   expect(stroke?.toLowerCase()).toBe('#199e70') // dark categorical slot 3, not the light #1baf7a
@@ -116,7 +108,7 @@ test('charts: table view, trend range, and colours follow the app theme toggle',
   await expect(page.getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true')
 
   // Table alternative for the trend chart.
-  await page.getByRole('button', { name: 'View as table' }).last().click()
+  await page.getByRole('button', { name: 'View as table' }).first().click()
   const table = page.getByRole('table').filter({ hasText: 'Fail' })
   await expect(table).toBeVisible()
   await expect(table.getByRole('row')).toHaveCount(points.length + 1)

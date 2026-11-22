@@ -55,7 +55,8 @@ test('desktop shell: account menu name, collapsed sidebar tooltips, new-tab comp
 
   // UX-024: Settings and Profile appear once each.
   const sidebar = page.locator('aside')
-  await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(1)
+  await expect(sidebar.getByRole('link', { name: 'Admin' })).toHaveCount(1)
+  await expect(sidebar.getByRole('link', { name: 'Settings' })).toHaveCount(0)
   await expect(sidebar.getByRole('link', { name: 'Organization' })).toHaveCount(0)
   await expect(sidebar.getByRole('link', { name: 'Profile' })).toHaveCount(1)
 

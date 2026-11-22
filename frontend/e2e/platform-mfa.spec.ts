@@ -9,6 +9,7 @@ import {
   deactivateThrowawayPlatformAdmin,
   freshPlatformTotpCode,
   getPlatformSessionToken,
+  nativeSelect,
   platformAuthHeaders,
   totpCodeForStep,
   totpStep,
@@ -623,9 +624,9 @@ test('Audit tab: shows the sign-in events of a throwaway admin and the chain ver
     // Filter by actor: only this admin's rows remain.
     await page.getByLabel('Actor email').fill(admin.email)
     await expect(table).toContainText(admin.email)
-    await page.getByLabel('Outcome').selectOption('failure')
+    await nativeSelect(page, 'Outcome').selectOption('failure')
     await expect(page.getByText('No audit events match these filters.')).toBeVisible()
-    await page.getByLabel('Outcome').selectOption('')
+    await nativeSelect(page, 'Outcome').selectOption('')
 
     await page.getByRole('button', { name: 'Verify chain' }).click()
     await expect(page.getByTestId('audit-verify-result')).toContainText('Chain verified')

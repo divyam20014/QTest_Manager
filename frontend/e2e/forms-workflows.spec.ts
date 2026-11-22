@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { axeFindings } from './a11y'
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-106: quick-create test case, requirement-link combobox, Create and start.
@@ -62,7 +62,7 @@ test('quick-create, link requirements, create and start (1280)', async ({ page, 
 
   // Two steps by keyboard, Module, then Ctrl+Enter.
   await dialog.getByLabel('Title').fill('Quick one: claim intake')
-  await dialog.getByLabel('Module').selectOption(moduleId)
+  await nativeSelect(dialog, 'Module').selectOption(moduleId)
   await dialog.getByLabel('Step 1 action').fill('Open the claim form')
   await dialog.getByLabel('Step 1 action').press('Enter')
   await dialog.getByLabel('Step 1 expected outcome').fill('Form opens')
@@ -77,19 +77,20 @@ test('quick-create, link requirements, create and start (1280)', async ({ page, 
   await expect(page.getByText('Quick one: claim intake').first()).toBeVisible()
 
   // Create and add another keeps priority + module, clears title, refocuses Title.
-  await page.getByRole('button', { name: 'Quick add' }).click()
-  await dialog.getByLabel('Priority').selectOption({ index: 1 })
-  const keptPriority = await dialog.getByLabel('Priority').inputValue()
+  await page.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('menuitem', { name: 'Quick add' }).click()
+  await nativeSelect(dialog, 'Priority').selectOption({ index: 1 })
+  const keptPriority = await nativeSelect(dialog, 'Priority').inputValue()
   expect(keptPriority).not.toBe('')
-  await dialog.getByLabel('Module').selectOption(moduleId)
+  await nativeSelect(dialog, 'Module').selectOption(moduleId)
   await dialog.getByLabel('Title').fill('Second quick case')
   await dialog.getByLabel('Step 1 action').fill('Do a')
   await dialog.getByLabel('Step 1 expected outcome').fill('See b')
   await dialog.getByRole('button', { name: 'Create and add another' }).click()
   await expect(dialog.getByLabel('Title')).toHaveValue('')
   await expect(dialog.getByLabel('Title')).toBeFocused()
-  await expect(dialog.getByLabel('Priority')).toHaveValue(keptPriority)
-  await expect(dialog.getByLabel('Module')).toHaveValue(moduleId)
+  await expect(nativeSelect(dialog, 'Priority')).toHaveValue(keptPriority)
+  await expect(nativeSelect(dialog, 'Module')).toHaveValue(moduleId)
   await expect(dialog.getByLabel('Step 1 action')).toHaveValue('')
 
   // More options carries the entered values into the full form.
@@ -98,7 +99,7 @@ test('quick-create, link requirements, create and start (1280)', async ({ page, 
   await dialog.getByRole('button', { name: 'More options' }).click()
   const drawer = page.getByRole('dialog', { name: 'New Test Case' })
   await expect(drawer.locator('#title')).toHaveValue('Carried to full form')
-  await expect(drawer.getByLabel('Priority')).toHaveValue(keptPriority)
+  await expect(nativeSelect(drawer, 'Priority')).toHaveValue(keptPriority)
   await expect(drawer.getByLabel('Step 1 action')).toHaveValue('Carry me')
   await drawer.getByRole('button', { name: 'Close panel' }).click()
   await expect(drawer).toBeHidden()

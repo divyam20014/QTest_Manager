@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { axeFindings, formatFindings } from './a11y'
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-099: custom dashboards. Build one (KPI + defect aging + saved report),
@@ -31,8 +31,8 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
     // One sidebar entry: no separate 'Dashboards' item; the switcher reaches the manage page.
     await admin.goto('/')
     await expect(admin.getByRole('link', { name: 'Dashboards', exact: true })).toHaveCount(0)
-    await expect(admin.getByLabel('View', { exact: true })).toHaveValue('')
-    await admin.getByRole('link', { name: 'Manage dashboards' }).click()
+    await expect(nativeSelect(admin, 'View', { exact: true })).toHaveValue('')
+    await admin.getByRole('link', { name: 'Customize' }).click()
     await expect(admin.getByRole('heading', { name: 'Manage dashboards', level: 1 })).toBeVisible()
     await expect(admin.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Manage')
     await admin.getByRole('button', { name: 'New dashboard' }).click()
@@ -41,11 +41,11 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
     await expect(admin.getByRole('heading', { name: 'Ops board', level: 1 })).toBeVisible()
     const dashboardId = admin.url().split('/dashboards/')[1]
     await expect(admin.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Ops board')
-    await expect(admin.getByLabel('View', { exact: true })).toHaveValue(dashboardId)
-    await admin.getByLabel('View', { exact: true }).selectOption({ label: 'Overview' })
+    await expect(nativeSelect(admin, 'View', { exact: true })).toHaveValue(dashboardId)
+    await nativeSelect(admin, 'View', { exact: true }).selectOption({ label: 'Overview' })
     await expect(admin.getByRole('heading', { name: 'Dashboard', level: 1, exact: true })).toBeVisible()
     expect(formatFindings('overview', await axeFindings(admin))).toEqual([])
-    await admin.getByLabel('View', { exact: true }).selectOption({ label: 'Ops board' })
+    await nativeSelect(admin, 'View', { exact: true }).selectOption({ label: 'Ops board' })
     await expect(admin.getByRole('heading', { name: 'Ops board', level: 1 })).toBeVisible()
 
     await admin.getByRole('button', { name: 'Edit layout' }).click()
@@ -60,7 +60,7 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
     await addWidget('Defect aging')
     await dialog.getByRole('button', { name: 'Add widget', exact: true }).click()
     await addWidget('Saved report')
-    await dialog.getByRole('combobox', { name: 'Saved report' }).selectOption({ label: 'Dash defects report' })
+    await nativeSelect(dialog, 'Saved report').selectOption({ label: 'Dash defects report' })
     await dialog.getByRole('button', { name: 'Add widget', exact: true }).click()
 
     // Order is now: Summary tiles, Defect aging, Saved report. Move the report up one.
@@ -96,7 +96,7 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
     await admin.getByRole('button', { name: 'Set Ops board as team default' }).click()
     await expect(admin.getByText('Team default dashboard set').first()).toBeVisible()
     await tester.goto('/')
-    await expect(tester.getByLabel('View', { exact: true }).getByRole('option', { name: 'Ops board (team)' })).toHaveCount(1)
+    await expect(nativeSelect(tester, 'View', { exact: true }).locator('option', { hasText: 'Ops board (team)' })).toHaveCount(1)
     await tester.goto('/dashboards')
     await expect(tester.getByRole('heading', { name: 'Team default' })).toBeVisible()
     await tester.getByRole('link', { name: 'Ops board' }).click()

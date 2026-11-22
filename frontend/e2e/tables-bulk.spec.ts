@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { axeFindings, formatFindings } from './a11y'
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
 // ADR-105: shared table prefs (density, columns) and Test Cases bulk actions,
@@ -77,7 +77,7 @@ test('bulk priority and assign with summary, axe at 1280', async ({ page }) => {
   expect(formatFindings('bulk bar 1280', await axeFindings(page))).toEqual([])
 
   await page.getByRole('button', { name: 'Change priority' }).click()
-  await page.getByRole('dialog').getByLabel('Priority').selectOption('Critical')
+  await nativeSelect(page.getByRole('dialog'), 'Priority').selectOption('Critical')
   await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click()
   await expect(page.getByText('3 updated')).toBeVisible()
   for (const title of titles.slice(0, 3)) await expect(rows(page).filter({ hasText: title })).toContainText('Critical')
@@ -85,7 +85,7 @@ test('bulk priority and assign with summary, axe at 1280', async ({ page }) => {
 
   for (const title of titles.slice(0, 2)) await page.getByRole('checkbox', { name: `Select ${title}` }).check()
   await page.getByRole('button', { name: 'Assign', exact: true }).click()
-  await page.getByRole('dialog').getByLabel('Assignee').selectOption({ label: 'Manager E2E' })
+  await nativeSelect(page.getByRole('dialog'), 'Assignee').selectOption({ label: 'Manager E2E' })
   await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click()
   await expect(page.getByText('2 updated')).toBeVisible()
   await expect(rows(page).filter({ hasText: titles[0] })).toContainText('Manager E2E')

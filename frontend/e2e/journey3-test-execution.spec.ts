@@ -19,7 +19,7 @@ async function createApprovedTwoStepCase(page: import('@playwright/test').Page) 
   await page.click('nav[aria-label="Project sections"] >> text=Details')
   await page.waitForSelector('text=Team Members')
 
-  await page.click('a:has-text("Test Cases")')
+  await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
   await page.click('button:has-text("New Test Case")')
   await page.waitForSelector('text=New Test Case')
   await page.fill('#title', 'Verify Total Loss Settlement Calculation')

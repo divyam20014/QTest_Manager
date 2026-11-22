@@ -13,7 +13,7 @@ test.use({ baseURL: 'http://127.0.0.1:5173' })
 test('a tenant user can sign in on http://127.0.0.1:5173', async ({ page, request }) => {
   const tenant = await bootstrapTenant(request, 'LoopbackTenant')
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
-  await expect(page.getByRole('link', { name: 'Test Repository' }).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Test Cases' }).first()).toBeVisible()
   expect(new URL(page.url()).hostname).toBe('127.0.0.1')
 })
 

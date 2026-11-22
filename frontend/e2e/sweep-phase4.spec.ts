@@ -5,6 +5,7 @@ import {
   bootstrapTenant,
   freshPlatformTotpCode,
   loginViaUi,
+  nativeSelect,
   PLATFORM_ADMIN_EMAIL,
   PLATFORM_ADMIN_PASSWORD,
 } from './fixtures'
@@ -98,7 +99,7 @@ test('Phase 4 screens: axe, overflow and phone tap targets in light and dark', a
       }
       page.on('console', onConsole)
       await page.goto('/signup')
-      await page.getByLabel(/Insurance Domain/).waitFor()
+      await page.getByRole('combobox', { name: /Insurance Domain/ }).waitFor()
       await page.evaluate((t) => {
         document.documentElement.dataset.theme = t
       }, theme)
@@ -206,8 +207,8 @@ test('Platform Admin: the tenant list shows an Insurance Domain column and the N
   await page.getByRole('button', { name: 'Verify' }).click()
   await expect(page.getByRole('columnheader', { name: 'Domain' })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: 'New Tenant' }).click()
-  const select = page.getByLabel('Insurance Domain (optional)')
-  await expect(select).toBeVisible()
+  const select = nativeSelect(page, 'Insurance Domain (optional)')
+  await expect(select).toBeAttached()
   expect(await select.locator('option').allTextContents()).toEqual([
     'Not specified',
     'Motor',

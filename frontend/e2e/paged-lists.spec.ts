@@ -85,7 +85,9 @@ test('Defects: one page at a time, tab counts from the server, page 2 and a stat
   expect(openRequest.searchParams.get('page')).toBe('1')
   await expect(page.getByRole('tab', { name: /^Open/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('table tbody tr')).toHaveCount(3)
-  await expect(page.getByText(/Page \d+ of/)).toHaveCount(0)
+  // The whole tab fits one page: the footer says so and the Next button is disabled.
+  await expect(page.getByText('Showing 1-3 of 3')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled()
 })
 
 test('Test Runs overview: one request for a page of runs across projects', async ({ page, request }) => {
@@ -145,9 +147,12 @@ test('Test Runs overview: one request for a page of runs across projects', async
   await expect(page.locator('table tbody tr').first()).toContainText('Paged run 52')
   await expect(page.locator('table tbody').getByText('Paged Runs Alpha').first()).toBeVisible()
   await expect(page.locator('table tbody').getByText('Paged Runs Beta').first()).toBeVisible()
-  // One overview request for the page; the projects were not asked one by one.
-  expect(overview).toHaveLength(1)
-  expect(overview[0].searchParams.get('page_size')).toBe('50')
+  // One overview request for the page (plus the three one-row status-tab count requests);
+  // the projects were not asked one by one.
+  const pageRequests = overview.filter((u) => !u.searchParams.has('status'))
+  expect(pageRequests).toHaveLength(1)
+  expect(pageRequests[0].searchParams.get('page_size')).toBe('50')
+  expect(overview.filter((u) => u.searchParams.has('status'))).toHaveLength(3)
   expect(perProject).toEqual([])
 
   await page.getByRole('button', { name: 'Next' }).click()

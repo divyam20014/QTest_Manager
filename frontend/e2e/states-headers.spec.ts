@@ -100,7 +100,7 @@ test('test runs, repository, requirements, defects, access rules: header + empty
   const cases: [string, string, string, string][] = [
     [`/projects/${projectId}/test-runs`, 'Test Runs', 'No test runs yet', 'Create your first test run'],
     ['/test-runs', 'Test Runs', 'No test runs yet', ''],
-    ['/test-repository', 'Test Repository', 'No test cases yet', ''],
+    ['/test-repository', 'Test Cases', 'No test cases yet', ''],
     [`/projects/${projectId}/requirements`, 'Requirements', 'No requirements yet', ''],
     ['/defects', 'Defects', 'No defects yet', ''],
     ['/admin/access-rules', 'Access rules', 'No access rules yet', 'Add your first rule'],

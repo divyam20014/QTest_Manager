@@ -277,13 +277,14 @@ test('UX-008: Test Repository only requests and renders the open project group',
   await page.locator('#repo-search').pressSequentially('gamma', { delay: 40 })
   await expect(page.getByText('Gamma case 005').first()).toBeVisible()
   expect(requested.length, 'no per-project request while a filter is on').toBe(projectRequestsBefore)
-  expect(requestedAll).toEqual([{ search: 'gamma', sort: '-created_at', page: 1 }])
+  // (the one-row status-tab count requests carry no sort and are not part of the listing)
+  expect(requestedAll.filter((r) => r.sort)).toEqual([{ search: 'gamma', sort: '-created_at', page: 1 }])
   // The results are one flat list (no group headers) with a Project column.
   await expect(page.getByRole('button', { name: /Project 1/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /Project 3/ })).toHaveCount(0)
   await expect(page.locator('table tbody tr')).toHaveCount(5)
   await expect(page.getByRole('columnheader', { name: 'Project' })).toBeVisible()
-  await expect(page.getByText(/5 test cases shown \(all matching\) across all projects/)).toBeVisible()
+  await expect(page.getByText(/Showing 1-5 of 5 matching across all projects/)).toBeVisible()
   // Clearing the filter returns to the grouped view.
   await page.locator('#repo-search').fill('')
   await expect(page.getByRole('button', { name: /Project 1/ })).toBeVisible()

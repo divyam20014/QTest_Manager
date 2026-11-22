@@ -83,7 +83,7 @@ async function createApprovedTwoStepCase(page: Page) {
   await page.click('a:has-text("Keyboard Run Project")')
   await page.click('nav[aria-label="Project sections"] >> text=Details')
   await page.waitForSelector('text=Team Members')
-  await page.click('a:has-text("Test Cases")')
+  await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
   await page.click('button:has-text("New Test Case")')
   await page.waitForSelector('text=New Test Case')
   await page.fill('#title', 'Keyboard executed case')

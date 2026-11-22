@@ -38,7 +38,7 @@ test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, T
 
     // Tab strip on Reports; axe at 1280.
     const tabs = admin.getByRole('navigation', { name: 'Report sections' })
-    await expect(tabs.getByRole('link', { name: 'Reports', exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect(tabs.getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page')
     expect(formatFindings('reporting-1280', await axeFindings(admin))).toEqual([])
     await admin.screenshot({ path: 'test-results/nav-consolidation-1280.png' })
 
@@ -51,7 +51,7 @@ test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, T
     await expect(admin.getByRole('navigation', { name: 'Report sections' })).toBeVisible()
     await admin
       .getByRole('navigation', { name: 'Report sections' })
-      .getByRole('link', { name: 'Reports', exact: true })
+      .getByRole('link', { name: 'Overview', exact: true })
       .click()
     await expect(admin).toHaveURL(/\/reporting$/)
 
@@ -119,10 +119,11 @@ test('Access control: one sidebar item, tab strip on both pages, hidden from a M
     await loginViaUi(admin, t.tenantId, t.adminEmail, t.adminPassword)
     await admin.goto('/admin/roles')
     const side = sidebar(admin)
-    await expect(side.getByRole('link', { name: 'Access control' })).toHaveCount(1)
-    await expect(side.getByRole('link', { name: 'Access Rules' })).toHaveCount(0)
+    // One "Admin" entry (no separate admin items), active on every admin route.
+    await expect(side.getByRole('link', { name: 'Admin' })).toHaveCount(1)
+    await expect(side.getByRole('link', { name: 'Access control' })).toHaveCount(0)
     await expect(side.getByRole('link', { name: 'Roles & Permissions' })).toHaveCount(0)
-    await expect(side.getByRole('link', { name: 'Access control' })).toHaveAttribute('aria-current', 'page')
+    await expect(side.getByRole('link', { name: 'Admin' })).toHaveAttribute('aria-current', 'page')
 
     // Tab strip works both ways; the sidebar item is active on both routes.
     const tabs = admin.getByRole('navigation', { name: 'Access control sections' })
@@ -130,7 +131,7 @@ test('Access control: one sidebar item, tab strip on both pages, hidden from a M
     await tabs.getByRole('link', { name: 'Access rules' }).click()
     await expect(admin).toHaveURL(/\/admin\/access-rules$/)
     await expect(admin.getByRole('heading', { name: 'Access rules' })).toBeVisible()
-    await expect(side.getByRole('link', { name: 'Access control' })).toHaveAttribute('aria-current', 'page')
+    await expect(side.getByRole('link', { name: 'Admin' })).toHaveAttribute('aria-current', 'page')
     expect(formatFindings('access-rules-1280', await axeFindings(admin))).toEqual([])
     await admin.screenshot({ path: 'test-results/access-control-1280.png' })
     await tabs.getByRole('link', { name: 'Roles & Permissions' }).click()
@@ -152,11 +153,12 @@ test('Access control: one sidebar item, tab strip on both pages, hidden from a M
     expect(formatFindings('access-rules-390', await axeFindings(admin))).toEqual([])
     await admin.getByRole('button', { name: 'More' }).click()
     const more = admin.getByRole('dialog', { name: 'More' })
-    await expect(more.getByRole('link', { name: 'Access control' })).toHaveCount(1)
+    await expect(more.getByRole('link', { name: 'Admin' })).toHaveCount(1)
     await expect(more.getByRole('link', { name: 'Access Rules' })).toHaveCount(0)
 
-    // A Manager (no admin access) sees neither the item nor the strip.
+    // A Manager reaches only Environments: the Admin item lands there, no Access control tabs.
     await loginViaUi(manager, t.tenantId, t.manager.email, t.manager.password)
+    await expect(sidebar(manager).getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin/environments')
     await expect(sidebar(manager).getByRole('link', { name: 'Access control' })).toHaveCount(0)
     await manager.goto('/admin/roles')
     await expect(manager.getByRole('navigation', { name: 'Access control sections' })).toHaveCount(0)

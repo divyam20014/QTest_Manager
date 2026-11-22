@@ -79,10 +79,10 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
   const { project, run } = await seed(page)
 
-  // --- Dashboard: single column, gauge first, KPI tiles 2-up ------------------
+  // --- Dashboard: single column, KPI cards stacked ------------------
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-  await expect(page.getByText('Execution Pass %')).toBeVisible()
+  await expect(page.getByRole('link', { name: /^Pass rate:/ })).toBeVisible()
   await noHorizontalOverflow(page)
 
   // --- Projects: card list + sort/filters in the sheet -------------------------
@@ -93,7 +93,7 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
   await noHorizontalOverflow(page)
   await page.getByRole('button', { name: /^Filters/ }).click()
   const filters = page.getByRole('dialog', { name: 'Filters' })
-  await expect(filters.getByLabel('Sort by')).toBeVisible()
+  await expect(filters.getByRole('combobox', { name: 'Sort by' })).toBeVisible()
   await page.keyboard.press('Escape')
 
   // --- Requirements + Traceability: cards, no sideways scroll -----------------
@@ -155,7 +155,7 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
   await noHorizontalOverflow(page)
 
   await page.goto('/admin/roles')
-  const roleSelect = page.getByLabel('Role', { exact: true })
+  const roleSelect = page.getByRole('combobox', { name: 'Role', exact: true })
   await expect(roleSelect).toBeVisible()
   expect((await roleSelect.boundingBox())!.height).toBeGreaterThanOrEqual(44)
   await expect(page.locator('table')).toHaveCount(0)

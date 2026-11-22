@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect } from './fixtures'
 
 // BRD gap plan, Phase 4 (ADR-072, ADR-073): the optional insurance domain on sign-up /
 // settings / new-project default, and the in-app Documentation viewer (/brd).
@@ -44,7 +44,7 @@ test('Signup: the insurance domain is an optional dropdown and is sent when chos
   })
 
   await page.goto('/signup')
-  const domain = page.getByLabel(/Insurance Domain/)
+  const domain = nativeSelect(page, /Insurance Domain/)
   await expect(domain).toBeVisible()
   await expect(domain).not.toHaveAttribute('required', '')
   const options = await domain.locator('option').allTextContents()
@@ -85,7 +85,7 @@ test('Settings: an Admin sets the domain, and New Project pre-selects it; "Other
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
 
   await page.goto('/settings')
-  const select = page.getByLabel('Primary Insurance Domain')
+  const select = nativeSelect(page, 'Primary Insurance Domain')
   await expect(select).toHaveValue('')
   await select.selectOption('Property')
   await page.getByRole('button', { name: 'Save Changes' }).first().click()
@@ -93,17 +93,17 @@ test('Settings: an Admin sets the domain, and New Project pre-selects it; "Other
 
   await page.goto('/projects')
   await page.getByRole('button', { name: /New Project/ }).click()
-  await expect(page.getByRole('dialog').getByLabel(/^Domain/)).toHaveValue('Property')
+  await expect(nativeSelect(page.getByRole('dialog'), /^Domain/)).toHaveValue('Property')
   await page.keyboard.press('Escape')
 
   // "Other / multiple" has no matching project domain, so the default stays.
   await page.goto('/settings')
-  await page.getByLabel('Primary Insurance Domain').selectOption('Other')
+  await nativeSelect(page, 'Primary Insurance Domain').selectOption('Other')
   await page.getByRole('button', { name: 'Save Changes' }).first().click()
   await expect(page.getByText('Organization settings saved')).toBeVisible()
   await page.goto('/projects')
   await page.getByRole('button', { name: /New Project/ }).click()
-  await expect(page.getByRole('dialog').getByLabel(/^Domain/)).toHaveValue('Motor')
+  await expect(nativeSelect(page.getByRole('dialog'), /^Domain/)).toHaveValue('Motor')
 })
 
 // ---------------------------------------------------------------- documentation viewer

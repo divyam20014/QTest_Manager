@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect } from './fixtures'
 
 // Mobile redesign Phase 2: bottom-sheet dialogs, 16px/44px form controls,
 // card lists in place of tables, the Filters sheet, and the Phase 1 fixes
@@ -85,12 +85,12 @@ test('mobile components: card lists, filters sheet, form sheet, pinned sign-out,
   }).toEqual([390, 844])
   // (Status moved to the tab strip above the list; severity is the sheet's
   // representative select now.)
-  const status = sheet.getByLabel('Filter by severity')
+  const status = sheet.getByRole('combobox', { name: 'Filter by severity' })
   const statusBox = (await status.boundingBox())!
   expect(statusBox.height).toBeGreaterThanOrEqual(44)
   expect(statusBox.width).toBeGreaterThan(300)
   expect(await status.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
-  await status.selectOption('Low')
+  await nativeSelect(sheet, 'Filter by severity').selectOption('Low')
   await expect(sheet.getByRole('button', { name: 'Clear filters' })).toBeEnabled()
   await sheet.getByRole('button', { name: 'Done' }).click()
   await expect(sheet).toBeHidden()
@@ -143,7 +143,7 @@ test('mobile components: card lists, filters sheet, form sheet, pinned sign-out,
 
   await page.getByRole('button', { name: /^Filters/ }).click()
   const repoSheet = page.getByRole('dialog', { name: 'Filters' })
-  await repoSheet.getByLabel('Priority').selectOption('Critical')
+  await nativeSelect(repoSheet, 'Priority').selectOption('Critical')
   await repoSheet.getByRole('button', { name: 'Done' }).click()
   await expect(page.getByText('No test cases match these filters')).toBeVisible()
   await noHorizontalOverflow(page)

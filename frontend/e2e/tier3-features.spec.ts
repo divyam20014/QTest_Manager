@@ -27,10 +27,11 @@ test('Module grouping, request-changes, global search, and theme toggle', async 
   await page.click('nav[aria-label="Project sections"] >> text=Details')
   await page.waitForSelector('text=Team Members')
 
-  await page.click('a:has-text("Test Cases")')
+  await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
 
   // Modules: create one via the "Manage Modules" dialog.
-  await page.click('button:has-text("Manage Modules")')
+  await page.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('menuitem', { name: 'Manage Modules' }).click()
   await page.fill('#new-module-name', 'Claims Intake')
   await page.click('div[role="dialog"] button:has-text("Add")')
   await expect(page.getByText('Claims Intake (0 test cases)')).toBeVisible({ timeout: 10000 })

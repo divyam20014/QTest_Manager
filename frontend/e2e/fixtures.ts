@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { request as pwRequest } from '@playwright/test'
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, Locator, Page } from '@playwright/test'
 
 export const API_BASE_URL = process.env.E2E_API_BASE_URL ?? 'http://localhost:8000/api/v1'
 
@@ -383,4 +383,13 @@ export function ageSessionStepUp(email: string): void {
 /** Makes the admin's sessions look idle for 40 minutes (past the 30 minute timeout). */
 export function expireSessionIdle(email: string): void {
   psqlForAdminSessions(email, "last_seen_at = now() - interval '40 minutes'")
+}
+
+/**
+ * The hidden native <select> behind a Combobox (Select). `getByLabel` alone also
+ * matches the visible trigger button (same accessible name), which selectOption
+ * rejects, so narrow it to the select element.
+ */
+export function nativeSelect(scope: Page | Locator, ...label: Parameters<Page['getByLabel']>): Locator {
+  return scope.locator('select').and(scope.getByLabel(...label))
 }

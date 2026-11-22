@@ -54,7 +54,7 @@ test.describe('accessibility', () => {
     await page.waitForTimeout(500) // let the chart's SVG settle before scanning
     await expectNoSeriousViolations(page)
 
-    await page.click('a:has-text("Users & Roles")')
+    await page.click('aside a:has-text("Admin")')
     await page.waitForSelector('h1:has-text("Users & Roles")')
     await expectNoSeriousViolations(page)
   })
@@ -70,8 +70,8 @@ test.describe('accessibility', () => {
     const tenant = await bootstrapTenant(request, 'A11yRedesign')
     await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
 
-    await page.click('a:has-text("Test Repository")')
-    await page.waitForSelector('h1:has-text("Test Repository")')
+    await page.click('a:has-text("Test Cases")')
+    await page.waitForSelector('h1:has-text("Test Cases")')
     await page.waitForTimeout(500) // let the per-project queries settle
     await expectNoSeriousViolations(page)
 
@@ -85,6 +85,7 @@ test.describe('accessibility', () => {
     await page.waitForTimeout(500)
     await expectNoSeriousViolations(page)
 
+    await page.click('aside a:has-text("Admin")')
     await page.click('a:has-text("Audit Logs")')
     await page.waitForSelector('h1:has-text("Audit Logs")')
     await expectNoSeriousViolations(page)
@@ -108,11 +109,12 @@ test.describe('accessibility', () => {
     await page.waitForSelector('h1:has-text("Defects")')
     await expectNoViolationsOfAnyImpact(page)
 
-    await page.click('a:has-text("Test Repository")')
-    await page.waitForSelector('h1:has-text("Test Repository")')
+    await page.click('a:has-text("Test Cases")')
+    await page.waitForSelector('h1:has-text("Test Cases")')
     await page.waitForTimeout(500)
     await expectNoViolationsOfAnyImpact(page)
 
+    await page.click('aside a:has-text("Admin")')
     await page.click('a:has-text("Audit Logs")')
     await page.waitForSelector('h1:has-text("Audit Logs")')
     await expectNoViolationsOfAnyImpact(page)

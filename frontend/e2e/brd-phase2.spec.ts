@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect } from './fixtures'
 
 // BRD gap plan, Phase 2 (ADR-070): Block Case in the Execution Console, run
 // auto-finish, soft delete of runs and defects, and bulk priority/assignee on
@@ -183,8 +183,8 @@ test('Test Repository bulk priority and assignee keep approved cases approved', 
   const priorityDialog = page.getByRole('dialog', { name: 'Change priority' })
   await expect(priorityDialog.getByText(/Approved cases stay approved/)).toBeVisible()
   await expect(priorityDialog.getByRole('button', { name: 'Apply' })).toBeDisabled()
-  await priorityDialog.getByLabel(/New priority/).selectOption({ index: 1 })
-  const chosen = await priorityDialog.getByLabel(/New priority/).inputValue()
+  await nativeSelect(priorityDialog, /New priority/).selectOption({ index: 1 })
+  const chosen = await nativeSelect(priorityDialog, /New priority/).inputValue()
   await priorityDialog.getByRole('button', { name: 'Apply' }).click()
   await expect(page.getByText('2 test cases updated.')).toBeVisible({ timeout: 10000 })
 
@@ -199,7 +199,7 @@ test('Test Repository bulk priority and assignee keep approved cases approved', 
   await page.getByRole('checkbox', { name: 'Select all' }).check()
   await page.getByRole('button', { name: 'Set assignee' }).click()
   const assigneeDialog = page.getByRole('dialog', { name: 'Change assignee' })
-  await assigneeDialog.getByLabel(/New assignee/).selectOption(userId)
+  await nativeSelect(assigneeDialog, /New assignee/).selectOption(userId)
   await assigneeDialog.getByRole('button', { name: 'Apply' }).click()
   await expect(page.getByText('2 test cases updated.')).toBeVisible({ timeout: 10000 })
   for (const id of [one, two]) {

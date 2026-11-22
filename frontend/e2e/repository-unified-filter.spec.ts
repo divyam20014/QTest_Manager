@@ -55,6 +55,8 @@ test('a filter is answered by one tenant-wide request across projects', async ({
   const tenantWide: string[] = []
   page.on('request', (r) => {
     const url = new URL(r.url())
+    // The one-row status-tab count requests are not part of the listing fan-out under test.
+    if (url.searchParams.get('page_size') === '1') return
     if (/\/api\/v1\/projects\/[^/]+\/test-cases$/.test(url.pathname)) projectScoped.push(url.search)
     if (url.pathname === '/api/v1/test-cases') tenantWide.push(url.search)
   })

@@ -156,15 +156,16 @@ test('Excel exports download real workbooks and report failures', async ({ page,
   // Compliance workbook.
   const [compliance] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download Compliance Excel' }).click(),
+    page.getByRole('button', { name: 'Export', exact: true }).click().then(() => page.getByRole('menuitem', { name: 'Excel' }).click()),
   ])
   expect(compliance.suggestedFilename()).toBe('compliance_summary.xlsx')
 
   // Test cases list.
   await page.goto(`/projects/${projectId}/test-cases`)
+  await page.getByRole('button', { name: 'More actions' }).click()
   const [cases] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Export Excel (test cases)' }).click(),
+    page.getByRole('menuitem', { name: 'Export Excel (test cases)' }).click(),
   ])
   expect(cases.suggestedFilename()).toBe('test_cases_export.xlsx')
 
@@ -199,7 +200,7 @@ test('Tester: no compliance Excel button, and cannot fetch it', async ({ page, b
   await loginViaUi(testerPage, tenant.tenantId, email, password)
   await testerPage.goto('/reporting')
   await expect(testerPage.getByRole('heading', { name: 'Reporting' })).toBeVisible()
-  await expect(testerPage.getByRole('button', { name: 'Download Compliance Excel' })).toHaveCount(0)
+  await expect(testerPage.getByRole('button', { name: 'Export', exact: true })).toHaveCount(0)
   const denied = await testerPage.request.get(`${API_BASE_URL}/reports/compliance-export.xlsx`)
   expect(denied.status()).toBe(403)
   await ctx.close()

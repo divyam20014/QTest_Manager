@@ -168,7 +168,7 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
     await expect(tm).toHaveURL(new RegExp(`/defects[?]projectId=${t.projectId}`))
     const dialog = tm.getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByRole('combobox').first()).toHaveValue(t.projectId as string)
+    await expect(dialog.getByRole('combobox').first()).toContainText('Apex Motor Claims')
   }
   await tctx.close()
 })

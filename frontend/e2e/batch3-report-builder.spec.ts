@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-098: build a defects report (filter + group by severity), run, save,
@@ -32,9 +32,9 @@ test('Report builder: build, run, save, reload, export, and hidden-from-Testers'
     await expect(admin.getByRole('heading', { name: 'Report builder' })).toBeVisible()
 
     await admin.getByRole('button', { name: 'Add filter' }).click()
-    await admin.getByLabel('Filter 1 field').selectOption({ label: 'Severity' })
-    await admin.getByLabel('Filter 1 value').selectOption('High')
-    await admin.getByLabel('Group by (count)').selectOption({ label: 'Severity' })
+    await nativeSelect(admin, 'Filter 1 field').selectOption({ label: 'Severity' })
+    await nativeSelect(admin, 'Filter 1 value').selectOption('High')
+    await nativeSelect(admin, 'Group by (count)').selectOption({ label: 'Severity' })
     await admin.getByRole('button', { name: 'Run', exact: true }).click()
     await expect(admin.getByText('Builder defect')).toHaveCount(0)
     await expect(admin.getByRole('columnheader', { name: 'Count' })).toBeVisible()

@@ -19,7 +19,7 @@ test('mobile shell: bottom tab bar navigates and the More sheet opens, traps foc
   await expect(page.getByRole('button', { name: 'Collapse sidebar' })).toBeHidden()
 
   // Tab targets are at least 44px tall.
-  for (const name of ['Dashboard', 'Repository', 'Runs', 'Defects', 'More']) {
+  for (const name of ['Dashboard', 'Test Cases', 'Runs', 'Defects', 'More']) {
     const box = await bar.getByRole(name === 'More' ? 'button' : 'link', { name }).boundingBox()
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
   }

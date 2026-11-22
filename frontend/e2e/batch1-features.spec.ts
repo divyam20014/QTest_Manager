@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
 // ADR-096 batch 1, in a throwaway tenant (seedRoleTenant): rerun failed only,
@@ -71,8 +71,8 @@ test('version compare shows per-step changes with text labels and a summary', as
   expect(edit.ok(), await edit.text()).toBeTruthy()
 
   await page.goto(`/test-cases/${t.caseId}`)
-  await page.getByLabel('Compare from version').selectOption('1')
-  await page.getByLabel('Compare to version').selectOption('2')
+  await nativeSelect(page, 'Compare from version').selectOption('1')
+  await nativeSelect(page, 'Compare to version').selectOption('2')
   await expect(page.getByTestId('version-diff-summary')).toHaveText('1 step changed, 1 added')
   const changed = page.locator('[data-testid="version-diff-step"][data-change="modified"]')
   await expect(changed.getByText('Changed', { exact: true })).toBeVisible()

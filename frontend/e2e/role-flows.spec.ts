@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
 // Issue 36: browser create/edit flows as a Manager and as a Tester, in a
@@ -139,7 +139,7 @@ test('Manager: creates a project, authors and edits a test case, runs it, record
   // ---- edit the defect (priority is an inline select on the detail screen).
   await page.goto(`/defects/${mine.id}`)
   await page.waitForSelector('text=Traceability')
-  await page.getByLabel('Priority').selectOption('Critical')
+  await nativeSelect(page, 'Priority').selectOption('Critical')
   await expect
     .poll(async () => (await api(page, 'get', `/defects/${mine.id}`)).data?.priority, { timeout: 15000 })
     .toBe('Critical')
@@ -289,8 +289,7 @@ test('Tester: forbidden things are absent in the UI and refused by the API; deep
   // Reporting page: no compliance export controls.
   await page.goto('/reporting')
   await expect(page.getByRole('heading', { level: 1, name: 'Reports' }).or(page.locator('h1')).first()).toBeVisible()
-  await expect(page.getByText('Download Compliance CSV')).toHaveCount(0)
-  await expect(page.getByText('Compliance Report (Print / PDF)')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Export', exact: true })).toHaveCount(0)
 
   // API: user management, compliance export, approve and close are all 403.
   expect((await api(page, 'get', '/users')).status).toBe(403)
