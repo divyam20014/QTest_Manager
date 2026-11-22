@@ -41,11 +41,23 @@ class DefectBacklogSummary(BaseModel):
     critical_count: int
 
 
+class DashboardPrevious(BaseModel):
+    """Point-in-time baseline `days` ago, scoped exactly like the current figures (ADR-110)."""
+
+    days: int
+    test_cases_total: int
+    active_runs: int
+    open_defects: int
+    step_pass_percentage: float
+    step_sample_size: int
+
+
 class DashboardSummary(BaseModel):
     projects: ProjectStatusBreakdown
     test_cases: TestCaseSummary
     test_runs: TestRunSummary
     defects: DefectBacklogSummary
+    previous: DashboardPrevious | None = None
 
 
 class DomainDistributionEntry(BaseModel):

@@ -124,7 +124,7 @@ export function TrendLineChart({
           dataKey="pass_count"
           name="Pass"
           stroke={passColor}
-          strokeWidth={2.5}
+          strokeWidth={2}
           dot={false}
           activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
           isAnimationActive={!reduceMotion}
@@ -135,7 +135,7 @@ export function TrendLineChart({
           dataKey="fail_count"
           name="Fail"
           stroke={failColor}
-          strokeWidth={2.5}
+          strokeWidth={2}
           dot={false}
           activeDot={{ r: 5, strokeWidth: 2, style: { filter: 'drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3))' } }}
           isAnimationActive={!reduceMotion}

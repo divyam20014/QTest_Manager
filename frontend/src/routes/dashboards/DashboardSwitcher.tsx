@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { listDashboards } from '@/api/dashboards'
+import { buttonVariants } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 
@@ -39,9 +40,9 @@ export function DashboardSwitcher({ currentId }: { currentId?: string }) {
       </Select>
       <Link
         to="/dashboards"
-        className="whitespace-nowrap text-sm max-md:inline-flex max-md:min-h-11 max-md:items-center text-[var(--link)] hover:underline"
+        className={buttonVariants({ variant: 'ghost', size: 'sm' })}
       >
-        Manage dashboards
+        Customize
       </Link>
     </div>
   )

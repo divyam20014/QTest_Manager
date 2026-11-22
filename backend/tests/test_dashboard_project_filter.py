@@ -155,3 +155,24 @@ def test_activity_for_a_project_a_tester_cannot_see_is_empty_and_the_routes_need
     anonymous = TestClient(client.app)
     assert anonymous.get("/api/v1/dashboard/summary").status_code == 401
     assert anonymous.get("/api/v1/dashboard/activity-stream").status_code == 401
+
+
+def test_summary_previous_baseline_is_scoped_and_zero_for_fresh_data(
+    client: TestClient, platform_admin: dict
+):
+    """ADR-110: `previous` is a 30-day-ago baseline under the same scoping. Everything here was
+    just created, so every baseline count is 0 while the current figures are not."""
+    _tenant, project_a, project_b, _defects_a, _defect_b = _two_projects_with_different_data(
+        client, platform_admin
+    )
+    whole = _data(client.get("/api/v1/dashboard/summary"))
+    assert whole["test_cases"]["total"] >= 3
+    prev = whole["previous"]
+    assert prev["days"] == 30
+    assert prev["test_cases_total"] == 0
+    assert prev["active_runs"] == 0
+    assert prev["open_defects"] == 0
+    assert prev["step_sample_size"] == 0
+    only_b = _data(client.get(f"/api/v1/dashboard/summary?project_id={project_b['id']}"))
+    assert only_b["previous"]["test_cases_total"] == 0
+    assert project_a["id"] != project_b["id"]

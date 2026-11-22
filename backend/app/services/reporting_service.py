@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ForbiddenError, NotFoundError
@@ -33,6 +33,7 @@ from app.schemas.reporting import (
     ComplianceReport,
     ComplianceTestCaseRow,
     CycleTimeByProject,
+    DashboardPrevious,
     DashboardSummary,
     DefectAgingSeverityBucket,
     DefectAgingSummary,
@@ -90,6 +91,10 @@ def _accessible_project_ids(
         ).scalars()
     )
     return owned | member_of
+
+
+# ADR-110: KPI trend baseline = state this many days ago.
+PREVIOUS_PERIOD_DAYS = 30
 
 
 def get_dashboard_summary(
@@ -175,6 +180,74 @@ def get_dashboard_summary(
         db.execute(defect_query.group_by(Defect.severity)).tuples().all()
     )
 
+    cutoff = datetime.now(UTC) - timedelta(days=PREVIOUS_PERIOD_DAYS)
+
+    def _scoped(q):
+        if accessible is not None:
+            q = q.where(Project.id.in_(accessible))
+        if project_id is not None:
+            q = q.where(Project.id == project_id)
+        return q
+
+    prev_tc = tester_visibility.scope_case_query(
+        db,
+        tenant_id,
+        role_code,
+        user_id,
+        _scoped(
+            select(func.count())
+            .select_from(TestCase)
+            .join(Project, Project.id == TestCase.project_id)
+            .where(Project.tenant_id == tenant_id, TestCase.created_at <= cutoff)
+        ),
+    )
+    prev_runs = _scoped(
+        select(func.count())
+        .select_from(TestRun)
+        .join(Project, Project.id == TestRun.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            TestRun.created_at <= cutoff,
+            or_(TestRun.finished_at.is_(None), TestRun.finished_at > cutoff),
+        )
+    )
+    prev_defects = _scoped(
+        select(func.count())
+        .select_from(Defect)
+        .join(Project, Project.id == Defect.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            Defect.created_at <= cutoff,
+            or_(Defect.closed_at.is_(None), Defect.closed_at > cutoff),
+        )
+    )
+    prev_steps = _scoped(
+        select(ExecutionStep.verdict, func.count())
+        .select_from(ExecutionStep)
+        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .join(Project, Project.id == TestRun.project_id)
+        .where(
+            Project.tenant_id == tenant_id,
+            ExecutionStep.verdict.is_not(None),
+            ExecutionStep.closed_at <= cutoff,
+        )
+    )
+    prev_step_counts: dict[str | None, int] = dict(
+        db.execute(prev_steps.group_by(ExecutionStep.verdict)).tuples().all()
+    )
+    prev_step_total = sum(prev_step_counts.values())
+    previous = DashboardPrevious(
+        days=PREVIOUS_PERIOD_DAYS,
+        test_cases_total=db.execute(prev_tc).scalar_one(),
+        active_runs=db.execute(prev_runs).scalar_one(),
+        open_defects=db.execute(prev_defects).scalar_one(),
+        step_pass_percentage=(prev_step_counts.get("pass", 0) / prev_step_total)
+        if prev_step_total
+        else 0.0,
+        step_sample_size=prev_step_total,
+    )
+
     return DashboardSummary(
         projects=ProjectStatusBreakdown(
             total=len(projects), active=active_projects, by_status=status_counts
@@ -191,6 +264,7 @@ def get_dashboard_summary(
             open_by_severity=open_by_severity,
             critical_count=open_by_severity.get("Critical", 0),
         ),
+        previous=previous,
     )
 
 

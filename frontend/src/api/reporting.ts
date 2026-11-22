@@ -37,6 +37,15 @@ export interface DashboardSummary {
   test_cases: { total: number; approved_count: number; approved_ratio: number }
   test_runs: { active: number; step_pass_percentage: number; step_sample_size: number }
   defects: { open_by_severity: Record<string, number>; critical_count: number }
+  /** Baseline `days` ago (ADR-110); absent from older servers, then no trend is shown. */
+  previous?: {
+    days: number
+    test_cases_total: number
+    active_runs: number
+    open_defects: number
+    step_pass_percentage: number
+    step_sample_size: number
+  } | null
 }
 
 export interface DomainDistributionEntry {
@@ -351,6 +360,15 @@ export function complianceExportXlsxPath(period: CompliancePeriod = {}): string 
   if (period.periodTo) params.set('period_to', period.periodTo)
   const query = params.toString()
   return `/reports/compliance-export.xlsx${query ? `?${query}` : ''}`
+}
+
+// Same exports as complianceExportUrl / complianceExportPdfUrl, as API paths for `downloadFile`.
+export function complianceExportCsvPath(period: CompliancePeriod = {}): string {
+  return complianceExportUrl(period).slice(API_BASE_URL.length)
+}
+
+export function complianceExportPdfPath(period: CompliancePeriod = {}): string {
+  return complianceExportPdfUrl(period).slice(API_BASE_URL.length)
 }
 
 export function traceabilityMatrixExportXlsxPath(projectId: string): string {
