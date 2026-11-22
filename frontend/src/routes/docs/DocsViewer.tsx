@@ -3,14 +3,12 @@ import { BookOpen, Copy, Download, Printer } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 
-import { ApiError, isForbidden } from '@/api/client'
-import { getDoc, listDocs, type DocSummary } from '@/api/docs'
-import { NoAccess } from '@/components/NoAccess'
+import { ApiError } from '@/api/client'
+import type { DocFetchers, DocSummary } from '@/api/docs'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
@@ -22,10 +20,6 @@ interface TocItem {
   id: string
   text: string
   level: number
-}
-
-function roleLabel(role: string | undefined): string {
-  return role ? role.charAt(0).toUpperCase() + role.slice(1) : ''
 }
 
 /** Copies text, falling back to a hidden textarea where the async clipboard
@@ -63,23 +57,30 @@ function downloadMarkdown(doc: Pick<DocSummary, 'slug' | 'source'>, text: string
   URL.revokeObjectURL(url)
 }
 
+export interface DocsViewerProps {
+  /** Route prefix the viewer lives under, e.g. "/platform-admin/docs". */
+  basePath: string
+  /** Query-key scope so cached documents never cross audiences. */
+  queryScope: string
+  fetchers: DocFetchers
+  /** Shown under the header, e.g. "Reading as ...". */
+  readerLabel?: string
+}
+
 /**
- * BRD gap Phase 4 / ADR-072 (FR-BRD-01/02), served by the API since ADR-089.
- * `/brd` opens the default document; `/brd/:docId` a specific one. The list
- * and the text come from `/docs` behind the session: user-facing documents are
- * open to every signed-in user, the sensitive set (admin, deployment, schema,
- * API, ADRs, known gaps...) to Admin only. A document the user may not read is
- * not listed, and opening its link directly shows the "No access" screen.
+ * ADR-114: the full documentation viewer (ADR-072 / ADR-089), now used only by
+ * the platform console. `basePath` opens the default document;
+ * `basePath/:docId` a specific one. The tenant app no longer has it.
  */
-export function DocsViewer() {
+export function DocsViewer(props: DocsViewerProps) {
   const { docId } = useParams()
   const location = useLocation()
 
-  if (!docId) return <Navigate to={`/brd/${DEFAULT_DOC_ID}${location.hash}`} replace />
-  return <DocPage slug={docId} />
+  if (!docId) return <Navigate to={`${props.basePath}/${DEFAULT_DOC_ID}${location.hash}`} replace />
+  return <DocPage slug={docId} {...props} />
 }
 
-function DocNotFound() {
+function DocNotFound({ basePath }: { basePath: string }) {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Documentation" description="Product and engineering documents." />
@@ -87,7 +88,7 @@ function DocNotFound() {
         title="Document not found"
         description="That document doesn't exist in the in-app viewer."
         action={
-          <Link to="/brd" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+          <Link to={basePath} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             Back to documentation
           </Link>
         }
@@ -96,8 +97,7 @@ function DocNotFound() {
   )
 }
 
-function DocPage({ slug }: { slug: string }) {
-  const { user } = useAuth()
+function DocPage({ slug, basePath, queryScope, fetchers, readerLabel }: DocsViewerProps & { slug: string }) {
   const location = useLocation()
   const { show: showToast } = useToast()
   const articleRef = useRef<HTMLElement>(null)
@@ -107,19 +107,19 @@ function DocPage({ slug }: { slug: string }) {
   const [toc, setToc] = useState<TocItem[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
-  // Keyed by user so a cached document is never shown to someone else who
-  // signs in on the same browser tab.
+  // Keyed by scope so a cached document is never shown to another audience.
   const textQuery = useQuery({
-    queryKey: ['brd-doc', user?.user_id, slug],
-    queryFn: () => getDoc(slug),
+    queryKey: ['brd-doc', queryScope, slug],
+    queryFn: () => fetchers.get(slug),
     staleTime: 60_000,
     // 403/404 are answers, not glitches: do not retry them.
     retry: (count, error) =>
-      !(error instanceof ApiError && (error.status === 403 || error.status === 404)) && count < 1,
+      !(error instanceof ApiError && ['forbidden', 'not_found', 'unauthorized'].includes(error.code)) &&
+      count < 1,
   })
   const listQuery = useQuery({
-    queryKey: ['brd-docs', user?.user_id],
-    queryFn: listDocs,
+    queryKey: ['brd-docs', queryScope],
+    queryFn: fetchers.list,
     staleTime: 60_000,
   })
   const doc = textQuery.data
@@ -192,8 +192,9 @@ function DocPage({ slug }: { slug: string }) {
 
   const disabled = markdown === undefined
 
-  if (isForbidden(textQuery.error)) return <NoAccess />
-  if (textQuery.error instanceof ApiError && textQuery.error.status === 404) return <DocNotFound />
+  if (textQuery.error instanceof ApiError && textQuery.error.code === 'not_found') {
+    return <DocNotFound basePath={basePath} />
+  }
 
   return (
     <div className="brd-doc flex flex-col gap-4">
@@ -223,8 +224,7 @@ function DocPage({ slug }: { slug: string }) {
       />
       <p className="qth-type-helper brd-noprint" data-testid="brd-reader">
         <BookOpen className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
-        Reading as {user?.name ?? 'you'}
-        {user?.role ? ` · ${roleLabel(user.role)}` : ''}
+        {readerLabel ?? 'Reading'}
       </p>
 
       <div className="brd-layout grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
@@ -243,7 +243,7 @@ function DocPage({ slug }: { slug: string }) {
                     {items.map((item) => (
                       <li key={item.slug}>
                         <Link
-                          to={`/brd/${item.slug}`}
+                          to={`${basePath}/${item.slug}`}
                           aria-current={item.slug === slug ? 'page' : undefined}
                           className={cn('brd-nav-link', item.slug === slug && 'brd-nav-link-active')}
                         >
@@ -313,7 +313,7 @@ function DocPage({ slug }: { slug: string }) {
               className="brd-prose brd-print-area"
               data-doc={slug}
             >
-              <MarkdownView source={markdown} docs={docs} />
+              <MarkdownView source={markdown} docs={docs} basePath={basePath} />
             </article>
           )}
         </div>

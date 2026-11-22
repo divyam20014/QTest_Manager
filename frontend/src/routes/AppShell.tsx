@@ -110,16 +110,16 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ]
 
-// ADR-108: BRD gap Phase 4 (FR-BRD-01), the in-app documentation viewer, is a
-// pinned footer link above Profile rather than a one-item "Help" group. Open to
-// every signed-in user; which documents it lists depends on the role
-// (routes/docs/docsManifest.ts), so it needs no entry in routeAccess.ts.
-export const DOCS_LINK: NavItem = { to: '/brd', label: 'Documentation', icon: BookOpen }
+// ADR-114 (replaces ADR-108's Documentation link): the User Guide is a pinned
+// footer link above Profile. Open to every signed-in user; the API returns only
+// the guide sections the user's role allows, so it needs no entry in
+// routeAccess.ts. The full documentation lives in the platform console only.
+export const USER_GUIDE_LINK: NavItem = { to: '/user-guide', label: 'User Guide', icon: BookOpen }
 
 // Destinations kept out of the sidebar but still offered by the command palette.
 export const PALETTE_EXTRA_ENTRIES: { label: string; sublabel: string; path: string }[] = [
   { label: 'Report builder', sublabel: 'Analytics', path: '/reporting/builder' },
-  { label: DOCS_LINK.label, sublabel: 'Help', path: DOCS_LINK.to },
+  { label: USER_GUIDE_LINK.label, sublabel: 'Help', path: USER_GUIDE_LINK.to },
   // The two Access control tabs stay individually searchable.
   { label: 'Users & Roles', sublabel: 'Administration', path: '/admin/users' },
   { label: 'Roles & Permissions', sublabel: 'Administration', path: '/admin/roles' },
@@ -428,8 +428,8 @@ export function AppShell() {
         </nav>
 
         <div className="flex flex-col gap-1 border-t border-[var(--sidebar-border)] px-3 py-3">
-          {canAccessPath(user, DOCS_LINK.to) && (
-            <SidebarLink item={DOCS_LINK} collapsed={collapsed} className={navLinkClass} />
+          {canAccessPath(user, USER_GUIDE_LINK.to) && (
+            <SidebarLink item={USER_GUIDE_LINK} collapsed={collapsed} className={navLinkClass} />
           )}
           <SidebarLink
             item={{ to: '/account', label: 'Profile', icon: UserCircle }}

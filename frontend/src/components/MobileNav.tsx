@@ -347,10 +347,10 @@ export function MoreSheet({
               ))}
 
               <div className="flex flex-col gap-0.5 border-t border-[var(--border)] pt-3">
-                {canAccessPath(user, '/brd') && (
-                  <NavLink to="/brd" className={rowClass}>
+                {canAccessPath(user, '/user-guide') && (
+                  <NavLink to="/user-guide" className={rowClass}>
                     <BookOpen className="size-4 shrink-0" />
-                    Documentation
+                    User Guide
                   </NavLink>
                 )}
                 <NavLink to="/account" className={rowClass}>

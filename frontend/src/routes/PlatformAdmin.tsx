@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import {
   Ban,
+  BookOpen,
   CheckCircle2,
   Clock,
   Copy,
@@ -60,7 +62,7 @@ import { FilterBar } from '@/components/table/FilterBar'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorState } from '@/components/ui/empty-state'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
@@ -224,6 +226,12 @@ function AdminConsole({ email, onSignOut }: { email: string; onSignOut: () => vo
             >
               <KeyRound aria-hidden="true" className="size-4" /> Change password
             </Button>
+            <Link
+              to="/platform-admin/docs"
+              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'max-md:min-h-11' })}
+            >
+              <BookOpen aria-hidden="true" className="size-4" /> Documentation
+            </Link>
             <Button variant="outline" size="sm" className="max-md:min-h-11" onClick={onSignOut}>
               Sign out
             </Button>

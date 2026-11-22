@@ -22,7 +22,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   'audit-logs': 'Audit Logs',
   settings: 'Settings',
   account: 'My Account',
-  brd: 'Documentation',
+  'user-guide': 'User Guide',
   dashboards: 'Manage',
   details: 'Details',
 }
@@ -55,7 +55,6 @@ export interface Crumb {
 
 export interface CrumbNames {
   project?: string
-  docTitle?: string
   dashboardName?: string
 }
 
@@ -84,7 +83,6 @@ export function buildCrumbs(pathname: string, names: CrumbNames = {}): Crumb[] {
       const path = '/' + segments.slice(0, index + 1).join('/')
       const label =
         (projectId && index === 1 ? names.project : undefined) ??
-        (segments[0] === 'brd' && index === 1 ? names.docTitle : undefined) ??
         (onDash && index === 1 ? names.dashboardName : undefined) ??
         (isIdSegment(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
       const hasPage = !(index === 0 && NO_LIST_PAGE.has(segments[0]))

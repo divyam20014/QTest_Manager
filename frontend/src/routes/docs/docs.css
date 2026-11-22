@@ -1,4 +1,4 @@
-/* In-app documentation viewer (/brd), BRD gap Phase 4 / ADR-072.
+/* Documentation viewer (platform console) and User Guide prose, ADR-072 / ADR-114.
    Prose styling for rendered Markdown, the document/outline panels, Mermaid
    figures and the print stylesheet. Uses only design-system tokens, so light
    and dark both follow the app. */

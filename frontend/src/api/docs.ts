@@ -1,8 +1,7 @@
-import { apiFetch } from '@/api/client'
-
-// ADR-089: the in-app documentation is served by the API behind a session; the
-// web bundle carries no document text. `audience` is "everyone" (any signed-in
-// user) or "admin"; the list only ever contains what the caller may open.
+// ADR-089 / ADR-114: documentation text is served by the API, never bundled.
+// Only the platform console reads it (`/platform/docs`, platform session); the
+// tenant app has the role-filtered User Guide instead (api/userGuide.ts).
+// `audience` is "everyone" or "admin" (a classification, not an access rule).
 export type DocAudience = 'everyone' | 'admin'
 
 export interface DocSummary {
@@ -30,10 +29,8 @@ export interface DocContent extends DocSummary {
   content: string
 }
 
-export function listDocs(): Promise<DocList> {
-  return apiFetch<DocList>('/docs')
-}
-
-export function getDoc(slug: string): Promise<DocContent> {
-  return apiFetch<DocContent>(`/docs/${encodeURIComponent(slug)}`)
+/** How a viewer loads documents; the platform console supplies its own. */
+export interface DocFetchers {
+  list: () => Promise<DocList>
+  get: (slug: string) => Promise<DocContent>
 }

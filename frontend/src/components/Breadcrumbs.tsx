@@ -3,7 +3,6 @@ import { ChevronRight } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { listDashboards } from '@/api/dashboards'
-import { listDocs } from '@/api/docs'
 import { getProject } from '@/api/projects'
 import { buildCrumbs, isIdSegment } from '@/lib/breadcrumbs'
 import { useAuth } from '@/lib/auth'
@@ -15,16 +14,6 @@ export function Breadcrumbs() {
   const location = useLocation()
   const segments = location.pathname.split('/').filter(Boolean)
   const { user } = useAuth()
-  // /brd/:docId -- the document's own title comes from the (cached) document
-  // list the viewer already fetches, so no second request in practice.
-  const onDoc = segments[0] === 'brd' && segments.length > 1
-  const docList = useQuery({
-    queryKey: ['brd-docs', user?.user_id],
-    queryFn: listDocs,
-    enabled: onDoc && !!user,
-    staleTime: 60_000,
-  })
-
   // /dashboards/:id -- "Dashboard > <name>" (same cached list the view switcher reads).
   const onDash = segments[0] === 'dashboards' && segments.length > 1
   const dashList = useQuery({
@@ -45,7 +34,6 @@ export function Breadcrumbs() {
 
   const crumbs = buildCrumbs(location.pathname, {
     project: projectQuery.data?.name,
-    docTitle: docList.data?.documents.find((d) => d.slug === segments[1])?.title,
     dashboardName: dashList.data?.find((d) => d.id === segments[1])?.name,
   })
   // Top-level pages: the page title already names the place.

@@ -1,5 +1,6 @@
 import type { ChainVerificationResult, CreateCheckpointResult } from '@/api/audit'
 import { API_BASE_URL, type ApiEnvelope, ApiError } from '@/api/client'
+import type { DocContent, DocList } from '@/api/docs'
 
 // Platform Administration is a deliberately separate auth plane from tenant
 // sessions (ADR-008). ADR-074: password + TOTP MFA exchanged for an HttpOnly,
@@ -493,4 +494,15 @@ export function listPlatformAuditEvents(
 
 export function verifyPlatformAuditChain(): Promise<PlatformAuditChainResult> {
   return platformFetch<PlatformAuditChainResult>('/platform/audit-events/verify')
+}
+
+// --- documentation (ADR-114) -------------------------------------------------
+// Every document, read-only, behind the platform session.
+
+export function listPlatformDocs(): Promise<DocList> {
+  return platformFetch('/platform/docs')
+}
+
+export function getPlatformDoc(slug: string): Promise<DocContent> {
+  return platformFetch(`/platform/docs/${encodeURIComponent(slug)}`)
 }

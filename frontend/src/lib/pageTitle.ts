@@ -39,7 +39,7 @@ function isId(segment: string) {
 
 export function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/accept-invite')) return 'Accept Invitation'
-  if (pathname === '/brd' || pathname.startsWith('/brd/')) return 'Documentation'
+  if (pathname === '/user-guide') return 'User Guide'
   if (EXACT_TITLES[pathname]) return EXACT_TITLES[pathname]
   if (pathname.startsWith('/dashboards/')) return 'Dashboard'
   if (/^\/projects\/[^/]+$/.test(pathname)) return 'Project Dashboard'

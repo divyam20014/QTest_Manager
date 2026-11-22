@@ -23,7 +23,16 @@ function textOf(node: ReactNode): string {
  * (react-markdown shows it as text and no rehype-raw is used), URLs go through
  * react-markdown's own sanitiser, and external links open in a new tab.
  */
-export function MarkdownView({ source, docs }: { source: string; docs: readonly DocSummary[] }) {
+export function MarkdownView({
+  source,
+  docs,
+  basePath = '',
+}: {
+  source: string
+  docs: readonly DocSummary[]
+  /** Where document links point, e.g. "/platform-admin/docs". */
+  basePath?: string
+}) {
   const components: Components = {
     pre({ children }) {
       const child = Children.toArray(children)[0]
@@ -63,7 +72,7 @@ export function MarkdownView({ source, docs }: { source: string; docs: readonly 
       const target = findDocBySourceLink(href, docs)
       if (target) {
         const hash = href.includes('#') ? `#${href.split('#')[1]}` : ''
-        return <Link to={`/brd/${target.slug}${hash}`}>{children}</Link>
+        return <Link to={`${basePath}/${target.slug}${hash}`}>{children}</Link>
       }
       return (
         <span className="brd-unlinked" title="Not available in the in-app viewer">

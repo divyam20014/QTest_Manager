@@ -45,7 +45,8 @@ const ReportBuilder = lazyRoute(() => import('@/routes/reporting/ReportBuilder')
 const TestRepository = lazyRoute(() => import('@/routes/testrepository/TestRepository'), 'TestRepository')
 const TestCaseDetail = lazyRoute(() => import('@/routes/testcases/TestCaseDetail'), 'TestCaseDetail')
 const TestCasesList = lazyRoute(() => import('@/routes/testcases/TestCasesList'), 'TestCasesList')
-const DocsViewer = lazyRoute(() => import('@/routes/docs/DocsViewer'), 'DocsViewer')
+const UserGuide = lazyRoute(() => import('@/routes/userGuide/UserGuide'), 'UserGuide')
+const PlatformDocs = lazyRoute(() => import('@/routes/platformAdmin/PlatformDocs'), 'PlatformDocs')
 
 // Design-system catalogue: dev server only. import.meta.env.DEV is replaced by
 // a literal false in production builds, so this chunk is never emitted there.
@@ -75,6 +76,8 @@ export function App() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/accept-invite/:token" element={<AcceptInvite />} />
       <Route path="/platform-admin" element={<PlatformAdmin />} />
+      <Route path="/platform-admin/docs" element={<PlatformDocs />} />
+      <Route path="/platform-admin/docs/:docId" element={<PlatformDocs />} />
       <Route element={<HomeGate />}>
         <Route path="/reporting/print" element={<CompliancePrintView />} />
         <Route element={<AppShell />}>
@@ -112,8 +115,10 @@ export function App() {
             <Route path="/settings" element={<Settings />} />
           </Route>
           <Route path="/account" element={<MyAccount />} />
-          <Route path="/brd" element={<DocsViewer />} />
-          <Route path="/brd/:docId" element={<DocsViewer />} />
+          <Route path="/user-guide" element={<UserGuide />} />
+          {/* ADR-114: the old Documentation links land on the User Guide. */}
+          <Route path="/brd" element={<Navigate to="/user-guide" replace />} />
+          <Route path="/brd/*" element={<Navigate to="/user-guide" replace />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>
