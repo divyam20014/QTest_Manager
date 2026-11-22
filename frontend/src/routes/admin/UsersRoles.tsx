@@ -182,7 +182,7 @@ export function UsersRoles() {
           value={u.role_id}
           disabled={u.id === currentUser?.user_id || !!u.erased_at}
           onChange={(e) => roleMutation.mutate({ id: u.id, roleId: e.target.value })}
-          className="w-40 max-md:w-full"
+          className="w-36 max-md:w-full"
         >
           {activeRoles.map((r) => (
             <option key={r.id} value={r.id}>
@@ -340,7 +340,7 @@ export function UsersRoles() {
           ) : undefined
         }
         rowActions={(u) => (
-          <div className="flex flex-wrap justify-end gap-2 md:flex-nowrap">
+          <div className="flex flex-wrap justify-end gap-2">
             {!u.erased_at && (
               <Button variant="outline" size="sm" onClick={() => setResetTarget(u)}>
                 Reset Password

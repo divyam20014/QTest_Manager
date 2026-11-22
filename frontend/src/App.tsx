@@ -5,6 +5,7 @@ import { RouteBoundary } from '@/components/RouteBoundary'
 import { lazyRoute } from '@/lib/lazyRoute'
 
 import { usePageTitleFromRoute } from '@/lib/usePageTitle'
+import { AdminLayout } from '@/routes/admin/AdminLayout'
 import { NotFound } from '@/routes/NotFound'
 import { HomeGate } from '@/routes/HomeGate'
 import { MarketingRoute } from '@/routes/MarketingRoute'
@@ -102,12 +103,14 @@ export function App() {
           <Route path="/reporting" element={<Reporting />} />
           <Route path="/reporting/builder" element={<ReportBuilder />} />
           <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
-          <Route path="/admin/users" element={<UsersRoles />} />
-          <Route path="/admin/roles" element={<RolesPermissions />} />
-          <Route path="/admin/audit-logs" element={<AuditLogs />} />
-          <Route path="/admin/environments" element={<Environments />} />
-          <Route path="/admin/access-rules" element={<AccessRules />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/users" element={<UsersRoles />} />
+            <Route path="/admin/roles" element={<RolesPermissions />} />
+            <Route path="/admin/audit-logs" element={<AuditLogs />} />
+            <Route path="/admin/environments" element={<Environments />} />
+            <Route path="/admin/access-rules" element={<AccessRules />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
           <Route path="/account" element={<MyAccount />} />
           <Route path="/brd" element={<DocsViewer />} />
           <Route path="/brd/:docId" element={<DocsViewer />} />

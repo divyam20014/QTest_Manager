@@ -295,7 +295,7 @@ export function AuditLogs() {
           ))}
         </ul>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+        <div className="relative overflow-x-auto rounded-lg border border-[var(--border)]">
           <table aria-label="Audit log events" className="w-full text-sm">
             <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
               <tr>
