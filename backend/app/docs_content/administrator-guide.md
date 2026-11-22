@@ -356,9 +356,9 @@ Export", wait for the status badge to show "succeeded", then "Download").
 Attachment files are listed by reference, not included as bytes, to keep
 the archive a reasonable size.
 
-### 2.5 In-app documentation (where it is served from)
+### 2.5 Documentation and the User Guide (where they are served from)
 
-The **Documentation** entry in the sidebar (`/brd`) reads the project documents from the API (`GET /api/v1/docs`), not from the web app's files, so a signed-out visitor gets a 401 and nothing readable. General documents (user guide, product documents, requirement traceability, architecture diagrams) are open to every signed-in user. The sensitive set (this guide, the production deployment guide, security configuration, backup and restore, known gaps, architecture, architecture decisions, database schema, API specification, test strategy, design system) is Admin only (the `tenant.settings.manage` permission): other roles do not see these in the list, and a direct link shows "No access".
+Tenant users no longer have a Documentation link (ADR-114). They have **User Guide** in the sidebar (`/user-guide`, `GET /api/v1/user-guide`), which shows only the guide sections their permissions allow: Getting started and For Testers for everyone, For Managers for roles that can view all projects, and For Admins for roles holding `tenant.settings.manage`. The old `/brd` links redirect to it. The full documentation set (this guide, deployment, security configuration, architecture, schema, API specification and the rest) is read only by platform administrators, through the **Documentation** button in the platform console (`/platform-admin/docs`, `GET /api/v1/platform/docs`).
 
 The files live once in the repository's `docs/` folder. After editing one, run `npm run docs:sync` (or `python -m scripts.sync_docs` in `backend/`) to refresh the copies under `backend/app/docs_content/`, then rebuild the `api` image. `npm run docs:check` (and a backend test) reports drift.
 

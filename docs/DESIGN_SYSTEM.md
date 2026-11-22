@@ -210,7 +210,7 @@ Page headers (Phase C), the Dashboard (Phase D), status colours and chart colour
 
 ## BRD Phase 4 additions
 
-- **Documentation viewer (`/brd`, ADR-072):** the page lives in `frontend/src/routes/docs/` and its own `docs.css` (prose, the document and outline panels, diagram figures, print rules), all built from the tokens above, so it follows light and dark. It is a reading surface, not a shared component set: reuse `PageHeader`, `NoAccess`, `ErrorState`/`EmptyState` and `Skeleton` around it, and do not copy its `.brd-*` classes into other screens.
+- **Documentation viewer (platform console `/platform-admin/docs`, ADR-072/ADR-114) and User Guide (`/user-guide`):** the viewer lives in `frontend/src/routes/docs/` and its own `docs.css` (prose, the document and outline panels, diagram figures, print rules), all built from the tokens above, so it follows light and dark. It is a reading surface, not a shared component set: reuse `PageHeader`, `NoAccess`, `ErrorState`/`EmptyState` and `Skeleton` around it, and do not copy its `.brd-*` classes into other screens.
 - **Print / PDF:** an element marked `qth-shell-chrome` is hidden when printing (the sidebar, header, mobile tab bar and More sheet carry it); a screen-specific "do not print" block uses its own class (`brd-noprint`). Put new app chrome behind `qth-shell-chrome`.
 - **Tables and code in prose:** wide tables and code blocks scroll inside their own focusable region (`tabindex="0"`, labelled) instead of widening the page; keep that pattern for any new long-form content.
 - **Organisation domain default:** the New Project form pre-selects the tenant's primary insurance domain (`projectDomainFor`, from the branding query) -- a default only, never a restriction.

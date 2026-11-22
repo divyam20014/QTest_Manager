@@ -251,11 +251,14 @@ Off by default. `access_rule.manage` is Admin only. Blocked mutations return `40
 | POST | /access-rules/preview | dry run: would `action_code` for `role_code` (optionally `project_id`, `environment`, `at`) be blocked, and by which rule id and reason | admin (`access_rule.manage`) |
 | GET | /access-rules/active | only the rules restricting the caller's own role right now (`reason`, `ends_at`, `blocked_actions`), for UI banners; an Admin always gets an empty list | any signed-in user |
 
-## In-app Documents (ADR-089)
+## Documentation and User Guide (ADR-089, ADR-114)
+Tenant `GET /docs` and `GET /docs/{slug}` were removed (404 for every caller); documentation is read through the platform console only.
+
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | /docs | the documents the caller may open: `{groups: [{id, title}], documents: [{slug, title, description, group, audience, min_level, source}]}`; sensitive documents are not listed for non-Admins. `Cache-Control: private, no-store`; rate-limited | any signed-in user |
-| GET | /docs/{slug} | one document: the summary fields plus `content` (Markdown). 404 for an unknown slug, 403 for a sensitive document without Admin, 422 for a slug that is not lowercase letters, digits and hyphens (path-traversal attempts). `Cache-Control: private, no-store`; rate-limited | any signed-in user; sensitive documents need `tenant.settings.manage` (Admin) |
+| GET | /user-guide | the User Guide as ordered sections `{sections: [{id, title, audience, markdown}]}`, filtered by the caller's permissions: `getting-started` and `tester` for everyone, `manager` needs `project.view.all`, `admin` needs `tenant.settings.manage`. Sections the caller may not read are not listed. `Cache-Control: private, no-store`; rate-limited | any signed-in user |
+| GET | /platform/docs | every registered document (no audience filter): `{groups: [{id, title}], documents: [{slug, title, description, group, audience, min_level, source}]}`. `Cache-Control: private, no-store`; rate-limited | platform session (`mfa_verified`) |
+| GET | /platform/docs/{slug} | one document: the summary fields plus `content` (Markdown). 404 for an unknown slug, 422 for a slug that is not lowercase letters, digits and hyphens (path-traversal attempts). `Cache-Control: private, no-store`; rate-limited | platform session (`mfa_verified`) |
 
 ## Tester visibility switches (ADR-093)
 
