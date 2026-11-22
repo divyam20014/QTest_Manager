@@ -50,7 +50,8 @@ def list_projects(
         page_size=page_size,
     )
     metrics = project_service.metrics_for_projects(db, [p.id for p in projects])
-    items = [project_service.to_out(db, p, metrics[p.id]) for p in projects]
+    assigned = project_service.assigned_user_ids_many(db, [p.id for p in projects])
+    items = [project_service.to_out(db, p, metrics[p.id], assigned[p.id]) for p in projects]
     return envelope(ProjectListResponse(items=items, total=total).model_dump(mode="json"))
 
 

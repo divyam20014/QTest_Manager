@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import literal, select, tuple_
 from sqlalchemy.orm import Session
 
+from app.core import pagination
 from app.core.audit import GENESIS_HASH, _canonical
 from app.models.audit import AuditLog
 from app.models.identity import User
@@ -77,6 +78,39 @@ def list_audit_logs(
     limit: int = 50,
     offset: int = 0,
 ) -> list[AuditLogOut]:
+    return list_audit_logs_page(
+        db,
+        tenant_id,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        user_id=user_id,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )[0]
+
+
+def list_audit_logs_page(
+    db: Session,
+    tenant_id: UUID,
+    *,
+    action: str | None = None,
+    entity_type: str | None = None,
+    entity_id: UUID | None = None,
+    user_id: UUID | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    cursor: str | None = None,
+) -> tuple[list[AuditLogOut], str | None]:
+    """Newest first. With `cursor` (ADR-113; empty string = first page) the page is
+    keyset-paged over (created_at, id) -- `offset` is ignored -- and the second
+    return value is the next page's cursor (None on the last page / offset mode).
+    Within a tenant chain every event has a distinct, increasing created_at, so
+    adding `id` as the tie-break does not change the order existing clients see."""
     query = _build_filtered_query(
         tenant_id,
         action=action,
@@ -86,11 +120,24 @@ def list_audit_logs(
         date_from=date_from,
         date_to=date_to,
     )
-    query = (
-        query.order_by(AuditLog.created_at.desc()).limit(min(limit, MAX_PAGE_SIZE)).offset(offset)
+    limit = min(limit, MAX_PAGE_SIZE)
+    query = query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+    if cursor is None:
+        rows = db.execute(query.limit(limit).offset(offset)).all()
+        return [_to_out(log, user_name) for log, user_name in rows], None
+    position = pagination.decode_cursor(cursor)
+    if position is not None:
+        query = query.where(
+            pagination.keyset_after(
+                AuditLog.created_at, AuditLog.id, position, created_desc=True, id_desc=True
+            )
+        )
+    rows = db.execute(query.limit(limit + 1)).all()
+    page = [_to_out(log, user_name) for log, user_name in rows[:limit]]
+    next_cursor = (
+        pagination.encode_cursor(page[-1].created_at, page[-1].id) if len(rows) > limit else None
     )
-    rows = db.execute(query).all()
-    return [_to_out(log, user_name) for log, user_name in rows]
+    return page, next_cursor
 
 
 # No LIMIT -- exports are a deliberate full-dataset dump for compliance
@@ -118,8 +165,12 @@ def export_audit_logs_csv(
         user_id=user_id,
         date_from=date_from,
         date_to=date_to,
-    ).order_by(AuditLog.created_at.asc())
-    rows = db.execute(query.limit(EXPORT_ROW_CAP)).all()
+    ).order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
+    # Chunked server-side fetch: rows are written straight into the CSV buffer
+    # instead of materialising up to EXPORT_ROW_CAP ORM rows first (ADR-113).
+    rows = db.execute(
+        query.limit(EXPORT_ROW_CAP).execution_options(yield_per=VERIFY_BATCH_SIZE)
+    )
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)

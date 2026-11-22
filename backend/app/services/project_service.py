@@ -44,6 +44,20 @@ def _assigned_user_ids(db: Session, project_id: UUID) -> list[UUID]:
     )
 
 
+def assigned_user_ids_many(db: Session, project_ids: list[UUID]) -> dict[UUID, list[UUID]]:
+    """Batch form of `_assigned_user_ids` for list pages (ADR-113)."""
+    out: dict[UUID, list[UUID]] = {pid: [] for pid in project_ids}
+    if not project_ids:
+        return out
+    for project_id, user_id in db.execute(
+        select(ProjectMember.project_id, ProjectMember.user_id).where(
+            ProjectMember.project_id.in_(project_ids)
+        )
+    ):
+        out[project_id].append(user_id)
+    return out
+
+
 class _ProjectMetrics:
     __slots__ = (
         "test_case_count",
@@ -97,9 +111,16 @@ def metrics_for_projects(db: Session, project_ids: list[UUID]) -> dict[UUID, _Pr
     return metrics
 
 
-def to_out(db: Session, project: Project, metrics: _ProjectMetrics | None = None) -> ProjectOut:
+def to_out(
+    db: Session,
+    project: Project,
+    metrics: _ProjectMetrics | None = None,
+    assigned_user_ids: list[UUID] | None = None,
+) -> ProjectOut:
     if metrics is None:
         metrics = metrics_for_projects(db, [project.id])[project.id]
+    if assigned_user_ids is None:
+        assigned_user_ids = _assigned_user_ids(db, project.id)
     return ProjectOut(
         id=project.id,
         name=project.name,
@@ -114,7 +135,7 @@ def to_out(db: Session, project: Project, metrics: _ProjectMetrics | None = None
         currency_code=project.currency_code,
         region=project.region,
         owner_id=project.owner_id,
-        assigned_user_ids=_assigned_user_ids(db, project.id),
+        assigned_user_ids=assigned_user_ids,
         created_at=project.created_at,
         version=project.version,
         test_case_count=metrics.test_case_count,

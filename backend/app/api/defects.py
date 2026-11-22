@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -32,6 +32,7 @@ router = APIRouter(prefix="/defects", tags=["defects"])
 
 @router.get("")
 def list_defects(
+    response: Response,
     project_id: UUID | None = Query(default=None),
     status: str | None = Query(default=None),
     severity: str | None = Query(default=None),
@@ -43,14 +44,19 @@ def list_defects(
     search: str | None = Query(default=None, max_length=200),
     page: int = Query(default=1, ge=1),
     page_size: int | None = Query(default=None, ge=1, le=defect_service.DEFECT_MAX_PAGE_SIZE),
+    cursor: str | None = Query(default=None, max_length=300),
+    include_total: bool = Query(default=True),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Without `page_size`: every matching defect as a plain list (what the run, project
-    and test case screens use). With `page_size`: one page, newest first, as
-    `{items, total}` (ADR-078); `test_run_id` and `test_case_id` apply to the plain list only."""
+    """Without `page_size`: the matching defects as a plain list (what the run, project
+    and test case screens use), capped at `DEFECT_PLAIN_LIST_CAP` rows (header
+    `X-Result-Truncated: true` when the cap was hit). With `page_size`: one page, newest
+    first, as `{items, total}` (ADR-078); `test_run_id` and `test_case_id` apply to the
+    plain list only. Optional `cursor` (empty = first page) switches the page to keyset
+    paging: the body then also carries `next_cursor` (ADR-113)."""
     if page_size is not None:
-        defects_page, total = defect_service.list_defects_page(
+        defects_page, total, next_cursor = defect_service.list_defects_page(
             db,
             ctx.tenant_id,
             ctx.role_code,
@@ -64,12 +70,15 @@ def list_defects(
             page,
             page_size,
             search,
+            cursor,
+            include_total,
         )
-        return envelope(
-            DefectListResponse(
-                items=[defect_service.to_out(db, d) for d in defects_page], total=total
-            ).model_dump(mode="json")
-        )
+        body = DefectListResponse(
+            items=defect_service.to_out_many(db, defects_page), total=total
+        ).model_dump(mode="json")
+        if cursor is not None:
+            body["next_cursor"] = next_cursor
+        return envelope(body)
     defects = defect_service.list_defects(
         db,
         ctx.tenant_id,
@@ -84,7 +93,9 @@ def list_defects(
         created_to,
         test_case_id,
     )
-    return envelope([defect_service.to_out(db, d).model_dump(mode="json") for d in defects])
+    if len(defects) >= defect_service.DEFECT_PLAIN_LIST_CAP:
+        response.headers["X-Result-Truncated"] = "true"
+    return envelope([d.model_dump(mode="json") for d in defect_service.to_out_many(db, defects)])
 
 
 @router.get("/status-counts")

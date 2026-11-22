@@ -33,7 +33,7 @@ def list_requirements(
     items, total = requirement_service.list_requirements(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, page, page_size
     )
-    out = [requirement_service.to_out(db, r) for r in items]
+    out = requirement_service.to_out_many(db, items)
     return envelope(RequirementListResponse(items=out, total=total).model_dump(mode="json"))
 
 

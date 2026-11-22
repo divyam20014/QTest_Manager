@@ -28,6 +28,19 @@ from app.services import test_case_service
 router = APIRouter(tags=["test-cases"])
 
 
+def _list_envelope(
+    cases: list, total: int, next_cursor: str | None, cursor: str | None, db: Session
+) -> dict:
+    """`next_cursor` is added only for cursor (keyset) requests (ADR-113), so the
+    offset-paged response keeps its exact `{items, total}` shape."""
+    body = TestCaseListResponse(
+        items=test_case_service.to_out_many(db, cases), total=total
+    ).model_dump(mode="json")
+    if cursor is not None:
+        body["next_cursor"] = next_cursor
+    return envelope(body)
+
+
 @router.get("/test-cases")
 def list_test_cases_all_projects(
     search: str | None = Query(default=None),
@@ -39,12 +52,14 @@ def list_test_cases_all_projects(
     sort: str = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=test_case_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=300),
+    include_total: bool = Query(default=True),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     """ADR-077: the same listing as `/projects/{id}/test-cases`, across every project
     the caller may see. Each item carries its `project_id`."""
-    cases, total = test_case_service.list_test_cases_all_projects(
+    cases, total, next_cursor = test_case_service.list_test_cases_all_projects(
         db,
         ctx.tenant_id,
         ctx.role_code,
@@ -58,9 +73,10 @@ def list_test_cases_all_projects(
         sort=sort,
         page=page,
         page_size=page_size,
+        cursor=cursor,
+        include_total=include_total,
     )
-    items = [test_case_service.to_out(db, c) for c in cases]
-    return envelope(TestCaseListResponse(items=items, total=total).model_dump(mode="json"))
+    return _list_envelope(cases, total, next_cursor, cursor, db)
 
 
 @router.get("/projects/{project_id}/test-cases")
@@ -75,10 +91,12 @@ def list_test_cases(
     sort: str = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=test_case_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=300),
+    include_total: bool = Query(default=True),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    cases, total = test_case_service.list_test_cases(
+    cases, total, next_cursor = test_case_service.list_test_cases(
         db,
         ctx.tenant_id,
         ctx.role_code,
@@ -93,9 +111,10 @@ def list_test_cases(
         sort=sort,
         page=page,
         page_size=page_size,
+        cursor=cursor,
+        include_total=include_total,
     )
-    items = [test_case_service.to_out(db, c) for c in cases]
-    return envelope(TestCaseListResponse(items=items, total=total).model_dump(mode="json"))
+    return _list_envelope(cases, total, next_cursor, cursor, db)
 
 
 @router.post("/projects/{project_id}/test-cases")

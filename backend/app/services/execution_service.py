@@ -689,7 +689,10 @@ def list_test_runs_all_projects(
     if active_only:
         query = query.where(TestRun.finished_at.is_(None))
     if search:
-        query = query.where(TestRun.name.icontains(search.strip(), autoescape=True))
+        # ILIKE with an escaped needle (not `icontains`, which renders lower(name) LIKE)
+        # so the pg_trgm GIN index on test_runs.name can serve it (ADR-113).
+        needle = search.strip().replace("/", "//").replace("%", "/%").replace("_", "/_")
+        query = query.where(TestRun.name.ilike(f"%{needle}%", escape="/"))
     # Status tabs on the Test Runs list: in_progress (not finished, not paused), paused, finished.
     if status == "finished":
         query = query.where(TestRun.finished_at.is_not(None))
@@ -720,17 +723,26 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
     run_cases = list(
         db.execute(select(TestRunCase).where(TestRunCase.test_run_id == run.id)).scalars()
     )
+    # ADR-113: titles and per-case verdict counts for the whole run in two queries
+    # (a run can hold thousands of cases; this used to be two queries per case).
+    titles = {
+        case_id: title
+        for case_id, title in db.execute(
+            select(TestCase.id, TestCase.title).where(
+                TestCase.id.in_([rc.test_case_id for rc in run_cases])
+            )
+        )
+    }
+    verdicts_by_case: dict[UUID, dict[str | None, int]] = {}
+    for run_case_id, verdict, count in db.execute(
+        select(ExecutionStep.test_run_case_id, ExecutionStep.verdict, func.count())
+        .where(ExecutionStep.test_run_case_id.in_([rc.id for rc in run_cases]))
+        .group_by(ExecutionStep.test_run_case_id, ExecutionStep.verdict)
+    ):
+        verdicts_by_case.setdefault(run_case_id, {})[verdict] = count
     case_outs: list[TestRunCaseOut] = []
     for run_case in run_cases:
-        case = db.execute(select(TestCase).where(TestCase.id == run_case.test_case_id)).scalar_one()
-        verdict_counts: dict[str | None, int] = {
-            verdict: count
-            for verdict, count in db.execute(
-                select(ExecutionStep.verdict, func.count())
-                .where(ExecutionStep.test_run_case_id == run_case.id)
-                .group_by(ExecutionStep.verdict)
-            ).all()
-        }
+        verdict_counts = verdicts_by_case.get(run_case.id, {})
         step_count = sum(verdict_counts.values())
         verdict_counts.pop(None, None)
         case_outs.append(
@@ -738,7 +750,7 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
                 id=run_case.id,
                 test_case_id=run_case.test_case_id,
                 test_case_version_id=run_case.test_case_version_id,
-                title=case.title,
+                title=titles[run_case.test_case_id],
                 status=cast(RunCaseStatus, run_case.status),
                 blocked_reason=run_case.blocked_reason,
                 assigned_to=run_case.assigned_to,

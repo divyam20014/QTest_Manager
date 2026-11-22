@@ -4,10 +4,11 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import case, exists, func, null, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ForbiddenError, NotFoundError
+from app.core.ttl_cache import cached_report
 from app.core.xlsx_report import SheetSpec, build_workbook
 from app.models.audit import AuditLog
 from app.models.defect import Defect, DefectLink
@@ -65,12 +66,15 @@ from app.schemas.reporting import (
     WorkloadSummary,
 )
 from app.services import requirement_service, tester_visibility
-from app.services.defect_service import SLA_DAYS_BY_SEVERITY, compute_aging
+from app.services.defect_service import SLA_DAYS_BY_SEVERITY
 
 OPEN_DEFECT_STATUSES = ("New", "Open")
 COMPLETED_RUN_CASE_STATUSES = ("passed", "failed", "blocked", "ignored")
 
 DOMAINS = ["Motor", "Health", "Travel", "Life", "Property"]
+
+# `defect_service.compute_aging` falls back to this budget for an unknown severity.
+DEFAULT_SLA_DAYS = 10
 
 
 def _accessible_project_ids(
@@ -93,10 +97,38 @@ def _accessible_project_ids(
     return owned | member_of
 
 
+def _step_query(
+    tenant_id: UUID,
+    accessible: set[UUID] | None,
+    project_id: UUID | None,
+    *columns: Any,
+) -> Any:
+    """`SELECT <columns> FROM execution_steps` restricted to recorded verdicts of
+    this tenant's (non-deleted) runs in the caller's project scope (ADR-113).
+
+    Joins steps -> run cases -> runs only; the `projects` join the report queries
+    used to carry is redundant, because a run's project_id is what the scope
+    filters on and a run cannot belong to another tenant's project (RLS + FKs).
+    Callers add their own period filter and GROUP BY."""
+    query = (
+        select(*columns)
+        .select_from(ExecutionStep)
+        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .where(ExecutionStep.tenant_id == tenant_id, ExecutionStep.verdict.is_not(None))
+    )
+    if accessible is not None:
+        query = query.where(TestRun.project_id.in_(accessible))
+    if project_id is not None:
+        query = query.where(TestRun.project_id == project_id)
+    return query
+
+
 # ADR-110: KPI trend baseline = state this many days ago.
 PREVIOUS_PERIOD_DAYS = 30
 
 
+@cached_report("dashboard_summary")
 def get_dashboard_summary(
     db: Session,
     tenant_id: UUID,
@@ -122,17 +154,23 @@ def get_dashboard_summary(
     # represents finished work; On Track/At Risk/Delayed are all still open.
     active_projects = sum(n for status, n in status_counts.items() if status != "Completed")
 
-    tc_query = (
-        select(TestCase.status, func.count())
-        .join(Project, Project.id == TestCase.project_id)
-        .where(Project.tenant_id == tenant_id)
-    )
+    cutoff = datetime.now(UTC) - timedelta(days=PREVIOUS_PERIOD_DAYS)
+    # ADR-113: one pass over the test cases gives both the current per-status counts
+    # and the "as of the cutoff" baseline total (same project + visibility scope),
+    # filtering on test_cases' own tenant/project columns instead of joining `projects`.
+    tc_query = select(
+        TestCase.status, func.count(), func.count().filter(TestCase.created_at <= cutoff)
+    ).where(TestCase.tenant_id == tenant_id)
     if accessible is not None:
-        tc_query = tc_query.where(Project.id.in_(accessible))
+        tc_query = tc_query.where(TestCase.project_id.in_(accessible))
     if project_id is not None:
-        tc_query = tc_query.where(Project.id == project_id)
+        tc_query = tc_query.where(TestCase.project_id == project_id)
     tc_query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, tc_query)
-    tc_counts: dict[str, int] = dict(db.execute(tc_query.group_by(TestCase.status)).tuples().all())
+    tc_counts: dict[str, int] = {}
+    prev_tc_total = 0
+    for tc_status, n_all, n_prev in db.execute(tc_query.group_by(TestCase.status)):
+        tc_counts[tc_status] = n_all
+        prev_tc_total += n_prev
     tc_total = sum(tc_counts.values())
     approved_count = tc_counts.get("approved", 0)
     approved_ratio = (approved_count / tc_total) if tc_total else 0.0
@@ -149,38 +187,44 @@ def get_dashboard_summary(
         run_query = run_query.where(Project.id == project_id)
     active_runs = db.execute(run_query).scalar_one()
 
-    step_query = (
-        select(ExecutionStep.verdict, func.count())
-        .select_from(ExecutionStep)
-        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
-        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
-        .join(Project, Project.id == TestRun.project_id)
-        .where(Project.tenant_id == tenant_id, ExecutionStep.verdict.is_not(None))
-    )
-    if accessible is not None:
-        step_query = step_query.where(Project.id.in_(accessible))
-    if project_id is not None:
-        step_query = step_query.where(Project.id == project_id)
-    step_counts: dict[str | None, int] = dict(
-        db.execute(step_query.group_by(ExecutionStep.verdict)).tuples().all()
-    )
+    # One pass over the step verdicts yields both the current counts and the
+    # "as of the cutoff" baseline (a subset: steps closed on or before it).
+    step_counts: dict[str | None, int] = {}
+    prev_step_counts: dict[str | None, int] = {}
+    for verdict, n_all, n_prev in db.execute(
+        _step_query(
+            tenant_id,
+            accessible,
+            project_id,
+            ExecutionStep.verdict,
+            func.count(),
+            func.count().filter(ExecutionStep.closed_at <= cutoff),
+        ).group_by(ExecutionStep.verdict)
+    ):
+        step_counts[verdict] = n_all
+        prev_step_counts[verdict] = n_prev
     step_total = sum(step_counts.values())
     step_pass_percentage = (step_counts.get("pass", 0) / step_total) if step_total else 0.0
 
-    defect_query = (
-        select(Defect.severity, func.count())
-        .join(Project, Project.id == Defect.project_id)
-        .where(Project.tenant_id == tenant_id, Defect.status != "Closed")
-    )
+    # Open defects per severity and the "open as of the cutoff" baseline in one pass.
+    defect_query = select(
+        Defect.severity,
+        func.count().filter(Defect.status != "Closed"),
+        func.count().filter(
+            Defect.created_at <= cutoff,
+            or_(Defect.closed_at.is_(None), Defect.closed_at > cutoff),
+        ),
+    ).where(Defect.tenant_id == tenant_id)
     if accessible is not None:
-        defect_query = defect_query.where(Project.id.in_(accessible))
+        defect_query = defect_query.where(Defect.project_id.in_(accessible))
     if project_id is not None:
-        defect_query = defect_query.where(Project.id == project_id)
-    open_by_severity: dict[str, int] = dict(
-        db.execute(defect_query.group_by(Defect.severity)).tuples().all()
-    )
-
-    cutoff = datetime.now(UTC) - timedelta(days=PREVIOUS_PERIOD_DAYS)
+        defect_query = defect_query.where(Defect.project_id == project_id)
+    open_by_severity: dict[str, int] = {}
+    prev_open_defects = 0
+    for severity, n_open, n_prev_open in db.execute(defect_query.group_by(Defect.severity)):
+        if n_open:
+            open_by_severity[severity] = n_open
+        prev_open_defects += n_prev_open
 
     def _scoped(q):
         if accessible is not None:
@@ -189,18 +233,6 @@ def get_dashboard_summary(
             q = q.where(Project.id == project_id)
         return q
 
-    prev_tc = tester_visibility.scope_case_query(
-        db,
-        tenant_id,
-        role_code,
-        user_id,
-        _scoped(
-            select(func.count())
-            .select_from(TestCase)
-            .join(Project, Project.id == TestCase.project_id)
-            .where(Project.tenant_id == tenant_id, TestCase.created_at <= cutoff)
-        ),
-    )
     prev_runs = _scoped(
         select(func.count())
         .select_from(TestRun)
@@ -211,37 +243,12 @@ def get_dashboard_summary(
             or_(TestRun.finished_at.is_(None), TestRun.finished_at > cutoff),
         )
     )
-    prev_defects = _scoped(
-        select(func.count())
-        .select_from(Defect)
-        .join(Project, Project.id == Defect.project_id)
-        .where(
-            Project.tenant_id == tenant_id,
-            Defect.created_at <= cutoff,
-            or_(Defect.closed_at.is_(None), Defect.closed_at > cutoff),
-        )
-    )
-    prev_steps = _scoped(
-        select(ExecutionStep.verdict, func.count())
-        .select_from(ExecutionStep)
-        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
-        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
-        .join(Project, Project.id == TestRun.project_id)
-        .where(
-            Project.tenant_id == tenant_id,
-            ExecutionStep.verdict.is_not(None),
-            ExecutionStep.closed_at <= cutoff,
-        )
-    )
-    prev_step_counts: dict[str | None, int] = dict(
-        db.execute(prev_steps.group_by(ExecutionStep.verdict)).tuples().all()
-    )
     prev_step_total = sum(prev_step_counts.values())
     previous = DashboardPrevious(
         days=PREVIOUS_PERIOD_DAYS,
-        test_cases_total=db.execute(prev_tc).scalar_one(),
+        test_cases_total=prev_tc_total,
         active_runs=db.execute(prev_runs).scalar_one(),
-        open_defects=db.execute(prev_defects).scalar_one(),
+        open_defects=prev_open_defects,
         step_pass_percentage=(prev_step_counts.get("pass", 0) / prev_step_total)
         if prev_step_total
         else 0.0,
@@ -268,21 +275,69 @@ def get_dashboard_summary(
     )
 
 
+@cached_report("domain_distribution")
 def get_domain_distribution(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID
 ) -> list[DomainDistributionEntry]:
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
 
+    # ADR-113: one grouped query per measure for ALL domains (was five domains x
+    # four queries, the step-verdict one a scan of the whole run/step graph each).
+    project_query = select(Project.id, Project.domain).where(
+        Project.tenant_id == tenant_id, Project.domain.in_(DOMAINS)
+    )
+    if accessible is not None:
+        project_query = project_query.where(Project.id.in_(accessible))
+    domain_of: dict[UUID, str] = dict(db.execute(project_query).tuples().all())
+    project_ids = list(domain_of)
+    project_counts: dict[str, int] = {}
+    for dom in domain_of.values():
+        project_counts[dom] = project_counts.get(dom, 0) + 1
+
+    tc_by_domain: dict[str, dict[str, int]] = {}
+    open_defects_by_domain: dict[str, int] = {}
+    steps_by_domain: dict[str, dict[str | None, int]] = {}
+    if project_ids:
+        for dom, tc_status, n in db.execute(
+            tester_visibility.scope_case_query(
+                db,
+                tenant_id,
+                role_code,
+                user_id,
+                select(Project.domain, TestCase.status, func.count())
+                .select_from(TestCase)
+                .join(Project, Project.id == TestCase.project_id)
+                .where(TestCase.project_id.in_(project_ids)),
+            ).group_by(Project.domain, TestCase.status)
+        ):
+            tc_by_domain.setdefault(dom, {})[tc_status] = n
+        open_defects_by_domain = dict(
+            db.execute(
+                select(Project.domain, func.count())
+                .select_from(Defect)
+                .join(Project, Project.id == Defect.project_id)
+                .where(Defect.project_id.in_(project_ids), Defect.status != "Closed")
+                .group_by(Project.domain)
+            )
+            .tuples()
+            .all()
+        )
+        # Grouped by run project (no `projects` join: with it the planner picks a
+        # 2 s nested loop over the 1M steps instead of a ~0.5 s hash join) and
+        # folded into domains here.
+        for step_project_id, verdict, n in db.execute(
+            _step_query(
+                tenant_id, None, None, TestRun.project_id, ExecutionStep.verdict, func.count()
+            )
+            .where(TestRun.project_id.in_(project_ids))
+            .group_by(TestRun.project_id, ExecutionStep.verdict)
+        ):
+            domain_steps = steps_by_domain.setdefault(domain_of[step_project_id], {})
+            domain_steps[verdict] = domain_steps.get(verdict, 0) + n
+
     entries = []
     for domain in DOMAINS:
-        project_query = select(Project).where(
-            Project.tenant_id == tenant_id, Project.domain == domain
-        )
-        if accessible is not None:
-            project_query = project_query.where(Project.id.in_(accessible))
-        projects = list(db.execute(project_query).scalars())
-        project_ids = [p.id for p in projects]
-        if not project_ids:
+        if domain not in project_counts:
             entries.append(
                 DomainDistributionEntry(
                     domain=domain,
@@ -294,53 +349,19 @@ def get_domain_distribution(
                 )
             )
             continue
-
-        tc_counts: dict[str, int] = dict(
-            db.execute(
-                tester_visibility.scope_case_query(
-                    db,
-                    tenant_id,
-                    role_code,
-                    user_id,
-                    select(TestCase.status, func.count()).where(
-                        TestCase.project_id.in_(project_ids)
-                    ),
-                ).group_by(TestCase.status)
-            )
-            .tuples()
-            .all()
-        )
+        tc_counts = tc_by_domain.get(domain, {})
         tc_total = sum(tc_counts.values())
         approved_percentage = (tc_counts.get("approved", 0) / tc_total * 100) if tc_total else 0.0
-
-        open_defect_count = db.execute(
-            select(func.count())
-            .select_from(Defect)
-            .where(Defect.project_id.in_(project_ids), Defect.status != "Closed")
-        ).scalar_one()
-
-        step_counts: dict[str | None, int] = dict(
-            db.execute(
-                select(ExecutionStep.verdict, func.count())
-                .select_from(ExecutionStep)
-                .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
-                .join(TestRun, TestRun.id == TestRunCase.test_run_id)
-                .where(TestRun.project_id.in_(project_ids), ExecutionStep.verdict.is_not(None))
-                .group_by(ExecutionStep.verdict)
-            )
-            .tuples()
-            .all()
-        )
+        step_counts = steps_by_domain.get(domain, {})
         step_total = sum(step_counts.values())
         pass_percentage = (step_counts.get("pass", 0) / step_total * 100) if step_total else 0.0
-
         entries.append(
             DomainDistributionEntry(
                 domain=domain,
-                project_count=len(projects),
+                project_count=project_counts[domain],
                 test_case_count=tc_total,
                 approved_percentage=approved_percentage,
-                open_defect_count=open_defect_count,
+                open_defect_count=open_defects_by_domain.get(domain, 0),
                 pass_percentage=pass_percentage,
             )
         )
@@ -568,6 +589,7 @@ def _resolve_user_names(db: Session, user_ids: set[UUID]) -> dict[UUID, str]:
     return dict(rows)
 
 
+@cached_report("aggregate")
 def get_aggregate_report(
     db: Session,
     tenant_id: UUID,
@@ -595,6 +617,13 @@ def get_aggregate_report(
     """
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
 
+    # ADR-113: the test case is only joined in when a priority/status filter needs
+    # its columns (every run case has a case, and a defect's case link is optional,
+    # so skipping the join changes no row counts). It was a 500k-row join per call.
+    needs_case = priority is not None or status is not None
+    tc_priority_col: Any = TestCase.priority if needs_case else null()
+    tc_status_col: Any = TestCase.status if needs_case else null()
+
     base: Any
     if metric == "run_status":
         base = (
@@ -604,15 +633,16 @@ def get_aggregate_report(
                 Project.id.label("project_id"),
                 Project.name.label("project_name"),
                 Project.domain.label("domain"),
-                TestCase.priority.label("tc_priority"),
-                TestCase.status.label("tc_status"),
+                tc_priority_col.label("tc_priority"),
+                tc_status_col.label("tc_status"),
                 TestRun.created_at.label("created_at"),
             )
             .join(TestRun, TestRun.id == TestRunCase.test_run_id)
             .join(Project, Project.id == TestRun.project_id)
-            .join(TestCase, TestCase.id == TestRunCase.test_case_id)
             .where(Project.tenant_id == tenant_id)
         )
+        if needs_case:
+            base = base.join(TestCase, TestCase.id == TestRunCase.test_case_id)
     elif metric in ("priority", "test_case_status"):
         value_col: Any = TestCase.priority if metric == "priority" else TestCase.status
         base = (
@@ -647,14 +677,15 @@ def get_aggregate_report(
                 Project.id.label("project_id"),
                 Project.name.label("project_name"),
                 Project.domain.label("domain"),
-                TestCase.priority.label("tc_priority"),
-                TestCase.status.label("tc_status"),
+                tc_priority_col.label("tc_priority"),
+                tc_status_col.label("tc_status"),
                 Defect.created_at.label("created_at"),
             )
             .join(Project, Project.id == Defect.project_id)
-            .outerjoin(TestCase, TestCase.id == Defect.test_case_id)
             .where(Project.tenant_id == tenant_id)
         )
+        if needs_case:
+            base = base.outerjoin(TestCase, TestCase.id == Defect.test_case_id)
     else:
         raise ValueError(f"Unknown metric: {metric}")  # schema already restricts this
 
@@ -737,6 +768,7 @@ def get_aggregate_report(
     return AggregateReport(metric=metric, group_by=group_by, rows=result_rows)
 
 
+@cached_report("execution_trend")
 def get_execution_trend(
     db: Session,
     tenant_id: UUID,
@@ -750,26 +782,14 @@ def get_execution_trend(
     from the current-state snapshot the other metrics compute."""
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
 
-    query = (
-        select(
-            func.date(ExecutionStep.closed_at).label("day"),
-            ExecutionStep.verdict,
-            func.count(),
-        )
-        .select_from(ExecutionStep)
-        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
-        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
-        .join(Project, Project.id == TestRun.project_id)
-        .where(
-            Project.tenant_id == tenant_id,
-            ExecutionStep.verdict.is_not(None),
-            ExecutionStep.closed_at >= func.now() - func.make_interval(0, 0, 0, days),
-        )
-    )
-    if accessible is not None:
-        query = query.where(Project.id.in_(accessible))
-    if project_id is not None:
-        query = query.where(Project.id == project_id)
+    query = _step_query(
+        tenant_id,
+        accessible,
+        project_id,
+        func.date(ExecutionStep.closed_at).label("day"),
+        ExecutionStep.verdict,
+        func.count(),
+    ).where(ExecutionStep.closed_at >= func.now() - func.make_interval(0, 0, 0, days))
 
     rows = db.execute(query.group_by("day", ExecutionStep.verdict).order_by("day")).all()
 
@@ -791,6 +811,7 @@ def get_execution_trend(
     return ExecutionTrendReport(points=points)
 
 
+@cached_report("defect_trend")
 def get_defect_trend(
     db: Session,
     tenant_id: UUID,
@@ -844,6 +865,7 @@ def get_defect_trend(
     return DefectTrendReport(points=points)
 
 
+@cached_report("defect_aging")
 def get_defect_aging_summary(
     db: Session,
     tenant_id: UUID,
@@ -857,8 +879,18 @@ def get_defect_aging_summary(
     per-defect."""
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
 
+    # ADR-113: aggregated in SQL (one row per severity) instead of loading every
+    # open defect. Same rule as `compute_aging` for an open defect: breached when
+    # age_days = floor(now - created_at in days) exceeds the severity's SLA budget,
+    # i.e. when the age is at least (budget + 1) whole days.
+    sla_days = case(
+        *[(Defect.severity == sev, days) for sev, days in SLA_DAYS_BY_SEVERITY.items()],
+        else_=DEFAULT_SLA_DAYS,
+    )
+    breached_expr = (func.now() - Defect.created_at) >= func.make_interval(0, 0, 0, sla_days + 1)
     query = (
-        select(Defect)
+        select(Defect.severity, func.count(), func.count().filter(breached_expr))
+        .select_from(Defect)
         .join(Project, Project.id == Defect.project_id)
         .where(Project.tenant_id == tenant_id, Defect.status != "Closed")
     )
@@ -867,17 +899,13 @@ def get_defect_aging_summary(
     if project_id is not None:
         query = query.where(Project.id == project_id)
 
-    open_defects = db.execute(query).scalars().all()
-
     counts: dict[str, dict[str, int]] = {
         sev: {"open": 0, "breached": 0} for sev in SLA_DAYS_BY_SEVERITY
     }
-    for defect in open_defects:
-        bucket = counts.setdefault(defect.severity, {"open": 0, "breached": 0})
-        bucket["open"] += 1
-        _, breached = compute_aging(defect)
-        if breached:
-            bucket["breached"] += 1
+    for severity, open_count, breached_count in db.execute(query.group_by(Defect.severity)).all():
+        bucket = counts.setdefault(severity, {"open": 0, "breached": 0})
+        bucket["open"] += open_count
+        bucket["breached"] += breached_count
 
     buckets = [
         DefectAgingSeverityBucket(severity=sev, open_count=c["open"], breached_count=c["breached"])
@@ -890,6 +918,7 @@ def get_defect_aging_summary(
     )
 
 
+@cached_report("reopen_summary")
 def get_reopen_summary(
     db: Session,
     tenant_id: UUID,
@@ -902,27 +931,37 @@ def get_reopen_summary(
     events, which are the only writer of reopened_count/last_reopened_at."""
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
 
-    query = (
-        select(Defect)
-        .join(Project, Project.id == Defect.project_id)
-        .where(Project.tenant_id == tenant_id)
+    def scoped(q: Any) -> Any:
+        q = q.join(Project, Project.id == Defect.project_id).where(Project.tenant_id == tenant_id)
+        if accessible is not None:
+            q = q.where(Project.id.in_(accessible))
+        if project_id is not None:
+            q = q.where(Project.id == project_id)
+        return q
+
+    # ADR-113: totals in SQL; only the top-N reopened defects are fetched.
+    total_defects, reopened_count, reopen_events = db.execute(
+        scoped(
+            select(
+                func.count(),
+                func.count().filter(Defect.reopened_count > 0),
+                func.coalesce(func.sum(Defect.reopened_count), 0),
+            ).select_from(Defect)
+        )
+    ).one()
+    most_reopened = list(
+        db.execute(
+            scoped(select(Defect).where(Defect.reopened_count > 0))
+            .order_by(Defect.reopened_count.desc(), Defect.id)
+            .limit(top_n)
+        ).scalars()
     )
-    if accessible is not None:
-        query = query.where(Project.id.in_(accessible))
-    if project_id is not None:
-        query = query.where(Project.id == project_id)
-
-    defects = db.execute(query).scalars().all()
-    total_defects = len(defects)
-    reopened = [d for d in defects if d.reopened_count > 0]
-
-    most_reopened = sorted(reopened, key=lambda d: d.reopened_count, reverse=True)[:top_n]
 
     return ReopenSummary(
         total_defects=total_defects,
-        reopened_defects=len(reopened),
-        reopen_rate=(len(reopened) / total_defects) if total_defects else 0.0,
-        total_reopen_events=sum(d.reopened_count for d in defects),
+        reopened_defects=reopened_count,
+        reopen_rate=(reopened_count / total_defects) if total_defects else 0.0,
+        total_reopen_events=int(reopen_events),
         most_reopened=[
             MostReopenedDefect(
                 defect_id=d.id,
@@ -946,6 +985,7 @@ def _get_project_or_404(db: Session, tenant_id: UUID, project_id: UUID) -> Proje
     return project
 
 
+@cached_report("release_readiness")
 def get_release_readiness(
     db: Session,
     tenant_id: UUID,
@@ -977,16 +1017,21 @@ def get_release_readiness(
         select(func.count()).select_from(TestCase).where(TestCase.project_id == project_id)
     ).scalar_one()
 
-    run_case_statuses = list(
+    run_case_status_counts = dict(
         db.execute(
-            select(TestRunCase.status)
+            select(TestRunCase.status, func.count())
             .join(TestRun, TestRun.id == TestRunCase.test_run_id)
             .where(TestRun.tenant_id == tenant_id, TestRun.project_id == project_id)
-        ).scalars()
+            .group_by(TestRunCase.status)
+        )
+        .tuples()
+        .all()
     )
-    total_run_cases = len(run_case_statuses)
-    completed = sum(1 for s in run_case_statuses if s in COMPLETED_RUN_CASE_STATUSES)
-    passed = sum(1 for s in run_case_statuses if s == "passed")
+    total_run_cases = sum(run_case_status_counts.values())
+    completed = sum(
+        n for s, n in run_case_status_counts.items() if s in COMPLETED_RUN_CASE_STATUSES
+    )
+    passed = run_case_status_counts.get("passed", 0)
     completion_pct = round((completed / total_run_cases) * 100, 1) if total_run_cases else 0.0
     pass_pct = round((passed / completed) * 100, 1) if completed else 0.0
 
@@ -1022,6 +1067,7 @@ def get_release_readiness(
     )
 
 
+@cached_report("workload")
 def get_workload_summary(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
 ) -> WorkloadSummary:
@@ -1083,6 +1129,7 @@ def get_workload_summary(
     return WorkloadSummary(project_id=project_id, entries=entries)
 
 
+@cached_report("flaky_tests")
 def get_flaky_tests(
     db: Session,
     tenant_id: UUID,
@@ -1156,6 +1203,7 @@ def get_flaky_tests(
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
+@cached_report("traceability_matrix")
 def get_traceability_matrix(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
 ) -> TraceabilityMatrixReport:
@@ -1525,6 +1573,7 @@ def compliance_report_to_csv(report: ComplianceReport) -> str:
     return buffer.getvalue()
 
 
+@cached_report("quality_metrics")
 def get_quality_metrics(
     db: Session,
     tenant_id: UUID,
@@ -1609,19 +1658,9 @@ def get_quality_metrics(
     average_cycle = round(weighted / total_runs, 2) if total_runs else None
 
     # (c) pass rate over verdicts recorded in the period
-    step_query = scope(
-        select(ExecutionStep.verdict, func.count())
-        .select_from(ExecutionStep)
-        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
-        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
-        .join(Project, Project.id == TestRun.project_id)
-        .where(
-            Project.tenant_id == tenant_id,
-            ExecutionStep.verdict.is_not(None),
-            ExecutionStep.closed_at >= since,
-        ),
-        Project.id,
-    )
+    step_query = _step_query(
+        tenant_id, accessible, project_id, ExecutionStep.verdict, func.count()
+    ).where(ExecutionStep.closed_at >= since)
     step_counts: dict[str | None, int] = dict(
         db.execute(step_query.group_by(ExecutionStep.verdict)).tuples().all()
     )
@@ -1856,6 +1895,7 @@ def _pct(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator * 100, 1) if denominator else None
 
 
+@cached_report("defect_leakage")
 def get_defect_leakage(
     db: Session,
     tenant_id: UUID,
@@ -1877,14 +1917,26 @@ def get_defect_leakage(
             raise ForbiddenError("Project not accessible")
         _get_project_or_404(db, tenant_id, project_id)
 
+    # ADR-113: grouped in SQL (month / age bucket / release / environment are the
+    # only things the report derives from a defect row), so a 100k-defect tenant
+    # sends back a few hundred rows instead of every defect.
+    age = func.now() - Defect.created_at
+    age_bucket = case(
+        (age < func.make_interval(0, 0, 0, 7), 0),
+        (age < func.make_interval(0, 0, 0, 31), 1),
+        else_=2,
+    )
+    month_expr = func.to_char(Defect.created_at, "YYYY-MM")
     query = (
         select(
             Defect.severity,
             Defect.status,
-            Defect.created_at,
+            month_expr,
+            age_bucket,
             Defect.fixed_in_release_id,
             Environment.name,
             Defect.environment,
+            func.count(),
         )
         .select_from(Defect)
         .outerjoin(Environment, Environment.id == Defect.environment_id)
@@ -1900,7 +1952,17 @@ def get_defect_leakage(
     if date_to is not None:
         end = datetime(date_to.year, date_to.month, date_to.day, tzinfo=UTC) + timedelta(days=1)
         query = query.where(Defect.created_at < end)
-    rows = db.execute(query).all()
+    rows = db.execute(
+        query.group_by(
+            Defect.severity,
+            Defect.status,
+            month_expr,
+            age_bucket,
+            Defect.fixed_in_release_id,
+            Environment.name,
+            Defect.environment,
+        )
+    ).all()
 
     today = datetime.now(UTC).date()
     rel_query = select(Release.id, Release.name, Release.release_date, Release.project_id).where(
@@ -1910,14 +1972,13 @@ def get_defect_leakage(
         rel_query = rel_query.where(Release.project_id == project_id)
     releases = {r.id: r for r in db.execute(rel_query).all()}
 
-    now = datetime.now(UTC)
     overall_sev: dict[str, int] = {}
     buckets = LeakageAgeBuckets()
     per_release: dict[UUID | None, dict[str, Any]] = {}
     trend: dict[str, list[int]] = {}
     total = escaped = open_escaped = 0
 
-    for severity, status, created_at, release_id, env_name, env_text in rows:
+    for severity, status, month_key, bucket, release_id, env_name, env_text, n in rows:
         rel = releases.get(release_id) if release_id is not None else None
         released = rel is not None and rel.release_date is not None and rel.release_date <= today
         env = (env_name or env_text or "").strip().lower()
@@ -1926,27 +1987,26 @@ def get_defect_leakage(
             release_id if rel is not None else None,
             {"total": 0, "escaped": 0, "open": 0, "sev": {}},
         )
-        month = trend.setdefault(created_at.strftime("%Y-%m"), [0, 0])
-        total += 1
-        slot["total"] += 1
-        month[0] += 1
+        month = trend.setdefault(month_key, [0, 0])
+        total += n
+        slot["total"] += n
+        month[0] += n
         if not is_escaped:
             continue
-        escaped += 1
-        slot["escaped"] += 1
-        month[1] += 1
-        overall_sev[severity] = overall_sev.get(severity, 0) + 1
-        slot["sev"][severity] = slot["sev"].get(severity, 0) + 1
+        escaped += n
+        slot["escaped"] += n
+        month[1] += n
+        overall_sev[severity] = overall_sev.get(severity, 0) + n
+        slot["sev"][severity] = slot["sev"].get(severity, 0) + n
         if status in OPEN_DEFECT_STATUSES:
-            open_escaped += 1
-            slot["open"] += 1
-            age_days = (now - created_at).days
-            if age_days < 7:
-                buckets.under_7d += 1
-            elif age_days <= 30:
-                buckets.d7_to_30 += 1
+            open_escaped += n
+            slot["open"] += n
+            if bucket == 0:
+                buckets.under_7d += n
+            elif bucket == 1:
+                buckets.d7_to_30 += n
             else:
-                buckets.over_30d += 1
+                buckets.over_30d += n
 
     release_rows = []
     for rid, slot in per_release.items():

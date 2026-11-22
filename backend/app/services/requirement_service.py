@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -81,24 +82,62 @@ def _linked_test_case_count(db: Session, requirement_id: UUID) -> int:
     ).scalar_one()
 
 
+def _linked_test_case_counts(db: Session, requirement_ids: list[UUID]) -> dict[UUID, int]:
+    """Batch form of `_linked_test_case_count` (ADR-113): one GROUP BY for all ids."""
+    if not requirement_ids:
+        return {}
+    return dict(
+        db.execute(
+            select(RequirementTestCaseLink.requirement_id, func.count(RequirementTestCaseLink.id))
+            .where(RequirementTestCaseLink.requirement_id.in_(requirement_ids))
+            .group_by(RequirementTestCaseLink.requirement_id)
+        )
+        .tuples()
+        .all()
+    )
+
+
 def to_out(db: Session, req: Requirement) -> RequirementOut:
+    return to_out_many(db, [req])[0]
+
+
+def to_out_many(db: Session, reqs: list[Requirement]) -> list[RequirementOut]:
+    """A page of requirements with a constant number of queries (ADR-113)."""
+    if not reqs:
+        return []
+    tenant_id = reqs[0].tenant_id
     # Mirrors test_case_service.to_out: re-assert tenant context in case the
     # caller invoked this right after a commit ended the prior transaction.
-    set_tenant_context(db, str(req.tenant_id))
-    version = _get_current_version(db, req)
-    return RequirementOut(
-        id=req.id,
-        project_id=req.project_id,
-        title=req.title,
-        description=version.description,
-        version_number=version.version_number,
-        created_by=req.created_by,
-        created_at=req.created_at,
-        linked_test_case_count=_linked_test_case_count(db, req.id),
-        custom_fields=custom_field_service.get_values_for_owner(
-            db, req.tenant_id, "requirement", req.id
-        ),
+    set_tenant_context(db, str(tenant_id))
+    versions = {
+        v.id: v
+        for v in db.execute(
+            select(RequirementVersion).where(
+                RequirementVersion.id.in_([r.current_version_id for r in reqs])
+            )
+        ).scalars()
+    }
+    counts = _linked_test_case_counts(db, [r.id for r in reqs])
+    custom_fields = custom_field_service.get_values_for_owners(
+        db, tenant_id, "requirement", [r.id for r in reqs]
     )
+    out: list[RequirementOut] = []
+    for req in reqs:
+        version = versions[cast(UUID, req.current_version_id)]
+        out.append(
+            RequirementOut(
+                id=req.id,
+                project_id=req.project_id,
+                title=req.title,
+                description=version.description,
+                version_number=version.version_number,
+                created_by=req.created_by,
+                created_at=req.created_at,
+                linked_test_case_count=counts.get(req.id, 0),
+                custom_fields=custom_fields[req.id],
+            )
+        )
+    return out
 
 
 def to_detail_out(
@@ -443,8 +482,9 @@ def get_coverage_report(
 
     entries = []
     covered_count = 0
+    link_counts = _linked_test_case_counts(db, [r.id for r in requirements])
     for r in requirements:
-        count = _linked_test_case_count(db, r.id)
+        count = link_counts.get(r.id, 0)
         covered = count > 0
         if covered:
             covered_count += 1

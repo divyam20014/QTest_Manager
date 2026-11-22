@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core import pagination
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import (
@@ -42,6 +43,7 @@ from app.schemas.test_case import (
 from app.services import (
     custom_field_service,
     field_option_service,
+    lookups,
     notification_service,
     status_label_service,
     tester_visibility,
@@ -110,6 +112,36 @@ def _authorize_case_access(
     tester_visibility.assert_case_visible(db, tenant_id, role_code, user_id, case.id)
 
 
+def _last_executions(
+    db: Session, tenant_id: UUID, test_case_ids: list[UUID]
+) -> dict[UUID, tuple[str | None, str | None, datetime | None]]:
+    """Batch form of `_last_execution` (ADR-113): one DISTINCT ON query for all
+    the given cases instead of one query (plus a user-name lookup) per case.
+    Backed by ix_test_run_cases_tenant_case + ix_execution_steps_case_closed."""
+    if not test_case_ids:
+        return {}
+    rows = db.execute(
+        select(
+            TestRunCase.test_case_id,
+            ExecutionStep.verdict,
+            ExecutionStep.executed_by,
+            ExecutionStep.closed_at,
+        )
+        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
+        .where(
+            TestRunCase.tenant_id == tenant_id,
+            TestRunCase.test_case_id.in_(test_case_ids),
+            ExecutionStep.closed_at.is_not(None),
+        )
+        .distinct(TestRunCase.test_case_id)
+        .order_by(TestRunCase.test_case_id, ExecutionStep.closed_at.desc())
+    ).all()
+    names = lookups.value_map(db, User.id, User.name, (r.executed_by for r in rows))
+    return {
+        r.test_case_id: (r.verdict, names.get(r.executed_by), r.closed_at) for r in rows
+    }
+
+
 def _last_execution(
     db: Session, tenant_id: UUID, test_case_id: UUID
 ) -> tuple[str | None, str | None, datetime | None]:
@@ -117,75 +149,85 @@ def _last_execution(
     fields -- derived read-only from this test case's most recent executed
     step across any test run (highest closed_at), never settable via
     create/update/import."""
-    row = db.execute(
-        select(ExecutionStep.verdict, ExecutionStep.executed_by, ExecutionStep.closed_at)
-        .join(TestRunCase, TestRunCase.id == ExecutionStep.test_run_case_id)
-        .where(
-            TestRunCase.tenant_id == tenant_id,
-            TestRunCase.test_case_id == test_case_id,
-            ExecutionStep.closed_at.is_not(None),
-        )
-        .order_by(ExecutionStep.closed_at.desc())
-        .limit(1)
-    ).first()
-    if row is None:
-        return None, None, None
-    verdict, executed_by, closed_at = row
-    executed_by_name = None
-    if executed_by is not None:
-        executed_by_name = db.execute(
-            select(User.name).where(User.id == executed_by)
-        ).scalar_one_or_none()
-    return verdict, executed_by_name, closed_at
+    return _last_executions(db, tenant_id, [test_case_id]).get(test_case_id, (None, None, None))
 
 
 def to_out(db: Session, case: TestCase) -> TestCaseOut:
+    return to_out_many(db, [case])[0]
+
+
+def to_out_many(db: Session, cases: list[TestCase]) -> list[TestCaseOut]:
+    """Serialize a page of cases with a constant number of queries (ADR-113),
+    instead of ~10 per case. All `cases` must belong to one tenant (they come
+    from one tenant-scoped listing)."""
+    if not cases:
+        return []
+    tenant_id = cases[0].tenant_id
     # Callers may invoke this right after a service function committed
     # (ending the transaction that held app.current_tenant); re-assert it
     # from the already-loaded object before issuing further RLS-protected
     # queries (test_case_versions/test_case_version_steps both have RLS).
-    set_tenant_context(db, str(case.tenant_id))
-    version = _get_current_version(db, case)
-    reviewer_name = None
-    if case.reviewer_id is not None:
-        reviewer_name = db.execute(
-            select(User.name).where(User.id == case.reviewer_id)
-        ).scalar_one_or_none()
-    status_labels = status_label_service.get_labels_map(db, case.tenant_id, "test_case")
-    custom_fields = custom_field_service.get_values_for_owner(
-        db, case.tenant_id, "test_case", case.id
-    )
-    last_result, last_executed_by_name, last_execution_date = _last_execution(
-        db, case.tenant_id, case.id
-    )
-    return TestCaseOut(
-        id=case.id,
-        project_id=case.project_id,
-        title=case.title,
-        description=version.description,
-        priority=cast(Priority, case.priority),
-        status=cast(TestCaseStatus, case.status),
-        status_label=status_labels.get(case.status, case.status),
-        assignee_id=case.assignee_id,
-        module_id=case.module_id,
-        reviewer_id=case.reviewer_id,
-        reviewer_name=reviewer_name,
-        version_number=version.version_number,
-        created_by=case.created_by,
-        created_at=case.created_at,
-        steps=_steps_for_version(db, version.id),
-        custom_fields=custom_fields,
-        scenario_id=version.scenario_id,
-        scenario_description=version.scenario_description,
-        prerequisite=version.prerequisite,
-        test_data=version.test_data,
-        last_execution_result=last_result,
-        last_executed_by_name=last_executed_by_name,
-        last_execution_date=last_execution_date,
-        quarantined=case.quarantined,
-        quarantine_reason=case.quarantine_reason,
-        quarantined_at=case.quarantined_at,
-    )
+    set_tenant_context(db, str(tenant_id))
+    case_ids = [c.id for c in cases]
+    versions = {
+        v.id: v
+        for v in db.execute(
+            select(TestCaseVersion).where(
+                TestCaseVersion.id.in_([c.current_version_id for c in cases])
+            )
+        ).scalars()
+    }
+    steps_by_version: dict[UUID, list[StepOut]] = {vid: [] for vid in versions}
+    for row in db.execute(
+        select(TestCaseVersionStep)
+        .where(TestCaseVersionStep.test_case_version_id.in_(list(versions)))
+        .order_by(TestCaseVersionStep.test_case_version_id, TestCaseVersionStep.step_number)
+    ).scalars():
+        steps_by_version[row.test_case_version_id].append(
+            StepOut(step_number=row.step_number, action=row.action, expected=row.expected)
+        )
+    reviewer_names = lookups.value_map(db, User.id, User.name, (c.reviewer_id for c in cases))
+    status_labels = status_label_service.get_labels_map(db, tenant_id, "test_case")
+    custom_fields = custom_field_service.get_values_for_owners(db, tenant_id, "test_case", case_ids)
+    last_executions = _last_executions(db, tenant_id, case_ids)
+
+    out: list[TestCaseOut] = []
+    for case in cases:
+        version = versions[cast(UUID, case.current_version_id)]
+        last_result, last_executed_by_name, last_execution_date = last_executions.get(
+            case.id, (None, None, None)
+        )
+        out.append(
+            TestCaseOut(
+                id=case.id,
+                project_id=case.project_id,
+                title=case.title,
+                description=version.description,
+                priority=cast(Priority, case.priority),
+                status=cast(TestCaseStatus, case.status),
+                status_label=status_labels.get(case.status, case.status),
+                assignee_id=case.assignee_id,
+                module_id=case.module_id,
+                reviewer_id=case.reviewer_id,
+                reviewer_name=reviewer_names.get(case.reviewer_id),
+                version_number=version.version_number,
+                created_by=case.created_by,
+                created_at=case.created_at,
+                steps=steps_by_version[version.id],
+                custom_fields=custom_fields[case.id],
+                scenario_id=version.scenario_id,
+                scenario_description=version.scenario_description,
+                prerequisite=version.prerequisite,
+                test_data=version.test_data,
+                last_execution_result=last_result,
+                last_executed_by_name=last_executed_by_name,
+                last_execution_date=last_execution_date,
+                quarantined=case.quarantined,
+                quarantine_reason=case.quarantine_reason,
+                quarantined_at=case.quarantined_at,
+            )
+        )
+    return out
 
 
 def _filter_sort_page(
@@ -201,10 +243,17 @@ def _filter_sort_page(
     page: int,
     page_size: int,
     quarantined: str | None = None,
-) -> tuple[list[TestCase], int]:
+    cursor: str | None = None,
+    include_total: bool = True,
+) -> tuple[list[TestCase], int, str | None]:
     """The filters, sorting and paging shared by the per-project and the
     tenant-wide listings, so the two can never disagree about what a filter
-    means."""
+    means.
+
+    `cursor` (ADR-113) switches to keyset paging: only `sort=created_at` /
+    `-created_at` is supported, `page` is ignored, and the third return value is
+    the cursor of the next page (None on the last page, or in offset mode).
+    `include_total=False` skips the COUNT and returns -1 as the total."""
     if search:
         query = query.where(TestCase.title.ilike(f"%{search}%"))
     if priority:
@@ -220,18 +269,43 @@ def _filter_sort_page(
     elif quarantined == "exclude":
         query = query.where(TestCase.quarantined.is_(False))
 
-    total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
+    total = (
+        db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
+        if include_total
+        else -1
+    )
 
     sort_key = sort.lstrip("-")
     sort_field = SORTABLE_FIELDS.get(sort_key, TestCase.created_at)
-    order_clause = sort_field.desc() if sort.startswith("-") else sort_field.asc()
+    descending = sort.startswith("-")
+    order_clause = sort_field.desc() if descending else sort_field.asc()
     query = query.order_by(order_clause, TestCase.id)
 
     page_size = min(max(page_size, 1), MAX_PAGE_SIZE)
     page = max(page, 1)
-    query = query.limit(page_size).offset((page - 1) * page_size)
+    if cursor is None:
+        query = query.limit(page_size).offset((page - 1) * page_size)
+        return list(db.execute(query).scalars()), total, None
 
-    return list(db.execute(query).scalars()), total
+    if sort_field is not TestCase.created_at:
+        raise ValidationAppError("Cursor paging requires sort=created_at or sort=-created_at")
+    position = pagination.decode_cursor(cursor)
+    if position is not None:
+        query = query.where(
+            pagination.keyset_after(
+                TestCase.created_at,
+                TestCase.id,
+                position,
+                created_desc=descending,
+                id_desc=False,
+            )
+        )
+    rows = list(db.execute(query.limit(page_size + 1)).scalars())
+    next_cursor = None
+    if len(rows) > page_size:
+        rows = rows[:page_size]
+        next_cursor = pagination.encode_cursor(rows[-1].created_at, rows[-1].id)
+    return rows, total, next_cursor
 
 
 def list_test_cases(
@@ -250,7 +324,9 @@ def list_test_cases(
     sort: str = "created_at",
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
-) -> tuple[list[TestCase], int]:
+    cursor: str | None = None,
+    include_total: bool = True,
+) -> tuple[list[TestCase], int, str | None]:
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, user_id)
 
@@ -270,6 +346,8 @@ def list_test_cases(
         sort=sort,
         page=page,
         page_size=page_size,
+        cursor=cursor,
+        include_total=include_total,
     )
 
 
@@ -288,7 +366,9 @@ def list_test_cases_all_projects(
     sort: str = "created_at",
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
-) -> tuple[list[TestCase], int]:
+    cursor: str | None = None,
+    include_total: bool = True,
+) -> tuple[list[TestCase], int, str | None]:
     """One listing across every project the caller may see, with the same
     filters, sorting and paging as the per-project list (the Test Repository
     used to ask each project separately whenever a filter was on).
@@ -317,6 +397,8 @@ def list_test_cases_all_projects(
         sort=sort,
         page=page,
         page_size=page_size,
+        cursor=cursor,
+        include_total=include_total,
     )
 
 

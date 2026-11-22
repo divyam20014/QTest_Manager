@@ -18,6 +18,9 @@ os.environ["IDENTIFY_DATABASE_URL"] = (
     f"postgresql+psycopg://qtesthub_identify:qtesthub_identify@localhost:5432/{TEST_DB_NAME}"
 )
 os.environ["MFA_DELIVERY_MODE"] = "simulated"
+# ADR-113: report results must reflect every write immediately in tests; the
+# cache itself is covered by tests/test_perf_optimisations.py.
+os.environ["REPORT_CACHE_TTL_SECONDS"] = "0"
 # Fixed test-only Fernet key for AI Test Case Generator credential
 # encryption (ADR-045) -- never used outside this test run.
 os.environ["AI_CREDENTIAL_ENCRYPTION_KEY"] = "kEdknj1w6XzjMsv2T86nToujCkYjMqSYnr3CoPxuKAI="

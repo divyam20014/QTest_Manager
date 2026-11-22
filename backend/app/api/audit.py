@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/audit-logs", tags=["audit"])
 
 @router.get("")
 def list_audit_logs(
+    response: Response,
     action: str | None = Query(default=None),
     entity_type: str | None = Query(default=None),
     entity_id: UUID | None = Query(default=None),
@@ -24,10 +25,14 @@ def list_audit_logs(
     date_to: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    cursor: str | None = Query(default=None, max_length=300),
     ctx: SessionContext = Depends(require_permission("audit.view")),
     db: Session = Depends(get_db),
 ) -> dict:
-    logs = audit_service.list_audit_logs(
+    """Newest first, as a bare list. Optional `cursor` (empty = first page) switches
+    to keyset paging and returns the next page's cursor in the `X-Next-Cursor`
+    response header (absent on the last page); `offset` is ignored then (ADR-113)."""
+    logs, next_cursor = audit_service.list_audit_logs_page(
         db,
         ctx.tenant_id,
         action=action,
@@ -38,7 +43,10 @@ def list_audit_logs(
         date_to=date_to,
         limit=limit,
         offset=offset,
+        cursor=cursor,
     )
+    if next_cursor is not None:
+        response.headers["X-Next-Cursor"] = next_cursor
     return envelope([log.model_dump(mode="json") for log in logs])
 
 

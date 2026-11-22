@@ -3,9 +3,10 @@ from typing import cast
 from uuid import UUID
 
 from rapidfuzz import fuzz
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
+from app.core import pagination
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
@@ -38,6 +39,7 @@ from app.schemas.defect import (
 from app.services import (
     custom_field_service,
     field_option_service,
+    lookups,
     notification_service,
     status_label_service,
 )
@@ -372,6 +374,10 @@ def get_defect(
     return defect
 
 
+def _escape_like(value: str) -> str:
+    return value.replace("/", "//").replace("%", "/%").replace("_", "/_")
+
+
 def _defects_query(
     db: Session,
     tenant_id: UUID,
@@ -407,7 +413,9 @@ def _defects_query(
     if severity is not None:
         query = query.where(Defect.severity == severity)
     if search:
-        query = query.where(Defect.title.icontains(search.strip(), autoescape=True))
+        # ILIKE with an escaped needle (not `icontains`, which renders lower(title) LIKE)
+        # so the pg_trgm GIN index on defects.title can serve it (ADR-113).
+        query = query.where(Defect.title.ilike(f"%{_escape_like(search.strip())}%", escape="/"))
     if reported_by is not None:
         query = query.where(Defect.reported_by == reported_by)
     if created_from is not None:
@@ -454,10 +462,18 @@ def list_defects(
         db, tenant_id, role_code, user_id, project_id, status, severity,
         test_run_id, reported_by, created_from, created_to, test_case_id,
     )
-    return list(db.execute(query.order_by(Defect.created_at.desc())).scalars())
+    return list(
+        db.execute(
+            query.order_by(Defect.created_at.desc()).limit(DEFECT_PLAIN_LIST_CAP)
+        ).scalars()
+    )
 
 
 DEFECT_MAX_PAGE_SIZE = 100
+# Hard ceiling for the legacy un-paged list (`GET /defects` without `page_size`),
+# which used to return every matching defect (100k rows = a 50 s, 6.7 MB response
+# on a large tenant). Callers that need more must page (ADR-113).
+DEFECT_PLAIN_LIST_CAP = 5000
 
 
 def list_defects_page(
@@ -474,22 +490,42 @@ def list_defects_page(
     page: int,
     page_size: int,
     search: str | None = None,
-) -> tuple[list[Defect], int]:
+    cursor: str | None = None,
+    include_total: bool = True,
+) -> tuple[list[Defect], int, str | None]:
     """ADR-078: one page of the same listing, newest first, plus how many match in all.
-    Same visibility and filters as `list_defects` (they share `_defects_query`)."""
+    Same visibility and filters as `list_defects` (they share `_defects_query`).
+    `cursor` (ADR-113) switches to keyset paging over (created_at DESC, id) and
+    `include_total=False` skips the COUNT (total = -1); the third return value is
+    the next page's cursor (None on the last page / in offset mode)."""
     query = _defects_query(
         db, tenant_id, role_code, user_id, project_id, status, severity,
         None, reported_by, created_from, created_to, None, search,
     )
-    total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
+    total = (
+        db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
+        if include_total
+        else -1
+    )
     page_size = min(max(page_size, 1), DEFECT_MAX_PAGE_SIZE)
     page = max(page, 1)
-    rows = db.execute(
-        query.order_by(Defect.created_at.desc(), Defect.id)
-        .limit(page_size)
-        .offset((page - 1) * page_size)
-    ).scalars()
-    return list(rows), total
+    ordered = query.order_by(Defect.created_at.desc(), Defect.id)
+    if cursor is None:
+        rows = db.execute(ordered.limit(page_size).offset((page - 1) * page_size)).scalars()
+        return list(rows), total, None
+    position = pagination.decode_cursor(cursor)
+    if position is not None:
+        ordered = ordered.where(
+            pagination.keyset_after(
+                Defect.created_at, Defect.id, position, created_desc=True, id_desc=False
+            )
+        )
+    found = list(db.execute(ordered.limit(page_size + 1)).scalars())
+    next_cursor = None
+    if len(found) > page_size:
+        found = found[:page_size]
+        next_cursor = pagination.encode_cursor(found[-1].created_at, found[-1].id)
+    return found, total, next_cursor
 
 
 def defect_status_counts(
@@ -881,136 +917,178 @@ def get_defect_history(
     ]
 
 
-def _execution_evidence(db: Session, defect: Defect) -> ExecutionEvidenceOut | None:
-    """Resolves the originating execution_steps row for a step-linked
-    defect, if one can still be found (defect.test_run_id +
-    test_case_id + test_case_version_step_id together pin it uniquely,
-    since ExecutionStep has no direct FK back to Defect)."""
-    if (
-        defect.test_run_id is None
-        or defect.test_case_id is None
-        or defect.test_case_version_step_id is None
+def _execution_evidences(
+    db: Session, defects: list[Defect]
+) -> dict[UUID, ExecutionEvidenceOut]:
+    """Resolves, for a page of defects at once, the originating execution_steps
+    row of every step-linked defect that can still be found
+    (defect.test_run_id + test_case_id + test_case_version_step_id together pin
+    it uniquely, since ExecutionStep has no direct FK back to Defect)."""
+    # (defect id, run id, case id, version-step id) for every step-linked defect.
+    linked: list[tuple[UUID, UUID, UUID, UUID]] = [
+        (d.id, d.test_run_id, d.test_case_id, d.test_case_version_step_id)
+        for d in defects
+        if d.test_run_id is not None
+        and d.test_case_id is not None
+        and d.test_case_version_step_id is not None
+    ]
+    if not linked:
+        return {}
+    run_case_ids: dict[tuple[UUID, UUID], UUID] = {}
+    pairs = list({(run_id, case_id) for _did, run_id, case_id, _step in linked})
+    for trc in db.execute(
+        select(TestRunCase.id, TestRunCase.test_run_id, TestRunCase.test_case_id).where(
+            tuple_(TestRunCase.test_run_id, TestRunCase.test_case_id).in_(pairs)
+        )
     ):
-        return None
-
-    run_case = db.execute(
-        select(TestRunCase).where(
-            TestRunCase.test_run_id == defect.test_run_id,
-            TestRunCase.test_case_id == defect.test_case_id,
-        )
-    ).scalar_one_or_none()
-    if run_case is None:
-        return None
-
-    step = db.execute(
-        select(ExecutionStep).where(
-            ExecutionStep.test_run_case_id == run_case.id,
-            ExecutionStep.test_case_version_step_id == defect.test_case_version_step_id,
-        )
-    ).scalar_one_or_none()
-    if step is None:
-        return None
-
-    executed_by_name = None
-    if step.executed_by is not None:
-        executed_by_name = db.execute(
-            select(User.name).where(User.id == step.executed_by)
-        ).scalar_one_or_none()
-
-    return ExecutionEvidenceOut(
-        execution_step_id=step.id,
-        test_run_case_id=run_case.id,
-        verdict=cast(Verdict, step.verdict) if step.verdict is not None else None,
-        opened_at=step.opened_at,
-        closed_at=step.closed_at,
-        duration_ms=step.duration_ms,
-        executed_by=step.executed_by,
-        executed_by_name=executed_by_name,
+        run_case_ids.setdefault((trc.test_run_id, trc.test_case_id), trc.id)
+    step_pairs = list(
+        {
+            (run_case_ids[(run_id, case_id)], step_id)
+            for _did, run_id, case_id, step_id in linked
+            if (run_id, case_id) in run_case_ids
+        }
     )
+    if not step_pairs:
+        return {}
+    steps = {
+        (st.test_run_case_id, st.test_case_version_step_id): st
+        for st in db.execute(
+            select(ExecutionStep).where(
+                tuple_(ExecutionStep.test_run_case_id, ExecutionStep.test_case_version_step_id).in_(
+                    step_pairs
+                )
+            )
+        ).scalars()
+    }
+    names = lookups.value_map(db, User.id, User.name, (st.executed_by for st in steps.values()))
+    out: dict[UUID, ExecutionEvidenceOut] = {}
+    for defect_id, run_id, case_id, step_id in linked:
+        run_case_id = run_case_ids.get((run_id, case_id))
+        step = steps.get((run_case_id, step_id)) if run_case_id else None
+        if step is None:
+            continue
+        out[defect_id] = ExecutionEvidenceOut(
+            execution_step_id=step.id,
+            test_run_case_id=step.test_run_case_id,
+            verdict=cast(Verdict, step.verdict) if step.verdict is not None else None,
+            opened_at=step.opened_at,
+            closed_at=step.closed_at,
+            duration_ms=step.duration_ms,
+            executed_by=step.executed_by,
+            executed_by_name=names.get(step.executed_by),
+        )
+    return out
 
 
 def to_out(db: Session, defect: Defect) -> DefectOut:
+    return to_out_many(db, [defect])[0]
+
+
+def to_out_many(db: Session, defects: list[Defect]) -> list[DefectOut]:
+    """Serialize a page of defects with a constant number of queries (ADR-113)
+    instead of ~15 per defect. All `defects` belong to one tenant."""
+    if not defects:
+        return []
+    tenant_id = defects[0].tenant_id
     # See ARCHITECTURE_DECISIONS.md ADR-007 addendum.
-    set_tenant_context(db, str(defect.tenant_id))
+    set_tenant_context(db, str(tenant_id))
 
-    project = db.execute(select(Project).where(Project.id == defect.project_id)).scalar_one()
-
-    test_case_title: str | None = None
-    if defect.test_case_id is not None:
-        test_case_title = db.execute(
-            select(TestCase.title).where(TestCase.id == defect.test_case_id)
-        ).scalar_one()
-
-    test_case_version_number: int | None = None
-    if defect.test_case_version_id is not None:
-        test_case_version_number = db.execute(
-            select(TestCaseVersion.version_number).where(
-                TestCaseVersion.id == defect.test_case_version_id
-            )
-        ).scalar_one()
-
-    test_run_name: str | None = None
-    if defect.test_run_id is not None:
-        test_run_name = db.execute(
-            select(TestRun.name).where(TestRun.id == defect.test_run_id)
-        ).scalar_one()
-
-    step_number: int | None = None
-    if defect.test_case_version_step_id is not None:
-        step_number = db.execute(
-            select(TestCaseVersionStep.step_number).where(
-                TestCaseVersionStep.id == defect.test_case_version_step_id
-            )
-        ).scalar_one()
-
-    reported_by_name = db.execute(
-        select(User.name).where(User.id == defect.reported_by)
-    ).scalar_one_or_none()
-
-    environment_name: str | None = None
-    if defect.environment_id is not None:
-        environment_name = db.execute(
-            select(Environment.name).where(Environment.id == defect.environment_id)
-        ).scalar_one_or_none()
-
-    found_in_build_name: str | None = None
-    if defect.found_in_build_id is not None:
-        found_in_build_name = db.execute(
-            select(Build.name).where(Build.id == defect.found_in_build_id)
-        ).scalar_one_or_none()
-
-    fixed_in_release_name: str | None = None
-    if defect.fixed_in_release_id is not None:
-        fixed_in_release_name = db.execute(
-            select(Release.name).where(Release.id == defect.fixed_in_release_id)
-        ).scalar_one_or_none()
-
-    module_name: str | None = None
-    if defect.module_id is not None:
-        module_name = db.execute(
-            select(TestModule.name).where(TestModule.id == defect.module_id)
-        ).scalar_one_or_none()
-
-    assigned_to_name: str | None = None
-    if defect.assigned_to is not None:
-        assigned_to_name = db.execute(
-            select(User.name).where(User.id == defect.assigned_to)
-        ).scalar_one_or_none()
-
-    evidence = _execution_evidence(db, defect)
-    test_run_case_id = evidence.test_run_case_id if evidence is not None else None
-
-    links = db.execute(select(DefectLink).where(DefectLink.defect_id == defect.id)).scalars()
-    age_days, sla_breached = compute_aging(defect)
-    status_labels = status_label_service.get_labels_map(db, defect.tenant_id, "defect")
-    custom_fields = custom_field_service.get_values_for_owner(
-        db, defect.tenant_id, "defect", defect.id
+    project_names = lookups.value_map(
+        db, Project.id, Project.name, (d.project_id for d in defects)
     )
+    case_titles = lookups.value_map(
+        db, TestCase.id, TestCase.title, (d.test_case_id for d in defects)
+    )
+    version_numbers = lookups.value_map(
+        db,
+        TestCaseVersion.id,
+        TestCaseVersion.version_number,
+        (d.test_case_version_id for d in defects),
+    )
+    run_names = lookups.value_map(db, TestRun.id, TestRun.name, (d.test_run_id for d in defects))
+    step_numbers = lookups.value_map(
+        db,
+        TestCaseVersionStep.id,
+        TestCaseVersionStep.step_number,
+        (d.test_case_version_step_id for d in defects),
+    )
+    evidences = _execution_evidences(db, defects)
+    user_names = lookups.value_map(
+        db,
+        User.id,
+        User.name,
+        [d.reported_by for d in defects] + [d.assigned_to for d in defects],
+    )
+    environment_names = lookups.value_map(
+        db, Environment.id, Environment.name, (d.environment_id for d in defects)
+    )
+    build_names = lookups.value_map(
+        db, Build.id, Build.name, (d.found_in_build_id for d in defects)
+    )
+    release_names = lookups.value_map(
+        db, Release.id, Release.name, (d.fixed_in_release_id for d in defects)
+    )
+    module_names = lookups.value_map(
+        db, TestModule.id, TestModule.name, (d.module_id for d in defects)
+    )
+    defect_ids = [d.id for d in defects]
+    links_by_defect: dict[UUID, list[DefectLink]] = {did: [] for did in defect_ids}
+    for link_ in db.execute(
+        select(DefectLink).where(DefectLink.defect_id.in_(defect_ids))
+    ).scalars():
+        links_by_defect[link_.defect_id].append(link_)
+    status_labels = status_label_service.get_labels_map(db, tenant_id, "defect")
+    custom_fields = custom_field_service.get_values_for_owners(db, tenant_id, "defect", defect_ids)
 
+    return [
+        _defect_out(
+            defect,
+            project_name=project_names[defect.project_id],
+            test_case_title=case_titles.get(defect.test_case_id),
+            test_case_version_number=version_numbers.get(defect.test_case_version_id),
+            test_run_name=run_names.get(defect.test_run_id),
+            step_number=step_numbers.get(defect.test_case_version_step_id),
+            reported_by_name=user_names.get(defect.reported_by),
+            environment_name=environment_names.get(defect.environment_id),
+            found_in_build_name=build_names.get(defect.found_in_build_id),
+            fixed_in_release_name=release_names.get(defect.fixed_in_release_id),
+            module_name=module_names.get(defect.module_id),
+            assigned_to_name=user_names.get(defect.assigned_to),
+            evidence=evidences.get(defect.id),
+            links=links_by_defect[defect.id],
+            status_labels=status_labels,
+            custom_fields=custom_fields[defect.id],
+        )
+        for defect in defects
+    ]
+
+
+def _defect_out(
+    defect: Defect,
+    *,
+    project_name: str,
+    test_case_title: str | None,
+    test_case_version_number: int | None,
+    test_run_name: str | None,
+    step_number: int | None,
+    reported_by_name: str | None,
+    environment_name: str | None,
+    found_in_build_name: str | None,
+    fixed_in_release_name: str | None,
+    module_name: str | None,
+    assigned_to_name: str | None,
+    evidence: ExecutionEvidenceOut | None,
+    links: list[DefectLink],
+    status_labels: dict[str, str],
+    custom_fields: dict[str, object],
+) -> DefectOut:
+    test_run_case_id = evidence.test_run_case_id if evidence is not None else None
+    age_days, sla_breached = compute_aging(defect)
     return DefectOut(
         id=defect.id,
         project_id=defect.project_id,
-        project_name=project.name,
+        project_name=project_name,
         test_case_id=defect.test_case_id,
         test_case_title=test_case_title,
         test_case_version_id=defect.test_case_version_id,

@@ -22,7 +22,7 @@ from app.schemas.csv_import import (
 )
 from app.services import field_option_service, tester_visibility
 from app.services.project_service import is_assigned
-from app.services.test_case_service import _last_execution
+from app.services.test_case_service import _last_executions
 
 settings = get_settings()
 
@@ -593,6 +593,9 @@ def _import_test_case_rows(
     )
 
 
+EXPORT_CHUNK = 500
+
+
 def export_test_cases_csv(
     db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
 ) -> str:
@@ -611,7 +614,7 @@ def export_test_cases_csv(
     )
     # ADR-093: a scoped Tester's export holds only the cases they may see.
     case_query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, case_query)
-    cases = db.execute(case_query).scalars()
+    cases = list(db.execute(case_query).scalars())
 
     users_by_id = {
         u.id: u for u in db.execute(select(User).where(User.tenant_id == tenant_id)).scalars()
@@ -634,15 +637,34 @@ def export_test_cases_csv(
     writer = csv.writer(buffer)
     writer.writerow(export_headers)
 
-    for case in cases:
-        version = db.execute(
-            select(TestCaseVersion).where(TestCaseVersion.id == case.current_version_id)
-        ).scalar_one()
-        steps = db.execute(
-            select(TestCaseVersionStep)
-            .where(TestCaseVersionStep.test_case_version_id == version.id)
-            .order_by(TestCaseVersionStep.step_number)
-        ).scalars()
+    # ADR-113: versions, steps and last-execution are fetched per chunk of cases
+    # (a handful of queries per 500 cases) instead of several per case.
+    versions_by_id: dict = {}
+    steps_by_version: dict = {}
+    last_by_case: dict = {}
+    for case_index, case in enumerate(cases):
+        if case_index % EXPORT_CHUNK == 0:
+            chunk = cases[case_index : case_index + EXPORT_CHUNK]
+            versions_by_id = {
+                v.id: v
+                for v in db.execute(
+                    select(TestCaseVersion).where(
+                        TestCaseVersion.id.in_([c.current_version_id for c in chunk])
+                    )
+                ).scalars()
+            }
+            steps_by_version = {vid: [] for vid in versions_by_id}
+            for step in db.execute(
+                select(TestCaseVersionStep)
+                .where(TestCaseVersionStep.test_case_version_id.in_(list(versions_by_id)))
+                .order_by(
+                    TestCaseVersionStep.test_case_version_id, TestCaseVersionStep.step_number
+                )
+            ).scalars():
+                steps_by_version[step.test_case_version_id].append(step)
+            last_by_case = _last_executions(db, tenant_id, [c.id for c in chunk])
+        version = versions_by_id[case.current_version_id]
+        steps = steps_by_version[version.id]
         steps_cell = ";".join(f"{s.action}|{s.expected}" for s in steps)
         assignee_email = users_by_id[case.assignee_id].email if case.assignee_id else ""
 
@@ -658,8 +680,8 @@ def export_test_cases_csv(
                     parent = modules_by_id.get(module.parent_id)
                     module_name = parent.name if parent is not None else ""
 
-        last_result, last_executed_by_name, last_execution_date = _last_execution(
-            db, tenant_id, case.id
+        last_result, last_executed_by_name, last_execution_date = last_by_case.get(
+            case.id, (None, None, None)
         )
 
         writer.writerow(

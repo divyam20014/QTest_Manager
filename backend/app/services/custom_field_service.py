@@ -200,6 +200,42 @@ def get_values_for_owner(
     return {field_key: value for field_key, value in rows}
 
 
+def get_values_for_owners(
+    db: Session, tenant_id: UUID, owner_type: str, owner_ids: list[UUID]
+) -> dict[UUID, dict[str, object]]:
+    """Batch form of `get_values_for_owner` for list pages: two queries total
+    (definitions + values) instead of two per row. Every owner gets every
+    definition key (None when it has no value), exactly like the single form."""
+    if not owner_ids:
+        return {}
+    definitions = db.execute(
+        select(CustomFieldDefinition.id, CustomFieldDefinition.field_key).where(
+            CustomFieldDefinition.tenant_id == tenant_id,
+            CustomFieldDefinition.entity_type == owner_type,
+        )
+    ).all()
+    out: dict[UUID, dict[str, object]] = {
+        owner_id: {key: None for _id, key in definitions} for owner_id in owner_ids
+    }
+    if not definitions:
+        return out
+    key_by_def = {def_id: key for def_id, key in definitions}
+    rows = db.execute(
+        select(
+            CustomFieldValue.owner_id,
+            CustomFieldValue.field_definition_id,
+            CustomFieldValue.value,
+        ).where(
+            CustomFieldValue.owner_type == owner_type,
+            CustomFieldValue.owner_id.in_(list(owner_ids)),
+            CustomFieldValue.field_definition_id.in_(list(key_by_def)),
+        )
+    ).all()
+    for owner_id, def_id, value in rows:
+        out[owner_id][key_by_def[def_id]] = value
+    return out
+
+
 def set_values_for_owner(
     db: Session,
     tenant_id: UUID,
