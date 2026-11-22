@@ -48,6 +48,8 @@ export interface ColumnPrefsLike {
   isVisible: (key: string) => boolean
   width: (key: string) => number | undefined
   setWidth: (key: string, width: number) => void
+  /** ADR-105: row density; compact only tightens desktop rows. */
+  density?: 'comfortable' | 'compact'
 }
 
 export interface RowSelection<T> {
@@ -143,15 +145,20 @@ function DesktopTable<T>({
       )}
       {...(focusableScroll ? { tabIndex: 0, role: 'region', 'aria-label': `${label} (scrollable)` } : {})}
     >
-      <table aria-label={label} className="w-full text-sm">
+      <table
+        aria-label={label}
+        aria-busy={loading ? true : undefined}
+        data-density={prefs?.density ?? 'comfortable'}
+        className="w-full text-sm md:data-[density=compact]:[&_td]:py-1.5 md:data-[density=compact]:[&_th]:py-1.5"
+      >
         <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
           <tr>
             {selection && (
               <th className="w-10 px-4 py-2">
                 <input
                   type="checkbox"
-                  aria-label="Select all"
-                  checked={rows.length > 0 && selection.selected.size === rows.length}
+                  aria-label="Select all on this page"
+                  checked={rows.length > 0 && rows.every((r) => selection.selected.has(rowKey(r)))}
                   onChange={selection.onToggleAll}
                 />
               </th>
@@ -250,7 +257,8 @@ function CardList<T>({
   }
   if (loading) {
     return (
-      <div className="flex flex-col gap-3" aria-hidden="true">
+      <div className="flex flex-col gap-3" role="status" aria-busy="true">
+        <span className="sr-only">Loading {label}</span>
         {[0, 1, 2].map((i) => (
           <div key={i} className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
             <Skeleton className="h-5 w-3/4" />
@@ -262,7 +270,8 @@ function CardList<T>({
     )
   }
 
-  const allSelected = rows.length > 0 && selection !== undefined && selection.selected.size === rows.length
+  const allSelected =
+    rows.length > 0 && selection !== undefined && rows.every((r) => selection.selected.has(rowKey(r)))
 
   return (
     <div className="flex flex-col gap-3">
@@ -270,7 +279,7 @@ function CardList<T>({
         <label className="flex min-h-11 items-center gap-3 px-1 text-sm text-[var(--muted-foreground)]">
           <input
             type="checkbox"
-            aria-label="Select all"
+            aria-label="Select all on this page"
             checked={allSelected}
             onChange={selection.onToggleAll}
           />

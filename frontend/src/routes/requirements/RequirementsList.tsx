@@ -11,6 +11,8 @@ import {
   type Requirement,
   type RequirementCreateRequest,
 } from '@/api/requirements'
+import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
+import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -60,7 +62,14 @@ const columns: ResponsiveColumn<Requirement>[] = [
 // Only `page` is URL-persisted here (still a real win: survives refresh,
 // shareable). No bulk actions exist for requirements and the list is only
 // 3 columns, so neither a bulk-action bar nor a column-picker applies.
+const REQ_COLUMNS: TableColumnDef[] = [
+  { key: 'title', label: 'Title', alwaysVisible: true },
+  { key: 'version', label: 'Version' },
+  { key: 'linked', label: 'Linked test cases' },
+]
+
 export function RequirementsList() {
+  const columnPrefs = useColumnPrefs('requirements-list', REQ_COLUMNS)
   const { projectId } = useParams<{ projectId: string }>()
   const { user } = useAuth()
   const canManage = isManagerOrAbove(user)
@@ -136,8 +145,20 @@ export function RequirementsList() {
         </div>
       )}
 
+      <div className="flex justify-end">
+        <ColumnVisibilityMenu
+          columns={REQ_COLUMNS}
+          isVisible={columnPrefs.isVisible}
+          toggleVisible={columnPrefs.toggleVisible}
+          showAll={columnPrefs.showAll}
+          density={columnPrefs.density}
+          setDensity={columnPrefs.setDensity}
+        />
+      </div>
+
       <ResponsiveTable
         label="Requirements"
+        prefs={columnPrefs}
         rows={requirementsQuery.data?.items ?? []}
         rowKey={(r) => r.id}
         columns={columns}

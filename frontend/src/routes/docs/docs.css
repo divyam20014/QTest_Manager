@@ -338,6 +338,13 @@
     width: 100%;
     font-size: 9pt;
   }
+  /* Wide tables must fit the paper: drop the screen min-widths and let headers wrap. */
+  .brd-prose td {
+    min-width: 0;
+  }
+  .brd-prose th {
+    white-space: normal;
+  }
   .brd-prose tr,
   .brd-diagram {
     break-inside: avoid;

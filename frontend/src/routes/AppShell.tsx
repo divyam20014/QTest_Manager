@@ -1,7 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   BarChart3,
-  Table2,
   BookOpen,
   Bug,
   Building2,
@@ -19,11 +18,10 @@ import {
   ScrollText,
   Settings as SettingsIcon,
   ShieldCheck,
-  Snowflake,
   Users,
 } from 'lucide-react'
 import { type ComponentType, type CSSProperties, useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
 import { getBranding, getLogoUrl } from '@/api/settings'
@@ -50,6 +48,10 @@ interface NavItem {
   // UX-025: the item leaves the shell (a print-optimised page), so it opens
   // in a new tab and says so.
   newTab?: boolean
+  // ADR-108 follow-up: one item covering several routes (`to` is the default
+  // target). It shows if any is reachable, links to the first that is, and is
+  // active on all of them.
+  paths?: string[]
 }
 
 interface NavSection {
@@ -85,29 +87,50 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Analytics',
     items: [
       { to: '/reporting', label: 'Reports', icon: BarChart3 },
-      { to: '/reporting/builder', label: 'Report builder', icon: Table2 },
       { to: '/reporting/print', label: 'Compliance Reports', icon: ShieldCheck, newTab: true },
     ],
-  },
-  {
-    // BRD gap Phase 4 (FR-BRD-01): the in-app documentation viewer. Open to
-    // every signed-in user; which documents it lists depends on the role
-    // (routes/docs/docsManifest.ts), so it needs no entry in routeAccess.ts.
-    label: 'Help',
-    items: [{ to: '/brd', label: 'Documentation', icon: BookOpen }],
   },
   {
     label: 'Administration',
     items: [
       { to: '/admin/users', label: 'Users & Roles', icon: Users },
-      { to: '/admin/roles', label: 'Roles & Permissions', icon: KeyRound },
+      {
+        to: '/admin/roles',
+        label: 'Access control',
+        icon: KeyRound,
+        paths: ['/admin/roles', '/admin/access-rules'],
+      },
       { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText },
       { to: '/admin/environments', label: 'Environments', icon: Layers },
-      { to: '/admin/access-rules', label: 'Access Rules', icon: Snowflake },
       { to: '/settings', label: 'Settings', icon: SettingsIcon },
     ],
   },
 ]
+
+// ADR-108: BRD gap Phase 4 (FR-BRD-01), the in-app documentation viewer, is a
+// pinned footer link above Profile rather than a one-item "Help" group. Open to
+// every signed-in user; which documents it lists depends on the role
+// (routes/docs/docsManifest.ts), so it needs no entry in routeAccess.ts.
+export const DOCS_LINK: NavItem = { to: '/brd', label: 'Documentation', icon: BookOpen }
+
+// Destinations kept out of the sidebar but still offered by the command palette.
+export const PALETTE_EXTRA_ENTRIES: { label: string; sublabel: string; path: string }[] = [
+  { label: 'Report builder', sublabel: 'Analytics', path: '/reporting/builder' },
+  { label: DOCS_LINK.label, sublabel: 'Help', path: DOCS_LINK.to },
+  // The two Access control tabs stay individually searchable.
+  { label: 'Roles & Permissions', sublabel: 'Administration', path: '/admin/roles' },
+  { label: 'Access Rules', sublabel: 'Administration', path: '/admin/access-rules' },
+]
+
+// The item as this user sees it (link target = first reachable route), or null.
+export function resolveNavItem(user: Parameters<typeof canAccessPath>[0], item: NavItem): NavItem | null {
+  const target = (item.paths ?? [item.to]).find((p) => canAccessPath(user, p))
+  return target ? { ...item, to: target } : null
+}
+
+export function isNavItemActive(item: NavItem, pathname: string): boolean {
+  return (item.paths ?? []).some((p) => pathname === p)
+}
 
 const COLLAPSE_STORAGE_KEY = 'qtesthub:sidebar-collapsed'
 
@@ -145,12 +168,14 @@ function SidebarLink({
   collapsed,
   className,
 }: {
-  item: { to: string; label: string; icon: ComponentType<{ className?: string }>; end?: boolean; newTab?: boolean }
+  item: NavItem
   collapsed: boolean
   className: (state: { isActive: boolean }) => string
 }) {
   const [tip, setTip] = useState<{ top: number; left: number } | null>(null)
   const ref = useRef<HTMLAnchorElement>(null)
+  const { pathname } = useLocation()
+  const multiActive = isNavItemActive(item, pathname)
 
   function showTip() {
     if (!collapsed || !ref.current) return
@@ -195,6 +220,18 @@ function SidebarLink({
         >
           {content}
         </a>
+      ) : item.paths ? (
+        // A multi-route item: NavLink would only mark its own `to` as current.
+        <Link
+          ref={ref}
+          to={item.to}
+          aria-label={collapsed ? item.label : undefined}
+          aria-current={multiActive ? 'page' : undefined}
+          className={className({ isActive: multiActive })}
+          {...events}
+        >
+          {content}
+        </Link>
       ) : (
         <NavLink
           ref={ref}
@@ -267,7 +304,7 @@ export function AppShell() {
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => canAccessPath(user, item.to)),
+    items: section.items.flatMap((item) => resolveNavItem(user, item) ?? []),
   })).filter((section) => section.items.length > 0)
 
   return (
@@ -292,7 +329,14 @@ export function AppShell() {
         <div className="flex items-center justify-between gap-2 px-4 py-4">
           <div className="flex min-w-0 items-center gap-2">
             {branding?.has_logo ? (
-              <img src={getLogoUrl()} alt="" width={28} height={28} decoding="async" className="size-7 shrink-0 rounded-md object-contain" />
+              <img
+                src={getLogoUrl()}
+                alt=""
+                width={28}
+                height={28}
+                decoding="async"
+                className="size-7 shrink-0 rounded-md object-contain"
+              />
             ) : (
               <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-accent)] text-sm font-bold text-[var(--sidebar-bg)]">
                 Q
@@ -333,7 +377,10 @@ export function AppShell() {
           ))}
         </nav>
 
-        <div className="border-t border-[var(--sidebar-border)] px-3 py-3">
+        <div className="flex flex-col gap-1 border-t border-[var(--sidebar-border)] px-3 py-3">
+          {canAccessPath(user, DOCS_LINK.to) && (
+            <SidebarLink item={DOCS_LINK} collapsed={collapsed} className={navLinkClass} />
+          )}
           <SidebarLink
             item={{ to: '/account', label: 'Profile', icon: UserCircle }}
             collapsed={collapsed}
@@ -381,7 +428,11 @@ export function AppShell() {
             </div>
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="min-w-0 flex-1 bg-[var(--muted)]/40 p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-6"
+        >
           <RouteBoundary resetKey={location.pathname}>
             <AccessRuleBanner />
             {/* Restricted screens are blocked here, before the route element

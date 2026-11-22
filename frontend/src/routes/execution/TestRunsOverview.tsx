@@ -7,15 +7,28 @@ import { listProjects, type Project } from '@/api/projects'
 import { FilterBar } from '@/components/table/FilterBar'
 import { ViewsMenu } from '@/components/table/ViewsMenu'
 import { useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
+import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
+import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
 
 const RUNS_PAGE_SIZE = 50
 
 type OverviewRow = { project: Project; run: TestRunSummary }
+
+const OVERVIEW_COLUMN_DEFS: TableColumnDef[] = [
+  { key: 'run', label: 'Run', alwaysVisible: true },
+  { key: 'status', label: 'Status', alwaysVisible: true },
+  { key: 'project', label: 'Project' },
+  { key: 'type', label: 'Type' },
+  { key: 'cases', label: 'Cases' },
+  { key: 'created', label: 'Created' },
+]
 
 const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
   {
@@ -67,6 +80,7 @@ const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
 // no tenant-wide /test-runs endpoint exists, so each project's runs are
 // fetched and merged here rather than adding a new backend aggregate.
 export function TestRunsOverview() {
+  const columnPrefs = useColumnPrefs('test-runs-overview', OVERVIEW_COLUMN_DEFS)
   const [projectId, setProjectId] = useState('')
   // Pass C (deferred item #3): the Dashboard's "Active Test Runs" KPI
   // links here with `?status=in_progress`, a deep link that silently did
@@ -172,18 +186,53 @@ export function TestRunsOverview() {
         </label>
       </FilterBar>
 
+      <div className="flex justify-end">
+        <ColumnVisibilityMenu
+          columns={OVERVIEW_COLUMN_DEFS}
+          isVisible={columnPrefs.isVisible}
+          toggleVisible={columnPrefs.toggleVisible}
+          showAll={columnPrefs.showAll}
+          density={columnPrefs.density}
+          setDensity={columnPrefs.setDensity}
+        />
+      </div>
+
       <ResponsiveTable
         label="Test runs"
+        prefs={columnPrefs}
         rows={pageRows}
         rowKey={(r) => r.run.id}
         columns={OVERVIEW_COLUMNS}
         loading={isLoading}
         className="bg-[var(--background)]"
         state={
-          !isLoading && total === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
-              No test runs match these filters.
-            </p>
+          runsQuery.isError ? (
+            <ErrorState error={runsQuery.error} onRetry={() => runsQuery.refetch()} />
+          ) : !isLoading && total === 0 ? (
+            projectId || activeOnly ? (
+              <EmptyState
+                variant="filtered"
+                title="No test runs match these filters"
+                description="Try clearing a filter to see more runs."
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setProjectId('')
+                      setActiveOnly(false)
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="No test runs yet"
+                description="Runs from every project you can see appear here. Start one from a project's Test Runs tab."
+              />
+            )
           ) : undefined
         }
       />

@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Bot,
   Bug,
   ClipboardList,
@@ -36,6 +37,8 @@ export interface MobileNavItem {
   icon: ComponentType<{ className?: string }>
   /** Leaves the shell (print page): opens in a new tab with an indicator. */
   newTab?: boolean
+  /** One item covering several routes: active on all of them. */
+  paths?: string[]
 }
 
 export interface MobileNavSection {
@@ -100,13 +103,7 @@ function TabBadge({ count }: { count: number }) {
   )
 }
 
-export function MobileTabBar({
-  moreOpen,
-  onMore,
-}: {
-  moreOpen: boolean
-  onMore: () => void
-}) {
+export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: () => void }) {
   const { user } = useAuth()
   const location = useLocation()
   const [focusWithin, setFocusWithin] = useState(false)
@@ -229,6 +226,7 @@ export function MoreSheet({
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const [aiOpen, setAiOpen] = useState(false)
   const location = useLocation()
+  const { user } = useAuth()
 
   useOverlayBehavior(open && !aiOpen, onClose, panelRef, closeButtonRef)
 
@@ -286,9 +284,7 @@ export function MoreSheet({
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{userName ?? 'Account'}</p>
-                {userRole && (
-                  <p className="truncate text-xs capitalize text-[var(--muted-foreground)]">{userRole}</p>
-                )}
+                {userRole && <p className="truncate text-xs capitalize text-[var(--muted-foreground)]">{userRole}</p>}
               </div>
               <button
                 ref={closeButtonRef}
@@ -334,7 +330,14 @@ export function MoreSheet({
                         <span className="sr-only"> (opens in a new tab)</span>
                       </a>
                     ) : (
-                      <NavLink key={item.to} to={item.to} end className={rowClass}>
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end
+                        className={(state) =>
+                          rowClass({ isActive: state.isActive || (item.paths ?? []).includes(location.pathname) })
+                        }
+                      >
                         <item.icon className="size-4 shrink-0" />
                         <span className="truncate">{item.label}</span>
                       </NavLink>
@@ -344,6 +347,12 @@ export function MoreSheet({
               ))}
 
               <div className="flex flex-col gap-0.5 border-t border-[var(--border)] pt-3">
+                {canAccessPath(user, '/brd') && (
+                  <NavLink to="/brd" className={rowClass}>
+                    <BookOpen className="size-4 shrink-0" />
+                    Documentation
+                  </NavLink>
+                )}
                 <NavLink to="/account" className={rowClass}>
                   <User className="size-4 shrink-0" />
                   Profile
@@ -358,12 +367,11 @@ export function MoreSheet({
 
             {/* Phase 2: Sign out is pinned below the scrolling list so it is
                 always reachable, however long the admin menu is. */}
-            <div className="shrink-0 border-t border-[var(--border)] px-3 pt-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
-              <button
-                type="button"
-                className={cn(plainRow, 'text-[var(--destructive)]')}
-                onClick={onLogout}
-              >
+            <div
+              className="shrink-0 border-t border-[var(--border)] px-3 pt-2"
+              style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+            >
+              <button type="button" className={cn(plainRow, 'text-[var(--destructive)]')} onClick={onLogout}>
                 <LogOut className="size-4 shrink-0" />
                 Sign out
               </button>

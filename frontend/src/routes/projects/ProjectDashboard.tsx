@@ -104,7 +104,7 @@ export function ProjectDashboard() {
               </Link>
             )}
             {hasPermission(user, 'testcase.create') && (
-              <Link to={`/projects/${project.id}/test-cases`} className={buttonVariants({ variant: 'outline' })}>
+              <Link to={`/projects/${project.id}/test-cases?quick=1`} className={buttonVariants({ variant: 'outline' })}>
                 New test case
               </Link>
             )}

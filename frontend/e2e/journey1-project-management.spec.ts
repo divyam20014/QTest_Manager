@@ -26,6 +26,7 @@ test('Admin creates a project and it appears in the project list', async ({ page
   })
 
   await page.click('a:has-text("Apex Motor Claims Modernization")')
+  await page.click('nav[aria-label="Project sections"] >> text=Details')
   await expect(page.getByText('Team Members')).toBeVisible({ timeout: 10000 })
 })
 

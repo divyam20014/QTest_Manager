@@ -18,6 +18,7 @@ import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
@@ -321,11 +322,21 @@ export function UsersRoles() {
         rowKey={(u) => u.id}
         columns={columns}
         stateCellClassName="px-4"
+        loading={usersQuery.isLoading}
         state={
-          filteredUsers.length === 0 && usersQuery.data && usersQuery.data.length > 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
-              No users match your filters.
-            </p>
+          usersQuery.isError ? (
+            <ErrorState error={usersQuery.error} onRetry={() => usersQuery.refetch()} />
+          ) : filteredUsers.length === 0 && usersQuery.data && usersQuery.data.length > 0 ? (
+            <EmptyState
+              variant="filtered"
+              title="No users match your filters"
+              description="Try clearing a filter or the search to see more people."
+              action={
+                <Button variant="outline" size="sm" onClick={urlFilters.clearAll}>
+                  Clear filters
+                </Button>
+              }
+            />
           ) : undefined
         }
         rowActions={(u) => (

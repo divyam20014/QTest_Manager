@@ -43,6 +43,7 @@ test('deleting a project needs its name typed; cancel keeps it', async ({ page, 
   const name = 'Confirm Delete Project'
   await createProject(page, name)
   await page.getByRole('link', { name }).click()
+  await page.click('nav[aria-label="Project sections"] >> text=Details')
 
   await page.getByRole('button', { name: 'Delete Project' }).click()
   const dialog = page.getByRole('dialog')

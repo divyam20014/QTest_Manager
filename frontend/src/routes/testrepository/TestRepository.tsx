@@ -27,7 +27,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { Drawer } from '@/components/ui/dialog'
-import { ErrorState } from '@/components/ui/empty-state'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -666,6 +666,14 @@ export function TestRepository() {
   ]
 
   // One definition feeds every table: the flat list, and each open project group.
+  function clearRepoFilters() {
+    setStatus('')
+    setPriority('')
+    setProjectId('')
+    setShowDeprecated(false)
+    setMine(false)
+  }
+
   function renderTable(
     groupRows: Row[],
     { label, loading, hiddenDeprecated }: { label: string; loading: boolean; hiddenDeprecated: number },
@@ -680,13 +688,31 @@ export function TestRepository() {
         columns={grouped ? tableColumns.filter((c) => c.key !== 'project') : tableColumns}
         prefs={columnPrefs}
         loading={loading}
-        stateCellClassName="px-4 py-6 text-center text-[var(--muted-foreground)]"
+        stateCellClassName="px-4"
         state={
-          !loading && groupRows.length === 0
-            ? hiddenDeprecated > 0
-              ? `No test cases match these filters — ${hiddenDeprecated} deprecated case${hiddenDeprecated === 1 ? '' : 's'} hidden, check "Show deprecated".`
-              : 'No test cases match these filters.'
-            : undefined
+          !loading && groupRows.length === 0 ? (
+            hiddenDeprecated > 0 || status || priority || projectId || mine ? (
+              <EmptyState
+                variant="filtered"
+                title="No test cases match these filters"
+                description={
+                  hiddenDeprecated > 0
+                    ? `${hiddenDeprecated} deprecated case${hiddenDeprecated === 1 ? ' is' : 's are'} hidden. Tick "Show deprecated" to see ${hiddenDeprecated === 1 ? 'it' : 'them'}.`
+                    : 'Try clearing a filter to see more results.'
+                }
+                action={
+                  <Button variant="outline" size="sm" onClick={clearRepoFilters}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="No test cases yet"
+                description="Test cases from every project you can see are listed here. Create them from a project's Test Cases tab."
+              />
+            )
+          ) : undefined
         }
         selection={selectionFor(groupRows)}
         onRowContextMenu={(e, { case: tc }) => {
@@ -753,13 +779,7 @@ export function TestRepository() {
       <FilterBar
         activeCount={[status, priority, projectId].filter(Boolean).length + (showDeprecated ? 1 : 0) + (mine ? 1 : 0)}
         desktopClear={false}
-        onClear={() => {
-          setStatus('')
-          setPriority('')
-          setProjectId('')
-          setShowDeprecated(false)
-          setMine(false)
-        }}
+        onClear={clearRepoFilters}
         primary={
           <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 max-md:min-w-0">
             <label htmlFor="repo-search" className="text-xs text-[var(--muted-foreground)]">
@@ -788,6 +808,8 @@ export function TestRepository() {
             isVisible={columnPrefs.isVisible}
             toggleVisible={columnPrefs.toggleVisible}
             showAll={columnPrefs.showAll}
+            density={columnPrefs.density}
+            setDensity={columnPrefs.setDensity}
           />
         }
       >

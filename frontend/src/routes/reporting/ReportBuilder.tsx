@@ -28,6 +28,7 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { ExportButton } from '@/components/ui/ExportButton'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { ReportTabs } from './ReportTabs'
 import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
 import { useConfirm } from '@/components/ui/useConfirm'
@@ -290,6 +291,7 @@ export function ReportBuilder() {
 
   return (
     <div className="space-y-6">
+      <ReportTabs />
       <PageHeader title="Report builder" description="Build, save and export a report from your project data." />
       <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
         <aside className="space-y-6">

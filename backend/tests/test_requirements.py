@@ -273,3 +273,16 @@ def test_requirements_are_tenant_isolated(client: TestClient, platform_admin: di
 
     cross_tenant_get = other_client.get(f"/api/v1/requirements/{req['id']}")
     assert cross_tenant_get.status_code == 404
+
+
+def test_test_case_lists_its_linked_requirements(client: TestClient, platform_admin: dict) -> None:
+    _, project_id = _setup_admin_and_project(client, platform_admin)
+    case = _create_test_case(client, project_id, "Verify linked requirements list")
+    assert client.get(f"/api/v1/test-cases/{case['id']}/requirements").json()["data"] == []
+    req = client.post(
+        f"/api/v1/projects/{project_id}/requirements",
+        json={"title": "Linked requirement alpha", "description": ""},
+    ).json()["data"]
+    client.post(f"/api/v1/requirements/{req['id']}/test-cases", json={"test_case_id": case["id"]})
+    listed = client.get(f"/api/v1/test-cases/{case['id']}/requirements").json()["data"]
+    assert listed == [{"id": req["id"], "title": "Linked requirement alpha"}]

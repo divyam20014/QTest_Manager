@@ -145,7 +145,7 @@ test('mobile components: card lists, filters sheet, form sheet, pinned sign-out,
   const repoSheet = page.getByRole('dialog', { name: 'Filters' })
   await repoSheet.getByLabel('Priority').selectOption('Critical')
   await repoSheet.getByRole('button', { name: 'Done' }).click()
-  await expect(page.getByText('No test cases match these filters.')).toBeVisible()
+  await expect(page.getByText('No test cases match these filters')).toBeVisible()
   await noHorizontalOverflow(page)
 
   // --- More sheet: Sign out is pinned; theme state is shared ------------------

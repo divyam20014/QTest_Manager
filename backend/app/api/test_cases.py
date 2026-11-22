@@ -135,6 +135,19 @@ def get_test_case(
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
 
+@router.get("/test-cases/{test_case_id}/requirements")
+def list_linked_requirements(
+    test_case_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    return envelope(
+        test_case_service.list_linked_requirements(
+            db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+        )
+    )
+
+
 @router.get("/test-cases/{test_case_id}/history")
 def get_test_case_history(
     test_case_id: UUID,

@@ -23,7 +23,7 @@ test('marketing pages are public and link to the demo request form', async ({ pa
 
 test('the guided walkthrough opens, steps through and closes', async ({ page }) => {
   await page.goto('/')
-  const trigger = page.getByRole('button', { name: 'Explore QTestHub in 2 Minutes' })
+  const trigger = page.getByRole('button', { name: 'Or take the 2-minute product tour' })
   await trigger.click()
   const dialog = page.getByRole('dialog', { name: 'Explore QTestHub in 2 Minutes' })
   await expect(dialog).toBeVisible()

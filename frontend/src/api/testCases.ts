@@ -246,3 +246,12 @@ export function bulkUpdateTestCases(req: {
     body: JSON.stringify(req),
   })
 }
+
+export interface LinkedRequirement {
+  id: string
+  title: string
+}
+
+export function listLinkedRequirements(testCaseId: string): Promise<LinkedRequirement[]> {
+  return apiFetch<LinkedRequirement[]>(`/test-cases/${testCaseId}/requirements`)
+}

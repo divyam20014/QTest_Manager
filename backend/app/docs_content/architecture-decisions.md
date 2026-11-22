@@ -1504,3 +1504,50 @@ A visitor with the `qtesthub:session-hint` key on `/` gets the app default inste
 **Desktop icon rail.** The collapsed sidebar (64px, persisted in localStorage, tooltip on hover and keyboard focus, active accent bar) gained thin dividers in place of section headings. Expanded state unchanged.
 
 **Skipped.** Two-level sidebar, floating sidebar, scroll-direction logic on desktop, card treatment for list/table rows.
+
+## ADR-105: Shared table preferences, row density and Test Cases bulk actions
+
+**Status:** accepted.
+
+**Shared prefs.** `useTablePrefs(tableKey, columns)` (alias of `useColumnPrefs`, `components/table/tablePrefs.ts`) is the one hook for visible columns, resized widths and row density. It persists to localStorage per user and per table (`qtesthub:table-prefs:<table>:u:<userId>`, falling back to the older user-less key; storage failures are swallowed). `ColumnVisibilityMenu` is the one control: a "Row density" Comfortable/Compact toggle plus the column checkboxes. Compact only tightens desktop rows (`md:` cell padding via `data-density` on the table, about 32px of padding plus content); phones render cards and ignore it, so tap targets stay 44px. Title/name and status columns are `alwaysVisible`; defaults are unchanged. Applied to Test Cases, Test Runs (project list and cross-project overview), Requirements, Defects, Test Repository and the Traceability Matrix.
+
+**Bulk actions (Test Cases).** Row checkboxes (header "Select all on this page", per row "Select <title>"), at most 100 selected, kept across pages while the filters are unchanged and cleared when they change. A sticky bar (fixed above the tab bar on phones, `aria-live` count) offers Assign, Change priority (both via the ADR-070 `/test-cases/bulk-update`), Move to module and Quarantine/Unquarantine (per-item endpoints, 3 in parallel, reason required to quarantine). Actions follow the user's permissions (`testcase.edit`; `testcase.approve` for quarantine, ADR-097); the server stays authoritative, so strict assignment (ADR-059), access rules and Tester scope surface as per-item failures. The toast reads "N updated, M failed (reasons)"; failed rows stay selected for retry. No backend change.
+
+**No bulk delete.** Deleting is irreversible and a stray select-all makes it too easy; deletion stays a deliberate per-case action.
+
+## ADR-106: Quick-create test case, requirement-link combobox, Create and start
+
+**Status:** accepted.
+
+**Already existed.** Full case form (Drawer), step rows, shared-step insert, dirty-form guard, `createTestCase`, requirement<->case link/unlink endpoints (`POST/DELETE /requirements/{id}/test-cases`), New Test Run dialog with "Skip quarantined cases (N)", DefectQuickCreateDialog. **Missing and added:** a compact create path, a case-side requirement control, a one-click run start.
+
+**Quick add.** `QuickCreateTestCaseDialog` (Test Cases header "Quick add"; the project dashboard's "New test case" opens it via `?quick=1`): Title, Priority, Module, 1-3 steps (Enter in Expected adds the next row, Ctrl/Cmd+Enter creates). Same endpoint and rules as the full form (title >= 5 chars, at least one complete step, because the API requires one). Inline errors use `aria-invalid` + `role=alert`; server reasons (access rules, strict assignment) are shown verbatim; closing with entries asks first. "Create and add another" keeps priority and module, clears title and steps, refocuses Title. "More options" opens the full form with the entered values (`lib/quickCase.ts`, pure and unit-tested).
+
+**Requirement links.** `MultiCombobox` (`components/ui/multi-combobox.tsx`): ARIA combobox + listbox, chips with "Remove requirement <title>" buttons, client-side typeahead (the requirements list has no search parameter, so the project's first 100 are fetched). Used by the new Linked Requirements card on case detail (needs `requirement.manage` to edit; read-only chips link to the requirement). One minimal backend addition: `GET /test-cases/{id}/requirements` (id + title), because no case-side listing existed.
+
+**Create and start.** New Test Run shows a primary "Create and start" (users with `executionstep.record`) that opens the Execution Console on the run's first case; "Create Test Run" stays as the secondary and keeps its old behaviour (opens the run page). The last run type is remembered per user in localStorage.
+
+**Skipped.** Requirement-side "Link test cases" mirror (needs its own case picker), combobox inside the create forms (links are made on the detail page), assignee/environment memory (runs have neither field), defect-to-requirement link (no endpoint; a defect already links to its case).
+
+## ADR-107: Page states and headers: one shared pattern
+
+**Context.** After ADR-103 to ADR-106 the main working pages still differed in how they showed "nothing here", "failed to load" and "loading": plain grey text, `FormError`, or nothing at all.
+
+**Decision.** Every main working page follows the same four rules, built from the existing shared pieces (no new components or dependencies).
+- **Header.** `PageHeader`: one `<h1>`, an optional one-line description, the single primary create action rightmost (ADR-103), secondary actions to its left, wrapping below the title on phones. Breadcrumbs stay in the AppShell.
+- **Empty.** `EmptyState` with a short message saying what the page is for and at most ONE action ("Create your first test case"), rendered only when the user holds the permission. `EmptyState` gained a compatible `variant` prop: `'filtered'` (rows exist but none match) uses a different icon, is marked `data-state="filtered"` and carries a "Clear filters" action. Existing call sites are unchanged.
+- **Error.** `ErrorState` with "Try again"; the server's reason is kept in `message`; a 403 renders "No access" instead (existing behaviour).
+- **Loading.** Skeleton rows or cards that match the final layout. `ResponsiveTable` now marks its loading table `aria-busy="true"` and its phone card skeleton `role="status"` with a screen-reader "Loading" label.
+
+**Pages changed.** Projects, Test Cases, Test Repository, Test Runs (overview and project list), Defects (filtered variant and Clear filters), Users and Roles, Access Rules. Requirements, Traceability, Reporting, Report Builder, Dashboards, Audit Logs, Roles and Permissions, Settings and the detail pages already followed the pattern.
+
+**Skipped.** Environments, Account and Settings sub-cards (small inline lists inside a card, not page-level states); the Audit Logs "No audit entries found" text (already has skeleton and ErrorState); Requirements empty state (no create action: creation lives in the header and a second action would duplicate it).
+
+
+## ADR-108: Navigation consolidation: Documentation footer link, Report builder tab
+
+**Decision.** Two sidebar items were removed to shorten the menu. (1) The one-item "Help" group is gone: **Documentation** (`/brd`) is a pinned footer link directly above Profile, styled like Profile, still gated by `canAccessPath`, with the same tooltip in the collapsed rail; the phone More sheet lists it above Profile. (2) The **Report builder** sidebar item is gone: Reports and Report builder are now two tabs (`ReportTabs`, `nav` "Report sections", same pattern as `ProjectTabs`) at the top of `/reporting` and `/reporting/builder`.
+
+**What stays.** The `/reporting/builder` route, breadcrumb and page title are unchanged; the Reports sidebar item (prefix match) is active on both pages; Testers with Reports hidden see neither (routeAccess.ts untouched). The command palette keeps explicit "Report builder" and "Documentation" entries (`PALETTE_EXTRA_ENTRIES`).
+
+**Follow-up (approved).** Roles & Permissions (`/admin/roles`) and Access Rules (`/admin/access-rules`) now share one Administration sidebar item, **Access control** (icon KeyRound). The item shows when the user can reach either route (`canAccessPath`, `routeAccess.ts` untouched), links to the first reachable one, and is active on both; the phone More sheet and collapsed-rail tooltip follow the same sections. A tab strip (`Access control sections`, `routes/admin/AccessControlTabs.tsx`, the ReportTabs pattern) appears on both pages when both are reachable and is omitted when only one is. Both routes, pages, breadcrumbs, titles and permissions are unchanged; the command palette keeps explicit Roles & Permissions and Access Rules entries.

@@ -248,3 +248,18 @@ One default-variant primary per screen or dialog; the rest outline or ghost; des
 ## Cards and navigation (ADR-104)
 
 Interactive summary cards (`EmbossedCard interactive`): 24px padding (16px on phones), 8px inner gaps, 1px border, hover lift 4px / 200ms, pressed and focus-visible states, no motion under reduced motion; one primary link per card. Phone tab bar: sliding indicator, count badges (Defects open, More unread), hides after 48px of downward scroll but never on the Execution Console, with focus inside, or under reduced motion. Collapsed desktop sidebar is a 64px icon rail with thin dividers and tooltips on hover and focus.
+
+## Data tables (ADR-105)
+
+Every data table uses `ResponsiveTable` with `useTablePrefs` and the single `ColumnVisibilityMenu` (columns plus a Comfortable/Compact density toggle). Density is a `data-density` attribute on the table; compact tightens cell padding at `md` and up only, using the Tailwind spacing scale, so there are no new tokens or colours. Key columns (title/name, status) stay `alwaysVisible`. Selection uses the `selection` prop with an accessible "Select all on this page" header; a bulk action bar sits sticky on desktop and fixed above the tab bar on phones.
+
+## Forms and workflows (ADR-106)
+
+`MultiCombobox` (`components/ui/multi-combobox.tsx`) is the shared searchable multi-select: ARIA combobox/listbox, removable chips (44px on phones), tokens only. Quick-create dialogs validate on blur and on submit with `role=alert`, and a primary action plus one "and add another" secondary.
+
+## Page states (ADR-107)
+
+- Header: `PageHeader` (one h1, description, ONE primary action rightmost).
+- Empty: `EmptyState`, one action shown only with the permission; `variant="filtered"` plus "Clear filters" when filters hide every row.
+- Error: `ErrorState` with "Try again", keeping the server's reason.
+- Loading: skeletons that match the final layout; `ResponsiveTable` sets `aria-busy` while loading.

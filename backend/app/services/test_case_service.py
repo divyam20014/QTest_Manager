@@ -20,6 +20,7 @@ from app.models.defect import Defect
 from app.models.execution import ExecutionStep, TestRunCase
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
+from app.models.requirement import Requirement, RequirementTestCaseLink
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
 from app.schemas.test_case import (
@@ -325,6 +326,24 @@ def get_test_case(
     case = _get_test_case_or_404(db, tenant_id, test_case_id)
     _authorize_case_access(db, tenant_id, role_code, user_id, case)
     return case
+
+
+def list_linked_requirements(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, test_case_id: UUID
+) -> list[dict]:
+    """Requirements linked to a case (id + title) -- the case-side view of the
+    RTM, so the case detail can show and edit its links without N+1 reads."""
+    case = get_test_case(db, tenant_id, role_code, user_id, test_case_id)
+    rows = db.execute(
+        select(Requirement.id, Requirement.title)
+        .join(RequirementTestCaseLink, RequirementTestCaseLink.requirement_id == Requirement.id)
+        .where(
+            RequirementTestCaseLink.tenant_id == tenant_id,
+            RequirementTestCaseLink.test_case_id == case.id,
+        )
+        .order_by(Requirement.title)
+    ).all()
+    return [{"id": str(r.id), "title": r.title} for r in rows]
 
 
 def get_test_case_history(

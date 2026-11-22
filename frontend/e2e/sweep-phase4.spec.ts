@@ -178,7 +178,7 @@ for (const role of ['admin', 'manager', 'tester'] as const) {
     await page.goto('/brd')
     await expect(page).toHaveURL(/\/brd\/user-guide$/)
     await expect(page.locator('article h1').first()).toContainText('User Guide')
-    await expect(page.getByRole('navigation').getByRole('link', { name: 'Documentation' }).first()).toBeVisible()
+    await expect(page.getByRole('complementary', { name: 'Sidebar' }).getByRole('link', { name: 'Documentation' })).toBeVisible()
     const docsNav = page.getByRole('navigation', { name: 'Documents' })
     const count = await docsNav.getByRole('link').count()
     // ADR-089: Admin sees all 24 documents; Manager and Tester only the 12 general ones.

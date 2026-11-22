@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { exportUrl, exportXlsxPath } from '@/api/csvImport'
@@ -22,12 +22,18 @@ import { listUsers } from '@/api/users'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { FilterBar } from '@/components/table/FilterBar'
 import { ViewsMenu } from '@/components/table/ViewsMenu'
+import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
+import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
+import { hasPermission } from '@/api/auth'
+import { MAX_BULK_SELECTION } from '@/lib/bulkActions'
+import { TestCaseBulkBar, type BulkSelectedCase } from './TestCaseBulkBar'
 import { compactFilters, useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, Drawer } from '@/components/ui/dialog'
@@ -43,6 +49,8 @@ import { useCanListUsers } from '@/lib/useCanListUsers'
 import { ImportDialog } from './ImportDialog'
 import { SharedStepsDialog } from './SharedStepsDialog'
 import { TemplatesDialog } from './TemplatesDialog'
+import { draftToFormValues, type QuickDraft } from '@/lib/quickCase'
+import { QuickCreateTestCaseDialog } from './QuickCreateTestCaseDialog'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { STATUS_DISPLAY, priorityTone } from './statusDisplay'
 
@@ -62,6 +70,17 @@ const DEFAULT_VALUES: TestCaseFormValues = {
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
 const PAGE_SIZE = 10
+
+// ADR-105: column customization; title and status are always shown.
+const TC_COLUMNS: TableColumnDef[] = [
+  { key: 'title', label: 'Title', alwaysVisible: true },
+  { key: 'status', label: 'Status', alwaysVisible: true },
+  { key: 'priority', label: 'Priority' },
+  { key: 'assignee', label: 'Assignee' },
+  { key: 'module', label: 'Module' },
+  { key: 'version', label: 'Version' },
+  { key: 'steps', label: 'Steps' },
+]
 
 // ADR-096: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
 const TC_VIEW_KEYS = ['search', 'priority', 'status', 'assigneeId', 'moduleId', 'quarantined'] as const
@@ -70,6 +89,10 @@ const TC_VIEW_RESET = Object.fromEntries(TC_VIEW_KEYS.map((k) => [k, ''])) as Re
 export function TestCasesList() {
   const { projectId } = useParams<{ projectId: string }>()
   const [createOpen, setCreateOpen] = useState(false)
+  // ADR-106: quick-create dialog; the dashboard's 'New test case' opens it via ?quick=1.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [quickOpen, setQuickOpen] = useState(searchParams.get('quick') === '1')
+  const [formDefaults, setFormDefaults] = useState<TestCaseFormValues>(DEFAULT_VALUES)
   const [importOpen, setImportOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [sharedStepsOpen, setSharedStepsOpen] = useState(false)
@@ -79,6 +102,7 @@ export function TestCasesList() {
   const { show: showToast } = useToast()
   const { ask, dialog: confirmDialog } = useConfirm()
   const { user } = useAuth()
+  const columnPrefs = useColumnPrefs('test-cases-list', TC_COLUMNS)
 
   // Bug #13: filters now persist in the URL (shareable, survives
   // refresh) instead of plain component state.
@@ -242,6 +266,48 @@ export function TestCasesList() {
   )
   const hiddenCount = allItems.length - visibleItems.length
 
+  // ADR-105 bulk selection: kept across pages while the filters are unchanged,
+  // cleared when they change (the key below), capped at MAX_BULK_SELECTION.
+  const selectionKey = JSON.stringify([projectId, search, priority, status, assigneeId, moduleId, quarantined, showDeprecated])
+  const [selection, setSelection] = useState<{ key: string; items: Map<string, BulkSelectedCase> }>({
+    key: selectionKey,
+    items: new Map(),
+  })
+  const selectedCases = selection.key === selectionKey ? selection.items : new Map<string, BulkSelectedCase>()
+  function updateSelection(change: (next: Map<string, BulkSelectedCase>) => void) {
+    const next = new Map(selectedCases)
+    change(next)
+    setSelection({ key: selectionKey, items: next })
+  }
+  function addCapped(next: Map<string, BulkSelectedCase>, tc: TestCase) {
+    if (next.size >= MAX_BULK_SELECTION) return false
+    next.set(tc.id, { title: tc.title, quarantined: tc.quarantined })
+    return true
+  }
+  const bulkSelection = {
+    selected: new Set(selectedCases.keys()),
+    label: (tc: TestCase) => `Select ${tc.title}`,
+    onToggle: (id: string) => {
+      const tc = visibleItems.find((t) => t.id === id)
+      if (!tc) return
+      updateSelection((next) => {
+        if (next.has(id)) next.delete(id)
+        else if (!addCapped(next, tc)) showToast('error', `You can select at most ${MAX_BULK_SELECTION} test cases`)
+      })
+    },
+    onToggleAll: () => {
+      const allOnPage = visibleItems.length > 0 && visibleItems.every((tc) => selectedCases.has(tc.id))
+      updateSelection((next) => {
+        if (allOnPage) visibleItems.forEach((tc) => next.delete(tc.id))
+        else if (!visibleItems.every((tc) => next.has(tc.id) || addCapped(next, tc)))
+          showToast('error', `You can select at most ${MAX_BULK_SELECTION} test cases`)
+      })
+    },
+  }
+  const canBulkEdit = hasPermission(user, 'testcase.edit')
+  const canBulkQuarantine = hasPermission(user, 'testcase.approve')
+  const bulkEnabled = canBulkEdit || canBulkQuarantine
+
   const sortHeader = (key: string, label: string) => {
     const isActive = sort.replace(/^-/, '') === key
     return (
@@ -363,7 +429,16 @@ export function TestCasesList() {
           <Button variant="outline" size="sm" onClick={() => setSharedStepsOpen(true)}>
             Shared Steps
           </Button>
-          <Button className="col-span-2 max-md:order-first md:col-span-1" onClick={() => setCreateOpen(true)}>
+          <Button variant="outline" size="sm" onClick={() => setQuickOpen(true)}>
+            Quick add
+          </Button>
+          <Button
+            className="col-span-2 max-md:order-first md:col-span-1"
+            onClick={() => {
+              setFormDefaults(DEFAULT_VALUES)
+              setCreateOpen(true)
+            }}
+          >
             New Test Case
           </Button>
           </>
@@ -555,20 +630,71 @@ export function TestCasesList() {
         </div>
       )}
 
+      <div className="flex justify-end">
+        <ColumnVisibilityMenu
+          columns={TC_COLUMNS}
+          isVisible={columnPrefs.isVisible}
+          toggleVisible={columnPrefs.toggleVisible}
+          showAll={columnPrefs.showAll}
+          density={columnPrefs.density}
+          setDensity={columnPrefs.setDensity}
+        />
+      </div>
+
       <ResponsiveTable
         label="Test cases"
         rows={visibleItems}
         rowKey={(tc) => tc.id}
         columns={columns}
+        prefs={columnPrefs}
+        selection={bulkEnabled ? bulkSelection : undefined}
         loading={testCasesQuery.isLoading}
         stateCellClassName="px-4"
         state={
-          testCasesQuery.data && visibleItems.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
-              {hiddenCount > 0
-                ? `No test cases match these filters — ${hiddenCount} deprecated case${hiddenCount === 1 ? '' : 's'} hidden, check "Show deprecated".`
-                : 'No test cases match these filters.'}
-            </p>
+          testCasesQuery.isError ? (
+            <ErrorState error={testCasesQuery.error} onRetry={() => testCasesQuery.refetch()} />
+          ) : testCasesQuery.data && visibleItems.length === 0 ? (
+            hiddenCount > 0 || visibleFilterChips.length > 0 ? (
+              <EmptyState
+                variant="filtered"
+                title="No test cases match these filters"
+                description={
+                  hiddenCount > 0
+                    ? `${hiddenCount} deprecated case${hiddenCount === 1 ? ' is' : 's are'} hidden. Tick "Show deprecated" to see ${hiddenCount === 1 ? 'it' : 'them'}.`
+                    : 'Try clearing a filter to see more results.'
+                }
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      urlFilters.clearAll()
+                      setShowDeprecated(false)
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="No test cases yet"
+                description="Test cases describe what to verify, step by step. Write one, then bundle approved cases into a run."
+                action={
+                  hasPermission(user, 'testcase.create') ? (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setFormDefaults(DEFAULT_VALUES)
+                        setCreateOpen(true)
+                      }}
+                    >
+                      Create your first test case
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )
           ) : undefined
         }
       />
@@ -599,12 +725,30 @@ export function TestCasesList() {
         </div>
       )}
 
+      {selectedCases.size > 0 && bulkEnabled && (
+        <TestCaseBulkBar
+          selected={selectedCases}
+          priorities={priorityFilterOptions}
+          users={canListUsers ? (usersQuery.data ?? []) : null}
+          modules={modules}
+          canEdit={canBulkEdit}
+          canQuarantine={canBulkQuarantine}
+          onClear={() => updateSelection((next) => next.clear())}
+          onFinished={(failedIds) => {
+            queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
+            updateSelection((next) => {
+              for (const id of [...next.keys()]) if (!failedIds.includes(id)) next.delete(id)
+            })
+          }}
+        />
+      )}
+
       {/* GAP-91 item 1: a 10+ field form no longer fits well in a centered
           Dialog -- a full-height Drawer gives it real room, same
           focus-trap/Escape/unsaved-changes behavior underneath. */}
       <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case">
         <TestCaseForm
-          defaultValues={DEFAULT_VALUES}
+          defaultValues={formDefaults}
           submitLabel="Create Test Case"
           isSubmitting={createMutation.isPending}
           serverError={createError}
@@ -614,6 +758,24 @@ export function TestCasesList() {
           onSubmit={(values) => createMutation.mutate(values)}
         />
       </Drawer>
+
+      <QuickCreateTestCaseDialog
+        open={quickOpen}
+        onClose={() => {
+          setQuickOpen(false)
+          if (searchParams.has('quick')) {
+            searchParams.delete('quick')
+            setSearchParams(searchParams, { replace: true })
+          }
+        }}
+        projectId={projectId!}
+        modules={modules}
+        onMoreOptions={(draft: QuickDraft) => {
+          setFormDefaults(draftToFormValues(draft, DEFAULT_VALUES))
+          setQuickOpen(false)
+          setCreateOpen(true)
+        }}
+      />
 
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} projectId={projectId!} />
       <TemplatesDialog open={templatesOpen} onClose={() => setTemplatesOpen(false)} projectId={projectId!} />

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { search as searchApi, type SearchResultEntry, type SearchResultType } from '@/api/search'
-import { NAV_SECTIONS } from '@/routes/AppShell'
+import { NAV_SECTIONS, PALETTE_EXTRA_ENTRIES, resolveNavItem } from '@/routes/AppShell'
 import { useAuth } from '@/lib/auth'
 import { canAccessPath } from '@/lib/routeAccess'
 import { cn } from '@/lib/utils'
@@ -92,9 +92,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const out: { label: string; sublabel: string; path: string }[] = []
     for (const section of NAV_SECTIONS) {
       for (const item of section.items) {
-        if (!canAccessPath(user, item.to)) continue
-        out.push({ label: item.label, sublabel: section.label, path: item.to })
+        const resolved = resolveNavItem(user, item)
+        if (!resolved) continue
+        out.push({ label: resolved.label, sublabel: section.label, path: resolved.to })
       }
+    }
+    for (const extra of PALETTE_EXTRA_ENTRIES) {
+      if (canAccessPath(user, extra.path)) out.push(extra)
     }
     return out
   }, [user])

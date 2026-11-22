@@ -24,6 +24,7 @@ import { Select } from '@/components/ui/select'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/lib/toast'
 import { useIsMobile } from '@/lib/useMediaQuery'
+import { AccessControlTabs } from './AccessControlTabs'
 import { FormError } from '@/components/ui/form-field'
 
 function groupByPrefix(permissions: Permission[]): Record<string, Permission[]> {
@@ -69,6 +70,7 @@ export function RolesPermissions() {
 
   return (
     <div className="flex flex-col gap-4">
+      <AccessControlTabs />
       <PageHeader
         title="Roles & Permissions"
         description="Admin, Manager, and Tester are built-in and can't be edited or removed. Define additional roles below with any combination of permissions."

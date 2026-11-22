@@ -15,6 +15,8 @@ import { listProjects } from '@/api/projects'
 import { listEnvironments } from '@/api/testAssets'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { FormError, FormField } from '@/components/ui/form-field'
@@ -25,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { formatRuleInstant, fromLocalInputValue, toLocalInputValue } from '@/lib/accessRuleTime'
 import { useToast } from '@/lib/toast'
+import { AccessControlTabs } from './AccessControlTabs'
 
 // RBAC Phase 4 (ADR-092): release-freeze windows and restricted environments.
 // Off by default -- with no rules nothing changes for anyone. Admin is always
@@ -44,10 +47,7 @@ const TYPE_LABELS: Record<AccessRuleType, string> = {
   environment_restriction: 'Environment restriction',
 }
 
-function ruleState(
-  rule: AccessRule,
-  now: number,
-): { label: string; tone: 'positive' | 'warning' | 'neutral' } {
+function ruleState(rule: AccessRule, now: number): { label: string; tone: 'positive' | 'warning' | 'neutral' } {
   if (!rule.enabled) return { label: 'Disabled', tone: 'neutral' }
   const start = rule.starts_at ? new Date(rule.starts_at).getTime() : null
   const end = rule.ends_at ? new Date(rule.ends_at).getTime() : null
@@ -94,8 +94,7 @@ export function AccessRules() {
       refresh()
       showToast('success', rule.enabled ? 'Rule enabled' : 'Rule disabled')
     },
-    onError: (error) =>
-      showToast('error', error instanceof ApiError ? error.message : 'Could not update that rule'),
+    onError: (error) => showToast('error', error instanceof ApiError ? error.message : 'Could not update that rule'),
   })
 
   const deleteMutation = useMutation({
@@ -112,6 +111,7 @@ export function AccessRules() {
 
   return (
     <div className="flex flex-col gap-4">
+      <AccessControlTabs />
       <PageHeader
         title="Access rules"
         description="Block changes during a release freeze, or restrict who can act on an environment. Nothing is restricted until you add a rule; Admins are always exempt."
@@ -127,17 +127,35 @@ export function AccessRules() {
         {Intl.DateTimeFormat().resolvedOptions().timeZone}) with the UTC time alongside.
       </p>
 
+      {rulesQuery.isLoading && (
+        <div role="status" aria-busy="true" className="flex flex-col gap-3">
+          <span className="sr-only">Loading access rules</span>
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      )}
+
       {rulesQuery.isError && (
-        <FormError>
-          {rulesQuery.error instanceof ApiError ? rulesQuery.error.message : 'Could not load rules'}
-        </FormError>
+        <Card>
+          <ErrorState
+            error={rulesQuery.error}
+            message={rulesQuery.error instanceof ApiError ? rulesQuery.error.message : 'Could not load rules'}
+            onRetry={() => rulesQuery.refetch()}
+          />
+        </Card>
       )}
 
       {rulesQuery.isSuccess && rules.length === 0 && (
         <Card>
-          <CardContent className="py-6 text-sm text-[var(--muted-foreground)]">
-            No access rules yet. Everyone can work as usual.
-          </CardContent>
+          <EmptyState
+            title="No access rules yet"
+            description="Everyone can work as usual. Add a rule to block changes during a release freeze or limit who acts on an environment."
+            action={
+              <Button size="sm" onClick={() => setEditing('new')}>
+                Add your first rule
+              </Button>
+            }
+          />
         </Card>
       )}
 
@@ -269,9 +287,7 @@ function RuleDialog({
   const [environment, setEnvironment] = useState(rule?.environment ?? '')
   const [startsAt, setStartsAt] = useState(toLocalInputValue(rule?.starts_at ?? null))
   const [endsAt, setEndsAt] = useState(toLocalInputValue(rule?.ends_at ?? null))
-  const [actions, setActions] = useState<string[]>(
-    rule?.blocked_actions ?? ['testcase', 'testrun', 'executionstep'],
-  )
+  const [actions, setActions] = useState<string[]>(rule?.blocked_actions ?? ['testcase', 'testrun', 'executionstep'])
   const [exempt, setExempt] = useState<string[]>(rule?.exempt_roles ?? ['admin'])
   const [reason, setReason] = useState(rule?.reason ?? '')
   const [enabled, setEnabled] = useState(rule?.enabled ?? true)
@@ -290,8 +306,7 @@ function RuleDialog({
     if (!endIso) errors.endsAt = 'Choose an end time'
   } else {
     if (!environment.trim()) errors.environment = 'Choose or enter an environment'
-    if (Boolean(startIso) !== Boolean(endIso))
-      errors.endsAt = 'Set both ends of the allowed window, or neither'
+    if (Boolean(startIso) !== Boolean(endIso)) errors.endsAt = 'Set both ends of the allowed window, or neither'
   }
   if (startIso && endIso && new Date(endIso) <= new Date(startIso)) {
     errors.endsAt = 'The end time must be after the start time'
@@ -410,12 +425,7 @@ function RuleDialog({
             error={shown('startsAt')}
           >
             {(field) => (
-              <Input
-                {...field}
-                type="datetime-local"
-                value={startsAt}
-                onChange={(e) => setStartsAt(e.target.value)}
-              />
+              <Input {...field} type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
             )}
           </FormField>
           <FormField
@@ -425,12 +435,7 @@ function RuleDialog({
             error={shown('endsAt')}
           >
             {(field) => (
-              <Input
-                {...field}
-                type="datetime-local"
-                value={endsAt}
-                onChange={(e) => setEndsAt(e.target.value)}
-              />
+              <Input {...field} type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
             )}
           </FormField>
         </div>

@@ -50,6 +50,7 @@ import { QuarantineDialog } from '@/components/ui/QuarantineDialog'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
+import { LinkedRequirementsCard } from './LinkedRequirementsCard'
 import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
 import { STATUS_DISPLAY } from './statusDisplay'
 
@@ -374,6 +375,11 @@ export function TestCaseDetail() {
         />
       </div>
 
+      <LinkedRequirementsCard
+        testCaseId={testCase.id}
+        projectId={testCase.project_id}
+        canManage={hasPermission(user, 'requirement.manage')}
+      />
       <LinkedDefectsCard testCaseId={testCase.id} />
       <TestDataSetsCard testCaseId={testCase.id} />
       <CustomFieldsCard ownerType="test_case" ownerId={testCase.id} />

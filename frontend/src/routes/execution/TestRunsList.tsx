@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { hasPermission } from '@/api/auth'
+import { useAuth } from '@/lib/auth'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -12,9 +14,12 @@ import {
 } from '@/api/execution'
 import { getProject } from '@/api/projects'
 import { listTestCases } from '@/api/testCases'
+import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
+import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
@@ -27,6 +32,14 @@ import { FormError } from '@/components/ui/form-field'
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
 
 // One definition feeds the desktop table and the phone cards (ResponsiveTable).
+const RUN_COLUMN_DEFS: TableColumnDef[] = [
+  { key: 'name', label: 'Name', alwaysVisible: true },
+  { key: 'status', label: 'Status', alwaysVisible: true },
+  { key: 'type', label: 'Type' },
+  { key: 'cases', label: 'Cases' },
+  { key: 'created', label: 'Created' },
+]
+
 const RUN_COLUMNS: ResponsiveColumn<TestRunSummary>[] = [
   {
     key: 'name',
@@ -62,7 +75,19 @@ export function TestRunsList() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState('')
-  const [runType, setRunType] = useState<RunType>('Regression')
+  const { user } = useAuth()
+  // ADR-106: remember the last chosen run type per user.
+  const typeKey = `qth:last-run-type:${user?.user_id ?? 'anon'}`
+  const [runType, setRunType] = useState<RunType>(() => {
+    try {
+      const saved = localStorage.getItem(typeKey)
+      return (RUN_TYPES as readonly string[]).includes(saved ?? '') ? (saved as RunType) : 'Regression'
+    } catch {
+      return 'Regression'
+    }
+  })
+  const [startAfter, setStartAfter] = useState(false)
+  const canExecute = hasPermission(user, 'executionstep.record')
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
   const [skipQuarantined, setSkipQuarantined] = useState(false)
   const { show: showToast } = useToast()
@@ -89,7 +114,9 @@ export function TestRunsList() {
     mutationFn: (req: TestRunCreateRequest) => createTestRun(projectId!, req),
     onSuccess: (run) => {
       queryClient.invalidateQueries({ queryKey: ['test-runs', projectId] })
-      navigate(`/test-runs/${run.id}`)
+      const first = run.cases[0]
+      // "Create and start": straight into the Execution Console on the first case.
+      navigate(startAfter && first ? `/test-run-cases/${first.id}?runId=${run.id}` : `/test-runs/${run.id}`)
       showToast('success', 'Test run created')
     },
     // No onError toast -- `createError` below already renders this inline.
@@ -99,7 +126,13 @@ export function TestRunsList() {
     setSelectedCaseIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]))
   }
 
-  function submitCreate() {
+  function submitCreate(start: boolean) {
+    setStartAfter(start)
+    try {
+      localStorage.setItem(typeKey, runType)
+    } catch {
+      /* private mode: the default is fine */
+    }
     createMutation.mutate({
       name,
       run_type: runType,
@@ -108,6 +141,7 @@ export function TestRunsList() {
     })
   }
 
+  const columnPrefs = useColumnPrefs('test-runs-list', RUN_COLUMN_DEFS)
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
 
   return (
@@ -125,15 +159,39 @@ export function TestRunsList() {
         actions={<Button onClick={() => setCreateOpen(true)}>New Test Run</Button>}
       />
 
+      <div className="flex justify-end">
+        <ColumnVisibilityMenu
+          columns={RUN_COLUMN_DEFS}
+          isVisible={columnPrefs.isVisible}
+          toggleVisible={columnPrefs.toggleVisible}
+          showAll={columnPrefs.showAll}
+          density={columnPrefs.density}
+          setDensity={columnPrefs.setDensity}
+        />
+      </div>
+
       <ResponsiveTable
         label="Test runs"
+        prefs={columnPrefs}
         rows={runsQuery.data ?? []}
         rowKey={(run) => run.id}
         columns={RUN_COLUMNS}
         loading={runsQuery.isLoading}
         state={
-          runsQuery.data?.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">No test runs yet.</p>
+          runsQuery.isError ? (
+            <ErrorState error={runsQuery.error} onRetry={() => runsQuery.refetch()} />
+          ) : runsQuery.data?.length === 0 ? (
+            <EmptyState
+              title="No test runs yet"
+              description="A test run executes a set of approved test cases and records the results."
+              action={
+                hasPermission(user, 'testrun.create') ? (
+                  <Button size="sm" onClick={() => setCreateOpen(true)}>
+                    Create your first test run
+                  </Button>
+                ) : undefined
+              }
+            />
           ) : undefined
         }
         stateCellClassName="px-4"
@@ -190,11 +248,21 @@ export function TestRunsList() {
           )}
           <FormError>{createError}</FormError>
           <DialogFooter>
+            {canExecute && (
+              <Button
+                disabled={!name || selectedCaseIds.length === 0}
+                loading={createMutation.isPending && startAfter}
+                onClick={() => submitCreate(true)}
+              >
+                Create and start
+              </Button>
+            )}
             <Button
+              variant={canExecute ? 'outline' : 'default'}
               disabled={!name || selectedCaseIds.length === 0 || createMutation.isPending}
-              onClick={submitCreate}
+              onClick={() => submitCreate(false)}
             >
-              {createMutation.isPending ? 'Creating…' : 'Create Test Run'}
+              {createMutation.isPending && !startAfter ? 'Creating…' : 'Create Test Run'}
             </Button>
           </DialogFooter>
         </div>

@@ -87,7 +87,10 @@ test('Release freeze: Admin sets it, Manager is blocked with the reason, disabli
     await manager.fill('#title', 'Blocked in the browser')
     await manager.locator('input[placeholder="Action"]').first().fill('Open the claim')
     await manager.locator('input[placeholder="Expected outcome"]').first().fill('Claim opens')
-    await manager.getByRole('button', { name: /^(Create|Save)/ }).last().click()
+    await manager
+      .getByRole('button', { name: /^(Create|Save)/ })
+      .last()
+      .click()
     await expect(manager.getByText(REASON)).not.toHaveCount(1) // banner + the refusal message
     await expect(manager.getByText(/try again/i)).toHaveCount(0)
 
@@ -133,7 +136,7 @@ test('Access Rules screen is hidden from a Manager', async ({ browser, request }
   const page = await ctx.newPage()
   try {
     await loginViaUi(page, t.tenantId, t.manager.email, t.manager.password)
-    await expect(page.getByRole('link', { name: 'Access Rules' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Access control' })).toHaveCount(0)
     await page.goto('/admin/access-rules')
     await expect(page.getByText(/don.t have access|no access/i).first()).toBeVisible()
   } finally {

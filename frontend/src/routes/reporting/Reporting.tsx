@@ -38,6 +38,7 @@ import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartPanel } from '@/components/ui/ChartPanel'
 import { EmbossedCard } from '@/components/ui/EmbossedCard'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { ReportTabs } from './ReportTabs'
 import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -185,6 +186,7 @@ export function Reporting() {
 
   return (
     <div className="flex flex-col gap-6">
+      <ReportTabs />
       <PageHeader
         title="Reporting"
         description="Release readiness, defect and execution analytics."

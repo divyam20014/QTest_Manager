@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
 import { SegmentedToggle } from '@/components/ui/segmented'
@@ -147,6 +148,15 @@ export function ProjectsList() {
   const myProjects = mine && user ? fetched.filter((p) => p.assigned_user_ids.includes(user.user_id)) : []
   const total = mine ? myProjects.length : (projectsQuery.data?.total ?? 0)
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const filtersActive = Boolean(search || domain || status || priority || mine)
+  function clearFilters() {
+    setSearch('')
+    setDomain('')
+    setStatus('')
+    setPriority('')
+    setMine(false)
+    setPage(1)
+  }
   const rows = mine ? myProjects.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) : fetched
   // More projects match than one request can return: say so rather than
   // silently presenting a partial "mine" list as complete.
@@ -240,13 +250,7 @@ export function ProjectsList() {
 
       <FilterBar
         activeCount={[domain, status, priority].filter(Boolean).length + (mine ? 1 : 0)}
-        onClear={() => {
-          setDomain('')
-          setStatus('')
-          setPriority('')
-          setMine(false)
-          setPage(1)
-        }}
+        onClear={clearFilters}
         desktopClear={false}
         primary={
           <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
@@ -359,10 +363,33 @@ export function ProjectsList() {
         loading={projectsQuery.isLoading}
         stateCellClassName="px-4"
         state={
-          projectsQuery.data && rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--muted-foreground)]">
-              {mine ? 'You are not assigned to any project that matches these filters.' : 'No projects match these filters.'}
-            </p>
+          projectsQuery.isError ? (
+            <ErrorState error={projectsQuery.error} onRetry={() => projectsQuery.refetch()} />
+          ) : projectsQuery.data && rows.length === 0 ? (
+            filtersActive ? (
+              <EmptyState
+                variant="filtered"
+                title={mine ? 'None of your projects match these filters' : 'No projects match these filters'}
+                description="Try clearing a filter or the search to see more projects."
+                action={
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              <EmptyState
+                title="No projects yet"
+                description="A project groups the requirements, test cases, runs and defects for one product."
+                action={
+                  canCreate ? (
+                    <Button size="sm" onClick={() => setCreateOpen(true)}>
+                      Create your first project
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )
           ) : undefined
         }
       />

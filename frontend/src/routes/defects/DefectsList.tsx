@@ -306,6 +306,8 @@ export function DefectsList() {
             isVisible={columnPrefs.isVisible}
             toggleVisible={columnPrefs.toggleVisible}
             showAll={columnPrefs.showAll}
+            density={columnPrefs.density}
+            setDensity={columnPrefs.setDensity}
           />
         }
       >
@@ -421,6 +423,20 @@ export function DefectsList() {
                   : activeStatus
                     ? `No ${activeStatus} defects`
                     : 'No defects yet'
+              }
+              variant={otherFiltersActive ? 'filtered' : 'empty'}
+              action={
+                otherFiltersActive ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      urlFilters.setFilters({ projectId: '', severity: '', reportedBy: '', createdFrom: '', createdTo: '' })
+                    }
+                  >
+                    Clear filters
+                  </Button>
+                ) : undefined
               }
               description={
                 otherFiltersActive

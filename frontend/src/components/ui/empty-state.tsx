@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { AlertTriangle, Inbox } from 'lucide-react'
+import { AlertTriangle, Inbox, SearchX } from 'lucide-react'
 
 import { isForbidden } from '@/api/client'
 import { NoAccess } from '@/components/NoAccess'
@@ -14,14 +14,19 @@ export function EmptyState({
   title,
   description,
   action,
+  variant = 'empty',
 }: {
   title: string
   description?: string
+  /** The ONE contextual action (create when empty, "Clear filters" when filtered). */
   action?: ReactNode
+  /** 'filtered' = rows exist but none match the active filters. */
+  variant?: 'empty' | 'filtered'
 }) {
+  const Icon = variant === 'filtered' ? SearchX : Inbox
   return (
-    <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-      <Inbox className="size-7 text-[var(--muted-foreground)]" />
+    <div className="flex flex-col items-center gap-2 px-4 py-10 text-center" data-state={variant}>
+      <Icon className="size-7 text-[var(--muted-foreground)]" aria-hidden="true" />
       <p className="text-sm font-medium">{title}</p>
       {description && <p className="max-w-sm text-sm text-[var(--muted-foreground)]">{description}</p>}
       {action}
@@ -36,15 +41,7 @@ export function EmptyState({
  * Pass the query's `error` for a screen's primary data: when the API refused
  * it with 403 the user is not allowed to see this, so retrying would only
  * repeat the refusal and the "No access" block is shown instead. */
-export function ErrorState({
-  message,
-  onRetry,
-  error,
-}: {
-  message?: string
-  onRetry: () => void
-  error?: unknown
-}) {
+export function ErrorState({ message, onRetry, error }: { message?: string; onRetry: () => void; error?: unknown }) {
   if (isForbidden(error)) return <NoAccess variant="inline" />
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">

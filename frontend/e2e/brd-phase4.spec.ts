@@ -129,7 +129,7 @@ test('Docs: /brd opens the user guide with a table of contents and the reader in
   await expect(second).toHaveAttribute('aria-current', 'location')
 
   // The sidebar has a Documentation entry for every signed-in user.
-  await expect(page.getByRole('navigation').getByRole('link', { name: 'Documentation' }).first()).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Sidebar' }).getByRole('link', { name: 'Documentation' })).toBeVisible()
   // Breadcrumb names the document.
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('User Guide')
 })

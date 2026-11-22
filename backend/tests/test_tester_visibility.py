@@ -198,6 +198,8 @@ def test_every_test_case_read_route_is_known() -> None:
         "/api/v1/test-cases/{test_case_id}/history",
         "/api/v1/test-cases/{test_case_id}/versions",
         "/api/v1/test-cases/{test_case_id}/versions/compare",
+        # scoped through test_case_service.get_test_case (tester visibility)
+        "/api/v1/test-cases/{test_case_id}/requirements",
         "/api/v1/projects/{project_id}/test-cases/export.csv",
         "/api/v1/projects/{project_id}/test-cases/export.xlsx",
         # scoped through owner_access.authorize_owner_access -> get_test_case

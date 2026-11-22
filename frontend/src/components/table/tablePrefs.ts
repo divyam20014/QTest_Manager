@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react'
 
+import { useCurrentUserId } from '@/lib/auth'
+
 // Phase 2 (command palette + advanced table UX): shared per-view table
 // preferences -- column visibility and resized widths. Pure per-browser
 // view-state (not business data), so localStorage is the deliberate
@@ -17,46 +19,56 @@ export interface TableColumnDef {
   defaultWidth?: number
 }
 
+// ADR-105: row density, shared by every data table. Phones render cards and
+// ignore it (tap targets stay >= 44px).
+export type TableDensity = 'comfortable' | 'compact'
+
 interface StoredPrefs {
   hidden: string[]
   widths: Record<string, number>
+  density: TableDensity
 }
 
-function storageKey(viewKey: string): string {
-  return `qtesthub:table-prefs:${viewKey}`
+const EMPTY_PREFS: StoredPrefs = { hidden: [], widths: {}, density: 'comfortable' }
+
+// Per user per table; the user-less key is the pre-ADR-105 one, read as a fallback.
+export function tablePrefsKey(viewKey: string, userId?: string | null): string {
+  return userId ? `qtesthub:table-prefs:${viewKey}:u:${userId}` : `qtesthub:table-prefs:${viewKey}`
 }
 
-function readPrefs(viewKey: string): StoredPrefs {
+export function readPrefs(viewKey: string, userId?: string | null): StoredPrefs {
   try {
-    const raw = localStorage.getItem(storageKey(viewKey))
-    if (!raw) return { hidden: [], widths: {} }
+    const raw = localStorage.getItem(tablePrefsKey(viewKey, userId)) ?? localStorage.getItem(tablePrefsKey(viewKey))
+    if (!raw) return { ...EMPTY_PREFS }
     const parsed = JSON.parse(raw)
     return {
       hidden: Array.isArray(parsed.hidden) ? parsed.hidden : [],
       widths: typeof parsed.widths === 'object' && parsed.widths ? parsed.widths : {},
+      density: parsed.density === 'compact' ? 'compact' : 'comfortable',
     }
   } catch {
-    return { hidden: [], widths: {} }
+    return { ...EMPTY_PREFS }
   }
 }
 
-function writePrefs(viewKey: string, prefs: StoredPrefs) {
+function writePrefs(viewKey: string, userId: string | null, prefs: StoredPrefs) {
   try {
-    localStorage.setItem(storageKey(viewKey), JSON.stringify(prefs))
+    localStorage.setItem(tablePrefsKey(viewKey, userId), JSON.stringify(prefs))
   } catch {
     // Private browsing / blocked storage -- preferences just won't persist.
   }
 }
 
 export function useColumnPrefs(viewKey: string, columns: TableColumnDef[]) {
-  const [prefs, setPrefs] = useState<StoredPrefs>(() => readPrefs(viewKey))
+  const userId = useCurrentUserId()
+  const [prefs, setPrefs] = useState<StoredPrefs>(() => readPrefs(viewKey, userId))
 
   const persist = useCallback(
     (next: StoredPrefs) => {
       setPrefs(next)
-      writePrefs(viewKey, next)
+      writePrefs(viewKey, userId, next)
     },
-    [viewKey],
+    [viewKey, userId],
   )
 
   const isVisible = useCallback(
@@ -70,9 +82,7 @@ export function useColumnPrefs(viewKey: string, columns: TableColumnDef[]) {
 
   const toggleVisible = useCallback(
     (key: string) => {
-      const hidden = prefs.hidden.includes(key)
-        ? prefs.hidden.filter((k) => k !== key)
-        : [...prefs.hidden, key]
+      const hidden = prefs.hidden.includes(key) ? prefs.hidden.filter((k) => k !== key) : [...prefs.hidden, key]
       persist({ ...prefs, hidden })
     },
     [prefs, persist],
@@ -94,8 +104,23 @@ export function useColumnPrefs(viewKey: string, columns: TableColumnDef[]) {
 
   const resetWidths = useCallback(() => persist({ ...prefs, widths: {} }), [prefs, persist])
 
-  return { isVisible, toggleVisible, showAll, width, setWidth, resetWidths, hiddenCount: prefs.hidden.length }
+  const setDensity = useCallback((density: TableDensity) => persist({ ...prefs, density }), [prefs, persist])
+
+  return {
+    isVisible,
+    toggleVisible,
+    showAll,
+    width,
+    setWidth,
+    resetWidths,
+    hiddenCount: prefs.hidden.length,
+    density: prefs.density,
+    setDensity,
+  }
 }
+
+/** ADR-105: the single shared table-preferences hook (visible columns, widths, density). */
+export const useTablePrefs = useColumnPrefs
 
 export function useSavedFilters<T extends Record<string, string>>(viewKey: string) {
   const key = `qtesthub:table-filters:${viewKey}`

@@ -56,6 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+/** The signed-in user's id, or null (also outside an AuthProvider, e.g. in unit tests). */
+export function useCurrentUserId(): string | null {
+  return useContext(AuthContext)?.user?.user_id ?? null
+}
+
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext)
   if (!ctx) {

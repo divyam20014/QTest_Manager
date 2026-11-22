@@ -176,6 +176,8 @@ export function TraceabilityMatrix() {
           isVisible={columnPrefs.isVisible}
           toggleVisible={columnPrefs.toggleVisible}
           showAll={columnPrefs.showAll}
+          density={columnPrefs.density}
+          setDensity={columnPrefs.setDensity}
         />
       </div>
 

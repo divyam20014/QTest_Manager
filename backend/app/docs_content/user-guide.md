@@ -55,6 +55,7 @@ Browse, create, and edit test cases (title, steps, expected results,
 priority). Test cases are versioned — editing one creates a new version
 rather than silently overwriting history, and you can view prior versions.
 You can:
+- **Bulk edit** from the Test Cases list: tick rows (up to 100), then use the bar to assign, change priority, move to a module or quarantine. Use the Columns menu on any list to hide columns or switch to Compact rows; it is remembered per table.
 - **Bulk import/export** via CSV (Test Repository's Import/Export actions;
   download the template first to see the expected columns). Imports are
   capped at 2,000 rows per file.
@@ -119,7 +120,7 @@ available where your role permits.
 
 ## Report builder (ADR-098)
 
-Open Report builder (under Reports, `/reporting/builder`). Pick a source (test cases, test runs or defects), tick the fields to show and reorder them with the arrow buttons, add filters (field, operator, value), optionally group by up to two fields to get a count per group, choose a sort and press Run. Results are paged. Type a name and press Save (or Save as for a copy); tick "Share with workspace" to let colleagues run and export it read only. Saved reports appear under My reports and Shared reports; Export CSV and Export Excel download the saved version (up to 5000 rows). You only ever see data you could already see elsewhere: your projects and, when limited by your admin, your assigned test cases. Not available when Reports are hidden from Testers.
+Open Report builder (the "Report builder" tab at the top of Reports, `/reporting/builder`). Pick a source (test cases, test runs or defects), tick the fields to show and reorder them with the arrow buttons, add filters (field, operator, value), optionally group by up to two fields to get a count per group, choose a sort and press Run. Results are paged. Type a name and press Save (or Save as for a copy); tick "Share with workspace" to let colleagues run and export it read only. Saved reports appear under My reports and Shared reports; Export CSV and Export Excel download the saved version (up to 5000 rows). You only ever see data you could already see elsewhere: your projects and, when limited by your admin, your assigned test cases. Not available when Reports are hidden from Testers.
 
 ## Defect leakage and quarantined tests
 
@@ -151,7 +152,9 @@ If your organization has set a release freeze, a banner on the page shows the re
 
 ## Documentation
 
-**Documentation** in the sidebar opens the in-app guides (this user guide, the product vision and spec, requirement traceability and the architecture diagrams) after you sign in; they are loaded from the server for your session, not stored in the app. Administrators also see the administration, deployment and engineering references; if you open a link to one you are not allowed to read, you get a "No access" page.
+**Documentation** (the link above Profile at the bottom of the sidebar, or in the More menu on a phone) opens the in-app guides (this user guide, the product vision and spec, requirement traceability and the architecture diagrams) after you sign in; they are loaded from the server for your session, not stored in the app. Administrators also see the administration, deployment and engineering references; if you open a link to one you are not allowed to read, you get a "No access" page.
+
+**Access control** (Administration in the sidebar) holds two tabs: Roles & Permissions, and Access rules (release freezes and restricted environments). The tabs appear only for the screens your role can open.
 
 ## Your account
 
@@ -169,3 +172,7 @@ Your Admin can limit what Testers see. If **assigned cases only** is on, you see
 ## Appearance (ADR-100)
 
 Open **Appearance** (the palette icon in the header, or More on a phone) to choose System, Light, Dark, Cobalt & Sunshine, Sage & Tangerine, Indigo & Aqua or Custom. The change applies at once, including the sign-in page. Custom opens "Create your theme": pick a light or dark base, a primary and an accent colour (colour picker, hex, or the palette swatches) and an optional surface tint; the theme is adjusted automatically to meet WCAG AA and you are told when a colour had to change. You can keep up to three named custom themes. The choice is remembered in this browser only, not in your account.
+
+## Quick add and linking requirements
+
+On Test Cases, **Quick add** (also the project dashboard's "New test case") opens a small dialog: enter a title, priority, optional module and up to three steps, then press Create or Ctrl/Cmd+Enter. **Create and add another** keeps the priority and module so you can enter a batch quickly; **More options** opens the full form with what you typed. On a test case page, the **Linked Requirements** card lets you type to search the project's requirements, pick one to link it and use the x on a chip to unlink it. In a new test run, **Create and start** opens the Execution Console on the first case straight away.

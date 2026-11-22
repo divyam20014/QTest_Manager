@@ -24,6 +24,7 @@ test('Module grouping, request-changes, global search, and theme toggle', async 
   await page.fill('#region', 'North America')
   await page.click('button:has-text("Create Project")')
   await page.click('a:has-text("Tier3 Feature Project")')
+  await page.click('nav[aria-label="Project sections"] >> text=Details')
   await page.waitForSelector('text=Team Members')
 
   await page.click('a:has-text("Test Cases")')
@@ -71,7 +72,12 @@ test('Module grouping, request-changes, global search, and theme toggle', async 
 
   // Theme toggle flips the root data-theme attribute and persists it.
   const initialTheme = await page.evaluate(() => document.documentElement.dataset.theme)
-  await page.click('button[aria-label*="Switch to"]')
+  // The toggle opens the Appearance picker (ADR-100); choose a theme that differs from the current one.
+  await page.getByRole('button', { name: 'Appearance' }).first().click()
+  await page
+    .getByRole('dialog', { name: 'Appearance' })
+    .getByRole('radio', { name: initialTheme === 'dark' ? /^light/i : /^dark/i })
+    .click()
   await expect
     .poll(() => page.evaluate(() => document.documentElement.dataset.theme))
     .not.toBe(initialTheme)
