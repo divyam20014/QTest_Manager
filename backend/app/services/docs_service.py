@@ -1,4 +1,8 @@
-"""ADR-089: the in-app Documentation viewer's document registry and reader.
+"""ADR-089 / ADR-114: the document registry and reader.
+
+Since ADR-114 the full registry is served only to platform admins
+(`/platform/docs`); tenant users get the role-filtered user guide
+(`/user-guide`, see `user_guide_service`).
 
 The Markdown files live once, in the repo's docs/ folder. `scripts/sync_docs.py`
 copies the registered ones into `app/docs_content/<slug>.md` so the api image
@@ -248,6 +252,11 @@ _BY_SLUG = {d.slug: d for d in REGISTRY}
 
 def find(slug: str) -> DocEntry | None:
     return _BY_SLUG.get(slug)
+
+
+def list_all() -> list[DocEntry]:
+    """Every registered document (platform admins read all of them)."""
+    return list(REGISTRY)
 
 
 def can_view(permissions: set[str] | list[str], doc: DocEntry) -> bool:

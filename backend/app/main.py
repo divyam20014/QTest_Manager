@@ -24,7 +24,6 @@ from app.api import (
     csv_import,
     dashboards,
     defects,
-    docs,
     execution,
     export,
     field_customization,
@@ -52,6 +51,7 @@ from app.api import (
     test_modules,
     test_plans,
     test_suites,
+    user_guide,
     users,
 )
 from app.api import (
@@ -243,7 +243,7 @@ app.include_router(execution.router, prefix="/api/v1")
 app.include_router(defects.router, prefix="/api/v1")
 app.include_router(reporting.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
-app.include_router(docs.router, prefix="/api/v1")
+app.include_router(user_guide.router, prefix="/api/v1")
 app.include_router(attachments.router, prefix="/api/v1")
 app.include_router(comments.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")

@@ -1,11 +1,12 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.errors import NotFoundError
 from app.core.platform_auth import (
     enforce_step_up,
     require_platform_admin,
@@ -36,12 +37,59 @@ from app.schemas.subscription import (
 )
 from app.services import (
     audit_checkpoint_service,
+    docs_service,
     platform_audit_service,
     platform_service,
     subscription_service,
 )
 
 router = APIRouter(prefix="/platform", tags=["platform"])
+
+# ADR-089/ADR-114: platform documentation is read-only and may be sensitive;
+# never let a shared cache or the disk cache keep it after sign-out.
+DOCS_NO_STORE = "private, no-store"
+
+
+def _doc_summary(doc: docs_service.DocEntry) -> dict:
+    return {
+        "slug": doc.slug,
+        "title": doc.title,
+        "description": doc.description,
+        "group": doc.group,
+        "audience": doc.audience,
+        "min_level": doc.audience,
+        "source": doc.source,
+    }
+
+
+@router.get("/docs")
+@limiter.limit(scaled(60))
+def list_platform_docs(
+    request: Request,
+    response: Response,
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    """ADR-114: every document (no audience filter) for the platform console."""
+    response.headers["Cache-Control"] = DOCS_NO_STORE
+    docs = docs_service.list_all()
+    return envelope({"groups": docs_service.GROUPS, "documents": [_doc_summary(d) for d in docs]})
+
+
+@router.get("/docs/{slug}")
+@limiter.limit(scaled(120))
+def get_platform_doc(
+    request: Request,
+    response: Response,
+    slug: str = Path(pattern=r"^[a-z0-9][a-z0-9-]{0,63}$"),
+    admin: PlatformAdmin = Depends(require_platform_admin),
+) -> dict:
+    """One document's Markdown. The slug is matched against the registry only,
+    never used to build a path from user input."""
+    response.headers["Cache-Control"] = DOCS_NO_STORE
+    doc = docs_service.find(slug)
+    if doc is None:
+        raise NotFoundError("Document not found")
+    return envelope({**_doc_summary(doc), "content": docs_service.read_text(doc)})
 
 
 @router.post("/tenants")
