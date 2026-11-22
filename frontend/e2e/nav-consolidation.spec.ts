@@ -4,7 +4,7 @@ import { axeFindings, formatFindings } from './a11y'
 import { loginViaUi } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
-// ADR-108: no one-item Help group (Documentation is a footer link above
+// ADR-108/ADR-114: no one-item Help group (User Guide is a footer link above
 // Profile) and no Report builder sidebar item (a tab on Reports instead).
 test.setTimeout(480_000)
 
@@ -12,7 +12,7 @@ const sidebar = (page: Page) => page.getByRole('complementary', { name: 'Sidebar
 const noOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
 
-test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, Tester without Reports', async ({
+test('nav consolidation: footer User Guide, Reports tab strip, phone sheet, Tester without Reports', async ({
   browser,
   request,
 }) => {
@@ -27,10 +27,10 @@ test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, T
     await admin.goto('/reporting')
     const side = sidebar(admin)
 
-    // Sidebar: no Help group, no Report builder item; Documentation sits above Profile.
+    // Sidebar: no Help group, no Report builder item; User Guide sits above Profile.
     await expect(side.getByText('Help', { exact: true })).toHaveCount(0)
     await expect(side.getByRole('link', { name: 'Report builder' })).toHaveCount(0)
-    const docs = side.getByRole('link', { name: 'Documentation' })
+    const docs = side.getByRole('link', { name: 'User Guide' })
     const profile = side.getByRole('link', { name: 'Profile' })
     const docsBox = (await docs.boundingBox())!
     const profileBox = (await profile.boundingBox())!
@@ -55,12 +55,12 @@ test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, T
       .click()
     await expect(admin).toHaveURL(/\/reporting$/)
 
-    // Documentation footer link navigates and shows active.
+    // User Guide footer link navigates and shows active.
     await docs.click()
-    await expect(admin).toHaveURL(/\/brd\//)
+    await expect(admin).toHaveURL(/\/user-guide/)
     await expect(docs).toHaveAttribute('aria-current', 'page')
 
-    // Command palette still offers Report builder and Documentation.
+    // Command palette still offers Report builder and User Guide.
     await admin.keyboard.press('Control+k')
     await admin.getByLabel('Command palette search').fill('Report builder')
     await expect(
@@ -70,11 +70,11 @@ test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, T
 
     // Collapsed rail: tooltip on keyboard focus.
     await admin.getByRole('button', { name: 'Collapse sidebar' }).click()
-    await side.getByRole('link', { name: 'Documentation' }).focus()
-    await expect(admin.getByRole('tooltip', { name: 'Documentation' })).toBeVisible()
+    await side.getByRole('link', { name: 'User Guide' }).focus()
+    await expect(admin.getByRole('tooltip', { name: 'User Guide' })).toBeVisible()
     await admin.getByRole('button', { name: 'Expand sidebar' }).click()
 
-    // Phone: axe, no overflow, Documentation in the More sheet.
+    // Phone: axe, no overflow, User Guide in the More sheet.
     await admin.setViewportSize({ width: 390, height: 844 })
     await admin.goto('/reporting')
     await expect(admin.getByRole('navigation', { name: 'Report sections' })).toBeVisible()
@@ -82,7 +82,7 @@ test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, T
     expect(formatFindings('reporting-390', await axeFindings(admin))).toEqual([])
     await admin.screenshot({ path: 'test-results/nav-consolidation-390.png' })
     await admin.getByRole('button', { name: 'More' }).click()
-    await expect(admin.getByRole('dialog', { name: 'More' }).getByRole('link', { name: 'Documentation' })).toBeVisible()
+    await expect(admin.getByRole('dialog', { name: 'More' }).getByRole('link', { name: 'User Guide' })).toBeVisible()
 
     // Tester with Reports hidden: no tab strip route, no Reports link.
     await admin.setViewportSize({ width: 1280, height: 800 })
@@ -96,7 +96,7 @@ test('nav consolidation: footer Documentation, Reports tab strip, phone sheet, T
     await tester.goto('/reporting/builder')
     await expect(tester.getByRole('navigation', { name: 'Report sections' })).toHaveCount(0)
     await expect(tester.getByRole('heading', { name: 'Report builder' })).toHaveCount(0)
-    await expect(sidebar(tester).getByRole('link', { name: 'Documentation' })).toBeVisible()
+    await expect(sidebar(tester).getByRole('link', { name: 'User Guide' })).toBeVisible()
   } finally {
     await adminCtx.close()
     await testerCtx.close()

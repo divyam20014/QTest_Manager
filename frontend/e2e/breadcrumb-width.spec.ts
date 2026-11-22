@@ -22,8 +22,8 @@ test('the current page keeps its full title in the breadcrumb on desktop', async
   for (const width of [1280, 1440]) {
     await page.setViewportSize({ width, height: 800 })
     for (const [path, title] of [
-      ['/brd/api-specification', 'API Specification'],
-      ['/brd/requirement-traceability', 'Requirement Traceability'],
+      ['/admin/roles', 'Roles & Permissions'],
+      ['/admin/access-rules', 'Access Rules'],
     ] as const) {
       await page.goto(path)
       await expect(currentPage(page)).toHaveText(title)
@@ -38,19 +38,19 @@ test('the full text is on hover and the current page is marked for screen reader
 }) => {
   const tenant = await bootstrapTenant(request, 'CrumbA11y')
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
-  await page.goto('/brd/requirement-traceability')
+  await page.goto('/admin/roles')
   const current = page.locator('nav[aria-label="Breadcrumb"] [aria-current="page"]')
   await expect(current).toHaveCount(1)
-  await expect(current).toHaveText('Requirement Traceability')
-  await expect(current).toHaveAttribute('title', 'Requirement Traceability')
+  await expect(current).toHaveText('Roles & Permissions')
+  await expect(current).toHaveAttribute('title', 'Roles & Permissions')
 })
 
 test('on a phone only the current page shows, and it still fits', async ({ page, request }) => {
   const tenant = await bootstrapTenant(request, 'CrumbPhone')
   await page.setViewportSize({ width: 390, height: 844 })
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
-  await page.goto('/brd/requirement-traceability')
-  await expect(currentPage(page)).toHaveText('Requirement Traceability')
+  await page.goto('/admin/roles')
+  await expect(currentPage(page)).toHaveText('Roles & Permissions')
   expect(await isTruncated(page)).toBe(false)
   await expect(page.locator('nav[aria-label="Breadcrumb"] a:visible')).toHaveCount(0)
 })

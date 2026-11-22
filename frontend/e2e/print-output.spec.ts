@@ -3,15 +3,18 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { loginViaUi } from './fixtures'
+import { PLATFORM_DOCS_USER_AGENT, signInPlatformBrowser } from './platformDocs'
 import { seedRoleTenant } from './roleTenant'
 
-// Issue 37: print / PDF output of the /brd documents and the compliance print
+// Issue 37 / ADR-114: print / PDF output of the platform console documents and the compliance print
 // view. Chromium's print media is emulated (page.emulateMedia) and the page is
 // also rendered with page.pdf(). Asserts the print-media COMPUTED styles: app
 // chrome hidden, background light even when the saved theme is dark, tables and
 // diagrams not clipped by the page width, long code wraps, headings keep with
 // their content. Evidence (screenshots + PDFs) goes to E2E_SHOTS_DIR when set.
 // Throwaway tenant only.
+
+test.use({ userAgent: PLATFORM_DOCS_USER_AGENT })
 
 const SHOTS = process.env.E2E_SHOTS_DIR
 if (SHOTS) mkdirSync(SHOTS, { recursive: true })
@@ -73,12 +76,12 @@ const DOCS = [
   { slug: 'architecture-decisions', kind: 'long document' },
 ]
 
-test('print media: /brd documents (dark theme saved) print light, without app chrome, unclipped', async ({
+test('print media: platform documents (dark theme saved) print light, without app chrome, unclipped', async ({
   page,
-  request,
+  context,
 }) => {
   test.setTimeout(600_000)
-  const t = await seedRoleTenant(request, 'PrintOut')
+  await signInPlatformBrowser(context)
   await page.addInitScript(() => {
     try {
       localStorage.setItem('qtesthub:theme', 'dark')
@@ -87,12 +90,11 @@ test('print media: /brd documents (dark theme saved) print light, without app ch
     }
   })
   await page.setViewportSize(PAPER)
-  await loginViaUi(page, t.tenantId, t.adminEmail, t.adminPassword)
 
   const problems: string[] = []
   for (const doc of DOCS) {
     await page.emulateMedia({ media: 'screen', colorScheme: 'dark' })
-    await page.goto(`/brd/${doc.slug}`)
+    await page.goto(`/platform-admin/docs/${doc.slug}`)
     await expect(page.locator('.brd-print-area')).toBeVisible({ timeout: 60_000 })
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     if (doc.slug === 'sequence-diagrams') {

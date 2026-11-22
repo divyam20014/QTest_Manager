@@ -110,11 +110,8 @@ test('Phase 4 screens: axe, overflow and phone tap targets in light and dark', a
     // ---- Signed in screens.
     await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
     const routes: { name: string; path: string; wait: string }[] = [
-      { name: 'docs-user-guide', path: '/brd/user-guide', wait: 'article h1' },
-      { name: 'docs-api-spec', path: '/brd/api-specification', wait: 'article h1' },
-      { name: 'docs-db-schema', path: '/brd/database-schema', wait: 'article h1' },
-      { name: 'docs-sequence', path: '/brd/sequence-diagrams', wait: 'figure.brd-diagram[data-state="ready"]' },
-      { name: 'docs-system-arch', path: '/brd/system-architecture', wait: 'figure.brd-diagram[data-state="ready"]' },
+      { name: 'user-guide', path: '/user-guide', wait: 'article h2' },
+      { name: 'user-guide-tester', path: '/user-guide#tester', wait: 'article h2' },
       { name: 'settings', path: '/settings', wait: '#primary-domain' },
       { name: 'projects', path: '/projects', wait: 'main' },
     ]
@@ -174,24 +171,18 @@ const DEMO = {
 }
 
 for (const role of ['admin', 'manager', 'tester'] as const) {
-  test(`Demo tenant (read-only): ${role} sees the right documents and the Documentation entry`, async ({ page }) => {
+  test(`Demo tenant (read-only): ${role} sees the right User Guide sections and no Documentation entry`, async ({ page }) => {
     await loginViaUi(page, '', DEMO[role].email, DEMO[role].password)
+    const sidebar = page.getByRole('complementary', { name: 'Sidebar' })
+    await expect(sidebar.getByRole('link', { name: 'Documentation' })).toHaveCount(0)
     await page.goto('/brd')
-    await expect(page).toHaveURL(/\/brd\/user-guide$/)
-    await expect(page.locator('article h1').first()).toContainText('User Guide')
-    await expect(page.getByRole('complementary', { name: 'Sidebar' }).getByRole('link', { name: 'Documentation' })).toBeVisible()
-    const docsNav = page.getByRole('navigation', { name: 'Documents' })
-    const count = await docsNav.getByRole('link').count()
-    // ADR-089: Admin sees all 24 documents; Manager and Tester only the 12 general ones.
-    if (role !== 'admin') {
-      expect(count).toBe(12)
-      await page.goto('/brd/api-specification')
-      await expect(page.getByRole('heading', { name: /don.t have access/i })).toBeVisible()
-    } else {
-      expect(count).toBe(24)
-      await page.goto('/brd/api-specification')
-      await expect(page.locator('article h1').first()).toContainText('API Specification')
-    }
+    await expect(page).toHaveURL(/\/user-guide$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'User Guide' })).toBeVisible()
+    await expect(sidebar.getByRole('link', { name: 'User Guide' })).toBeVisible()
+    // ADR-114: Getting started + For Testers for everyone, For Managers for managers, For Admins for admins.
+    const sections = page.getByRole('navigation', { name: 'Guide sections' }).getByRole('link')
+    await expect(sections).toHaveCount({ admin: 4, manager: 3, tester: 2 }[role])
+    await expect(page.getByRole('link', { name: 'For Admins' })).toHaveCount(role === 'admin' ? 1 : 0)
   })
 }
 

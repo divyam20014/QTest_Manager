@@ -2,10 +2,11 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect } from './fixtures'
+import { bootstrapTenant, loginViaUi, nativeSelect } from './fixtures'
+import { PLATFORM_DOCS_USER_AGENT, signInPlatformBrowser } from './platformDocs'
 
 // BRD gap plan, Phase 4 (ADR-072, ADR-073): the optional insurance domain on sign-up /
-// settings / new-project default, and the in-app Documentation viewer (/brd).
+// settings / new-project default, and the Documentation viewer (platform console, ADR-114).
 // Every test uses its own throwaway tenant or mocks the network.
 
 async function fulfillCors(route: Route, json: unknown, status = 200) {
@@ -18,20 +19,6 @@ async function fulfillCors(route: Route, json: unknown, status = 200) {
   }
   if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
   return route.fulfill({ status, headers, json: { data: json, error: null } })
-}
-
-async function createTester(request: import('@playwright/test').APIRequestContext, tenant: Awaited<ReturnType<typeof bootstrapTenant>>) {
-  const login = await request.post(`${API_BASE_URL}/auth/login`, {
-    data: { tenant_id: tenant.tenantId, email: tenant.adminEmail, password: tenant.adminPassword },
-  })
-  await request.post(`${API_BASE_URL}/auth/mfa/verify`, { data: { code: (await login.json()).data.debug_code } })
-  const email = `tester-${tenant.tenantId.slice(0, 8)}@example.com`
-  const password = 'TesterPassw0rd1!'
-  const res = await request.post(`${API_BASE_URL}/users`, {
-    data: { email, name: 'Tess Tester', role: 'tester', password },
-  })
-  expect(res.ok()).toBeTruthy()
-  return { email, password }
 }
 
 // ---------------------------------------------------------------- sign-up domain
@@ -107,17 +94,23 @@ test('Settings: an Admin sets the domain, and New Project pre-selects it; "Other
 })
 
 // ---------------------------------------------------------------- documentation viewer
+// ADR-114: the full Documentation viewer is part of the platform console
+// (/platform-admin/docs), read with a platform session. The tenant app has the
+// role-based User Guide instead (e2e/user-guide.spec.ts).
 
-test('Docs: /brd opens the user guide with a table of contents and the reader indicator', async ({ page, request }) => {
-  const tenant = await bootstrapTenant(request, 'BrdDocs')
-  await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
+test.use({ userAgent: PLATFORM_DOCS_USER_AGENT })
 
-  await page.goto('/brd')
-  await expect(page).toHaveURL(/\/brd\/user-guide$/)
+test('Docs: the platform console opens the user guide with a table of contents and the reader indicator', async ({
+  page,
+  context,
+}) => {
+  await signInPlatformBrowser(context)
+
+  await page.goto('/platform-admin/docs')
+  await expect(page).toHaveURL(/\/platform-admin\/docs\/user-guide$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Documentation' })).toBeVisible()
   await expect(page.locator('article h1').first()).toContainText('User Guide')
-  await expect(page.getByTestId('brd-reader')).toContainText('Reading as Admin E2E')
-  await expect(page.getByTestId('brd-reader')).toContainText('Admin')
+  await expect(page.getByTestId('brd-reader')).toContainText('Platform administrator')
 
   const toc = page.getByRole('navigation', { name: 'On this page' })
   await expect(toc.getByRole('link').first()).toBeVisible()
@@ -128,17 +121,18 @@ test('Docs: /brd opens the user guide with a table of contents and the reader in
   await expect(page.locator(`[id="${target}"]`)).toBeInViewport()
   await expect(second).toHaveAttribute('aria-current', 'location')
 
-  // The sidebar has a Documentation entry for every signed-in user.
-  await expect(page.getByRole('complementary', { name: 'Sidebar' }).getByRole('link', { name: 'Documentation' })).toBeVisible()
-  // Breadcrumb names the document.
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('User Guide')
+  // Every document is listed, including the administration and engineering ones.
+  const nav = page.getByRole('navigation', { name: 'Documents' })
+  for (const name of ['Administrator Guide', 'Database Schema', 'API Specification', 'Known Gaps', 'Product Vision']) {
+    await expect(nav.getByRole('link', { name })).toBeVisible()
+  }
+  await expect(nav.getByRole('link')).toHaveCount(24)
 })
 
-test('Docs: Copy Markdown, Download .md and Print / PDF work', async ({ page, context, request }) => {
+test('Docs: Copy Markdown, Download .md and Print / PDF work', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-  const tenant = await bootstrapTenant(request, 'BrdDocUtil')
-  await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
-  await page.goto('/brd/test-strategy')
+  await signInPlatformBrowser(context)
+  await page.goto('/platform-admin/docs/test-strategy')
   await expect(page.locator('article h1').first()).toBeVisible()
 
   await page.getByRole('button', { name: /Copy Markdown/ }).click()
@@ -173,13 +167,12 @@ const DIAGRAM_DOCS: [string, number][] = [
 ]
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`Docs: every Mermaid diagram in the architecture documents renders (${theme})`, async ({ page, request }) => {
+  test(`Docs: every Mermaid diagram in the architecture documents renders (${theme})`, async ({ page, context }) => {
     test.setTimeout(240_000)
-    const tenant = await bootstrapTenant(request, 'BrdDiagrams')
     await page.addInitScript((t) => localStorage.setItem('qtesthub:theme', t), theme)
-    await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
+    await signInPlatformBrowser(context)
     for (const [id, count] of DIAGRAM_DOCS) {
-      await page.goto(`/brd/${id}`)
+      await page.goto(`/platform-admin/docs/${id}`)
       const figures = page.locator('figure.brd-diagram')
       await expect(figures).toHaveCount(count)
       await expect(page.locator('figure.brd-diagram[data-state="ready"]')).toHaveCount(count, { timeout: 60_000 })
@@ -193,41 +186,20 @@ for (const theme of ['light', 'dark'] as const) {
   })
 }
 
-test('Docs: a Tester sees only the user-facing documents; internal ones show "No access"', async ({ page, request }) => {
-  const tenant = await bootstrapTenant(request, 'BrdDocRoles')
-  const tester = await createTester(request, tenant)
-  await loginViaUi(page, tenant.tenantId, tester.email, tester.password)
-
-  await page.goto('/brd')
-  await expect(page).toHaveURL(/\/brd\/user-guide$/)
-  await expect(page.locator('article h1').first()).toContainText('User Guide')
-
-  const docsNav = page.getByRole('navigation', { name: 'Documents' })
-  // ADR-089: the API lists only the general documents (5 product + 7 diagram).
-  await expect(docsNav.getByRole('link')).toHaveCount(12)
-  await expect(docsNav.getByRole('link', { name: 'Product Vision' })).toBeVisible()
-  await expect(docsNav.getByRole('link', { name: 'Database Schema' })).toHaveCount(0)
-
-  await page.goto('/brd/database-schema')
-  await expect(page.getByRole('heading', { name: /don.t have access/i })).toBeVisible()
-  await expect(page.locator('article')).toHaveCount(0)
-  await page.goto('/brd/administrator-guide')
-  await expect(page.getByRole('heading', { name: /don.t have access/i })).toBeVisible()
-
-  // An unknown document is a "not found" message, not a crash.
-  await page.goto('/brd/no-such-doc')
+test('Docs: a document that does not exist is a "not found" message, not a crash', async ({ page, context }) => {
+  await signInPlatformBrowser(context)
+  await page.goto('/platform-admin/docs/no-such-doc')
   await expect(page.getByText('Document not found')).toBeVisible()
 })
 
-test('Docs: raw HTML in a document is never executed and links stay safe', async ({ page, request }) => {
-  const tenant = await bootstrapTenant(request, 'BrdDocSafe')
-  await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
+test('Docs: raw HTML in a document is never executed and links stay safe', async ({ page, context }) => {
+  await signInPlatformBrowser(context)
   const dialogs: string[] = []
   page.on('dialog', (d) => {
     dialogs.push(d.message())
     void d.dismiss()
   })
-  await page.goto('/brd/api-specification')
+  await page.goto('/platform-admin/docs/api-specification')
   await expect(page.locator('article h1').first()).toBeVisible()
   expect(dialogs).toEqual([])
   expect(await page.locator('article script, article iframe, article [onerror], article [onclick]').count()).toBe(0)
@@ -281,10 +253,9 @@ async function overflow(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
 }
 
-test('Docs: the viewer fits at phone and desktop widths with no sideways page scroll', async ({ page, request }) => {
+test('Docs: the viewer fits at phone and desktop widths with no sideways page scroll', async ({ page, context }) => {
   test.setTimeout(180_000)
-  const tenant = await bootstrapTenant(request, 'BrdDocLayout')
-  await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
+  await signInPlatformBrowser(context)
   for (const [width, height] of [
     [390, 844],
     [768, 1024],
@@ -292,7 +263,7 @@ test('Docs: the viewer fits at phone and desktop widths with no sideways page sc
   ] as const) {
     await page.setViewportSize({ width, height })
     for (const id of ['user-guide', 'api-specification', 'database-schema', 'sequence-diagrams']) {
-      await page.goto(`/brd/${id}`)
+      await page.goto(`/platform-admin/docs/${id}`)
       await expect(page.locator('article h1').first()).toBeVisible()
       expect(await overflow(page), `${id} at ${width}px`).toBeLessThanOrEqual(0)
     }

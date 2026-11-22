@@ -41,7 +41,7 @@ function routes(t: RoleTenant): string[] {
     '/admin/environments',
     '/settings',
     '/account',
-    '/brd',
+    '/user-guide',
     '/this-route-does-not-exist',
   ]
 }
