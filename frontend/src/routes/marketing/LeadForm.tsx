@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import { type LeadKind, submitLead } from "@/api/marketing";
+import { Select } from "@/components/ui/select";
 
 import { CONTACT_TOPICS } from "./content";
 
@@ -217,9 +218,8 @@ export function LeadForm({
           <label htmlFor={fieldId("kind")} className="lp-label">
             Topic
           </label>
-          <select
+          <Select
             id={fieldId("kind")}
-            className="lp-input"
             value={values.kind}
             onChange={(e) => update("kind", e.target.value)}
           >
@@ -228,7 +228,7 @@ export function LeadForm({
                 {topic.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
 
@@ -297,9 +297,8 @@ export function LeadForm({
             <label htmlFor={fieldId("job_role")} className="lp-label">
               Job Role <span className="lp-optional">(optional)</span>
             </label>
-            <select
+            <Select
               id={fieldId("job_role")}
-              className="lp-input"
               value={values.job_role}
               onChange={(e) => update("job_role", e.target.value)}
               onBlur={() => blur("job_role")}
@@ -309,7 +308,7 @@ export function LeadForm({
               {JOB_ROLES.map((role) => (
                 <option key={role}>{role}</option>
               ))}
-            </select>
+            </Select>
             {errorText("job_role")}
           </div>
         )}
@@ -321,9 +320,8 @@ export function LeadForm({
             <label htmlFor={fieldId("team_size")} className="lp-label">
               Team Size <span className="lp-optional">(optional)</span>
             </label>
-            <select
+            <Select
               id={fieldId("team_size")}
-              className="lp-input"
               value={values.team_size}
               onChange={(e) => update("team_size", e.target.value)}
               onBlur={() => blur("team_size")}
@@ -333,7 +331,7 @@ export function LeadForm({
               {TEAM_SIZES.map((size) => (
                 <option key={size}>{size}</option>
               ))}
-            </select>
+            </Select>
             {errorText("team_size")}
           </div>
           <div className="lp-field">
@@ -344,9 +342,8 @@ export function LeadForm({
               Primary Requirement{" "}
               <span className="lp-optional">(optional)</span>
             </label>
-            <select
+            <Select
               id={fieldId("primary_requirement")}
-              className="lp-input"
               value={values.primary_requirement}
               onChange={(e) => update("primary_requirement", e.target.value)}
               onBlur={() => blur("primary_requirement")}
@@ -356,7 +353,7 @@ export function LeadForm({
               {REQUIREMENTS.map((item) => (
                 <option key={item}>{item}</option>
               ))}
-            </select>
+            </Select>
             {errorText("primary_requirement")}
           </div>
         </div>

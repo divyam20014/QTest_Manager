@@ -445,9 +445,8 @@ function CustomFieldsCard({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`${entityType}-field-type`}>Type</Label>
-            <select
+            <Select
               id={`${entityType}-field-type`}
-              className="rounded-md border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
               value={fieldType}
               onChange={(e) => setFieldType(e.target.value as CustomFieldType)}
             >
@@ -456,7 +455,7 @@ function CustomFieldsCard({
                   {t}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           {(fieldType === 'select' || fieldType === 'multi_select') && (
             <div className="flex flex-col gap-1.5">
@@ -1510,16 +1509,15 @@ function ScheduledReportsCard() {
 
           <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
             <Label htmlFor="schedule-cadence">Cadence</Label>
-            <select
+            <Select
               id="schedule-cadence"
-              className="rounded-md border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
               value={cadence}
               onChange={(e) => setCadence(e.target.value as ReportCadence)}
             >
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
-            </select>
+            </Select>
             <Label htmlFor="schedule-emails">Recipients (comma-separated)</Label>
             <Input
               id="schedule-emails"

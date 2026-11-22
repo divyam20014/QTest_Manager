@@ -91,7 +91,7 @@ export function FilterBar({
       </div>
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Filters">
-        <div className="flex flex-col gap-4 [&_input:not([type=checkbox]):not([type=radio])]:w-full [&_select]:w-full">
+        <div className="flex flex-col gap-4 [&_input:not([type=checkbox]):not([type=radio])]:w-full [&_select]:w-full [&_[data-combobox-root]]:w-full">
           {saved && (
             <div className="flex [&_[role=menu]]:left-0 [&_[role=menu]]:right-auto [&_[role=menu]]:max-w-[calc(100vw-4rem)]">
               {saved}

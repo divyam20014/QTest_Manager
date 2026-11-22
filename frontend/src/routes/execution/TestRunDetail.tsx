@@ -335,7 +335,7 @@ export function TestRunDetail() {
       {heldOpenBy > 0 && (
         <div
           role="status"
-          className="rounded-md border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm"
+          className="rounded-md border border-[var(--border)] bg-[var(--tactile-surface-raised)] px-4 py-3 text-sm"
         >
           <p className="font-medium">
             Every case has results, but {heldOpenBy} {heldOpenBy === 1 ? 'case' : 'cases'} failed.

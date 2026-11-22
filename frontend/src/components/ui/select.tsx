@@ -1,28 +1,141 @@
-import { type SelectHTMLAttributes, forwardRef } from 'react'
+import {
+  Children,
+  type ChangeEvent,
+  type ReactElement,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  forwardRef,
+  isValidElement,
+  useCallback,
+  useMemo,
+  useState,
+} from 'react'
 
-import { cn } from '@/lib/utils'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  ({ className, children, ...props }, ref) => (
-    <select
-      ref={ref}
-      className={cn(
-        // Dashboard redesign Phase 3: same inset-well + outline-focus
-        // treatment as Input/Textarea. Keeps bg-[var(--background)]
-        // (not transparent, unlike Input) so the inset shadow still
-        // reads as a shallow well rather than a double-border artifact.
-        'qth-pressed-sm flex h-9 w-full rounded-md border border-[var(--control-border,var(--border))] bg-[var(--background)] px-3 py-1 text-sm',
-        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)]',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        // Mobile redesign Phase 2: 44px tall / 16px text (no iOS focus zoom).
-        'max-md:h-11 max-md:text-base',
-        'aria-[invalid=true]:border-[var(--destructive)]',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </select>
-  ),
-)
+type OptionEl = ReactElement<{ value?: string | number; disabled?: boolean; children?: ReactNode }>
+
+function textOf(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(textOf).join('')
+  if (isValidElement<{ children?: ReactNode }>(node)) return textOf(node.props.children)
+  return ''
+}
+
+/** Flatten <option> children (including fragments, arrays and maps) into Combobox options. */
+function collect(children: ReactNode, out: ComboboxOption[]) {
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child)) return
+    if (child.type === 'option') {
+      const el = child as OptionEl
+      const label = textOf(el.props.children)
+      out.push({
+        value: el.props.value != null ? String(el.props.value) : label,
+        label,
+        disabled: el.props.disabled,
+      })
+    } else {
+      collect((child.props as { children?: ReactNode }).children, out)
+    }
+  })
+}
+
+export type SelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange'> & {
+  onChange?: (e: ChangeEvent<HTMLSelectElement>) => void
+}
+
+/**
+ * Drop-in replacement for a native select element, rendered as the custom Combobox.
+ * Takes the same <option> children, `value`/`defaultValue`, and an onChange that
+ * receives an event-like object (`e.target.value`, `e.target.name`), so existing
+ * call sites and react-hook-form's `register()` keep working. The forwarded ref
+ * is the Combobox's hidden native select element (same id/name), which RHF reads and
+ * writes; programmatic `ref.value = x` writes are mirrored into the visible state.
+ */
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  {
+    children,
+    value,
+    defaultValue,
+    onChange,
+    onBlur,
+    id,
+    name,
+    className,
+    required,
+    disabled,
+    'aria-label': ariaLabel,
+    'aria-invalid': ariaInvalid,
+    'aria-describedby': ariaDescribedBy,
+  },
+  ref,
+) {
+  const all = useMemo(() => {
+    const out: ComboboxOption[] = []
+    collect(children, out)
+    return out
+  }, [children])
+
+  const controlled = value !== undefined
+  const [inner, setInner] = useState<string>(() => {
+    if (defaultValue !== undefined) return String(Array.isArray(defaultValue) ? defaultValue[0] : defaultValue)
+    // A native select with no blank option shows its first option.
+    return all.some((o) => o.value === '') ? '' : (all[0]?.value ?? '')
+  })
+  const current = controlled ? String(value) : inner
+
+  const setRef = useCallback(
+    (el: HTMLSelectElement | null) => {
+      if (el && !(el as HTMLSelectElement & { __mirrored?: boolean }).__mirrored) {
+        // Mirror programmatic value writes (react-hook-form reset/setValue) into state.
+        const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')
+        if (proto?.get && proto.set) {
+          Object.defineProperty(el, 'value', {
+            configurable: true,
+            get() {
+              return proto.get!.call(el)
+            },
+            set(v: string) {
+              proto.set!.call(el, v)
+              setInner(String(v ?? ''))
+            },
+          })
+          ;(el as HTMLSelectElement & { __mirrored?: boolean }).__mirrored = true
+        }
+      }
+      if (typeof ref === 'function') ref(el)
+      else if (ref) ref.current = el
+    },
+    [ref],
+  )
+
+  function handle(next: string) {
+    if (!controlled) setInner(next)
+    const target = { value: next, name: name ?? '', id: id ?? '' }
+    onChange?.({ target, currentTarget: target, type: 'change' } as unknown as ChangeEvent<HTMLSelectElement>)
+  }
+
+  // A blank <option value=""> acts as the placeholder; keep it selectable.
+  const blank = all.find((o) => o.value === '')
+
+  return (
+    <Combobox
+      id={id}
+      name={name}
+      className={className}
+      value={current}
+      onChange={handle}
+      options={all}
+      placeholder={blank?.label || 'Select...'}
+      required={required}
+      disabled={disabled}
+      onBlur={onBlur ? () => onBlur({ target: { name: name ?? '', value: current }, type: 'blur' } as never) : undefined}
+      selectRef={setRef}
+      aria-label={ariaLabel}
+      aria-invalid={ariaInvalid === 'grammar' || ariaInvalid === 'spelling' ? true : ariaInvalid}
+      aria-describedby={ariaDescribedBy}
+    />
+  )
+})
 Select.displayName = 'Select'

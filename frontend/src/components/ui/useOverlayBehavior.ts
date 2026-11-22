@@ -39,6 +39,10 @@ export function useOverlayBehavior(
     function handleKeyDown(event: KeyboardEvent) {
       if (overlayStack[overlayStack.length - 1] !== id) return
       if (event.key === 'Escape') {
+        // An open menu / listbox popup (DropdownMenu, Combobox) owns this Escape:
+        // let it close itself first instead of closing the whole overlay.
+        const focused = document.activeElement
+        if (focused?.closest('[data-overlay-popup]') || focused?.matches('[aria-haspopup][aria-expanded="true"]')) return
         event.stopPropagation()
         onCloseRef.current()
         return

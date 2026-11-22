@@ -123,3 +123,13 @@ describe('radius and type scale in signed-in screens', () => {
     expect(offenders, `off-scale radius/type found: ${offenders.join(', ')}`).toEqual([])
   })
 })
+
+describe('form controls', () => {
+  it('uses no native <select> outside the Combobox (use ui/select or ui/combobox)', () => {
+    const offenders = Object.entries(sources)
+      .filter(([file]) => !/\.test\.|\/ui\/combobox\.tsx$/.test(file))
+      .filter(([, text]) => /<select[\s>]/.test(text))
+      .map(([file]) => file.replace('../', ''))
+    expect(offenders, `native <select> found: ${offenders.join(', ')}`).toEqual([])
+  })
+})

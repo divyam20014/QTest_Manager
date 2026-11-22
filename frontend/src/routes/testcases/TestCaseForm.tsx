@@ -122,7 +122,7 @@ export function TestCaseForm({
       onSubmit={form.handleSubmit((values) =>
         onSubmit({
           ...values,
-          // Pass 2: an empty-string value from an unselected <select> is
+          // Pass 2: an empty-string value from an unselected select is
           // not a valid UUID -- the API schema requires a real UUID or
           // nothing at all. Found via a real E2E failure: the create
           // request was silently rejected (422) whenever no module was

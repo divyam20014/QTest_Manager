@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react'
+import { Select } from '@/components/ui/select'
 import { AlertTriangle, CheckCircle2, Info, Plus, RotateCcw, Trash2, XCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -101,7 +102,7 @@ function NameField({ name, onCommit }: { name: string; onCommit: (name: string) 
             onCommit('My theme')
           }
         }}
-        className={cn(fieldClass, 'w-full max-w-xs')}
+        className="w-full max-w-xs"
       />
       <span className="qth-type-helper">Up to {MAX_NAME} characters. You can save {MAX_CUSTOM_THEMES} themes.</span>
     </label>
@@ -250,7 +251,7 @@ export function CustomThemeEditor() {
 
       <label className="flex flex-col gap-1">
         <span className="qth-type-label">Surface tint</span>
-        <select
+        <Select
           value={active.tint === 'charcoal' ? 'neutral' : active.tint}
           onChange={(e) => patch({ tint: e.target.value as Tint })}
           className={cn(fieldClass, 'w-full max-w-xs')}
@@ -260,7 +261,7 @@ export function CustomThemeEditor() {
               {label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <div role="status" data-testid="contrast-badge" className="flex flex-col gap-2">

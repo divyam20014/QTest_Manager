@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -41,17 +43,21 @@ export function DateRangePicker({
   className?: string
 }) {
   const activePreset = PRESETS.find((p) => p.from() === fromValue && p.to() === toValue)
+  const fromRef = useRef<HTMLInputElement>(null)
+  // "Custom" is active when there is a range that matches no preset.
+  const customActive = !activePreset && Boolean(fromValue || toValue)
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <div className="flex flex-wrap gap-1">
+      <div role="group" aria-label="Date range presets" className="flex flex-wrap gap-1">
         {PRESETS.map((p) => (
           <button
             key={p.label}
             type="button"
+            aria-pressed={activePreset?.label === p.label}
             onClick={() => onChange(p.from(), p.to())}
             className={cn(
-              'rounded-full border px-2.5 py-0.5 text-xs transition-colors max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:px-3 max-md:text-sm',
+              'rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)] max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:px-3 max-md:text-sm',
               activePreset?.label === p.label
                 ? 'border-[var(--brand)] bg-[var(--brand-muted)] text-[var(--link)]'
                 : 'border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]',
@@ -60,6 +66,19 @@ export function DateRangePicker({
             {p.label}
           </button>
         ))}
+        <button
+          type="button"
+          aria-pressed={customActive}
+          onClick={() => fromRef.current?.focus()}
+          className={cn(
+            'rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ring)] max-md:inline-flex max-md:min-h-11 max-md:items-center max-md:px-3 max-md:text-sm',
+            customActive
+              ? 'border-[var(--brand)] bg-[var(--brand-muted)] text-[var(--link)]'
+              : 'border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]',
+          )}
+        >
+          Custom
+        </button>
         {(fromValue || toValue) && (
           <button
             type="button"
@@ -76,6 +95,7 @@ export function DateRangePicker({
         </Label>
         <Input
           id={`${idPrefix}-from`}
+          ref={fromRef}
           type="date"
           value={fromValue}
           onChange={(e) => onChange(e.target.value, toValue)}

@@ -1,9 +1,22 @@
 import { type KeyboardEvent, type ReactNode, useId, useRef, useState } from 'react'
+import { NavLink } from 'react-router-dom'
+
+import { cn } from '@/lib/utils'
 
 export interface TabItem {
   key: string
   label: string
   content: ReactNode
+  /** Optional count shown as a small badge after the label. */
+  count?: number
+}
+
+function CountBadge({ count }: { count: number }) {
+  return (
+    <span className="ml-2 rounded-full bg-[var(--muted)] px-1.5 text-xs tabular-nums text-[var(--muted-foreground)]">
+      {count}
+    </span>
+  )
 }
 
 // Minimal, dependency-free tab strip -- used to break up long
@@ -65,6 +78,7 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
               }`}
             >
               {item.label}
+              {item.count !== undefined && <CountBadge count={item.count} />}
             </button>
           )
         })}
@@ -73,5 +87,47 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
         {activeItem?.content}
       </div>
     </div>
+  )
+}
+
+export interface LinkTabItem {
+  label: string
+  to: string
+  end?: boolean
+  count?: number
+}
+
+/**
+ * Router-link variant of the tab strip (same look as the ProjectTabs /
+ * ReportTabs pattern): a <nav> of NavLinks, active one gets aria-current="page".
+ * Links, not role=tab, because each "tab" is a real route; Tab/Enter move
+ * between them as with any link list.
+ */
+export function LinkTabs({ items, label, className }: { items: LinkTabItem[]; label: string; className?: string }) {
+  return (
+    <nav aria-label={label} className={cn('max-w-full overflow-x-auto border-b border-[var(--border)]', className)}>
+      <ul className="flex min-w-max gap-1">
+        {items.map((t) => (
+          <li key={t.label}>
+            <NavLink
+              to={t.to}
+              end={t.end}
+              className={({ isActive }) =>
+                cn(
+                  'inline-flex min-h-10 items-center border-b-2 px-3 text-sm font-medium whitespace-nowrap transition-colors duration-[var(--motion-base)] motion-reduce:transition-none max-md:min-h-11',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]',
+                  isActive
+                    ? 'border-[var(--primary)] text-[var(--foreground)]'
+                    : 'border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]',
+                )
+              }
+            >
+              {t.label}
+              {t.count !== undefined && <CountBadge count={t.count} />}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
   )
 }

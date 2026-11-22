@@ -24,10 +24,21 @@ interface Toast {
   id: number
   variant: ToastVariant
   message: string
+  action?: ToastAction
+}
+
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
+export interface ToastOptions {
+  /** e.g. { label: 'Undo', onClick } -- runs, then dismisses the toast. */
+  action?: ToastAction
 }
 
 interface ToastContextValue {
-  show: (variant: ToastVariant, message: string) => void
+  show: (variant: ToastVariant, message: string, options?: ToastOptions) => void
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null)
@@ -43,9 +54,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const show = useCallback(
-    (variant: ToastVariant, message: string) => {
+    (variant: ToastVariant, message: string, options?: ToastOptions) => {
       const id = nextId.current++
-      setToasts((prev) => [...prev, { id, variant, message }])
+      setToasts((prev) => [...prev, { id, variant, message, action: options?.action }])
     },
     [],
   )
@@ -76,32 +87,45 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   )
 }
 
-// One toast: auto-dismisses after AUTO_DISMISS_MS, but the countdown pauses
+// One toast: auto-dismisses after AUTO_DISMISS_MS (errors stay until dismissed), but the countdown pauses
 // while the pointer is over it or focus is inside it, and restarts after.
 // Errors use role="alert" (announced immediately); the rest role="status".
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
   const [paused, setPaused] = useState(false)
 
   useEffect(() => {
-    if (paused) return
+    if (paused || toast.variant === 'error') return
     const timer = setTimeout(() => onDismiss(toast.id), AUTO_DISMISS_MS)
     return () => clearTimeout(timer)
-  }, [paused, toast.id, onDismiss])
+  }, [paused, toast.id, toast.variant, onDismiss])
 
   return (
     <div
       role={toast.variant === 'error' ? 'alert' : 'status'}
+      aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
       className={
-        'pointer-events-auto flex w-full max-w-sm items-start gap-2 rounded-lg border px-3.5 py-3 text-sm shadow-lg md:w-auto ' +
+        'pointer-events-auto flex w-full max-w-sm items-start gap-2 rounded-lg border px-3.5 py-3 text-sm shadow-lg motion-safe:animate-[qth-slide-in_var(--motion-base)_ease-out] md:w-auto ' +
         VARIANT_STYLE[toast.variant]
       }
     >
       <ToastIcon variant={toast.variant} />
       <span className="min-w-0 flex-1 text-[var(--foreground)]">{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => {
+            toast.action?.onClick()
+            onDismiss(toast.id)
+          }}
+          className="-my-1 shrink-0 rounded-md px-2 py-1 text-sm font-medium text-[var(--link)] hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] max-md:min-h-11"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onDismiss(toast.id)}

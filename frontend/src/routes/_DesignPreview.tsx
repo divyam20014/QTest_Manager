@@ -63,7 +63,7 @@ const CHART_TOKENS = [
 ] as const
 
 const TYPE_SCALE = [
-  ['qth-type-page-title', 'Page title — Test Repository'],
+  ['qth-type-page-title', 'Page title — Test Cases'],
   ['qth-type-section-title', 'Section title — Release readiness'],
   ['qth-type-card-heading', 'Card heading — Pass rate'],
   ['qth-type-body', 'Body — The suite ran 214 cases against build 7.4.2.'],
