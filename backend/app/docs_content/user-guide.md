@@ -49,14 +49,14 @@ has AI features enabled, you can generate draft test cases directly from a
 requirement's text (always a draft — a human reviews and accepts it before
 it becomes a real test case, never auto-published).
 
-## Test Repository
+## Test Cases
 
 Browse, create, and edit test cases (title, steps, expected results,
 priority). Test cases are versioned — editing one creates a new version
 rather than silently overwriting history, and you can view prior versions.
 You can:
 - **Bulk edit** from the Test Cases list: tick rows (up to 100), then use the bar to assign, change priority, move to a module or quarantine. Use the Columns menu on any list to hide columns or switch to Compact rows; it is remembered per table.
-- **Bulk import/export** via CSV (Test Repository's Import/Export actions;
+- **Bulk import/export** via CSV (Test Cases's Import/Export actions;
   download the template first to see the expected columns). Imports are
   capped at 2,000 rows per file.
 - **Attach files** (screenshots, supporting documents) to a test case.
@@ -130,7 +130,7 @@ A Manager or Admin can **Quarantine** a flaky test case from its page or from th
 
 ## Custom dashboards (ADR-099)
 
-There is one **Dashboard** entry in the sidebar. Use the **View** switcher at the top of the page to move between the built-in **Overview** (the home page, unchanged) and your own or the team default dashboards. **Manage dashboards**, next to the switcher, opens the list where you create, rename and delete them.
+There is one **Dashboard** entry in the sidebar. Use the **View** switcher at the top of the page to move between the built-in **Overview** (the home page, unchanged) and your own or the team default dashboards. **Customize**, next to the switcher, opens the list where you create, rename and delete them. The Overview opens with four clickable cards (Pass rate, Active runs, Open defects, Test cases), each showing how it changed against 30 days ago, then the execution trend, test case status, what needs attention and recent activity.
 
 1. Choose **New dashboard**, name it (up to 60 characters; 10 dashboards per person) and open it.
 2. Choose **Edit layout**, then **Add widget**. Pick a type (each has a short description), set its project or other options, and choose a size: Small, Medium or Large (1, 2 or 3 of 3 columns; everything stacks on a phone).
@@ -176,3 +176,7 @@ Open **Appearance** (the palette icon in the header, or More on a phone) to choo
 ## Quick add and linking requirements
 
 On Test Cases, **Quick add** (also the project dashboard's "New test case") opens a small dialog: enter a title, priority, optional module and up to three steps, then press Create or Ctrl/Cmd+Enter. **Create and add another** keeps the priority and module so you can enter a batch quickly; **More options** opens the full form with what you typed. On a test case page, the **Linked Requirements** card lets you type to search the project's requirements, pick one to link it and use the x on a chip to unlink it. In a new test run, **Create and start** opens the Execution Console on the first case straight away.
+
+## Admin area
+
+Admins (and Managers, for Environments) open **Admin** in the sidebar. A menu on the left lists Users & Roles, Access Control, Environments, Settings and Audit Logs; on a phone it becomes a **Section** drop-down. You only see the sections your role allows.

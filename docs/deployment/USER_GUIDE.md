@@ -45,13 +45,13 @@ has AI features enabled, you can generate draft test cases directly from a
 requirement's text (always a draft — a human reviews and accepts it before
 it becomes a real test case, never auto-published).
 
-## Test Repository
+## Test Cases
 
 Browse, create, and edit test cases (title, steps, expected results,
 priority). Test cases are versioned — editing one creates a new version
 rather than silently overwriting history, and you can view prior versions.
 You can:
-- **Bulk import/export** via CSV (Test Repository's Import/Export actions;
+- **Bulk import/export** via CSV (Test Cases's Import/Export actions;
   download the template first to see the expected columns). Imports are
   capped at 2,000 rows per file.
 - **Attach files** (screenshots, supporting documents) to a test case.
