@@ -7,23 +7,20 @@ import {
   ClipboardList,
   FileStack,
   LayoutDashboard,
-  Layers,
-  KeyRound,
   Search,
   MonitorPlay,
   ExternalLink,
   UserCircle,
   PanelLeftClose,
   PanelLeftOpen,
-  ScrollText,
-  Settings as SettingsIcon,
   ShieldCheck,
-  Users,
+  UserCog,
 } from 'lucide-react'
 import { type ComponentType, type CSSProperties, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
+import { getDefectStatusCounts } from '@/api/defects'
 import { getBranding, getLogoUrl } from '@/api/settings'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { Breadcrumbs } from '@/components/Breadcrumbs'
@@ -31,12 +28,15 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { RouteBoundary } from '@/components/RouteBoundary'
 import { GlobalSearch } from '@/components/GlobalSearch'
 import { NotificationBell } from '@/components/NotificationBell'
+import { QuickCreateMenu } from '@/components/QuickCreateMenu'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { MobileTabBar, MoreSheet } from '@/components/MobileNav'
 import { NoAccess } from '@/components/NoAccess'
 import { UserMenu } from '@/components/UserMenu'
 import { AccessRuleBanner } from '@/components/AccessRuleBanner'
+import { ADMIN_SECTIONS } from '@/lib/adminSections'
 import { canAccessPath } from '@/lib/routeAccess'
+import { navBadgeLabel, navBadgeText, openDefectCount } from '@/lib/navBadges'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 
@@ -52,6 +52,9 @@ interface NavItem {
   // target). It shows if any is reachable, links to the first that is, and is
   // active on all of them.
   paths?: string[]
+  // Open-item count shown as a badge (computed by the shell, not stored here).
+  count?: number
+  countNoun?: string
 }
 
 interface NavSection {
@@ -66,6 +69,8 @@ export type { NavItem, NavSection }
 // Analytics / Administration) rather than a flat list. Which items a role
 // sees is not stored here: lib/routeAccess.ts is the single definition, shared
 // with the route gate, so the menu and the URL can never disagree.
+// The admin area's pages come from lib/adminSections.ts. The sidebar shows one
+// "Admin" item; AdminLayout's left sub-nav lists the sections.
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Workspace',
@@ -77,7 +82,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Test Management',
     items: [
-      { to: '/test-repository', label: 'Test Repository', icon: FileStack },
+      { to: '/test-repository', label: 'Test Cases', icon: FileStack },
       { to: '/test-runs', label: 'Test Runs', icon: ClipboardList },
       { to: '/execution', label: 'Execution Console', icon: MonitorPlay },
       { to: '/defects', label: 'Defects', icon: Bug },
@@ -93,16 +98,14 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Administration',
     items: [
-      { to: '/admin/users', label: 'Users & Roles', icon: Users },
+      // One entry for the whole area: it links to the first admin page this user
+      // may open and is active on all of them. AdminLayout's sub-nav lists the sections.
       {
-        to: '/admin/roles',
-        label: 'Access control',
-        icon: KeyRound,
-        paths: ['/admin/roles', '/admin/access-rules'],
+        to: '/admin/users',
+        label: 'Admin',
+        icon: UserCog,
+        paths: ADMIN_SECTIONS.flatMap((p) => p.paths),
       },
-      { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText },
-      { to: '/admin/environments', label: 'Environments', icon: Layers },
-      { to: '/settings', label: 'Settings', icon: SettingsIcon },
     ],
   },
 ]
@@ -118,8 +121,12 @@ export const PALETTE_EXTRA_ENTRIES: { label: string; sublabel: string; path: str
   { label: 'Report builder', sublabel: 'Analytics', path: '/reporting/builder' },
   { label: DOCS_LINK.label, sublabel: 'Help', path: DOCS_LINK.to },
   // The two Access control tabs stay individually searchable.
+  { label: 'Users & Roles', sublabel: 'Administration', path: '/admin/users' },
   { label: 'Roles & Permissions', sublabel: 'Administration', path: '/admin/roles' },
   { label: 'Access Rules', sublabel: 'Administration', path: '/admin/access-rules' },
+  { label: 'Audit Logs', sublabel: 'Administration', path: '/admin/audit-logs' },
+  { label: 'Environments', sublabel: 'Administration', path: '/admin/environments' },
+  { label: 'Settings', sublabel: 'Administration', path: '/settings' },
 ]
 
 // The item as this user sees it (link target = first reachable route), or null.
@@ -129,7 +136,7 @@ export function resolveNavItem(user: Parameters<typeof canAccessPath>[0], item: 
 }
 
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
-  return (item.paths ?? []).some((p) => pathname === p)
+  return (item.paths ?? []).some((p) => pathname === p || pathname.startsWith(p + '/'))
 }
 
 const COLLAPSE_STORAGE_KEY = 'qtesthub:sidebar-collapsed'
@@ -192,10 +199,39 @@ function SidebarLink({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [tip])
 
+  const badge = navBadgeText(item.count ?? 0)
+  const badgedLabel = badge ? navBadgeLabel(item.label, item.count ?? 0, item.countNoun) : item.label
   const content = (
     <>
-      <item.icon className="size-4 shrink-0" aria-hidden="true" />
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      <span className="relative flex shrink-0">
+        <item.icon className="size-4 shrink-0" aria-hidden="true" />
+        {badge && collapsed && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1.5 -top-1.5 flex min-w-3.5 items-center justify-center rounded-full bg-[var(--sidebar-accent)] px-0.5 text-[9px] font-semibold leading-3.5 text-[var(--sidebar-bg)]"
+          >
+            {badge}
+          </span>
+        )}
+      </span>
+      {!collapsed && (
+        <span className="truncate">
+          {item.label}
+          {badge && (
+            <span className="sr-only">
+              , {item.count} {item.countNoun ?? 'open'}
+            </span>
+          )}
+        </span>
+      )}
+      {badge && !collapsed && (
+        <span
+          aria-hidden="true"
+          className="ml-auto rounded-full bg-[var(--sidebar-bg-raised)] px-1.5 text-[11px] font-medium leading-5 text-[var(--sidebar-foreground)]"
+        >
+          {badge}
+        </span>
+      )}
       {item.newTab && !collapsed && <ExternalLink className="ml-auto size-3 shrink-0 opacity-70" aria-hidden="true" />}
       {item.newTab && <span className="sr-only"> (opens in a new tab)</span>}
     </>
@@ -214,7 +250,7 @@ function SidebarLink({
           href={item.to}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={collapsed ? `${item.label} (opens in a new tab)` : undefined}
+          aria-label={collapsed ? `${badgedLabel} (opens in a new tab)` : undefined}
           className={className({ isActive: false })}
           {...events}
         >
@@ -225,7 +261,7 @@ function SidebarLink({
         <Link
           ref={ref}
           to={item.to}
-          aria-label={collapsed ? item.label : undefined}
+          aria-label={collapsed ? badgedLabel : undefined}
           aria-current={multiActive ? 'page' : undefined}
           className={className({ isActive: multiActive })}
           {...events}
@@ -237,7 +273,7 @@ function SidebarLink({
           ref={ref}
           to={item.to}
           end={item.end}
-          aria-label={collapsed ? item.label : undefined}
+          aria-label={collapsed ? badgedLabel : undefined}
           className={className}
           {...events}
         >
@@ -250,7 +286,7 @@ function SidebarLink({
           style={{ top: tip.top, left: tip.left }}
           className="pointer-events-none fixed z-[var(--z-overlay)] -translate-y-1/2 whitespace-nowrap rounded-[var(--radius-control)] bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] shadow-md"
         >
-          {item.label}
+          {badgedLabel}
         </span>
       )}
     </>
@@ -302,9 +338,23 @@ export function AppShell() {
         'bg-[var(--sidebar-active-bg)] font-medium text-[var(--sidebar-active-foreground)] before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-r-full before:bg-[var(--sidebar-accent)]',
     )
 
+  // Nav badge: open defects the user can see (same scoping as the Defects list).
+  const defectCountsQuery = useQuery({
+    queryKey: ['defects', 'status-counts', 'nav-badge', user?.user_id],
+    queryFn: () => getDefectStatusCounts(),
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+  const openDefects = openDefectCount(defectCountsQuery.data)
+
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.flatMap((item) => resolveNavItem(user, item) ?? []),
+    items: section.items.flatMap((item) => {
+      const resolved = resolveNavItem(user, item)
+      if (!resolved) return []
+      return resolved.to === '/defects' ? [{ ...resolved, count: openDefects, countNoun: 'open' }] : [resolved]
+    }),
   })).filter((section) => section.items.length > 0)
 
   return (
@@ -390,16 +440,17 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="qth-shell-chrome flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:h-14 md:px-6 md:py-0">
-          <div className="flex min-w-0 items-center gap-2">
+        <header className="qth-shell-chrome flex items-center overflow-x-clip justify-between gap-2 border-b border-[var(--border)] bg-[var(--background)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] md:h-14 md:px-6 md:py-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <Breadcrumbs />
           </div>
           <div className="flex shrink-0 items-center gap-2 text-sm">
             <GlobalSearch />
+            <QuickCreateMenu />
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden items-center gap-1.5 h-8 rounded-md border border-[var(--border)] px-2.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] xl:flex"
+              className="hidden items-center gap-1.5 h-8 rounded-md border border-[var(--border)] px-2.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] 2xl:flex"
             >
               <span>Jump to…</span>
               <kbd className="rounded-md border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[11px]">
@@ -438,7 +489,13 @@ export function AppShell() {
             {/* Restricted screens are blocked here, before the route element
                 renders, so a user who may not open one never downloads it or
                 fires its data requests. The API still enforces access. */}
-            {user && !canAccessPath(user, location.pathname) ? <NoAccess /> : <Outlet />}
+            {user && !canAccessPath(user, location.pathname) ? (
+              <NoAccess />
+            ) : (
+              <>
+                <Outlet />
+              </>
+            )}
           </RouteBoundary>
         </main>
       </div>

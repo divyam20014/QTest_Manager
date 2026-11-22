@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { getProject } from '@/api/projects'
@@ -76,6 +76,22 @@ export function RequirementsList() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
+
+  // The top bar's "+ New" menu (lib/quickCreate.ts) links here with ?action=create.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      if (canManage) setCreateOpen(true)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('action')
+          return next
+        },
+        { replace: true },
+      )
+    }
+  }, [searchParams, setSearchParams, canManage])
   const urlFilters = useUrlFilters({ page: '1' })
   const page = Number(urlFilters.values.page) || 1
   const setPage = (updater: (p: number) => number) =>

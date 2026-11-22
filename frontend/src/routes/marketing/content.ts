@@ -418,7 +418,7 @@ export const TOUR = [
   },
   {
     id: 'repository',
-    label: 'Test Repository',
+    label: 'Test Cases',
     icon: ClipboardList,
     image: '/marketing/repository.jpg',
     width: 1440,

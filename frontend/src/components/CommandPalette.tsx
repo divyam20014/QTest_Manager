@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { Bug, ClipboardList, FileStack, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { search as searchApi, type SearchResultEntry, type SearchResultType } from '@/api/search'
 import { NAV_SECTIONS, PALETTE_EXTRA_ENTRIES, resolveNavItem } from '@/routes/AppShell'
 import { useAuth } from '@/lib/auth'
+import { getQuickCreateActions, projectIdFromPath } from '@/lib/quickCreate'
 import { canAccessPath } from '@/lib/routeAccess'
 import { cn } from '@/lib/utils'
 
@@ -52,6 +53,7 @@ const GROUP_ORDER: PaletteItem['group'][] = ['Search results', 'Quick actions', 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -82,11 +84,11 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     onClose()
   }
 
-  const quickActions: { label: string; path: string }[] = [
-    { label: 'Create Test Case', path: '/test-repository?action=create' },
-    { label: 'Create Defect', path: '/defects?action=create' },
-    { label: 'Create Project', path: '/projects?action=create' },
-  ]
+  // Same permission-filtered list as the top bar's "+ New" menu.
+  const quickActions = getQuickCreateActions(user, projectIdFromPath(pathname)).map((a) => ({
+    label: a.paletteLabel,
+    path: a.path,
+  }))
 
   const navEntries = useMemo(() => {
     const out: { label: string; sublabel: string; path: string }[] = []

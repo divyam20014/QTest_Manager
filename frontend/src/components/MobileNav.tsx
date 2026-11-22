@@ -52,7 +52,7 @@ interface TabItem extends MobileNavItem {
 
 const MOBILE_TABS: TabItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/test-repository', label: 'Repository', icon: FileStack },
+  { to: '/test-repository', label: 'Test Cases', icon: FileStack },
   { to: '/test-runs', label: 'Runs', icon: ClipboardList },
   { to: '/defects', label: 'Defects', icon: Bug },
 ]
@@ -335,7 +335,7 @@ export function MoreSheet({
                         to={item.to}
                         end
                         className={(state) =>
-                          rowClass({ isActive: state.isActive || (item.paths ?? []).includes(location.pathname) })
+                          rowClass({ isActive: state.isActive || (item.paths ?? []).some((p) => location.pathname === p || location.pathname.startsWith(p + '/')) })
                         }
                       >
                         <item.icon className="size-4 shrink-0" />
