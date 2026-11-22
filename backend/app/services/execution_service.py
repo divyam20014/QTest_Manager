@@ -663,6 +663,8 @@ def list_test_runs_all_projects(
     *,
     project_id: UUID | None = None,
     active_only: bool = False,
+    status: str | None = None,
+    search: str | None = None,
     page: int = 1,
     page_size: int = RUN_DEFAULT_PAGE_SIZE,
 ) -> tuple[list[TestRunSummaryOut], int]:
@@ -686,6 +688,15 @@ def list_test_runs_all_projects(
         query = query.where(or_(TestRun.project_id.in_(owned), TestRun.project_id.in_(member_of)))
     if active_only:
         query = query.where(TestRun.finished_at.is_(None))
+    if search:
+        query = query.where(TestRun.name.icontains(search.strip(), autoescape=True))
+    # Status tabs on the Test Runs list: in_progress (not finished, not paused), paused, finished.
+    if status == "finished":
+        query = query.where(TestRun.finished_at.is_not(None))
+    elif status == "paused":
+        query = query.where(TestRun.finished_at.is_(None), TestRun.paused_at.is_not(None))
+    elif status == "in_progress":
+        query = query.where(TestRun.finished_at.is_(None), TestRun.paused_at.is_(None))
 
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
     page_size = min(max(page_size, 1), RUN_MAX_PAGE_SIZE)

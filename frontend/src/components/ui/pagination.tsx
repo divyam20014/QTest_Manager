@@ -10,21 +10,31 @@ export function Pagination({
   totalPages,
   total,
   noun = 'item',
+  pageSize,
   onPageChange,
 }: {
   page: number
   totalPages: number
   total: number
   noun?: string
+  /** When given, the footer also says which rows are on screen: "Showing 1-25 of 132". */
+  pageSize?: number
   onPageChange: (page: number) => void
 }) {
   if (total <= 0) return null
   return (
     <div className="flex items-center justify-between gap-3 text-xs text-[var(--muted-foreground)]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        {pageSize !== undefined && (
+          <span aria-live="polite" className="font-medium text-[var(--foreground)]">
+            Showing {rangeStart(page, pageSize)}-{rangeEnd(page, pageSize, total)} of {total}
+          </span>
+        )}
       <span>
         Page {page} of {totalPages} ({total} {noun}
         {total === 1 ? '' : 's'})
       </span>
+      </div>
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -45,4 +55,12 @@ export function Pagination({
       </div>
     </div>
   )
+}
+
+function rangeStart(page: number, pageSize: number): number {
+  return (page - 1) * pageSize + 1
+}
+
+function rangeEnd(page: number, pageSize: number, total: number): number {
+  return Math.min(page * pageSize, total)
 }

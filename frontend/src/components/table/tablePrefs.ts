@@ -17,6 +17,8 @@ export interface TableColumnDef {
   /** Core identity column -- always shown, not offered in the visibility menu. */
   alwaysVisible?: boolean
   defaultWidth?: number
+  /** Hidden until the user turns it on (keeps wide tables inside 1280px); ignored once prefs are saved. */
+  defaultHidden?: boolean
 }
 
 // ADR-105: row density, shared by every data table. Phones render cards and
@@ -59,9 +61,24 @@ function writePrefs(viewKey: string, userId: string | null, prefs: StoredPrefs) 
   }
 }
 
+function hasStoredPrefs(viewKey: string, userId?: string | null): boolean {
+  try {
+    return (
+      localStorage.getItem(tablePrefsKey(viewKey, userId)) !== null ||
+      localStorage.getItem(tablePrefsKey(viewKey)) !== null
+    )
+  } catch {
+    return false
+  }
+}
+
 export function useColumnPrefs(viewKey: string, columns: TableColumnDef[]) {
   const userId = useCurrentUserId()
-  const [prefs, setPrefs] = useState<StoredPrefs>(() => readPrefs(viewKey, userId))
+  const [prefs, setPrefs] = useState<StoredPrefs>(() => {
+    const stored = readPrefs(viewKey, userId)
+    if (hasStoredPrefs(viewKey, userId)) return stored
+    return { ...stored, hidden: columns.filter((c) => c.defaultHidden && !c.alwaysVisible).map((c) => c.key) }
+  })
 
   const persist = useCallback(
     (next: StoredPrefs) => {

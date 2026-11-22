@@ -147,6 +147,7 @@ export interface DefectFilters {
 // ADR-078: one page of the same listing plus how many match in all, and the number of
 // matching defects per status (under every filter except status) for the status tabs.
 export interface DefectPageParams {
+  search?: string
   project_id?: string
   status?: string
   severity?: string

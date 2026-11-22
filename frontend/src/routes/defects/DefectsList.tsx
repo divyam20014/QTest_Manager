@@ -15,12 +15,16 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { FilterTabs } from '@/components/ui/filter-tabs'
+import { LevelBadge } from '@/components/ui/LevelBadge'
+import { ListFilterField, ListToolbar } from '@/components/list/ListToolbar'
+import { RowDetailDrawer, type RowDetailConfig } from '@/components/list/RowDetailDrawer'
+import { rowDetailProps } from '@/components/list/rowDetail'
+import { buildStatusTabs } from '@/components/list/statusTabs'
 import { filterTabId } from '@/components/ui/filterTabId'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
-import { FilterBar, FilterField } from '@/components/table/FilterBar'
 import { Pagination } from '@/components/ui/pagination'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { useRowContextMenu } from '@/components/table/RowContextMenu'
@@ -32,9 +36,12 @@ import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { useUrlFilters } from '@/lib/useUrlFilters'
 import { useCanListUsers } from '@/lib/useCanListUsers'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { MoreActionsMenu } from '@/components/list/MoreActionsMenu'
 import { FormError, FormField } from '@/components/ui/form-field'
 import { ReportDirty } from '@/components/ui/dirtyForm'
 import { DefectImportDialog } from './DefectImportDialog'
+import { levelTone } from '@/lib/statusTones'
 import { STATUS_ORDER, STATUS_TONE, severityTone } from './statusDisplay'
 
 const DEFECT_COLUMNS: TableColumnDef[] = [
@@ -43,8 +50,8 @@ const DEFECT_COLUMNS: TableColumnDef[] = [
   { key: 'severity', label: 'Severity', defaultWidth: 110 },
   { key: 'priority', label: 'Priority', defaultWidth: 100 },
   { key: 'status', label: 'Status', alwaysVisible: true, defaultWidth: 130 },
-  { key: 'sla', label: 'SLA', defaultWidth: 100 },
-  { key: 'reportedBy', label: 'Reported By', defaultWidth: 140 },
+  { key: 'sla', label: 'SLA', defaultWidth: 100, defaultHidden: true },
+  { key: 'reportedBy', label: 'Reported By', defaultWidth: 140, defaultHidden: true },
   { key: 'reported', label: 'Reported', defaultWidth: 110 },
 ]
 
@@ -90,13 +97,12 @@ const DEFECT_TABLE_COLUMNS: ResponsiveColumn<Defect>[] = [
     key: 'severity',
     header: 'Severity',
     card: 'badge',
-    cell: (d) => <StatusBadge tone={severityTone(d.severity)}>{d.severity}</StatusBadge>,
+    cell: (d) => <LevelBadge tone={severityTone(d.severity)}>{d.severity}</LevelBadge>,
   },
   {
     key: 'priority',
     header: 'Priority',
-    tdClassName: 'text-xs text-[var(--muted-foreground)]',
-    cell: (d) => d.priority,
+    cell: (d) => <LevelBadge tone={levelTone(d.priority)}>{d.priority}</LevelBadge>,
   },
   {
     key: 'status',
@@ -132,8 +138,31 @@ const DEFECT_TABLE_COLUMNS: ResponsiveColumn<Defect>[] = [
 
 const DEFECTS_PAGE_SIZE = 50
 
+const DEFECT_DETAIL: RowDetailConfig<Defect> = {
+  entity: 'defect',
+  title: (d) => d.title,
+  badges: (d) => (
+    <>
+      <StatusBadge tone={STATUS_TONE[d.status]}>{d.status_label}</StatusBadge>
+      <LevelBadge tone={severityTone(d.severity)}>{d.severity} severity</LevelBadge>
+    </>
+  ),
+  fields: (d) => [
+    { label: 'ID', value: <span className="font-mono text-xs">{d.id.slice(0, 8)}</span> },
+    { label: 'Priority', value: <LevelBadge tone={levelTone(d.priority)}>{d.priority}</LevelBadge> },
+    { label: 'Assignee', value: d.assigned_to_name ?? 'Unassigned' },
+    { label: 'Reported by', value: d.reported_by_name ?? 'Unknown' },
+    { label: 'Project', value: d.project_name },
+    { label: 'Reported', value: new Date(d.created_at).toLocaleDateString() },
+    { label: 'Age', value: d.sla_breached ? 'SLA breached' : `${d.age_days}d` },
+  ],
+  description: (d) => d.description,
+  href: (d) => `/defects/${d.id}`,
+}
+
 // ADR-096: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
-const DEFECT_VIEW_KEYS = ['projectId', 'status', 'severity', 'reportedBy', 'createdFrom', 'createdTo'] as const
+const DEFECT_VIEW_KEYS = ['search', 'projectId', 'status', 'severity', 'reportedBy', 'createdFrom', 'createdTo'] as const
+const CLEARED_FILTERS = { projectId: '', severity: '', reportedBy: '', createdFrom: '', createdTo: '' }
 const DEFECT_VIEW_RESET = Object.fromEntries(DEFECT_VIEW_KEYS.map((k) => [k, ''])) as Record<string, string>
 
 export function DefectsList() {
@@ -148,6 +177,7 @@ export function DefectsList() {
   // actually pre-filter on landing (it previously went nowhere).
   const filterDefaults = useMemo(
     () => ({
+      search: '',
       projectId: '',
       status: '',
       severity: '',
@@ -161,6 +191,8 @@ export function DefectsList() {
   const applyView = (view: ViewState) =>
     urlFilters.setFilters({ ...DEFECT_VIEW_RESET, ...view.filters })
   useApplyDefaultView('defects', urlFilters.active.length > 0, applyView)
+  const search = urlFilters.values.search
+  const debouncedSearch = useDebouncedValue(search.trim(), 300)
   const projectId = urlFilters.values.projectId
   const status = urlFilters.values.status as DefectStatus | ''
   const severity = urlFilters.values.severity as Severity | ''
@@ -169,6 +201,7 @@ export function DefectsList() {
   const createdTo = urlFilters.values.createdTo
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [detailRow, setDetailRow] = useState<Defect | null>(null)
   const [actionParams, setActionParams] = useSearchParams()
 
   // Phase 2: the command palette's "Create Defect" quick action
@@ -204,13 +237,14 @@ export function DefectsList() {
   const activeStatus = (STATUS_ORDER as string[]).includes(status) ? status : ''
   // Status has its own control (the tabs), so it is not a chip and does not
   // count towards the Filters badge.
-  const chipKeys = urlFilters.active.filter((key) => key !== 'status')
+  const chipKeys = urlFilters.active.filter((key) => key !== 'status' && key !== 'search')
   const otherFiltersActive = Boolean(projectId || severity || reportedBy || createdFrom || createdTo)
-  const filterKey = [projectId, status, severity, reportedBy, createdFrom, createdTo].join('|')
+  const filterKey = [debouncedSearch, projectId, status, severity, reportedBy, createdFrom, createdTo].join('|')
   const [paging, setPaging] = useState({ key: filterKey, page: 1 })
   // The page resets to 1 when any filter (or the status tab) changes.
   const page = paging.key === filterKey ? paging.page : 1
   const scopeParams = {
+    search: debouncedSearch || undefined,
     project_id: projectId || undefined,
     severity: severity || undefined,
     reported_by: reportedBy || undefined,
@@ -218,7 +252,7 @@ export function DefectsList() {
     created_to: createdTo ? new Date(createdTo + 'T23:59:59').toISOString() : undefined,
   }
   const defectsQuery = useQuery({
-    queryKey: ['defects', 'page', projectId, severity, reportedBy, createdFrom, createdTo, activeStatus, page],
+    queryKey: ['defects', 'page', debouncedSearch, projectId, severity, reportedBy, createdFrom, createdTo, activeStatus, page],
     queryFn: () =>
       listDefectsPage({
         ...scopeParams,
@@ -229,7 +263,7 @@ export function DefectsList() {
     placeholderData: keepPreviousData,
   })
   const countsQuery = useQuery({
-    queryKey: ['defects', 'status-counts', projectId, severity, reportedBy, createdFrom, createdTo],
+    queryKey: ['defects', 'status-counts', debouncedSearch, projectId, severity, reportedBy, createdFrom, createdTo],
     queryFn: () => getDefectStatusCounts(scopeParams),
     placeholderData: keepPreviousData,
   })
@@ -243,14 +277,24 @@ export function DefectsList() {
   }
   const countsReady = countsQuery.isSuccess
   const statusCounts = countsQuery.data?.counts ?? {}
-  const statusTabs = [
-    { key: '', label: 'All', count: countsReady ? countsQuery.data?.total : undefined },
-    ...STATUS_ORDER.map((s) => ({
-      key: s as string,
-      label: s as string,
-      count: countsReady ? (statusCounts[s] ?? 0) : undefined,
-    })),
-  ]
+  const statusTabs = buildStatusTabs({
+    order: STATUS_ORDER,
+    counts: statusCounts,
+    total: countsQuery.data?.total,
+    ready: countsReady,
+  })
+  const clearOtherFilters = () => urlFilters.setFilters(CLEARED_FILTERS)
+  const chips = chipKeys.map((key) => ({
+    key,
+    label: DEFECT_FILTER_CHIP_LABEL[key],
+    value: chipValue(key),
+  }))
+  function chipValue(key: string): string {
+    const raw = (urlFilters.values as Record<string, string>)[key]
+    if (key === 'projectId') return projectsQuery.data?.items.find((p) => p.id === raw)?.name ?? raw
+    if (key === 'reportedBy') return usersQuery.data?.find((u) => u.id === raw)?.name ?? raw
+    return raw
+  }
   // defect.create is granted to every role (admin/manager/tester) per
   // ADR-014's seed, so this is a contextual action available uniformly --
   // not role-gated, matching the backend permission it calls.
@@ -263,9 +307,7 @@ export function DefectsList() {
         description="Track, triage and resolve the defects found during testing."
         actions={
           <>
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              Import
-            </Button>
+            <MoreActionsMenu items={[{ label: 'Import defects', onSelect: () => setImportOpen(true) }]} />
             {canCreate && <Button onClick={() => setCreateOpen(true)}>New Defect</Button>}
           </>
         }
@@ -279,11 +321,17 @@ export function DefectsList() {
         panelId="defects-panel"
       />
 
-      <FilterBar
+      <ListToolbar
+        search={{
+          id: 'defect-search',
+          value: search,
+          onChange: (v) => urlFilters.setFilter('search', v),
+          placeholder: 'Search defects by title…',
+        }}
         activeCount={chipKeys.length}
-        onClear={() =>
-          urlFilters.setFilters({ projectId: '', severity: '', reportedBy: '', createdFrom: '', createdTo: '' })
-        }
+        onClearFilters={clearOtherFilters}
+        chips={chips}
+        onRemoveChip={(key) => urlFilters.setFilter(key as keyof typeof urlFilters.values, '')}
         saved={
           <>
             <SavedFiltersMenu
@@ -300,7 +348,7 @@ export function DefectsList() {
             />
           </>
         }
-        toolbar={
+        columns={
           <ColumnVisibilityMenu
             columns={DEFECT_COLUMNS}
             isVisible={columnPrefs.isVisible}
@@ -310,83 +358,61 @@ export function DefectsList() {
             setDensity={columnPrefs.setDensity}
           />
         }
-      >
-        <FilterField label="Project">
-          <Select
-            aria-label="Filter by project"
-            value={projectId}
-            onChange={(e) => urlFilters.setFilter('projectId', e.target.value)}
-            className="w-56"
-          >
-            <option value="">All Projects</option>
-            {projectsQuery.data?.items.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterField label="Severity">
-          <Select
-            aria-label="Filter by severity"
-            value={severity}
-            onChange={(e) => urlFilters.setFilter('severity', e.target.value)}
-            className="w-40"
-          >
-            <option value="">All Severities</option>
-            {(severitiesQuery.data ?? []).map((s) => (
-              <option key={s.code} value={s.code}>
-                {s.label}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <FilterField label="Reported by">
-          <Select
-            aria-label="Filter by reporter"
-            value={reportedBy}
-            onChange={(e) => urlFilters.setFilter('reportedBy', e.target.value)}
-            className="w-44"
-          >
-            <option value="">All Reporters</option>
-            {usersQuery.data?.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </Select>
-        </FilterField>
-        <DateRangePicker
-          idPrefix="defect-reported"
-          fromValue={createdFrom}
-          toValue={createdTo}
-          onChange={(from, to) => {
-            urlFilters.setFilter('createdFrom', from)
-            urlFilters.setFilter('createdTo', to)
-          }}
-        />
-      </FilterBar>
-
-      {chipKeys.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {chipKeys.map((key) => (
-            <span
-              key={key}
-              className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-2.5 py-1 text-xs"
-            >
-              {DEFECT_FILTER_CHIP_LABEL[key]}: {urlFilters.values[key]}
-              <button
-                type="button"
-                onClick={() => urlFilters.setFilter(key, '')}
-                aria-label={`Remove ${DEFECT_FILTER_CHIP_LABEL[key]} filter`}
-                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] max-md:-my-2.5 max-md:-mr-2 max-md:flex max-md:size-11 max-md:items-center max-md:justify-center"
+        filters={
+          <>
+            <ListFilterField label="Project">
+              <Select
+                aria-label="Filter by project"
+                value={projectId}
+                onChange={(e) => urlFilters.setFilter('projectId', e.target.value)}
               >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+                <option value="">All Projects</option>
+                {projectsQuery.data?.items.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Severity">
+              <Select
+                aria-label="Filter by severity"
+                value={severity}
+                onChange={(e) => urlFilters.setFilter('severity', e.target.value)}
+              >
+                <option value="">All Severities</option>
+                {(severitiesQuery.data ?? []).map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Reported by">
+              <Select
+                aria-label="Filter by reporter"
+                value={reportedBy}
+                onChange={(e) => urlFilters.setFilter('reportedBy', e.target.value)}
+              >
+                <option value="">All Reporters</option>
+                {usersQuery.data?.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Reported date">
+              <DateRangePicker
+                idPrefix="defect-reported"
+                fromValue={createdFrom}
+                toValue={createdTo}
+                onChange={(from, to) => urlFilters.setFilters({ createdFrom: from, createdTo: to })}
+              />
+            </ListFilterField>
+          </>
+        }
+      />
 
       <div
         id="defects-panel"
@@ -400,6 +426,7 @@ export function DefectsList() {
         rowKey={(d) => d.id}
         columns={DEFECT_TABLE_COLUMNS}
         prefs={columnPrefs}
+        rowProps={(d) => rowDetailProps(() => setDetailRow(d))}
         loading={defectsQuery.isLoading}
         onRowContextMenu={(e, d) =>
           rowMenu.openAt(e, [
@@ -418,28 +445,26 @@ export function DefectsList() {
           ) : !defectsQuery.isLoading && totalMatching === 0 ? (
             <EmptyState
               title={
-                otherFiltersActive
+                otherFiltersActive || search
                   ? 'No defects match your filters'
                   : activeStatus
                     ? `No ${activeStatus} defects`
                     : 'No defects yet'
               }
-              variant={otherFiltersActive ? 'filtered' : 'empty'}
+              variant={otherFiltersActive || search ? 'filtered' : 'empty'}
               action={
-                otherFiltersActive ? (
+                otherFiltersActive || search ? (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      urlFilters.setFilters({ projectId: '', severity: '', reportedBy: '', createdFrom: '', createdTo: '' })
-                    }
+                    onClick={() => urlFilters.setFilters({ ...CLEARED_FILTERS, search: '' })}
                   >
                     Clear filters
                   </Button>
                 ) : undefined
               }
               description={
-                otherFiltersActive
+                otherFiltersActive || search
                   ? 'Try clearing a filter to see more results.'
                   : activeStatus
                     ? 'No defect is in this status right now. Pick another tab to see the rest.'
@@ -449,17 +474,17 @@ export function DefectsList() {
           ) : undefined
         }
       />
-      {totalMatching > DEFECTS_PAGE_SIZE && (
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          total={totalMatching}
-          noun="defect"
-          onPageChange={(next) => setPaging({ key: filterKey, page: next })}
-        />
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={totalMatching}
+        noun="defect"
+        pageSize={DEFECTS_PAGE_SIZE}
+        onPageChange={(next) => setPaging({ key: filterKey, page: next })}
+      />
       </div>
       {rowMenu.menu}
+      <RowDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} config={DEFECT_DETAIL} />
 
       <NewDefectDialog
         open={createOpen}

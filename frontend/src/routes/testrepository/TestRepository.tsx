@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
@@ -28,13 +28,19 @@ import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { Drawer } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { SegmentedToggle } from '@/components/ui/segmented'
+import { type FilterChip } from '@/components/list/FilterChips'
 import { useAuth } from '@/lib/auth'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
-import { FilterBar } from '@/components/table/FilterBar'
+import { FilterTabs } from '@/components/ui/filter-tabs'
+import { filterTabId } from '@/components/ui/filterTabId'
+import { LevelBadge } from '@/components/ui/LevelBadge'
+import { ListFilterField, ListToolbar } from '@/components/list/ListToolbar'
+import { RowDetailDrawer, type RowDetailConfig } from '@/components/list/RowDetailDrawer'
+import { rowDetailProps } from '@/components/list/rowDetail'
+import { buildStatusTabs } from '@/components/list/statusTabs'
 import {
   CARD_LINK_CLASS,
   ResponsiveTable,
@@ -58,7 +64,7 @@ const REPO_COLUMNS: TableColumnDef[] = [
   { key: 'status', label: 'Status', alwaysVisible: true, defaultWidth: 140 },
   { key: 'priority', label: 'Priority', defaultWidth: 110 },
   { key: 'assignee', label: 'Assignee', defaultWidth: 140 },
-  { key: 'steps', label: 'Steps', defaultWidth: 80 },
+  { key: 'steps', label: 'Steps', defaultWidth: 80, defaultHidden: true },
 ]
 
 // The API caps page_size at 100 and returns `total`. Each project loads 50 at a
@@ -68,6 +74,32 @@ const PAGE_SIZE = 50
 
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
+
+const STATUS_TAB_LABELS = Object.fromEntries(STATUSES.map((s) => [s, STATUS_DISPLAY[s].label]))
+
+type RepoRow = { project: Project; case: TestCase }
+
+const REPO_DETAIL: RowDetailConfig<RepoRow> = {
+  entity: 'test case',
+  title: ({ case: tc }) => tc.title,
+  badges: ({ case: tc }) => (
+    <>
+      <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</StatusBadge>
+      <LevelBadge tone={priorityTone(tc.priority)}>{tc.priority} priority</LevelBadge>
+      {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
+    </>
+  ),
+  fields: ({ case: tc, project }) => [
+    { label: 'ID', value: <span className="font-mono text-xs">{tc.id.slice(0, 8)}</span> },
+    { label: 'Project', value: project.name },
+    { label: 'Version', value: `v${tc.version_number}` },
+    { label: 'Steps', value: tc.steps.length },
+    { label: 'Created', value: new Date(tc.created_at).toLocaleDateString() },
+    { label: 'Last result', value: tc.last_execution_result ?? 'Never executed' },
+  ],
+  description: ({ case: tc }) => tc.description,
+  href: ({ case: tc }) => `/test-cases/${tc.id}`,
+}
 
 const DEFAULT_FORM_VALUES: TestCaseFormValues = {
   title: '',
@@ -130,6 +162,20 @@ export function TestRepository() {
   const [status, setStatus] = useState<TestCaseStatus | ''>(
     (searchParams.get('status') as TestCaseStatus | null) ?? '',
   )
+  // The status tabs drive this filter and keep `?status=` in the URL (the dashboard deep link).
+  function changeStatus(key: string) {
+    setStatus(key as TestCaseStatus | '')
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (key) next.set('status', key)
+        else next.delete('status')
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const [detailRow, setDetailRow] = useState<RepoRow | null>(null)
   const [priority, setPriority] = useState<Priority | ''>('')
   // BRD FR-TC-01: "Assigned to Me / View All". Kept in the URL as
   // `?assignee=me` (shareable, survives a refresh) and sent to the existing
@@ -297,12 +343,40 @@ export function TestRepository() {
     enabled: unified,
   })
 
+  // Status tab counts: one tiny request per tab (page_size 1 -> only `total` is read), under every
+  // other filter. A single project uses its own listing, otherwise the tenant-wide one (ADR-077).
+  const countKeys: (TestCaseStatus | '')[] = ['', ...STATUSES]
+  const countQueries = useQueries({
+    queries: countKeys.map((key) => ({
+      queryKey: [
+        'test-repository',
+        'counts',
+        { key, projectId, search: debouncedSearch, priority, assignee: assigneeFilter },
+      ],
+      queryFn: () => {
+        const params = { search: debouncedSearch, status: key, priority, assignee_id: assigneeFilter, page_size: 1 }
+        return (projectId ? listTestCases(projectId, params) : listAllTestCases(params)).then((r) => r.total)
+      },
+      placeholderData: keepPreviousData,
+    })),
+  })
+  const countsReady = countQueries.every((q) => q.data !== undefined)
+  const countByStatus = Object.fromEntries(STATUSES.map((s, i) => [s, countQueries[i + 1].data ?? 0]))
+  const statusTabs = buildStatusTabs({
+    order: STATUSES,
+    counts: countByStatus,
+    // Deprecated cases are hidden unless asked for, so "All" matches what the list can show.
+    total: (countQueries[0].data ?? 0) - (showDeprecated ? 0 : (countByStatus.deprecated ?? 0)),
+    ready: countsReady,
+    labels: STATUS_TAB_LABELS,
+  })
+
   const usersById = useMemo(
     () => new Map((usersQuery.data ?? []).map((u) => [u.id, u.name])),
     [usersQuery.data],
   )
 
-  type Row = { project: Project; case: TestCase }
+  type Row = RepoRow
   interface RepoGroup {
     project: Project
     open: boolean
@@ -653,7 +727,7 @@ export function TestRepository() {
       key: 'priority',
       header: 'Priority',
       card: 'badge',
-      cell: ({ case: tc }) => <StatusBadge tone={priorityTone(tc.priority)}>{tc.priority}</StatusBadge>,
+      cell: ({ case: tc }) => <LevelBadge tone={priorityTone(tc.priority)}>{tc.priority}</LevelBadge>,
     },
     {
       key: 'assignee',
@@ -667,11 +741,25 @@ export function TestRepository() {
 
   // One definition feeds every table: the flat list, and each open project group.
   function clearRepoFilters() {
-    setStatus('')
     setPriority('')
     setProjectId('')
     setShowDeprecated(false)
     setMine(false)
+  }
+
+  const filterChips: FilterChip[] = [
+    ...(projectId
+      ? [{ key: 'project', label: 'Project', value: projects.find((p) => p.id === projectId)?.name ?? projectId }]
+      : []),
+    ...(priority ? [{ key: 'priority', label: 'Priority', value: priority }] : []),
+    ...(mine ? [{ key: 'mine', label: 'Assignee', value: 'Me' }] : []),
+    ...(showDeprecated ? [{ key: 'deprecated', label: 'Deprecated', value: 'Shown' }] : []),
+  ]
+  function removeChip(key: string) {
+    if (key === 'project') setProjectId('')
+    else if (key === 'priority') setPriority('')
+    else if (key === 'mine') setMine(false)
+    else if (key === 'deprecated') setShowDeprecated(false)
   }
 
   function renderTable(
@@ -687,11 +775,12 @@ export function TestRepository() {
         // The group header already names the project, so the column would only repeat it.
         columns={grouped ? tableColumns.filter((c) => c.key !== 'project') : tableColumns}
         prefs={columnPrefs}
+        rowProps={(r) => rowDetailProps(() => setDetailRow(r))}
         loading={loading}
         stateCellClassName="px-4"
         state={
           !loading && groupRows.length === 0 ? (
-            hiddenDeprecated > 0 || status || priority || projectId || mine ? (
+            hiddenDeprecated > 0 || status || priority || projectId || mine || debouncedSearch ? (
               <EmptyState
                 variant="filtered"
                 title="No test cases match these filters"
@@ -701,7 +790,15 @@ export function TestRepository() {
                     : 'Try clearing a filter to see more results.'
                 }
                 action={
-                  <Button variant="outline" size="sm" onClick={clearRepoFilters}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      clearRepoFilters()
+                      changeStatus('')
+                      setSearch('')
+                    }}
+                  >
                     Clear filters
                   </Button>
                 }
@@ -767,7 +864,7 @@ export function TestRepository() {
           explicit choice) unless the list is already filtered to one
           specific project. */}
       <PageHeader
-        title="Test Repository"
+        title="Test Cases"
         description="Every test case across your projects."
         actions={
           <Button onClick={() => { setCreateProjectId(projectId); setCreateOpen(true) }} disabled={projects.length === 0}>
@@ -776,23 +873,25 @@ export function TestRepository() {
         }
       />
 
-      <FilterBar
-        activeCount={[status, priority, projectId].filter(Boolean).length + (showDeprecated ? 1 : 0) + (mine ? 1 : 0)}
-        desktopClear={false}
-        onClear={clearRepoFilters}
-        primary={
-          <div className="flex min-w-[220px] flex-1 flex-col gap-1.5 max-md:min-w-0">
-            <label htmlFor="repo-search" className="text-xs text-[var(--muted-foreground)]">
-              Search
-            </label>
-            <Input
-              id="repo-search"
-              placeholder="Search by title across all projects…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        }
+      <FilterTabs
+        label="Test case status"
+        items={statusTabs}
+        value={status}
+        onChange={changeStatus}
+        panelId="repo-panel"
+      />
+
+      <ListToolbar
+        search={{
+          id: 'repo-search',
+          value: search,
+          onChange: setSearch,
+          placeholder: 'Search by title across all projects…',
+        }}
+        activeCount={filterChips.length}
+        onClearFilters={clearRepoFilters}
+        chips={filterChips}
+        onRemoveChip={removeChip}
         saved={
           <SavedFiltersMenu
             current={currentFilters}
@@ -802,7 +901,7 @@ export function TestRepository() {
             onRemove={savedFilters.remove}
           />
         }
-        toolbar={
+        columns={
           <ColumnVisibilityMenu
             columns={REPO_COLUMNS}
             isVisible={columnPrefs.isVisible}
@@ -812,79 +911,60 @@ export function TestRepository() {
             setDensity={columnPrefs.setDensity}
           />
         }
-      >
-        <SegmentedToggle
-          label="Whose test cases to show"
-          value={mine ? 'mine' : 'all'}
-          onChange={(v) => setMine(v === 'mine')}
-          options={[
-            { value: 'all', label: 'All cases' },
-            { value: 'mine', label: 'Assigned to me' },
-          ]}
-        />
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="repo-project" className="text-xs text-[var(--muted-foreground)]">
-            Project
-          </label>
-          <Select
-            id="repo-project"
-            className="w-48"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="repo-status" className="text-xs text-[var(--muted-foreground)]">
-            Status
-          </label>
-          <Select
-            id="repo-status"
-            className="w-40"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as TestCaseStatus | '')}
-          >
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_DISPLAY[s].label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="repo-priority" className="text-xs text-[var(--muted-foreground)]">
-            Priority
-          </label>
-          <Select
-            id="repo-priority"
-            className="w-36"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as Priority | '')}
-          >
-            <option value="">All priorities</option>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <label className="flex items-center gap-2 pb-2 text-sm">
-          <input
-            type="checkbox"
-            checked={showDeprecated}
-            onChange={(e) => setShowDeprecated(e.target.checked)}
+        quick={
+          <SegmentedToggle
+            label="Whose test cases to show"
+            value={mine ? 'mine' : 'all'}
+            onChange={(v) => setMine(v === 'mine')}
+            options={[
+              { value: 'all', label: 'All cases' },
+              { value: 'mine', label: 'Assigned to me' },
+            ]}
           />
-          Show deprecated
-        </label>
-      </FilterBar>
+        }
+        filters={
+          <>
+            <ListFilterField label="Project">
+              <Select
+                id="repo-project"
+                aria-label="Project"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">All projects</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Priority">
+              <Select
+                id="repo-priority"
+                aria-label="Priority"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as Priority | '')}
+              >
+                <option value="">All priorities</option>
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <label className="flex items-center gap-2 text-sm max-md:min-h-11">
+              <input
+                type="checkbox"
+                checked={showDeprecated}
+                onChange={(e) => setShowDeprecated(e.target.checked)}
+              />
+              Show deprecated
+            </label>
+          </>
+        }
+      />
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm max-md:sticky max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))] max-md:z-30 max-md:shadow-lg">
@@ -941,6 +1021,12 @@ export function TestRepository() {
       )}
       {bulkMessage && <p className="text-xs text-[var(--muted-foreground)]">{bulkMessage}</p>}
 
+      <div
+        id="repo-panel"
+        role="tabpanel"
+        aria-labelledby={filterTabId('repo-panel', status)}
+        className="flex flex-col gap-4"
+      >
       {!grouped || visibleGroups.length === 0 ? (
         renderTable(rows, { label: 'Test cases', loading: isLoading, hiddenDeprecated: hiddenDeprecatedCount })
       ) : (
@@ -983,7 +1069,9 @@ export function TestRepository() {
           })}
         </div>
       )}
+      </div>
       {rowMenu.menu}
+      <RowDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} config={REPO_DETAIL} />
       {confirmDialog}
       <BulkMetadataDialog
         kind={bulkMetaKind}
@@ -1009,13 +1097,12 @@ export function TestRepository() {
 
       {rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--muted-foreground)]">
-          <p>
-            {rows.length} test case{rows.length === 1 ? '' : 's'} shown
+          <p aria-live="polite">
             {grouped
-              ? ` from ${openGroups.length} of ${visibleGroups.length} projects${hasMore ? ` · ${remaining} more in the open projects` : ''}`
+              ? `${rows.length} test case${rows.length === 1 ? '' : 's'} shown from ${openGroups.length} of ${visibleGroups.length} projects${hasMore ? ` · ${remaining} more in the open projects` : ''}`
               : unified
-                ? `${hasMore ? ` of ${totalAvailable} matching` : ' (all matching)'} across all projects`
-                : `${hasMore ? ` of ${totalAvailable} matching` : ''} across ${targetProjects.length} project${targetProjects.length === 1 ? '' : 's'}`}
+                ? `Showing 1-${rows.length} of ${Math.max(totalAvailable, rows.length)} matching across all projects`
+                : `Showing 1-${rows.length} of ${Math.max(totalAvailable, rows.length)} across ${targetProjects.length} project${targetProjects.length === 1 ? '' : 's'}`}
             {selectedRows.length > 0 ? ` · ${selectedRows.length} selected` : ''}.
           </p>
           {hasMore && (

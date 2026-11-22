@@ -385,6 +385,7 @@ def _defects_query(
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     test_case_id: UUID | None = None,
+    search: str | None = None,
 ) -> Select[tuple[Defect]]:
     query = select(Defect).where(Defect.tenant_id == tenant_id)
 
@@ -405,6 +406,8 @@ def _defects_query(
         query = query.where(Defect.status == status)
     if severity is not None:
         query = query.where(Defect.severity == severity)
+    if search:
+        query = query.where(Defect.title.icontains(search.strip(), autoescape=True))
     if reported_by is not None:
         query = query.where(Defect.reported_by == reported_by)
     if created_from is not None:
@@ -470,12 +473,13 @@ def list_defects_page(
     created_to: datetime | None,
     page: int,
     page_size: int,
+    search: str | None = None,
 ) -> tuple[list[Defect], int]:
     """ADR-078: one page of the same listing, newest first, plus how many match in all.
     Same visibility and filters as `list_defects` (they share `_defects_query`)."""
     query = _defects_query(
         db, tenant_id, role_code, user_id, project_id, status, severity,
-        None, reported_by, created_from, created_to, None,
+        None, reported_by, created_from, created_to, None, search,
     )
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
     page_size = min(max(page_size, 1), DEFECT_MAX_PAGE_SIZE)
@@ -498,13 +502,14 @@ def defect_status_counts(
     reported_by: UUID | None,
     created_from: datetime | None,
     created_to: datetime | None,
+    search: str | None = None,
 ) -> dict[str, int]:
     """ADR-078: matching defects per status, under every filter EXCEPT status, so the
     Defects page's status tabs can show each tab's count while only one page of rows
     is loaded."""
     query = _defects_query(
         db, tenant_id, role_code, user_id, project_id, None, severity,
-        None, reported_by, created_from, created_to, None,
+        None, reported_by, created_from, created_to, None, search,
     )
     sub = query.subquery()
     rows = db.execute(select(sub.c.status, func.count()).group_by(sub.c.status)).all()

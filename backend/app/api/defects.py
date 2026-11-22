@@ -40,6 +40,7 @@ def list_defects(
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
     test_case_id: UUID | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
     page: int = Query(default=1, ge=1),
     page_size: int | None = Query(default=None, ge=1, le=defect_service.DEFECT_MAX_PAGE_SIZE),
     ctx: SessionContext = Depends(get_current_context),
@@ -62,6 +63,7 @@ def list_defects(
             created_to,
             page,
             page_size,
+            search,
         )
         return envelope(
             DefectListResponse(
@@ -92,6 +94,7 @@ def defect_status_counts(
     reported_by: UUID | None = Query(default=None),
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -106,6 +109,7 @@ def defect_status_counts(
         reported_by,
         created_from,
         created_to,
+        search,
     )
     out = DefectStatusCountsOut(counts=counts, total=sum(counts.values()))
     return envelope(out.model_dump(mode="json"))

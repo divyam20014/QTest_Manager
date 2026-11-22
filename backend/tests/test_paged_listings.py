@@ -52,6 +52,23 @@ def _tester_client(client: TestClient, tenant_id: str, project_id: str) -> TestC
 # ---------------------------------------------------------------- defects
 
 
+def test_defects_search_matches_titles_in_the_page_and_the_status_counts(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, _, defects = _defects_in_two_projects(client, platform_admin)
+    client.patch(f"/api/v1/defects/{defects[3]['id']}/status", json={"status": "Open"})
+
+    page = _data(client.get("/api/v1/defects", params={"page_size": 10, "search": "beacon"}))
+    assert page["total"] == 2 and {d["title"] for d in page["items"]} == {
+        "Beacon defect 0",
+        "Beacon defect 1",
+    }
+    counts = _data(client.get("/api/v1/defects/status-counts", params={"search": "BEACON"}))
+    assert counts == {"counts": {"New": 1, "Open": 1}, "total": 2}
+    none = _data(client.get("/api/v1/defects", params={"page_size": 10, "search": "100%"}))
+    assert none["total"] == 0  # LIKE wildcards in the search text are escaped
+
+
 def _defects_in_two_projects(client: TestClient, platform_admin: dict):
     tenant_id, project_a, _case = _setup_admin_project_and_case(client, platform_admin)
     project_b = _create_project(client, "Beacon Health Claims")
@@ -201,6 +218,27 @@ def test_runs_overview_filters_by_project_and_active_only(
     active = _data(client.get("/api/v1/test-runs", params={"active_only": "true"}))
     assert active["total"] == 4 and runs[0]["id"] not in {r["id"] for r in active["items"]}
     assert _data(client.get("/api/v1/test-runs"))["total"] == 5
+
+
+def test_runs_overview_status_filter_splits_in_progress_paused_finished(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, _, _, runs = _runs_in_two_projects(client, platform_admin)
+    assert client.post(f"/api/v1/test-runs/{runs[0]['id']}/finish").status_code == 200
+    assert client.post(f"/api/v1/test-runs/{runs[1]['id']}/pause").status_code == 200
+
+    def total(status: str) -> int:
+        return _data(client.get("/api/v1/test-runs", params={"status": status}))["total"]
+
+    assert (total("in_progress"), total("paused"), total("finished")) == (3, 1, 1)
+    paused = _data(client.get("/api/v1/test-runs", params={"status": "paused"}))["items"]
+    assert [r["id"] for r in paused] == [runs[1]["id"]]
+    assert client.get("/api/v1/test-runs", params={"status": "bogus"}).status_code == 422
+
+    by_name = _data(client.get("/api/v1/test-runs", params={"search": "beacon run"}))
+    assert by_name["total"] == 2 and all(r["name"].startswith("Beacon") for r in by_name["items"])
+    both = _data(client.get("/api/v1/test-runs", params={"search": "alpha", "status": "finished"}))
+    assert both["total"] == 1
 
 
 def test_runs_overview_excludes_soft_deleted_runs(client: TestClient, platform_admin: dict) -> None:

@@ -153,12 +153,17 @@ export interface TestRunPage {
 export function listAllTestRuns(params: {
   project_id?: string
   active_only?: boolean
+  /** Status tab: not finished and not paused / paused / finished. */
+  status?: 'in_progress' | 'paused' | 'finished'
+  search?: string
   page?: number
   page_size?: number
 }): Promise<TestRunPage> {
   const query = new URLSearchParams()
   if (params.project_id) query.set('project_id', params.project_id)
   if (params.active_only) query.set('active_only', 'true')
+  if (params.status) query.set('status', params.status)
+  if (params.search) query.set('search', params.search)
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
   const qs = query.toString()

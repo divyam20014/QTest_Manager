@@ -18,6 +18,18 @@ describe('useTablePrefs', () => {
     expect(result.current.density).toBe('comfortable')
   })
 
+  it('hides defaultHidden columns until the user saves preferences', () => {
+    const cols: TableColumnDef[] = [
+      { key: 'title', label: 'Title', alwaysVisible: true },
+      { key: 'region', label: 'Region', defaultHidden: true },
+    ]
+    const first = renderHook(() => useTablePrefs('t-default', cols))
+    expect(first.result.current.isVisible('region')).toBe(false)
+    act(() => first.result.current.toggleVisible('region'))
+    const second = renderHook(() => useTablePrefs('t-default', cols))
+    expect(second.result.current.isVisible('region')).toBe(true)
+  })
+
   it('persists hidden columns and density, and never hides key columns', () => {
     const first = renderHook(() => useTablePrefs('t1', COLUMNS))
     act(() => first.result.current.toggleVisible('owner'))

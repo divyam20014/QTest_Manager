@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -43,6 +44,8 @@ def create_test_run(
 def list_test_runs_all_projects(
     project_id: UUID | None = Query(default=None),
     active_only: bool = Query(default=False),
+    status: Literal["in_progress", "paused", "finished"] | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(
         default=execution_service.RUN_DEFAULT_PAGE_SIZE,
@@ -60,6 +63,8 @@ def list_test_runs_all_projects(
         ctx.user_id,
         project_id=project_id,
         active_only=active_only,
+        status=status,
+        search=search,
         page=page,
         page_size=page_size,
     )

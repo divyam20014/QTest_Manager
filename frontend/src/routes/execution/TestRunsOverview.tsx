@@ -1,16 +1,23 @@
 import { useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { listAllTestRuns, type TestRunSummary } from '@/api/execution'
 import { listProjects, type Project } from '@/api/projects'
-import { FilterBar } from '@/components/table/FilterBar'
+import { ListFilterField, ListToolbar } from '@/components/list/ListToolbar'
+import { RowDetailDrawer, type RowDetailConfig } from '@/components/list/RowDetailDrawer'
+import { rowDetailProps } from '@/components/list/rowDetail'
+import { buildStatusTabs } from '@/components/list/statusTabs'
+import { FilterTabs } from '@/components/ui/filter-tabs'
+import { filterTabId } from '@/components/ui/filterTabId'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { RUN_STATUSES, RUN_STATUS_LABEL, RUN_STATUS_TONE, runStatusOf, type RunStatus } from './runStatus'
 import { ViewsMenu } from '@/components/table/ViewsMenu'
 import { useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -29,6 +36,23 @@ const OVERVIEW_COLUMN_DEFS: TableColumnDef[] = [
   { key: 'cases', label: 'Cases' },
   { key: 'created', label: 'Created' },
 ]
+
+const RUN_DETAIL: RowDetailConfig<OverviewRow> = {
+  entity: 'test run',
+  title: ({ run }) => run.name,
+  badges: ({ run }) => (
+    <StatusBadge tone={RUN_STATUS_TONE[runStatusOf(run)]}>{RUN_STATUS_LABEL[runStatusOf(run)]}</StatusBadge>
+  ),
+  fields: ({ run, project }) => [
+    { label: 'ID', value: <span className="font-mono text-xs">{run.id.slice(0, 8)}</span> },
+    { label: 'Project', value: project.name },
+    { label: 'Type', value: run.run_type },
+    { label: 'Cases', value: run.case_count },
+    { label: 'Created', value: new Date(run.created_at).toLocaleDateString() },
+    { label: 'Finished', value: run.finished_at ? new Date(run.finished_at).toLocaleDateString() : '—' },
+  ],
+  href: ({ run }) => `/test-runs/${run.id}`,
+}
 
 const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
   {
@@ -51,9 +75,7 @@ const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
     header: 'Status',
     card: 'badge',
     cell: ({ run }) => (
-      <Badge tone={run.finished_at ? 'neutral' : run.paused_at ? 'warning' : 'positive'}>
-        {run.finished_at ? 'Finished' : run.paused_at ? 'Paused' : 'Active'}
-      </Badge>
+      <StatusBadge tone={RUN_STATUS_TONE[runStatusOf(run)]}>{RUN_STATUS_LABEL[runStatusOf(run)]}</StatusBadge>
     ),
   },
   {
@@ -94,14 +116,21 @@ export function TestRunsOverview() {
   // on first visit even though data existed. Show everything by default;
   // the toggle now narrows down to active-only instead of opting in to
   // seeing finished runs at all.
-  const [activeOnly, setActiveOnly] = useState(searchParams.get('status') === 'in_progress')
+  const initialStatus = searchParams.get('status')
+  const [status, setStatus] = useState<RunStatus | ''>(
+    (RUN_STATUSES as string[]).includes(initialStatus ?? '') ? (initialStatus as RunStatus) : '',
+  )
+  const [search, setSearch] = useState('')
+  const debouncedSearch = useDebouncedValue(search.trim(), 300)
+  const [detailRow, setDetailRow] = useState<OverviewRow | null>(null)
 
   // ADR-096: saved views map onto this page's two local filters.
   const applyView = (view: ViewState) => {
     setProjectId(view.filters.projectId ?? '')
-    setActiveOnly(view.filters.activeOnly === 'true')
+    const saved = view.filters.status ?? (view.filters.activeOnly === 'true' ? 'in_progress' : '')
+    setStatus((RUN_STATUSES as string[]).includes(saved) ? (saved as RunStatus) : '')
   }
-  useApplyDefaultView('test_runs', Boolean(projectId) || activeOnly, applyView)
+  useApplyDefaultView('test_runs', Boolean(projectId) || Boolean(status), applyView)
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all'],
@@ -112,20 +141,49 @@ export function TestRunsOverview() {
   // ADR-078: the server pages the runs across every project the caller can see (newest
   // first), so one page is downloaded however many projects and runs exist. The page
   // resets to 1 when a filter changes.
-  const filterKey = `${projectId}|${activeOnly}`
+  const filterKey = `${projectId}|${status}|${debouncedSearch}`
   const [paging, setPaging] = useState({ key: filterKey, page: 1 })
   const page = paging.key === filterKey ? paging.page : 1
   const runsQuery = useQuery({
-    queryKey: ['test-runs-overview', { projectId, activeOnly, page }],
+    queryKey: ['test-runs-overview', { projectId, status, search: debouncedSearch, page }],
     queryFn: () =>
       listAllTestRuns({
         project_id: projectId || undefined,
-        active_only: activeOnly,
+        status: status || undefined,
+        search: debouncedSearch || undefined,
         page,
         page_size: RUNS_PAGE_SIZE,
       }),
     placeholderData: keepPreviousData,
   })
+  // Status tab counts: a one-row request per tab (only `total` is read), under the project and
+  // search filters. "All" is the sum of the three statuses.
+  const countQueries = useQueries({
+    queries: RUN_STATUSES.map((s) => ({
+      queryKey: ['test-runs-overview', 'count', { s, projectId, search: debouncedSearch }],
+      queryFn: () =>
+        listAllTestRuns({
+          project_id: projectId || undefined,
+          status: s,
+          search: debouncedSearch || undefined,
+          page: 1,
+          page_size: 1,
+        }).then((r) => r.total),
+      placeholderData: keepPreviousData,
+    })),
+  })
+  const countsReady = countQueries.every((q) => q.data !== undefined)
+  const statusCounts = Object.fromEntries(RUN_STATUSES.map((s, i) => [s, countQueries[i].data ?? 0]))
+  const statusTabs = buildStatusTabs({
+    order: RUN_STATUSES,
+    counts: statusCounts,
+    total: Object.values(statusCounts).reduce((a, b) => a + b, 0),
+    ready: countsReady,
+    labels: RUN_STATUS_LABEL,
+  })
+  const chips = projectId
+    ? [{ key: 'project', label: 'Project', value: projects.find((p) => p.id === projectId)?.name ?? projectId }]
+    : []
   const isLoading = runsQuery.isLoading
   const total = runsQuery.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / RUNS_PAGE_SIZE))
@@ -145,71 +203,79 @@ export function TestRunsOverview() {
     <div className="flex flex-col gap-4">
       <PageHeader title="Test Runs" description="Test runs across every project you can see." />
 
-      <FilterBar activeCount={(projectId ? 1 : 0) + (activeOnly ? 1 : 0)} onClear={() => { setProjectId(''); setActiveOnly(false) }}
-        desktopClear={false}
+      <FilterTabs
+        label="Test run status"
+        items={statusTabs}
+        value={status}
+        onChange={(key) => setStatus(key as RunStatus | '')}
+        panelId="runs-panel"
+      />
+
+      <ListToolbar
+        search={{ id: 'runs-search', value: search, onChange: setSearch, placeholder: 'Search runs by name…' }}
+        activeCount={chips.length}
+        onClearFilters={() => setProjectId('')}
+        chips={chips}
+        onRemoveChip={() => setProjectId('')}
         saved={
           <ViewsMenu
             listKey="test_runs"
             current={{
-              filters: { ...(projectId ? { projectId } : {}), ...(activeOnly ? { activeOnly: 'true' } : {}) },
+              filters: { ...(projectId ? { projectId } : {}), ...(status ? { status } : {}) },
               sort: null,
             }}
             onApply={applyView}
           />
         }
-      >
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="runs-project" className="text-xs text-[var(--muted-foreground)]">
-            Project
-          </label>
-          <Select
-            id="runs-project"
-            className="w-48"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            <option value="">All projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <label className="flex min-h-11 items-center gap-2 pb-2 text-sm md:min-h-0">
-          <input
-            type="checkbox"
-            checked={activeOnly}
-            onChange={(e) => setActiveOnly(e.target.checked)}
+        columns={
+          <ColumnVisibilityMenu
+            columns={OVERVIEW_COLUMN_DEFS}
+            isVisible={columnPrefs.isVisible}
+            toggleVisible={columnPrefs.toggleVisible}
+            showAll={columnPrefs.showAll}
+            density={columnPrefs.density}
+            setDensity={columnPrefs.setDensity}
           />
-          Active runs only
-        </label>
-      </FilterBar>
+        }
+        filters={
+          <ListFilterField label="Project">
+            <Select
+              id="runs-project"
+              aria-label="Project"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+            >
+              <option value="">All projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </ListFilterField>
+        }
+      />
 
-      <div className="flex justify-end">
-        <ColumnVisibilityMenu
-          columns={OVERVIEW_COLUMN_DEFS}
-          isVisible={columnPrefs.isVisible}
-          toggleVisible={columnPrefs.toggleVisible}
-          showAll={columnPrefs.showAll}
-          density={columnPrefs.density}
-          setDensity={columnPrefs.setDensity}
-        />
-      </div>
-
+      <div
+        id="runs-panel"
+        role="tabpanel"
+        aria-labelledby={filterTabId('runs-panel', status)}
+        className="flex flex-col gap-4"
+      >
       <ResponsiveTable
         label="Test runs"
         prefs={columnPrefs}
         rows={pageRows}
         rowKey={(r) => r.run.id}
         columns={OVERVIEW_COLUMNS}
+        rowProps={(r) => rowDetailProps(() => setDetailRow(r))}
         loading={isLoading}
         className="bg-[var(--background)]"
         state={
           runsQuery.isError ? (
             <ErrorState error={runsQuery.error} onRetry={() => runsQuery.refetch()} />
           ) : !isLoading && total === 0 ? (
-            projectId || activeOnly ? (
+            projectId || status || debouncedSearch ? (
               <EmptyState
                 variant="filtered"
                 title="No test runs match these filters"
@@ -220,7 +286,8 @@ export function TestRunsOverview() {
                     size="sm"
                     onClick={() => {
                       setProjectId('')
-                      setActiveOnly(false)
+                      setStatus('')
+                      setSearch('')
                     }}
                   >
                     Clear filters
@@ -236,15 +303,16 @@ export function TestRunsOverview() {
           ) : undefined
         }
       />
-      {total > RUNS_PAGE_SIZE && (
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          noun="run"
-          onPageChange={(next) => setPaging({ key: filterKey, page: next })}
-        />
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        noun="run"
+        pageSize={RUNS_PAGE_SIZE}
+        onPageChange={(next) => setPaging({ key: filterKey, page: next })}
+      />
+      </div>
+      <RowDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} config={RUN_DETAIL} />
     </div>
   )
 }

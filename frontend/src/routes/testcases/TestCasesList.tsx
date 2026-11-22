@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
-import { ApiError } from '@/api/client'
+import { ApiError, downloadFile } from '@/api/client'
 import { exportUrl, exportXlsxPath } from '@/api/csvImport'
-import { ExportButton } from '@/components/ui/ExportButton'
 import { createModule, deleteModule, listModules } from '@/api/modules'
 import { listSharedSteps } from '@/api/sharedSteps'
 import { getProject } from '@/api/projects'
@@ -20,7 +19,15 @@ import {
 } from '@/api/testCases'
 import { listUsers } from '@/api/users'
 import { listFieldOptions } from '@/api/fieldCustomization'
-import { FilterBar } from '@/components/table/FilterBar'
+import { MoreActionsMenu } from '@/components/list/MoreActionsMenu'
+import { ListFilterField, ListToolbar } from '@/components/list/ListToolbar'
+import { RowDetailDrawer, type RowDetailConfig } from '@/components/list/RowDetailDrawer'
+import { rowDetailProps } from '@/components/list/rowDetail'
+import { buildStatusTabs } from '@/components/list/statusTabs'
+import { FilterTabs } from '@/components/ui/filter-tabs'
+import { filterTabId } from '@/components/ui/filterTabId'
+import { LevelBadge } from '@/components/ui/LevelBadge'
+import { Pagination } from '@/components/ui/pagination'
 import { ViewsMenu } from '@/components/table/ViewsMenu'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
@@ -29,12 +36,11 @@ import { MAX_BULK_SELECTION } from '@/lib/bulkActions'
 import { TestCaseBulkBar, type BulkSelectedCase } from './TestCaseBulkBar'
 import { compactFilters, useApplyDefaultView, type ViewState } from '@/components/table/viewsHelpers'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
-import { Badge } from '@/components/ui/badge'
 import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, Drawer } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -45,6 +51,7 @@ import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
 import { useAuth } from '@/lib/auth'
 import { SegmentedToggle } from '@/components/ui/segmented'
+import { type FilterChip } from '@/components/list/FilterChips'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { ImportDialog } from './ImportDialog'
 import { SharedStepsDialog } from './SharedStepsDialog'
@@ -78,10 +85,10 @@ const TC_COLUMNS: TableColumnDef[] = [
   { key: 'priority', label: 'Priority' },
   { key: 'assignee', label: 'Assignee' },
   { key: 'module', label: 'Module' },
-  { key: 'version', label: 'Version' },
-  { key: 'steps', label: 'Steps' },
+  { key: 'version', label: 'Version', defaultHidden: true },
+  { key: 'steps', label: 'Steps', defaultHidden: true },
 ]
-
+
 // ADR-096: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
 const TC_VIEW_KEYS = ['search', 'priority', 'status', 'assigneeId', 'moduleId', 'quarantined'] as const
 const TC_VIEW_RESET = Object.fromEntries(TC_VIEW_KEYS.map((k) => [k, ''])) as Record<string, string>
@@ -97,6 +104,7 @@ export function TestCasesList() {
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [sharedStepsOpen, setSharedStepsOpen] = useState(false)
   const [modulesOpen, setModulesOpen] = useState(false)
+  const [detailRow, setDetailRow] = useState<TestCase | null>(null)
   const [newModuleName, setNewModuleName] = useState('')
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
@@ -243,22 +251,100 @@ export function TestCasesList() {
     urlFilters.setFilter('page', String(Math.max(1, next)))
   }
 
-  const FILTER_CHIP_LABEL: Record<string, string> = {
-    search: 'Search',
-    status: 'Status',
-    priority: 'Priority',
-    assigneeId: 'Assignee',
-    moduleId: 'Module',
-    quarantined: 'Quarantine',
+  const filterChips: FilterChip[] = [
+    ...(priority ? [{ key: 'priority', label: 'Priority', value: priority }] : []),
+    ...(assigneeId
+      ? [
+          {
+            key: 'assigneeId',
+            label: 'Assignee',
+            value:
+              assigneeId === user?.user_id
+                ? 'Me'
+                : (usersQuery.data?.find((u) => u.id === assigneeId)?.name ?? assigneeId),
+          },
+        ]
+      : []),
+    ...(moduleId ? [{ key: 'moduleId', label: 'Module', value: modules.find((m) => m.id === moduleId)?.name ?? moduleId }] : []),
+    ...(quarantined
+      ? [{ key: 'quarantined', label: 'Quarantine', value: quarantined === 'only' ? 'Only quarantined' : 'Hide quarantined' }]
+      : []),
+    ...(showDeprecated ? [{ key: 'deprecated', label: 'Deprecated', value: 'Shown' }] : []),
+  ]
+  function removeChip(key: string) {
+    if (key === 'deprecated') setShowDeprecated(false)
+    else setFilter(key as 'priority' | 'assigneeId' | 'moduleId' | 'quarantined', '')
   }
-  const chipDisplayValue: Record<string, string> = {
-    status: status ? STATUS_DISPLAY[status]?.label ?? status : '',
-    assigneeId:
-      assigneeId === user?.user_id ? 'Me' : (usersQuery.data?.find((u) => u.id === assigneeId)?.name ?? assigneeId),
-    moduleId: modules.find((m) => m.id === moduleId)?.name ?? moduleId,
-    quarantined: quarantined === 'only' ? 'Only quarantined' : quarantined === 'exclude' ? 'Hide quarantined' : '',
+  // Clears the filters in the panel; the search box and the status tab have their own controls.
+  function clearPanelFilters() {
+    urlFilters.setFilters({ priority: '', assigneeId: '', moduleId: '', quarantined: '', page: '1' })
+    setShowDeprecated(false)
   }
-  const visibleFilterChips = urlFilters.active.filter((key) => key in FILTER_CHIP_LABEL)
+  async function exportExcel() {
+    try {
+      await downloadFile(exportXlsxPath(projectId!), 'test_cases_export.xlsx')
+      showToast('success', 'Export downloaded')
+    } catch (error) {
+      showToast(
+        'error',
+        error instanceof ApiError && error.status === 403
+          ? 'You do not have permission to export this.'
+          : 'Could not create the export. Please try again.',
+      )
+    }
+  }
+
+  // Status tab counts: one one-row request per tab (only `total` is read) under the other filters.
+  const countKeys: (TestCaseStatus | '')[] = ['', ...STATUSES]
+  const countQueries = useQueries({
+    queries: countKeys.map((key) => ({
+      queryKey: ['test-cases', projectId, 'status-count', { key, search, priority, assigneeId, moduleId, quarantined }],
+      queryFn: () =>
+        listTestCases(projectId!, {
+          search,
+          priority,
+          status: key,
+          assignee_id: assigneeId,
+          module_id: moduleId || undefined,
+          quarantined: quarantined || undefined,
+          page_size: 1,
+        }).then((r) => r.total),
+      enabled: !!projectId,
+      placeholderData: keepPreviousData,
+    })),
+  })
+  const countsReady = countQueries.every((q) => q.data !== undefined)
+  const countByStatus = Object.fromEntries(STATUSES.map((s, i) => [s, countQueries[i + 1].data ?? 0]))
+  const statusTabs = buildStatusTabs({
+    order: STATUSES,
+    counts: countByStatus,
+    // Deprecated cases are hidden unless asked for, so "All" matches what the list can show.
+    total: (countQueries[0].data ?? 0) - (showDeprecated ? 0 : (countByStatus.deprecated ?? 0)),
+    ready: countsReady,
+    labels: Object.fromEntries(STATUSES.map((s) => [s, STATUS_DISPLAY[s].label])),
+  })
+  const detailConfig: RowDetailConfig<TestCase> = {
+    entity: 'test case',
+    title: (tc) => tc.title,
+    badges: (tc) => (
+      <>
+        <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</StatusBadge>
+        <LevelBadge tone={priorityTone(tc.priority)}>{tc.priority} priority</LevelBadge>
+        {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
+      </>
+    ),
+    fields: (tc) => [
+      { label: 'ID', value: <span className="font-mono text-xs">{tc.id.slice(0, 8)}</span> },
+      { label: 'Project', value: projectQuery.data?.name ?? '—' },
+      { label: 'Assignee', value: tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : 'Unassigned' },
+      { label: 'Module', value: modules.find((m) => m.id === tc.module_id)?.name ?? 'Ungrouped' },
+      { label: 'Version', value: `v${tc.version_number}` },
+      { label: 'Steps', value: tc.steps.length },
+      { label: 'Created', value: new Date(tc.created_at).toLocaleDateString() },
+    ],
+    description: (tc) => tc.description,
+    href: (tc) => `/test-cases/${tc.id}`,
+  }
 
   const allItems = testCasesQuery.data?.items ?? []
   const visibleItems = allItems.filter(
@@ -347,7 +433,7 @@ export function TestCasesList() {
       card: 'badge',
       cell: (tc) => (
         <span className="inline-flex flex-wrap items-center gap-1">
-          <Badge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</Badge>
+          <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</StatusBadge>
           {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
         </span>
       ),
@@ -357,7 +443,7 @@ export function TestCasesList() {
       header: 'Priority',
       headerCell: sortHeader('priority', 'Priority'),
       card: 'badge',
-      cell: (tc) => <StatusBadge tone={priorityTone(tc.priority)}>{tc.priority}</StatusBadge>,
+      cell: (tc) => <LevelBadge tone={priorityTone(tc.priority)}>{tc.priority}</LevelBadge>,
     },
     {
       key: 'assignee',
@@ -400,58 +486,58 @@ export function TestCasesList() {
           </Link>
         }
         title="Test Cases"
-        actionsClassName="grid grid-cols-2 md:flex"
+        description="Write, review and approve the test cases for this project."
         actions={
           <>
-          <a
-            href={exportUrl(projectId!)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          >
-            Export CSV
-          </a>
-          <ExportButton
-            size="sm"
-            path={exportXlsxPath(projectId!)}
-            fallbackName="test_cases_export.xlsx"
-            ariaLabel="test cases"
-          />
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            Import CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setModulesOpen(true)}>
-            Manage Modules
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setTemplatesOpen(true)}>
-            Templates
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setSharedStepsOpen(true)}>
-            Shared Steps
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setQuickOpen(true)}>
-            Quick add
-          </Button>
-          <Button
-            className="col-span-2 max-md:order-first md:col-span-1"
-            onClick={() => {
-              setFormDefaults(DEFAULT_VALUES)
-              setCreateOpen(true)
-            }}
-          >
-            New Test Case
-          </Button>
+            <MoreActionsMenu
+              items={[
+                { label: 'Quick add', onSelect: () => setQuickOpen(true) },
+                { type: 'separator' },
+                { label: 'Import CSV', onSelect: () => setImportOpen(true) },
+                {
+                  label: 'Export CSV',
+                  onSelect: () => {
+                    window.open(exportUrl(projectId!), '_blank', 'noopener,noreferrer')
+                  },
+                },
+                { label: 'Export Excel (test cases)', onSelect: () => void exportExcel() },
+                { type: 'separator' },
+                { label: 'Manage Modules', onSelect: () => setModulesOpen(true) },
+                { label: 'Templates', onSelect: () => setTemplatesOpen(true) },
+                { label: 'Shared Steps', onSelect: () => setSharedStepsOpen(true) },
+              ]}
+            />
+            <Button
+              onClick={() => {
+                setFormDefaults(DEFAULT_VALUES)
+                setCreateOpen(true)
+              }}
+            >
+              New Test Case
+            </Button>
           </>
         }
       />
 
-      <FilterBar
-        activeCount={[status, priority, assigneeId, moduleId, quarantined].filter(Boolean).length + (showDeprecated ? 1 : 0)}
-        onClear={() => {
-          urlFilters.setFilters({ status: '', priority: '', assigneeId: '', moduleId: '', quarantined: '', page: '1' })
-          setShowDeprecated(false)
+      <FilterTabs
+        label="Test case status"
+        items={statusTabs}
+        value={status}
+        onChange={(key) => setFilter('status', key)}
+        panelId="tc-panel"
+      />
+
+      <ListToolbar
+        search={{
+          id: 'tc-search',
+          value: search,
+          onChange: (v) => setFilter('search', v),
+          placeholder: 'Search by title…',
         }}
-        desktopClear={false}
+        activeCount={filterChips.length}
+        onClearFilters={clearPanelFilters}
+        chips={filterChips}
+        onRemoveChip={removeChip}
         saved={
           <ViewsMenu
             listKey="test_cases"
@@ -462,191 +548,132 @@ export function TestCasesList() {
             onApply={applyView}
           />
         }
-        primary={
-          <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
-            <label htmlFor="tc-search" className="text-xs text-[var(--muted-foreground)]">
-              Search
-            </label>
-            <Input
-              id="tc-search"
-              type="search"
-              inputMode="search"
-              enterKeyHint="search"
-              placeholder="Search by title…"
-              value={search}
-              onChange={(e) => setFilter('search', e.target.value)}
-            />
-          </div>
+        columns={
+          <ColumnVisibilityMenu
+            columns={TC_COLUMNS}
+            isVisible={columnPrefs.isVisible}
+            toggleVisible={columnPrefs.toggleVisible}
+            showAll={columnPrefs.showAll}
+            density={columnPrefs.density}
+            setDensity={columnPrefs.setDensity}
+          />
         }
-      >
-        {user && (
-          // BRD FR-TC-01: one click between everything and my own work. It
-          // drives the same `assigneeId` URL filter as the Assignee select.
-          <SegmentedToggle
-            label="Whose test cases to show"
-            value={assigneeId === user.user_id ? 'mine' : 'all'}
-            onChange={(v) => setFilter('assigneeId', v === 'mine' ? user.user_id : '')}
-            options={[
-              { value: 'all', label: 'All cases' },
-              { value: 'mine', label: 'Assigned to me' },
-            ]}
-          />
-        )}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="tc-filter-status" className="text-xs text-[var(--muted-foreground)]">
-            Status
-          </label>
-          <Select
-            id="tc-filter-status"
-            className="w-40"
-            value={status}
-            onChange={(e) => setFilter('status', e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_DISPLAY[s].label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="tc-filter-quarantined" className="text-xs text-[var(--muted-foreground)]">
-            Quarantine
-          </label>
-          <Select
-            id="tc-filter-quarantined"
-            className="w-40"
-            value={quarantined}
-            onChange={(e) => setFilter('quarantined', e.target.value)}
-          >
-            <option value="">Any</option>
-            <option value="only">Only quarantined</option>
-            <option value="exclude">Exclude quarantined</option>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="tc-filter-priority" className="text-xs text-[var(--muted-foreground)]">
-            Priority
-          </label>
-          <Select
-            id="tc-filter-priority"
-            className="w-36"
-            value={priority}
-            onChange={(e) => setFilter('priority', e.target.value)}
-          >
-            <option value="">All priorities</option>
-            {priorityFilterOptions.map((p) => (
-              <option key={p.code} value={p.code}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="tc-filter-assignee" className="text-xs text-[var(--muted-foreground)]">
-            Assignee
-          </label>
-          <Select
-            id="tc-filter-assignee"
-            className="w-40"
-            value={assigneeId}
-            onChange={(e) => setFilter('assigneeId', e.target.value)}
-          >
-            <option value="">All assignees</option>
-            {(usersQuery.data ?? []).map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="tc-filter-module" className="text-xs text-[var(--muted-foreground)]">
-            Module
-          </label>
-          <Select
-            id="tc-filter-module"
-            className="w-40"
-            value={moduleId}
-            onChange={(e) => setFilter('moduleId', e.target.value)}
-          >
-            <option value="">All modules</option>
-            {modules.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        {isMobile && (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="tc-sort" className="text-xs text-[var(--muted-foreground)]">
-              Sort by
-            </label>
-            <Select id="tc-sort" value={sort} onChange={(e) => urlFilters.setFilters({ sort: e.target.value, page: '1' })}>
-              <option value="created_at">Newest</option>
-              <option value="title">Title (A-Z)</option>
-              <option value="-title">Title (Z-A)</option>
-              <option value="status">Status</option>
-              <option value="priority">Priority (A-Z)</option>
-              <option value="-priority">Priority (Z-A)</option>
-            </Select>
-          </div>
-        )}
-        <label className="flex min-h-11 items-center gap-2 pb-2 text-sm md:min-h-0">
-          <input
-            type="checkbox"
-            checked={showDeprecated}
-            onChange={(e) => setShowDeprecated(e.target.checked)}
-          />
-          Show deprecated
-        </label>
-        {!isMobile && visibleFilterChips.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={urlFilters.clearAll}>
-            Clear filters
-          </Button>
-        )}
-      </FilterBar>
-
-      {visibleFilterChips.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {visibleFilterChips.map((key) => (
-            <span
-              key={key}
-              className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)] px-2.5 py-1 text-xs"
-            >
-              {FILTER_CHIP_LABEL[key]}: {chipDisplayValue[key] ?? urlFilters.values[key]}
-              <button
-                type="button"
-                onClick={() => setFilter(key as 'search' | 'priority' | 'status' | 'assigneeId' | 'moduleId' | 'quarantined', '')}
-                aria-label={`Remove ${FILTER_CHIP_LABEL[key]} filter`}
-                className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] max-md:flex max-md:size-8 max-md:items-center max-md:justify-center"
+        quick={
+          user && (
+            // BRD FR-TC-01: one click between everything and my own work. It
+            // drives the same `assigneeId` URL filter as the Assignee select.
+            <SegmentedToggle
+              label="Whose test cases to show"
+              value={assigneeId === user.user_id ? 'mine' : 'all'}
+              onChange={(v) => setFilter('assigneeId', v === 'mine' ? user.user_id : '')}
+              options={[
+                { value: 'all', label: 'All cases' },
+                { value: 'mine', label: 'Assigned to me' },
+              ]}
+            />
+          )
+        }
+        filters={
+          <>
+            <ListFilterField label="Priority">
+              <Select
+                id="tc-filter-priority"
+                aria-label="Priority"
+                value={priority}
+                onChange={(e) => setFilter('priority', e.target.value)}
               >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+                <option value="">All priorities</option>
+                {priorityFilterOptions.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Assignee">
+              <Select
+                id="tc-filter-assignee"
+                aria-label="Assignee"
+                value={assigneeId}
+                onChange={(e) => setFilter('assigneeId', e.target.value)}
+              >
+                <option value="">All assignees</option>
+                {(usersQuery.data ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Module">
+              <Select
+                id="tc-filter-module"
+                aria-label="Module"
+                value={moduleId}
+                onChange={(e) => setFilter('moduleId', e.target.value)}
+              >
+                <option value="">All modules</option>
+                {modules.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </Select>
+            </ListFilterField>
+            <ListFilterField label="Quarantine">
+              <Select
+                id="tc-filter-quarantined"
+                aria-label="Quarantine"
+                value={quarantined}
+                onChange={(e) => setFilter('quarantined', e.target.value)}
+              >
+                <option value="">Any</option>
+                <option value="only">Only quarantined</option>
+                <option value="exclude">Exclude quarantined</option>
+              </Select>
+            </ListFilterField>
+            {isMobile && (
+              <ListFilterField label="Sort by">
+                <Select
+                  id="tc-sort"
+                  aria-label="Sort by"
+                  value={sort}
+                  onChange={(e) => urlFilters.setFilters({ sort: e.target.value, page: '1' })}
+                >
+                  <option value="created_at">Newest</option>
+                  <option value="title">Title (A-Z)</option>
+                  <option value="-title">Title (Z-A)</option>
+                  <option value="status">Status</option>
+                  <option value="priority">Priority (A-Z)</option>
+                  <option value="-priority">Priority (Z-A)</option>
+                </Select>
+              </ListFilterField>
+            )}
+            <label className="flex min-h-11 items-center gap-2 text-sm md:min-h-0">
+              <input
+                type="checkbox"
+                checked={showDeprecated}
+                onChange={(e) => setShowDeprecated(e.target.checked)}
+              />
+              Show deprecated
+            </label>
+          </>
+        }
+      />
 
-      <div className="flex justify-end">
-        <ColumnVisibilityMenu
-          columns={TC_COLUMNS}
-          isVisible={columnPrefs.isVisible}
-          toggleVisible={columnPrefs.toggleVisible}
-          showAll={columnPrefs.showAll}
-          density={columnPrefs.density}
-          setDensity={columnPrefs.setDensity}
-        />
-      </div>
-
+      <div
+        id="tc-panel"
+        role="tabpanel"
+        aria-labelledby={filterTabId('tc-panel', status)}
+        className="flex flex-col gap-4"
+      >
       <ResponsiveTable
         label="Test cases"
         rows={visibleItems}
         rowKey={(tc) => tc.id}
         columns={columns}
         prefs={columnPrefs}
+        rowProps={(tc) => rowDetailProps(() => setDetailRow(tc))}
         selection={bulkEnabled ? bulkSelection : undefined}
         loading={testCasesQuery.isLoading}
         stateCellClassName="px-4"
@@ -654,7 +681,7 @@ export function TestCasesList() {
           testCasesQuery.isError ? (
             <ErrorState error={testCasesQuery.error} onRetry={() => testCasesQuery.refetch()} />
           ) : testCasesQuery.data && visibleItems.length === 0 ? (
-            hiddenCount > 0 || visibleFilterChips.length > 0 ? (
+            hiddenCount > 0 || filterChips.length > 0 || search || status ? (
               <EmptyState
                 variant="filtered"
                 title="No test cases match these filters"
@@ -699,31 +726,15 @@ export function TestCasesList() {
         }
       />
 
-      {total > 0 && (
-        <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
-          <span>
-            Page {page} of {totalPages} ({total} test case{total === 1 ? '' : 's'})
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(Math.min(totalPages, page + 1))}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        noun="test case"
+        pageSize={PAGE_SIZE}
+        onPageChange={setPage}
+      />
+      </div>
 
       {selectedCases.size > 0 && bulkEnabled && (
         <TestCaseBulkBar
@@ -777,6 +788,7 @@ export function TestCasesList() {
         }}
       />
 
+      <RowDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} config={detailConfig} />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} projectId={projectId!} />
       <TemplatesDialog open={templatesOpen} onClose={() => setTemplatesOpen(false)} projectId={projectId!} />
       <SharedStepsDialog
