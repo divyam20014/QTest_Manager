@@ -8,7 +8,7 @@ Scope note: this is the endpoint inventory agreed at planning time to validate m
 - Response envelope: `{ "data": ..., "error": null }` on success, `{ "data": null, "error": { "code": "...", "message": "..." } }` on failure. No fake/mocked success responses (engineering principle).
 - Malformed ids (path, query or body) are a `422` with `{ "data": null, "error": { "code": "validation_error", "message": "..." } }` (request validation errors use the same envelope as every other error, ADR-088); a value the database rejects is `422` with code `invalid_value`. A well-formed id that does not exist or belongs to another tenant stays `404`. Never `5xx`.
 - All list endpoints are tenant-scoped automatically via session context; `tenant_id` is never a request parameter.
-- Pagination: `?page=&page_size=` on all list endpoints, `{ "items": [...], "total": N }` under `data`.
+- Pagination: `?page=&page_size=` on all list endpoints, `{ "items": [...], "total": N }` under `data`. Test cases, defects (with `page_size`) and audit logs also accept an optional `cursor` (empty = first page) for keyset paging: the response adds `next_cursor` (body; `X-Next-Cursor` header for the audit list), `page`/`offset` are ignored, and `include_total=false` skips the count (`total = -1`) (ADR-113).
 
 ## Operational endpoints (no auth, no tenant context)
 | Method | Path | Purpose |
@@ -179,7 +179,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | DELETE | /defects/{id} | **soft delete**; the defect leaves lists, counts, dashboards and reports, row/links/history retained and included in tenant exports; audit `defect.deleted` (ADR-070) | defect.delete (admin, manager; project-scoped role overrides apply) |
-| GET | /defects | filter by project/status/severity/test_run_id/test_case_id/reported_by/created_from/created_to (ADR-037). Without `page_size` it returns every match as a plain list (the run, project and test case screens use that). With `page_size` (1-100, plus `page`) it returns one page, newest first, as `{items, total}`; `test_run_id` and `test_case_id` apply to the plain list only (ADR-078) | all (scoped) |
+| GET | /defects | filter by project/status/severity/test_run_id/test_case_id/reported_by/created_from/created_to (ADR-037). Without `page_size` it returns the matches as a plain list, capped at 5,000 rows (`X-Result-Truncated: true` when hit; the run, project and test case screens use that). With `page_size` (1-100, plus `page`) it returns one page, newest first, as `{items, total}`; `test_run_id` and `test_case_id` apply to the plain list only (ADR-078) | all (scoped) |
 | GET | /defects/status-counts | `{counts: {status: n}, total}` for the matching defects under every filter except status (`project_id`/`severity`/`reported_by`/`created_from`/`created_to`), same visibility as the list; feeds the Defects page's status tabs (ADR-078) | all (scoped) |
 | POST | /defects | create (standalone, in-run, or from execution_steps.id); accepts optional `Idempotency-Key` header (ADR-040) | all |
 | GET | /defects/{id} | detail incl. links, execution evidence, test case version + traceability chain (ADR-037) | all (scoped) |
