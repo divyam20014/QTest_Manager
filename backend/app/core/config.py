@@ -108,6 +108,15 @@ class Settings(BaseSettings):
     # Recycle connections periodically so a managed Postgres (which may
     # silently drop idle connections) never hands back a dead one.
     db_pool_recycle_seconds: int = 1800
+    # ADR-113: per-statement ceiling (ms) applied to every pooled app connection so a
+    # runaway query cannot hold a connection (and a worker) indefinitely. 0 disables.
+    # Exports/verify-chain stream in short statements, so 30 s is generous.
+    db_statement_timeout_ms: int = 30000
+    db_pool_pre_ping: bool = True
+    # ADR-113: seconds a read-only report result (dashboard summary, report
+    # aggregates, ...) is reused in-process; invalidated on writes, hard-capped at
+    # 60. 0 disables the cache.
+    report_cache_ttl_seconds: float = 20.0
 
     # Tier 0 / ADR-052: optional Sentry error monitoring. Empty (the
     # default) means "not configured" -- sentry_sdk.init is simply skipped,

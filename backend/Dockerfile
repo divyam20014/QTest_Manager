@@ -18,9 +18,13 @@ COPY . .
 RUN addgroup --system app && adduser --system --ingroup app app \
     && mkdir -p /data/attachments
 
+# ADR-113: WEB_CONCURRENCY = number of uvicorn worker processes (default 2). Each has
+# its own SQLAlchemy pool (DB_POOL_SIZE + DB_MAX_OVERFLOW) and its own in-memory
+# rate-limit/report-cache state; keep workers x (pool + overflow) well under
+# Postgres max_connections.
 EXPOSE 8000
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=10 --start-period=10s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready')" || exit 1
 
-CMD ["sh", "-c", "chown -R app:app /data/attachments && su app -s /bin/sh -c 'alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000'"]
+CMD ["sh", "-c", "chown -R app:app /data/attachments && su app -s /bin/sh -c 'alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-2} --timeout-keep-alive 30'"]

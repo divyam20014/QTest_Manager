@@ -6,6 +6,35 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-qtesthub}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-qtesthub}
+    # Perf audit (dev only): pg_stat_statements for query profiling.
+    # ADR-113 (dev only; the prod compose keeps the stock defaults for the operator to
+    # size): modest tuning that suits this memory-starved box. shared_buffers 256MB
+    # (stock 128MB; the 840 MB load-test set still mostly lives in the OS cache),
+    # work_mem 8MB (stock 4MB; kept small because it is per sort/hash node and
+    # per parallel worker, and the sort-heavy list paths now use indexes), effective_cache_size 1GB (planner hint only),
+    # random_page_cost 1.1 (SSD-backed volume; stock 4 steers the planner away from
+    # index scans), jit off (JIT compilation adds 50-200 ms to short OLTP queries).
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - jit=off
+    # Docker's default /dev/shm is 64 MB; parallel hash joins allocate their shared
+    # hash tables there, and concurrent dashboard queries overflowed it ("could not
+    # resize shared memory segment ... No space left on device"). 512 MB is only
+    # reserved when used.
+    shm_size: 512mb
     ports:
       - "5432:5432"
     volumes:
@@ -39,6 +68,14 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MFA_DELIVERY_MODE: ${MFA_DELIVERY_MODE:-simulated}
+      # ADR-113: uvicorn worker processes and the SQLAlchemy pool each one owns.
+      # 2 x (8 + 8) = 32 connections max for the API; the worker and identify
+      # pools add ~40 more, well under Postgres' max_connections of 100.
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-8}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-8}
+      DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
+      REPORT_CACHE_TTL_SECONDS: ${REPORT_CACHE_TTL_SECONDS:-20}
       # Dev/e2e only: loosens the per-minute sign-in/MFA rate limits (x10) so fast
       # browser test runs are not throttled. Production must leave this at 1;
       # validate_for_production() refuses to boot otherwise.
@@ -98,6 +135,9 @@ services:
       DATABASE_URL: postgresql+psycopg://qtesthub_app:${APP_DB_PASSWORD:-qtesthub_app}@db:5432/${POSTGRES_DB:-qtesthub}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # ADR-113: no per-statement ceiling for the job worker (tenant export / verify
+      # run long single statements); the API's 30 s limit would abort them.
+      DB_STATEMENT_TIMEOUT_MS: ${WORKER_DB_STATEMENT_TIMEOUT_MS:-0}
     depends_on:
       db:
         condition: service_healthy

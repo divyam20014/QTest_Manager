@@ -7,9 +7,24 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+# ADR-113: a per-statement ceiling for the app role's connections, so a runaway
+# query (or a client that stopped reading) cannot pin a pooled connection and,
+# with it, a worker. Applied as a connection-level option, i.e. also to the
+# worker process; 0 disables it (the worker compose service does, because the
+# tenant-export job streams whole tables in single statements).
+_connect_args: dict[str, str] = (
+    {"options": f"-c statement_timeout={settings.db_statement_timeout_ms}"}
+    if settings.db_statement_timeout_ms > 0
+    else {}
+)
+
 engine = create_engine(
     settings.database_url,
-    pool_pre_ping=True,
+    # One extra round trip per checkout; kept on by default so a connection the
+    # server or a proxy dropped is never handed to a request. DB_POOL_PRE_PING=false
+    # trades that for ~0.2 ms/checkout when pool_recycle alone is trusted.
+    pool_pre_ping=settings.db_pool_pre_ping,
+    connect_args=_connect_args,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
     pool_timeout=settings.db_pool_timeout,
