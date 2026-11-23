@@ -17,6 +17,7 @@ const Login = lazyRoute(() => import('@/routes/Login'), 'Login')
 const Signup = lazyRoute(() => import('@/routes/Signup'), 'Signup')
 const PlatformAdmin = lazyRoute(() => import('@/routes/PlatformAdmin'), 'PlatformAdmin')
 const Dashboard = lazyRoute(() => import('@/routes/Dashboard'), 'Dashboard')
+const MyWork = lazyRoute(() => import('@/routes/mywork/MyWork'), 'MyWork')
 const MyAccount = lazyRoute(() => import('@/routes/MyAccount'), 'MyAccount')
 const DefectDetail = lazyRoute(() => import('@/routes/defects/DefectDetail'), 'DefectDetail')
 const DefectsList = lazyRoute(() => import('@/routes/defects/DefectsList'), 'DefectsList')
@@ -88,6 +89,7 @@ export function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/dashboards" element={<Dashboards />} />
           <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
+          <Route path="/my-work" element={<MyWork />} />
           <Route path="/projects" element={<ProjectsList />} />
           <Route path="/projects/:projectId" element={<ProjectDashboard />} />
           <Route path="/projects/:projectId/details" element={<ProjectDetail />} />

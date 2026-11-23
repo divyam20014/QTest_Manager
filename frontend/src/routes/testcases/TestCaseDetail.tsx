@@ -40,6 +40,7 @@ import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { TestDataSetsCard } from '@/components/TestDataSetsCard'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { RecordPin } from '@/components/RecordPin'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DetailSkeleton } from '@/components/ui/skeleton'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -195,6 +196,7 @@ export function TestCaseDetail() {
         title={testCase.title}
         meta={
           <>
+            <RecordPin type="test_case" id={testCase.id} title={testCase.title} url={`/test-cases/${testCase.id}`} />
             {testCase.display_id && (
               <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 font-mono text-xs">{testCase.display_id}</span>
             )}

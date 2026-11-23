@@ -28,7 +28,7 @@ export function QuickCreateMenu() {
             {...p}
             type="button"
             aria-label="New"
-            className="qth-raised-sm qth-tactile-btn inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--primary)] px-2.5 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:size-11 max-md:p-0"
+            className="qth-raised-sm qth-tactile-btn inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--primary)] px-2.5 text-sm font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:size-11 max-md:p-0"
           >
             <Plus aria-hidden="true" className="size-4" />
             <span className="max-md:sr-only">New</span>

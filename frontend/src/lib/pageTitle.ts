@@ -7,6 +7,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/login': 'Sign In',
   '/signup': 'Start Your Trial',
   '/platform-admin': 'Platform Administration',
+  '/my-work': 'My Work',
   '/test-repository': 'Test Cases',
   '/test-runs': 'Test Runs',
   '/execution': 'Execution',

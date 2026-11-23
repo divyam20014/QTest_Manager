@@ -17,7 +17,7 @@ import { type ComponentType, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { getDefectStatusCounts } from '@/api/defects'
-import { openDefectCount } from '@/lib/navBadges'
+import { navBadgeText, openDefectCount } from '@/lib/navBadges'
 import { getUnreadCount } from '@/api/notifications'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -40,6 +40,9 @@ export interface MobileNavItem {
   newTab?: boolean
   /** One item covering several routes: active on all of them. */
   paths?: string[]
+  /** Badge count (from real data) and what it counts ("open", "pending"). */
+  count?: number
+  countNoun?: string
 }
 
 export interface MobileNavSection {
@@ -342,6 +345,19 @@ export function MoreSheet({
                       >
                         <item.icon className="size-4 shrink-0" />
                         <span className="truncate">{item.label}</span>
+                        {(item.count ?? 0) > 0 && (
+                          <>
+                            <span
+                              aria-hidden="true"
+                              className="ml-auto rounded-full bg-[var(--muted)] px-2 text-xs font-medium tabular-nums text-[var(--muted-foreground)]"
+                            >
+                              {navBadgeText(item.count ?? 0)}
+                            </span>
+                            <span className="sr-only">
+                              , {item.count} {item.countNoun ?? 'open'}
+                            </span>
+                          </>
+                        )}
                       </NavLink>
                     ),
                   )}
@@ -363,7 +379,7 @@ export function MoreSheet({
                   <Bot className="size-4 shrink-0" />
                   Ask AI
                 </button>
-                <ThemeToggle showLabel />
+                <ThemeToggle />
               </div>
             </div>
 
@@ -373,7 +389,7 @@ export function MoreSheet({
               className="shrink-0 border-t border-[var(--border)] px-3 pt-2"
               style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
             >
-              <button type="button" className={cn(plainRow, 'text-[var(--destructive)]')} onClick={onLogout}>
+              <button type="button" className={cn(plainRow, 'text-[var(--status-serious)]')} onClick={onLogout}>
                 <LogOut className="size-4 shrink-0" />
                 Sign out
               </button>

@@ -10,12 +10,14 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   variant?: 'ghost' | 'secondary'
   /** Where the tooltip bubble sits; `end` for buttons at the right edge of a table row. */
   tooltipAlign?: 'center' | 'end'
+  /** Where the tooltip opens; `bottom` for controls in the top bar (above them is off-screen). */
+  tooltipSide?: 'top' | 'bottom'
 }
 
 /** Icon-only button: 32px minimum hit area (44px on phones), built-in tooltip. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ 'aria-label': label, size = 'md', variant = 'ghost', tooltipAlign, className, type = 'button', children, ...props }, ref) => (
-    <Tooltip content={label} align={tooltipAlign}>
+  ({ 'aria-label': label, size = 'md', variant = 'ghost', tooltipAlign, tooltipSide, className, type = 'button', children, ...props }, ref) => (
+    <Tooltip content={label} align={tooltipAlign} side={tooltipSide}>
       <button
         ref={ref}
         type={type}

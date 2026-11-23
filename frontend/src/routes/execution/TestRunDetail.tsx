@@ -25,6 +25,7 @@ import { listUsers } from '@/api/users'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { RecordPin } from '@/components/RecordPin'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { humanizeKey } from '@/lib/labels'
 import { RUN_CASE_STATUS_TONE } from '@/lib/statusTones'
@@ -243,6 +244,7 @@ export function TestRunDetail() {
         title={run.name}
         meta={
           <>
+            <RecordPin type="test_run" id={run.id} title={run.name} url={`/test-runs/${run.id}`} />
             <Badge tone="neutral">{run.run_type}</Badge>
             <Badge tone={run.finished_at ? 'neutral' : 'positive'}>{run.finished_at ? 'Finished' : 'Active'}</Badge>
             {run.paused_at && <Badge tone="warning">Paused</Badge>}

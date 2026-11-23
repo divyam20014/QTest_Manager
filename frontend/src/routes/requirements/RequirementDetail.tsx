@@ -18,6 +18,7 @@ import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
 import { Badge } from '@/components/ui/badge'
+import { RecordPin } from '@/components/RecordPin'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DetailSkeleton } from '@/components/ui/skeleton'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -106,7 +107,12 @@ export function RequirementDetail() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title={req.title}
-        meta={<Badge tone="neutral">v{req.version_number}</Badge>}
+        meta={
+          <>
+            <RecordPin type="requirement" id={req.id} title={req.title} url={`/requirements/${req.id}`} />
+            <Badge tone="neutral">v{req.version_number}</Badge>
+          </>
+        }
         actions={
           <>
           <Button variant="outline" size="sm" onClick={() => setAnalyzeOpen(true)}>

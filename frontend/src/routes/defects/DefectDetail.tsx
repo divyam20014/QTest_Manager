@@ -35,6 +35,7 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { FormError } from '@/components/ui/form-field'
 import { IconButton } from '@/components/ui/icon-button'
 import { LevelBadge } from '@/components/ui/LevelBadge'
+import { RecordPin } from '@/components/RecordPin'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DetailSkeleton } from '@/components/ui/skeleton'
 import { Tabs, type TabItem } from '@/components/ui/tabs'
@@ -281,6 +282,7 @@ export function DefectDetail() {
         title={defect.title}
         meta={
           <>
+            <RecordPin type="defect" id={defect.id} title={defect.title} url={`/defects/${defect.id}`} />
             {defect.display_id && <Badge className="font-mono">{defect.display_id}</Badge>}
             <DefectStatusBadge status={defect.status} label={defect.status_label} />
             <LevelBadge tone={severityTone(defect.severity)}>{defect.severity} severity</LevelBadge>

@@ -1,13 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bug, ClipboardList, FileStack, Search } from 'lucide-react'
+import { Bug, Building2, ClipboardList, FileStack, History, PlayCircle, Search, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
+import { listAllTestRuns } from '@/api/execution'
+import { listProjects } from '@/api/projects'
 import { search as searchApi, type SearchResultEntry, type SearchResultType } from '@/api/search'
-import { NAV_SECTIONS, PALETTE_EXTRA_ENTRIES, resolveNavItem } from '@/routes/AppShell'
 import { useAuth } from '@/lib/auth'
+import { PALETTE_EXTRA_ENTRIES, paletteEntries, resolveRegistry } from '@/lib/navRegistry'
+import { PIN_TYPE_LABEL } from '@/lib/pinnedItems'
 import { getQuickCreateActions, projectIdFromPath } from '@/lib/quickCreate'
 import { canAccessPath } from '@/lib/routeAccess'
+import { useFavourites } from '@/lib/useFavourites'
+import { useRecents } from '@/lib/useRecents'
 import { cn } from '@/lib/utils'
 
 const TYPE_ICON: Record<SearchResultType, typeof FileStack> = {
@@ -31,29 +36,33 @@ function pathFor(entry: SearchResultEntry): string {
   }
 }
 
+type Group = 'Favourites' | 'Recent' | 'Search results' | 'Quick actions' | 'Navigate'
+
 interface PaletteItem {
   id: string
   label: string
   sublabel?: string
-  group: 'Search results' | 'Quick actions' | 'Navigate'
+  group: Group
   icon?: typeof FileStack
 }
 
-const GROUP_ORDER: PaletteItem['group'][] = ['Search results', 'Quick actions', 'Navigate']
+const GROUP_ORDER: Group[] = ['Search results', 'Favourites', 'Recent', 'Quick actions', 'Navigate']
+// With nothing typed, show a short list of the user's own shortcuts, not all of them.
+const EMPTY_QUERY_PINNED_LIMIT = 5
 
 /**
- * Phase 2: Ctrl+K / Cmd+K command palette. Reuses the existing global
- * search endpoint (`GlobalSearch.tsx` / `api/search.ts`) for "find
- * anything", and the same navigation routes/entry points already in the
- * sidebar (`NAV_SECTIONS`) for quick navigation -- no new creation flow
- * is invented; "Quick actions" navigate to the existing list page with
- * `?action=create`, which that page already honors to auto-open its
- * existing create dialog/drawer.
+ * Ctrl+K / Cmd+K command palette (also opened by the top bar's search field). One place to
+ * find a test case, defect, requirement, project or test run, jump to a page, start a create
+ * flow, or reopen a favourite / recent record. Records come from the existing search
+ * endpoint, the projects list and the runs list (server-side `search`); pages come from the
+ * nav registry. Quick actions navigate to the existing create flows, filtered by permission.
  */
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const favourites = useFavourites()
+  const recents = useRecents()
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -73,10 +82,21 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   }, [open])
 
   const trimmed = query.trim()
+  const searching = open && trimmed.length > 1
   const searchQuery = useQuery({
     queryKey: ['command-palette-search', trimmed],
     queryFn: () => searchApi(trimmed),
-    enabled: open && trimmed.length > 1,
+    enabled: searching,
+  })
+  const projectsQuery = useQuery({
+    queryKey: ['command-palette-projects', trimmed],
+    queryFn: () => listProjects({ search: trimmed, page_size: 5 }),
+    enabled: searching,
+  })
+  const runsQuery = useQuery({
+    queryKey: ['command-palette-runs', trimmed],
+    queryFn: () => listAllTestRuns({ search: trimmed, page_size: 5 }),
+    enabled: searching,
   })
 
   function go(path: string) {
@@ -91,14 +111,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   }))
 
   const navEntries = useMemo(() => {
-    const out: { label: string; sublabel: string; path: string }[] = []
-    for (const section of NAV_SECTIONS) {
-      for (const item of section.items) {
-        const resolved = resolveNavItem(user, item)
-        if (!resolved) continue
-        out.push({ label: resolved.label, sublabel: section.label, path: resolved.to })
-      }
-    }
+    const out = paletteEntries(resolveRegistry(user))
     for (const extra of PALETTE_EXTRA_ENTRIES) {
       if (canAccessPath(user, extra.path)) out.push(extra)
     }
@@ -109,17 +122,49 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const lower = trimmed.toLowerCase()
     const matchesQuery = (label: string) => lower.length === 0 || label.toLowerCase().includes(lower)
 
-    const searchItems =
-      trimmed.length > 1
-        ? (searchQuery.data?.results ?? []).map((entry) => ({
-            id: `search-${entry.type}-${entry.id}`,
-            label: entry.title,
-            sublabel: `${TYPE_LABEL[entry.type]} · ${entry.project_name}`,
-            group: 'Search results' as const,
-            icon: TYPE_ICON[entry.type],
-            onSelect: () => go(pathFor(entry)),
-          }))
-        : []
+    const recordItems = searching
+      ? (searchQuery.data?.results ?? []).map((entry) => ({
+          id: `search-${entry.type}-${entry.id}`,
+          label: entry.title,
+          sublabel: `${TYPE_LABEL[entry.type]} · ${entry.project_name}`,
+          group: 'Search results' as const,
+          icon: TYPE_ICON[entry.type],
+          onSelect: () => go(pathFor(entry)),
+        }))
+      : []
+    const projectItems = searching
+      ? (projectsQuery.data?.items ?? []).map((p) => ({
+          id: `project-${p.id}`,
+          label: p.name,
+          sublabel: 'Project',
+          group: 'Search results' as const,
+          icon: Building2,
+          onSelect: () => go(`/projects/${p.id}`),
+        }))
+      : []
+    const runItems = searching
+      ? (runsQuery.data?.items ?? []).map((r) => ({
+          id: `run-${r.id}`,
+          label: r.name,
+          sublabel: 'Test run',
+          group: 'Search results' as const,
+          icon: PlayCircle,
+          onSelect: () => go(`/test-runs/${r.id}`),
+        }))
+      : []
+
+    const pinnedItems = (list: typeof favourites.items, group: 'Favourites' | 'Recent', icon: typeof Star) =>
+      list
+        .filter((i) => matchesQuery(i.title))
+        .slice(0, lower.length === 0 ? EMPTY_QUERY_PINNED_LIMIT : list.length)
+        .map((i) => ({
+          id: `${group}-${i.type}-${i.id}`,
+          label: i.title,
+          sublabel: PIN_TYPE_LABEL[i.type],
+          group,
+          icon,
+          onSelect: () => go(i.url),
+        }))
 
     const actionItems = quickActions
       .filter((a) => matchesQuery(a.label))
@@ -140,9 +185,28 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         onSelect: () => go(n.path),
       }))
 
-    return [...searchItems, ...actionItems, ...navItems]
+    const all = [
+      ...recordItems,
+      ...projectItems,
+      ...runItems,
+      ...pinnedItems(favourites.items, 'Favourites', Star),
+      ...pinnedItems(recents.items, 'Recent', History),
+      ...actionItems,
+      ...navItems,
+    ]
+    // Display order is by group; keep the keyboard order identical to it.
+    return GROUP_ORDER.flatMap((g) => all.filter((i) => i.group === g))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmed, searchQuery.data, navEntries])
+  }, [
+    trimmed,
+    searching,
+    searchQuery.data,
+    projectsQuery.data,
+    runsQuery.data,
+    navEntries,
+    favourites.items,
+    recents.items,
+  ])
 
   useEffect(() => setActiveIndex(0), [trimmed])
 
@@ -169,6 +233,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
   if (!open) return null
 
+  const fetching = searchQuery.isFetching || projectsQuery.isFetching || runsQuery.isFetching
   let runningIndex = -1
 
   return (
@@ -206,7 +271,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         <div className="max-h-96 overflow-y-auto p-1.5">
           {items.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
-              {trimmed.length > 1 && searchQuery.isFetching ? 'Searching…' : 'No matches.'}
+              {searching && fetching ? 'Searching…' : 'No matches.'}
             </p>
           )}
           {GROUP_ORDER.map((group) => {

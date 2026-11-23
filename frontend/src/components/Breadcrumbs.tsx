@@ -57,7 +57,7 @@ export function Breadcrumbs() {
               )}
             >
               {index > 0 && (
-                <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-[var(--muted-foreground)]" />
+                <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-[var(--muted-foreground)] max-sm:hidden" />
               )}
               {crumb.current ? (
                 <span title={crumb.label} aria-current="page" className="truncate font-medium text-[var(--foreground)]">

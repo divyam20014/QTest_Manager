@@ -97,6 +97,8 @@ export function NotificationBell() {
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((v) => !v)}
+        tooltipSide="bottom"
+        tooltipAlign="end"
         className="relative"
       >
         <Bell />

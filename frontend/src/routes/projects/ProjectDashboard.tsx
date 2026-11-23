@@ -9,6 +9,7 @@ import type { DashboardWidget, WidgetType } from '@/api/dashboards'
 import { getProject } from '@/api/projects'
 import { listReleases } from '@/api/testAssets'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { RecordPin } from '@/components/RecordPin'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DetailSkeleton } from '@/components/ui/skeleton'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
@@ -88,6 +89,7 @@ export function ProjectDashboard() {
         title={project.name}
         meta={
           <>
+            <RecordPin type="project" id={project.id} title={project.name} url={`/projects/${project.id}`} />
             <StatusBadge tone={STATUS_TONE[project.status]}>{project.status}</StatusBadge>
             <StatusBadge tone={PRIORITY_TONE[project.priority]}>{project.priority}</StatusBadge>
             <StatusBadge tone="info">{project.domain}</StatusBadge>

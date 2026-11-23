@@ -5,6 +5,7 @@
 // unless the caller resolved a real name for them.
 export const SEGMENT_LABELS: Record<string, string> = {
   projects: 'Projects',
+  'my-work': 'My Work',
   requirements: 'Requirements',
   'test-cases': 'Test Cases',
   'test-repository': 'Test Cases',
