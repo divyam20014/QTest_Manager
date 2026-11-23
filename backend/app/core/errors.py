@@ -34,8 +34,10 @@ class UnauthorizedError(AppError):
 
 
 class ValidationAppError(AppError):
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, fields: dict[str, str] | None = None) -> None:
         super().__init__("validation_error", message, status_code=422)
+        # ADR-116: one message per offending field, returned as `error.fields`.
+        self.fields = fields
 
 
 class ConflictError(AppError):

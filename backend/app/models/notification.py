@@ -21,7 +21,8 @@ class Notification(Base, TenantScopedMixin):
         CheckConstraint(
             "type in ('mention','test_case_assigned','defect_closed',"
             "'review_requested','review_decided','run_case_assigned',"
-            "'test_run_completed','defect_sla_breach')",
+            "'test_run_completed','defect_sla_breach',"
+            "'defect_assigned','defect_reopened','defect_retest')",
             name="ck_notifications_type",
         ),
         CheckConstraint(

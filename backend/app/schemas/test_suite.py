@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.execution import RunType
+from app.schemas.execution import RunTypeInput
 
 
 class TestSuiteCreateRequest(BaseModel):
@@ -32,5 +32,5 @@ class TestSuiteOut(BaseModel):
 
 class CreateRunFromSuiteRequest(BaseModel):
     name: str = Field(min_length=3)
-    run_type: RunType
+    run_type: RunTypeInput
     exclude_quarantined: bool = False

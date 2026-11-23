@@ -15,6 +15,7 @@ from app.core.db import get_db
 from app.core.idempotency import with_idempotency
 from app.core.responses import envelope
 from app.schemas.test_case import (
+    AutomationStatus,
     QuarantineRequest,
     RequestChangesRequest,
     SubmitForReviewRequest,
@@ -23,9 +24,11 @@ from app.schemas.test_case import (
     TestCaseListResponse,
     TestCaseUpdateRequest,
 )
-from app.services import test_case_service
+from app.services import defect_service, test_case_service
 
 router = APIRouter(tags=["test-cases"])
+
+ExecutionStatusFilter = Literal["Pass", "Fail", "Blocked", "Skipped", "Not Run"]
 
 
 def _list_envelope(
@@ -43,11 +46,17 @@ def _list_envelope(
 
 @router.get("/test-cases")
 def list_test_cases_all_projects(
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
     priority: str | None = Query(default=None),
     status: str | None = Query(default=None),
     assignee_id: UUID | None = Query(default=None),
     module_id: UUID | None = Query(default=None),
+    test_type: str | None = Query(default=None, max_length=64),
+    severity: str | None = Query(default=None, max_length=64),
+    automation_status: AutomationStatus | None = Query(default=None),
+    environment: str | None = Query(default=None, max_length=200),
+    execution_status: ExecutionStatusFilter | None = Query(default=None),
+    executed_by: UUID | None = Query(default=None),
     quarantined: Literal["any", "only", "exclude"] = Query(default="any"),
     sort: str = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
@@ -69,6 +78,12 @@ def list_test_cases_all_projects(
         status=status,
         assignee_id=assignee_id,
         module_id=module_id,
+        test_type=test_type,
+        severity=severity,
+        automation_status=automation_status,
+        environment=environment,
+        execution_status=execution_status,
+        executed_by=executed_by,
         quarantined=quarantined,
         sort=sort,
         page=page,
@@ -79,14 +94,27 @@ def list_test_cases_all_projects(
     return _list_envelope(cases, total, next_cursor, cursor, db)
 
 
+@router.get("/test-cases/columns")
+def get_test_case_columns(ctx: SessionContext = Depends(get_current_context)) -> dict:
+    """ADR-116: the 22 test case fields (key, label, type, flags) and the default
+    visible columns, for the UI's column picker."""
+    return envelope(test_case_service.get_field_catalog().model_dump(mode="json"))
+
+
 @router.get("/projects/{project_id}/test-cases")
 def list_test_cases(
     project_id: UUID,
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
     priority: str | None = Query(default=None),
     status: str | None = Query(default=None),
     assignee_id: UUID | None = Query(default=None),
     module_id: UUID | None = Query(default=None),
+    test_type: str | None = Query(default=None, max_length=64),
+    severity: str | None = Query(default=None, max_length=64),
+    automation_status: AutomationStatus | None = Query(default=None),
+    environment: str | None = Query(default=None, max_length=200),
+    execution_status: ExecutionStatusFilter | None = Query(default=None),
+    executed_by: UUID | None = Query(default=None),
     quarantined: Literal["any", "only", "exclude"] = Query(default="any"),
     sort: str = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
@@ -107,6 +135,12 @@ def list_test_cases(
         status=status,
         assignee_id=assignee_id,
         module_id=module_id,
+        test_type=test_type,
+        severity=severity,
+        automation_status=automation_status,
+        environment=environment,
+        execution_status=execution_status,
+        executed_by=executed_by,
         quarantined=quarantined,
         sort=sort,
         page=page,
@@ -125,6 +159,7 @@ def create_test_case(
     ctx: SessionContext = Depends(require_project_permission("testcase.create")),
     db: Session = Depends(get_db),
 ) -> dict:
+    test_case_service.enforce_create_requirements(req)
     case = with_idempotency(
         db,
         ctx.tenant_id,
@@ -177,6 +212,49 @@ def get_test_case_history(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
     )
     return envelope([h.model_dump(mode="json") for h in history])
+
+
+@router.get("/test-cases/{test_case_id}/defects")
+def list_test_case_defects(
+    test_case_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-118: the defects of a case from the same unified source as a defect's linked
+    cases (primary FK or link row): display id, title, status, severity, assignee."""
+    items = defect_service.list_defects_for_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+    )
+    return envelope([i.model_dump(mode="json") for i in items])
+
+
+@router.get("/test-cases/{test_case_id}/executions")
+def list_test_case_executions(
+    test_case_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-116: execution history of one case (one row per test run case)."""
+    result = test_case_service.list_executions(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, page=page, page_size=page_size
+    )
+    return envelope(result.model_dump(mode="json"))
+
+
+@router.post("/test-cases/{test_case_id}/duplicate")
+def duplicate_test_case(
+    test_case_id: UUID,
+    ctx: SessionContext = Depends(require_resource_permission("testcase.create", "test_case")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-116: a new draft copy of the definition (' (Copy)' title, new display id;
+    no executions, defects or links)."""
+    case = test_case_service.duplicate_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+    )
+    return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
 
 @router.get("/test-cases/{test_case_id}/versions")
@@ -318,5 +396,15 @@ def delete_test_case(
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    test_case_service.delete_test_case(db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id)
+    """ADR-116: soft delete. Needs `testcase.delete`; a Tester-tier caller without it
+    may still delete their own draft (unchanged behaviour)."""
+    case = test_case_service.get_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+    )
+    can_delete = "testcase.delete" in get_effective_permissions_for_project(
+        db, ctx, case.project_id
+    )
+    test_case_service.delete_test_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, can_delete=can_delete
+    )
     return envelope({"deleted": True})

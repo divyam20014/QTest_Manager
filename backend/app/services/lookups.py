@@ -16,9 +16,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
-def value_map(db: Session, key_col: Any, value_col: Any, ids: Iterable[UUID | None]) -> dict:
-    """{key: value} for the distinct non-null `ids` (missing ids are absent)."""
+def value_map(
+    db: Session,
+    key_col: Any,
+    value_col: Any,
+    ids: Iterable[UUID | None],
+    *,
+    include_deleted: bool = False,
+) -> dict:
+    """{key: value} for the distinct non-null `ids` (missing ids are absent).
+    `include_deleted` also resolves soft-deleted rows (ADR-116: a defect still names
+    the test case it was raised against)."""
     wanted = {i for i in ids if i is not None}
     if not wanted:
         return {}
-    return {k: v for k, v in db.execute(select(key_col, value_col).where(key_col.in_(wanted)))}
+    stmt = select(key_col, value_col).where(key_col.in_(wanted))
+    if include_deleted:
+        stmt = stmt.execution_options(include_deleted=True)
+    return {k: v for k, v in db.execute(stmt)}

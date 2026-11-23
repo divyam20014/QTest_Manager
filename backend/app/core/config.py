@@ -68,6 +68,21 @@ class Settings(BaseSettings):
     csv_import_max_bytes: int = 5 * 1024 * 1024
     csv_import_max_rows: int = 2000
 
+    # ADR-120: standard preview/commit import (csv + xlsx).
+    import_file_max_bytes: int = 10 * 1024 * 1024
+    import_max_rows: int = 20_000
+    import_max_columns: int = 60
+    import_zip_max_uncompressed_bytes: int = 100 * 1024 * 1024
+    import_session_ttl_minutes: int = 30
+    import_async_threshold: int = 2000
+    import_session_max_bytes: int = 40 * 1024 * 1024
+
+    # ADR-116 / ADR-117: when True, failing a step (verdict `fail`) needs a non-blank
+    # `actual_result`. On by default now that the Execution Console asks for it;
+    # set REQUIRE_ACTUAL_RESULT_ON_FAIL=false for API clients that do not send the
+    # field yet. Blocking a case already needs a reason.
+    require_actual_result_on_fail: bool = True
+
     # AI/SaaS vision roadmap Phase 3 (ADR-045): Fernet key used to encrypt
     # tenant-supplied AI provider API keys at rest. Empty means "not
     # configured" -- saving a key fails loudly rather than storing it
@@ -288,8 +303,8 @@ def validate_for_production(settings: Settings) -> None:
     if not key:
         problems.append(
             "AUDIT_CHECKPOINT_HMAC_KEY is unset -- it signs audit-chain checkpoints "
-            "(ADR-085); generate one with `python -c \"import secrets; "
-            "print(secrets.token_urlsafe(48))\"`."
+            '(ADR-085); generate one with `python -c "import secrets; '
+            'print(secrets.token_urlsafe(48))"`.'
         )
     elif len(key) < 32:
         problems.append("AUDIT_CHECKPOINT_HMAC_KEY must be at least 32 characters (ADR-085).")

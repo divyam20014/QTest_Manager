@@ -1,13 +1,15 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy import case as sql_case
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core import pagination
 from app.core.audit import record_audit_event
+from app.core.audit_diff import audit_diff
 from app.core.db import set_tenant_context
 from app.core.errors import (
     AppError,
@@ -16,16 +18,29 @@ from app.core.errors import (
     NotFoundError,
     ValidationAppError,
 )
+from app.core.field_standards import (
+    AUTOMATION_STATUSES,
+    DEFAULT_AUTOMATION_STATUS,
+    DEFAULT_VISIBLE_TEST_CASE_FIELDS,
+    EXECUTION_STATUS_BY_RUN_CASE_STATUS,
+    EXECUTION_STATUSES,
+    NOT_RUN,
+    TEST_CASE_FIELDS,
+)
+from app.core.text_sanitize import detect_text_format
 from app.models.audit import AuditLog
-from app.models.defect import Defect
-from app.models.execution import ExecutionStep, TestRunCase
+from app.models.comment import Comment
+from app.models.defect import Defect, DefectLink
+from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink
-from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
+from app.models.test_case import Attachment, TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
 from app.schemas.test_case import (
     BulkItemResult,
+    FieldSpecOut,
+    LinkedDefectOut,
     Priority,
     StepDiff,
     StepIn,
@@ -33,6 +48,9 @@ from app.schemas.test_case import (
     TestCaseBulkUpdateRequest,
     TestCaseBulkUpdateResult,
     TestCaseCreateRequest,
+    TestCaseExecutionListResponse,
+    TestCaseExecutionOut,
+    TestCaseFieldCatalogOut,
     TestCaseHistoryEntryOut,
     TestCaseOut,
     TestCaseStatus,
@@ -42,6 +60,7 @@ from app.schemas.test_case import (
 )
 from app.services import (
     custom_field_service,
+    display_id_service,
     field_option_service,
     lookups,
     notification_service,
@@ -55,9 +74,20 @@ SORTABLE_FIELDS = {
     "created_at": TestCase.created_at,
     "priority": TestCase.priority,
     "status": TestCase.status,
+    # ADR-116: sort by the numeric part of the id, not the text.
+    "display_id": TestCase.display_seq,
+    "test_type": TestCase.test_type,
+    "severity": TestCase.severity,
+    "automation_status": TestCase.automation_status,
 }
+# Sorts that need the latest-execution join.
+EXECUTION_SORTS = ("last_executed_at", "execution_status")
+NULLABLE_SORTS = ("display_id", "test_type", "severity", "automation_status", "last_executed_at")
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
+EXECUTED_RUN_CASE_STATUSES = tuple(EXECUTION_STATUS_BY_RUN_CASE_STATUS)
+MAX_LINKED_DEFECTS_PER_CASE = 50
+EXECUTION_HISTORY_MAX_PAGE_SIZE = 100
 
 
 def _get_project_or_404(db: Session, tenant_id: UUID, project_id: UUID) -> Project:
@@ -84,14 +114,34 @@ def _steps_for_version(db: Session, version_id: UUID) -> list[StepOut]:
         .where(TestCaseVersionStep.test_case_version_id == version_id)
         .order_by(TestCaseVersionStep.step_number)
     ).scalars()
-    return [StepOut(step_number=r.step_number, action=r.action, expected=r.expected) for r in rows]
+    return [
+        StepOut(
+            step_number=r.step_number,
+            action=r.action,
+            expected=r.expected,
+            test_data=r.test_data,
+        )
+        for r in rows
+    ]
 
 
-def _get_test_case_or_404(db: Session, tenant_id: UUID, test_case_id: UUID) -> TestCase:
-    case = db.execute(
-        select(TestCase).where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
-    ).scalar_one_or_none()
+def _get_test_case_or_404(
+    db: Session,
+    tenant_id: UUID,
+    test_case_id: UUID,
+    *,
+    include_deleted: bool = False,
+    role_code: str | None = None,
+) -> TestCase:
+    """`include_deleted` (ADR-116) is for the read-only history paths: a soft-deleted
+    case stays readable by id for Admin and Manager, never for anyone else."""
+    stmt = select(TestCase).where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
+    if include_deleted:
+        stmt = stmt.execution_options(include_deleted=True)
+    case = db.execute(stmt).scalar_one_or_none()
     if case is None:
+        raise NotFoundError("Test case not found")
+    if case.deleted_at is not None and role_code not in ("admin", "manager"):
         raise NotFoundError("Test case not found")
     return case
 
@@ -137,9 +187,7 @@ def _last_executions(
         .order_by(TestRunCase.test_case_id, ExecutionStep.closed_at.desc())
     ).all()
     names = lookups.value_map(db, User.id, User.name, (r.executed_by for r in rows))
-    return {
-        r.test_case_id: (r.verdict, names.get(r.executed_by), r.closed_at) for r in rows
-    }
+    return {r.test_case_id: (r.verdict, names.get(r.executed_by), r.closed_at) for r in rows}
 
 
 def _last_execution(
@@ -150,6 +198,132 @@ def _last_execution(
     step across any test run (highest closed_at), never settable via
     create/update/import."""
     return _last_executions(db, tenant_id, [test_case_id]).get(test_case_id, (None, None, None))
+
+
+def _latest_exec_select(tenant_id: UUID, case_ids: list[UUID] | None = None):
+    """ADR-116: the latest EXECUTED run case of each test case (status passed /
+    failed / blocked / ignored, in a live run). Execution status, executed-by and
+    last-executed-at are derived from it; nothing is stored on the test case.
+
+    A run case still pending or in progress does not hide the last result: the
+    case keeps showing it until a newer run case is actually executed. Legacy run
+    cases (no `executed_at`) fall back to completed_at / started_at, and a missing
+    `executed_by` falls back to the last step executor."""
+    when = func.coalesce(TestRunCase.executed_at, TestRunCase.completed_at, TestRunCase.started_at)
+    step_executor = (
+        select(ExecutionStep.executed_by)
+        .where(
+            ExecutionStep.test_run_case_id == TestRunCase.id,
+            ExecutionStep.executed_by.is_not(None),
+        )
+        .order_by(ExecutionStep.closed_at.desc().nulls_last())
+        .limit(1)
+        .correlate(TestRunCase)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(
+            TestRunCase.test_case_id.label("test_case_id"),
+            TestRunCase.id.label("run_case_id"),
+            TestRunCase.status.label("status"),
+            func.coalesce(TestRunCase.executed_by, step_executor).label("executed_by"),
+            when.label("executed_at"),
+            TestRunCase.actual_result.label("actual_result"),
+        )
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .where(
+            TestRunCase.tenant_id == tenant_id,
+            TestRun.deleted_at.is_(None),
+            TestRunCase.status.in_(EXECUTED_RUN_CASE_STATUSES),
+        )
+        .distinct(TestRunCase.test_case_id)
+        .order_by(TestRunCase.test_case_id, when.desc().nulls_last(), TestRunCase.id.desc())
+    )
+    if case_ids is not None:
+        stmt = stmt.where(TestRunCase.test_case_id.in_(case_ids))
+    return stmt
+
+
+def execution_status_label(run_case_status: str | None) -> str:
+    """passed -> Pass, failed -> Fail, blocked -> Blocked, ignored -> Skipped;
+    pending / in_progress / no run case -> Not Run."""
+    return EXECUTION_STATUS_BY_RUN_CASE_STATUS.get(run_case_status or "", NOT_RUN)
+
+
+def _module_paths(db: Session, module_ids: set[UUID]) -> dict[UUID, tuple[str, str]]:
+    """{module_id: (leaf name, 'Module/Submodule/Feature' path)} from the
+    test_modules nesting. Parents are fetched level by level (nesting is shallow;
+    a cycle or absurd depth stops the walk)."""
+    if not module_ids:
+        return {}
+    known: dict[UUID, tuple[str, UUID | None]] = {}
+    wanted = set(module_ids)
+    for _ in range(12):
+        wanted -= set(known)
+        if not wanted:
+            break
+        for mid, name, parent_id in db.execute(
+            select(TestModule.id, TestModule.name, TestModule.parent_id).where(
+                TestModule.id.in_(wanted)
+            )
+        ):
+            known[mid] = (name, parent_id)
+        wanted = {p for _, p in known.values() if p is not None and p not in known}
+    out: dict[UUID, tuple[str, str]] = {}
+    for mid in module_ids:
+        if mid not in known:
+            continue
+        parts: list[str] = []
+        seen: set[UUID] = set()
+        cursor: UUID | None = mid
+        while cursor is not None and cursor in known and cursor not in seen:
+            seen.add(cursor)
+            name, parent = known[cursor]
+            parts.append(name)
+            cursor = parent
+        out[mid] = (known[mid][0], "/".join(reversed(parts)))
+    return out
+
+
+def _linked_defects_by_case(db: Session, case_ids: list[UUID]) -> dict[UUID, list[LinkedDefectOut]]:
+    """Defects tied to a case by either path: the primary `defects.test_case_id`
+    and `defect_links` rows of type 'test_case' (soft-deleted defects are hidden
+    by the ORM hook)."""
+    found: dict[UUID, dict[UUID, LinkedDefectOut]] = {cid: {} for cid in case_ids}
+    for d in db.execute(
+        select(Defect.id, Defect.display_id, Defect.title, Defect.status, Defect.test_case_id)
+        .where(Defect.test_case_id.in_(case_ids))
+        .order_by(Defect.created_at)
+    ):
+        found[d.test_case_id][d.id] = LinkedDefectOut(
+            id=d.id, display_id=d.display_id, title=d.title, status=d.status
+        )
+    for link in db.execute(
+        select(Defect.id, Defect.display_id, Defect.title, Defect.status, DefectLink.linkable_id)
+        .join(DefectLink, DefectLink.defect_id == Defect.id)
+        .where(DefectLink.linkable_type == "test_case", DefectLink.linkable_id.in_(case_ids))
+        .order_by(Defect.created_at)
+    ):
+        found[link.linkable_id].setdefault(
+            link.id,
+            LinkedDefectOut(
+                id=link.id, display_id=link.display_id, title=link.title, status=link.status
+            ),
+        )
+    return {cid: list(v.values()) for cid, v in found.items()}
+
+
+def _owner_counts(
+    db: Session, model: Any, owner_type: str, case_ids: list[UUID]
+) -> dict[UUID, int]:
+    return {
+        owner_id: n
+        for owner_id, n in db.execute(
+            select(model.owner_id, func.count())
+            .where(model.owner_type == owner_type, model.owner_id.in_(case_ids))
+            .group_by(model.owner_id)
+        )
+    }
 
 
 def to_out(db: Session, case: TestCase) -> TestCaseOut:
@@ -184,12 +358,28 @@ def to_out_many(db: Session, cases: list[TestCase]) -> list[TestCaseOut]:
         .order_by(TestCaseVersionStep.test_case_version_id, TestCaseVersionStep.step_number)
     ).scalars():
         steps_by_version[row.test_case_version_id].append(
-            StepOut(step_number=row.step_number, action=row.action, expected=row.expected)
+            StepOut(
+                step_number=row.step_number,
+                action=row.action,
+                expected=row.expected,
+                test_data=row.test_data,
+            )
         )
     reviewer_names = lookups.value_map(db, User.id, User.name, (c.reviewer_id for c in cases))
     status_labels = status_label_service.get_labels_map(db, tenant_id, "test_case")
     custom_fields = custom_field_service.get_values_for_owners(db, tenant_id, "test_case", case_ids)
     last_executions = _last_executions(db, tenant_id, case_ids)
+    latest = {r.test_case_id: r for r in db.execute(_latest_exec_select(tenant_id, case_ids)).all()}
+    user_names = lookups.value_map(
+        db,
+        User.id,
+        User.name,
+        [c.created_by for c in cases] + [r.executed_by for r in latest.values()],
+    )
+    module_paths = _module_paths(db, {c.module_id for c in cases if c.module_id is not None})
+    defects_by_case = _linked_defects_by_case(db, case_ids)
+    attachment_counts = _owner_counts(db, Attachment, "test_case", case_ids)
+    comment_counts = _owner_counts(db, Comment, "test_case", case_ids)
 
     out: list[TestCaseOut] = []
     for case in cases:
@@ -197,6 +387,9 @@ def to_out_many(db: Session, cases: list[TestCase]) -> list[TestCaseOut]:
         last_result, last_executed_by_name, last_execution_date = last_executions.get(
             case.id, (None, None, None)
         )
+        run = latest.get(case.id)
+        module_name, module_path = module_paths.get(case.module_id, (None, None))  # type: ignore[arg-type]
+        linked = defects_by_case.get(case.id, [])
         out.append(
             TestCaseOut(
                 id=case.id,
@@ -206,22 +399,46 @@ def to_out_many(db: Session, cases: list[TestCase]) -> list[TestCaseOut]:
                 priority=cast(Priority, case.priority),
                 status=cast(TestCaseStatus, case.status),
                 status_label=status_labels.get(case.status, case.status),
+                review_status=cast(TestCaseStatus, case.status),
+                review_status_label=status_labels.get(case.status, case.status),
                 assignee_id=case.assignee_id,
                 module_id=case.module_id,
+                module_name=module_name,
+                module_path=module_path,
                 reviewer_id=case.reviewer_id,
                 reviewer_name=reviewer_names.get(case.reviewer_id),
                 version_number=version.version_number,
                 created_by=case.created_by,
+                created_by_name=user_names.get(case.created_by),
                 created_at=case.created_at,
                 steps=steps_by_version[version.id],
                 custom_fields=custom_fields[case.id],
+                display_id=case.display_id,
+                test_type=case.test_type,
+                severity=case.severity,
+                automation_status=case.automation_status,
+                environment=case.environment,
+                requirement_ref=case.requirement_ref,
+                postconditions=version.postconditions,
+                expected_result=version.expected_result,
                 scenario_id=version.scenario_id,
                 scenario_description=version.scenario_description,
                 prerequisite=version.prerequisite,
+                preconditions=version.prerequisite,
                 test_data=version.test_data,
+                test_data_format=detect_text_format(version.test_data),
                 last_execution_result=last_result,
                 last_executed_by_name=last_executed_by_name,
                 last_execution_date=last_execution_date,
+                execution_status=execution_status_label(run.status if run else None),
+                last_executed_by=user_names.get(run.executed_by) if run else None,
+                last_executed_by_id=run.executed_by if run else None,
+                last_executed_at=run.executed_at if run else None,
+                last_actual_result=run.actual_result if run else None,
+                linked_defects=linked[:MAX_LINKED_DEFECTS_PER_CASE],
+                linked_defect_count=len(linked),
+                attachment_count=attachment_counts.get(case.id, 0),
+                comment_count=comment_counts.get(case.id, 0),
                 quarantined=case.quarantined,
                 quarantine_reason=case.quarantine_reason,
                 quarantined_at=case.quarantined_at,
@@ -230,10 +447,18 @@ def to_out_many(db: Session, cases: list[TestCase]) -> list[TestCaseOut]:
     return out
 
 
+def _like_pattern(term: str) -> str:
+    """`%term%` with the LIKE wildcards in the user's text escaped (so a search for
+    TC_0001 does not treat the underscore as 'any character')."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def _filter_sort_page(
     db: Session,
     query,  # a `select(TestCase)` already restricted to the projects the caller may see
     *,
+    tenant_id: UUID,
     search: str | None,
     priority: str | None,
     status: str | None,
@@ -245,17 +470,36 @@ def _filter_sort_page(
     quarantined: str | None = None,
     cursor: str | None = None,
     include_total: bool = True,
+    test_type: str | None = None,
+    severity: str | None = None,
+    automation_status: str | None = None,
+    environment: str | None = None,
+    execution_status: str | None = None,
+    executed_by: UUID | None = None,
 ) -> tuple[list[TestCase], int, str | None]:
     """The filters, sorting and paging shared by the per-project and the
     tenant-wide listings, so the two can never disagree about what a filter
     means.
+
+    `search` (ADR-116) matches the Test Case ID, title, requirement reference or
+    module name (case-insensitive substring, served by the trigram indexes).
 
     `cursor` (ADR-113) switches to keyset paging: only `sort=created_at` /
     `-created_at` is supported, `page` is ignored, and the third return value is
     the cursor of the next page (None on the last page, or in offset mode).
     `include_total=False` skips the COUNT and returns -1 as the total."""
     if search:
-        query = query.where(TestCase.title.ilike(f"%{search}%"))
+        pattern = _like_pattern(search.strip())
+        query = query.where(
+            or_(
+                TestCase.title.ilike(pattern, escape="\\"),
+                TestCase.display_id.ilike(pattern, escape="\\"),
+                TestCase.requirement_ref.ilike(pattern, escape="\\"),
+                TestCase.module_id.in_(
+                    select(TestModule.id).where(TestModule.name.ilike(pattern, escape="\\"))
+                ),
+            )
+        )
     if priority:
         query = query.where(TestCase.priority == priority)
     if status:
@@ -264,10 +508,38 @@ def _filter_sort_page(
         query = query.where(TestCase.assignee_id == assignee_id)
     if module_id:
         query = query.where(TestCase.module_id == module_id)
+    if test_type:
+        query = query.where(TestCase.test_type == test_type)
+    if severity:
+        query = query.where(TestCase.severity == severity)
+    if automation_status:
+        query = query.where(TestCase.automation_status == automation_status)
+    if environment:
+        query = query.where(func.lower(TestCase.environment) == environment.strip().lower())
     if quarantined == "only":
         query = query.where(TestCase.quarantined.is_(True))
     elif quarantined == "exclude":
         query = query.where(TestCase.quarantined.is_(False))
+
+    sort_key = sort.lstrip("-")
+    needs_latest = (
+        execution_status is not None or executed_by is not None or sort_key in EXECUTION_SORTS
+    )
+    latest = None
+    if needs_latest:
+        latest = _latest_exec_select(tenant_id).subquery("latest_exec")
+        query = query.outerjoin(latest, latest.c.test_case_id == TestCase.id)
+        if execution_status == NOT_RUN:
+            query = query.where(latest.c.status.is_(None))
+        elif execution_status:
+            codes = [
+                code
+                for code, label in EXECUTION_STATUS_BY_RUN_CASE_STATUS.items()
+                if label == execution_status
+            ]
+            query = query.where(latest.c.status.in_(codes))
+        if executed_by is not None:
+            query = query.where(latest.c.executed_by == executed_by)
 
     total = (
         db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
@@ -275,10 +547,23 @@ def _filter_sort_page(
         else -1
     )
 
-    sort_key = sort.lstrip("-")
-    sort_field = SORTABLE_FIELDS.get(sort_key, TestCase.created_at)
+    if sort_key == "last_executed_at":
+        sort_field: Any = latest.c.executed_at  # type: ignore[union-attr]
+    elif sort_key == "execution_status":
+        labels = dict(EXECUTION_STATUS_BY_RUN_CASE_STATUS)
+        sort_field = sql_case(
+            *[(latest.c.status == code, label) for code, label in labels.items()],  # type: ignore[union-attr]
+            else_=NOT_RUN,
+        )
+    else:
+        sort_field = SORTABLE_FIELDS.get(sort_key, TestCase.created_at)
     descending = sort.startswith("-")
-    order_clause = sort_field.desc() if descending else sort_field.asc()
+    if sort_key in NULLABLE_SORTS:
+        order_clause = (
+            sort_field.desc().nulls_last() if descending else sort_field.asc().nulls_last()
+        )
+    else:
+        order_clause = sort_field.desc() if descending else sort_field.asc()
     query = query.order_by(order_clause, TestCase.id)
 
     page_size = min(max(page_size, 1), MAX_PAGE_SIZE)
@@ -326,6 +611,12 @@ def list_test_cases(
     page_size: int = DEFAULT_PAGE_SIZE,
     cursor: str | None = None,
     include_total: bool = True,
+    test_type: str | None = None,
+    severity: str | None = None,
+    automation_status: str | None = None,
+    environment: str | None = None,
+    execution_status: str | None = None,
+    executed_by: UUID | None = None,
 ) -> tuple[list[TestCase], int, str | None]:
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, user_id)
@@ -337,6 +628,7 @@ def list_test_cases(
     return _filter_sort_page(
         db,
         query,
+        tenant_id=tenant_id,
         search=search,
         priority=priority,
         status=status,
@@ -348,6 +640,12 @@ def list_test_cases(
         page_size=page_size,
         cursor=cursor,
         include_total=include_total,
+        test_type=test_type,
+        severity=severity,
+        automation_status=automation_status,
+        environment=environment,
+        execution_status=execution_status,
+        executed_by=executed_by,
     )
 
 
@@ -368,6 +666,12 @@ def list_test_cases_all_projects(
     page_size: int = DEFAULT_PAGE_SIZE,
     cursor: str | None = None,
     include_total: bool = True,
+    test_type: str | None = None,
+    severity: str | None = None,
+    automation_status: str | None = None,
+    environment: str | None = None,
+    execution_status: str | None = None,
+    executed_by: UUID | None = None,
 ) -> tuple[list[TestCase], int, str | None]:
     """One listing across every project the caller may see, with the same
     filters, sorting and paging as the per-project list (the Test Repository
@@ -388,6 +692,7 @@ def list_test_cases_all_projects(
     return _filter_sort_page(
         db,
         query,
+        tenant_id=tenant_id,
         search=search,
         priority=priority,
         status=status,
@@ -399,6 +704,12 @@ def list_test_cases_all_projects(
         page_size=page_size,
         cursor=cursor,
         include_total=include_total,
+        test_type=test_type,
+        severity=severity,
+        automation_status=automation_status,
+        environment=environment,
+        execution_status=execution_status,
+        executed_by=executed_by,
     )
 
 
@@ -436,7 +747,9 @@ def get_test_case_history(
     defect_service.get_defect_history. Distinct from Version History
     (TestCaseVersion): this covers all audited activity (status changes,
     comments, attachments, AI generation) not just content edits."""
-    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    case = _get_test_case_or_404(
+        db, tenant_id, test_case_id, include_deleted=True, role_code=role_code
+    )
     _authorize_case_access(db, tenant_id, role_code, user_id, case)
     set_tenant_context(db, str(tenant_id))
 
@@ -479,6 +792,13 @@ def list_versions(
             version_number=v.version_number,
             title=v.title,
             description=v.description,
+            scenario_id=v.scenario_id,
+            scenario_description=v.scenario_description,
+            prerequisite=v.prerequisite,
+            preconditions=v.prerequisite,
+            test_data=v.test_data,
+            postconditions=v.postconditions,
+            expected_result=v.expected_result,
             approved_by=v.approved_by,
             approved_at=v.approved_at,
             created_by=v.created_by,
@@ -579,6 +899,47 @@ def _validate_module(db: Session, tenant_id: UUID, project_id: UUID, module_id: 
         raise NotFoundError("module_id must belong to this test case's project")
 
 
+def _blank(value: str | None) -> bool:
+    return value is None or not value.strip()
+
+
+def enforce_create_requirements(req: TestCaseCreateRequest) -> None:
+    """ADR-116: the API-level mandatory fields of a NEW test case: module, title,
+    priority, preconditions, test data, at least one step and the case-level
+    expected result. Title, priority and steps are already guaranteed by the request
+    schema; module, preconditions, test data and expected result are checked here so
+    the response names every missing field (`error.fields`). Never applied to
+    reads, to legacy rows, or to internal creators (AI generation, templates)."""
+    missing: dict[str, str] = {}
+    if req.module_id is None:
+        missing["module_id"] = "Module is required"
+    if _blank(req.preconditions):
+        missing["preconditions"] = "Preconditions are required"
+    if _blank(req.test_data):
+        missing["test_data"] = "Test data is required"
+    if _blank(req.expected_result):
+        missing["expected_result"] = "Expected result is required"
+    if missing:
+        raise ValidationAppError("Required fields missing: " + ", ".join(missing), fields=missing)
+
+
+def _validate_option_fields(
+    db: Session,
+    tenant_id: UUID,
+    *,
+    test_type: str | None,
+    severity: str | None,
+    current_test_type: str | None = None,
+    current_severity: str | None = None,
+) -> None:
+    """Test type and severity come from the tenant's configured options; a value a
+    case already carries may be re-sent unchanged even if the option was removed."""
+    if test_type is not None and test_type != current_test_type:
+        field_option_service.validate_code(db, tenant_id, "test_type", test_type)
+    if severity is not None and severity != current_severity:
+        field_option_service.validate_code(db, tenant_id, "test_case_severity", severity)
+
+
 def _write_version(
     db: Session,
     tenant_id: UUID,
@@ -591,6 +952,8 @@ def _write_version(
     scenario_description: str | None = None,
     prerequisite: str | None = None,
     test_data: str | None = None,
+    postconditions: str | None = None,
+    expected_result: str | None = None,
 ) -> TestCaseVersion:
     next_number = (
         db.execute(
@@ -613,24 +976,72 @@ def _write_version(
         scenario_description=scenario_description,
         prerequisite=prerequisite,
         test_data=test_data,
+        postconditions=postconditions,
+        expected_result=expected_result,
         created_by=actor_user_id,
     )
     db.add(version)
     db.flush()
 
+    _add_steps(db, tenant_id, version.id, steps)
+    case.current_version_id = version.id
+    return version
+
+
+def _add_steps(db: Session, tenant_id: UUID, version_id: UUID, steps: list[StepIn]) -> None:
+    """Steps are numbered 1..n from their position in the list (a reorder is the
+    same list in a new order); any `step_no` the caller sent is ignored."""
     for i, step in enumerate(steps, start=1):
         db.add(
             TestCaseVersionStep(
                 tenant_id=tenant_id,
-                test_case_version_id=version.id,
+                test_case_version_id=version_id,
                 step_number=i,
                 action=step.action,
                 expected=step.expected,
+                test_data=step.test_data,
             )
         )
     db.flush()
-    case.current_version_id = version.id
-    return version
+
+
+def _steps_summary(steps: Sequence[StepIn | StepOut]) -> str:
+    """Compact text of a step list for the audit diff (truncated by audit_diff)."""
+    parts = []
+    for i, s in enumerate(steps, start=1):
+        data = f" [{s.test_data}]" if s.test_data else ""
+        parts.append(f"{i}. {s.action} -> {s.expected}{data}")
+    return f"{len(steps)} steps: " + " | ".join(parts)
+
+
+def _case_snapshot(
+    case: TestCase, version: TestCaseVersion | None, steps: Sequence[StepIn | StepOut] | None
+) -> dict[str, Any]:
+    """The tracked fields of a case as plain values, for the audit before/after."""
+    snap: dict[str, Any] = {
+        "title": case.title,
+        "priority": case.priority,
+        "assignee_id": case.assignee_id,
+        "module_id": case.module_id,
+        "test_type": case.test_type,
+        "severity": case.severity,
+        "automation_status": case.automation_status,
+        "environment": case.environment,
+        "requirement_ref": case.requirement_ref,
+    }
+    if version is not None:
+        snap.update(
+            description=version.description,
+            preconditions=version.prerequisite,
+            test_data=version.test_data,
+            expected_result=version.expected_result,
+            postconditions=version.postconditions,
+            scenario_id=version.scenario_id,
+            scenario_description=version.scenario_description,
+        )
+    if steps is not None:
+        snap["steps"] = _steps_summary(steps)
+    return snap
 
 
 def create_test_case(
@@ -644,9 +1055,11 @@ def create_test_case(
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
     field_option_service.validate_code(db, tenant_id, "test_case_priority", req.priority)
+    _validate_option_fields(db, tenant_id, test_type=req.test_type, severity=req.severity)
     if req.module_id is not None:
         _validate_module(db, tenant_id, project_id, req.module_id)
 
+    display_seq, display_id = display_id_service.next_display_id(db, tenant_id, "test_case")
     case = TestCase(
         tenant_id=tenant_id,
         project_id=project_id,
@@ -656,22 +1069,31 @@ def create_test_case(
         assignee_id=req.assignee_id,
         module_id=req.module_id,
         created_by=actor_user_id,
+        display_seq=display_seq,
+        display_id=display_id,
+        test_type=req.test_type,
+        severity=req.severity,
+        automation_status=req.automation_status or DEFAULT_AUTOMATION_STATUS,
+        environment=req.environment,
+        requirement_ref=req.requirement_ref,
     )
     db.add(case)
     db.flush()
 
-    _write_version(
+    version = _write_version(
         db,
         tenant_id,
         case,
         req.title,
-        req.description,
+        req.description or "",
         req.steps,
         actor_user_id,
         req.scenario_id,
         req.scenario_description,
-        req.prerequisite,
+        req.preconditions,
         req.test_data,
+        req.postconditions,
+        req.expected_result,
     )
 
     if req.assignee_id is not None:
@@ -684,7 +1106,13 @@ def create_test_case(
         action="testcase.created",
         entity_type="test_case",
         entity_id=case.id,
-        metadata={"title": case.title, "project_id": str(project_id)},
+        metadata={
+            "title": case.title,
+            "project_id": str(project_id),
+            "display_id": case.display_id,
+            # from None to the initial values (long text is truncated).
+            "changes": audit_diff({}, _case_snapshot(case, version, req.steps)),
+        },
     )
     db.commit()
     return case
@@ -710,6 +1138,20 @@ def _notify_assignee(
     )
 
 
+# Fields whose change counts as a content edit (versioned, ADR-003/ADR-020).
+_CONTENT_KEYS = (
+    "title",
+    "description",
+    "scenario_id",
+    "scenario_description",
+    "preconditions",
+    "test_data",
+    "expected_result",
+    "postconditions",
+    "steps",
+)
+
+
 def update_test_case(
     db: Session,
     tenant_id: UUID,
@@ -722,13 +1164,44 @@ def update_test_case(
     _authorize_case_access(db, tenant_id, role_code, actor_user_id, case)
 
     changes = req.model_dump(exclude_unset=True)
-    # ADR-070 rule A: priority / assignee / module are metadata of the case,
-    # not of the approved test content. Editing ONLY those never forks a new
-    # version and never un-approves the case; any change to the content
-    # (title, description, steps, scenario, prerequisite, test data) still
-    # follows ADR-020 exactly as before. (Computed below, once the new
-    # content values are resolved.)
+    changes.pop("test_data_format", None)  # a hint about the request, not a field
+    # The display id never changes. Echoing the current value back (a form that
+    # re-sends the whole record) is harmless; any other value is refused.
+    sent_display_id = changes.pop("display_id", None)
+    if sent_display_id is not None and sent_display_id != case.display_id:
+        raise ValidationAppError(
+            "display_id is immutable and cannot be changed", fields={"display_id": "immutable"}
+        )
+
+    # ADR-070 rule A: priority / assignee / module (and, ADR-116, test type,
+    # severity, automation status, environment, requirement ref) are metadata of
+    # the case, not of the approved test content. Editing ONLY those never forks a
+    # new version and never un-approves the case; any change to the content
+    # (title, description, steps, scenario, preconditions, test data, expected
+    # result, postconditions) still follows ADR-020 exactly as before. (Computed
+    # below, once the new content values are resolved.)
     current_version = _get_current_version(db, case)
+    current_steps_out = _steps_for_version(db, current_version.id)
+    before = _case_snapshot(case, current_version, current_steps_out)
+
+    # Legacy rows may have empty "mandatory" fields; an update is only refused when
+    # it CLEARS a value the case has (never merely because a legacy value is empty).
+    cleared: dict[str, str] = {}
+    if "module_id" in changes and changes["module_id"] is None and case.module_id is not None:
+        cleared["module_id"] = "Module cannot be cleared"
+    for key, label, current in (
+        ("preconditions", "Preconditions", current_version.prerequisite),
+        ("test_data", "Test data", current_version.test_data),
+        ("expected_result", "Expected result", current_version.expected_result),
+    ):
+        if key in changes and _blank(changes[key]) and not _blank(current):
+            cleared[key] = f"{label} cannot be cleared"
+    if "priority" in changes and not changes["priority"]:
+        cleared["priority"] = "Priority cannot be empty"
+    if cleared:
+        raise ValidationAppError(
+            "Required fields cannot be cleared: " + ", ".join(cleared), fields=cleared
+        )
 
     new_title: str = req.title if req.title is not None else current_version.title
     new_description: str = (
@@ -741,22 +1214,28 @@ def update_test_case(
         else current_version.scenario_description
     )
     new_prerequisite = (
-        req.prerequisite if "prerequisite" in changes else current_version.prerequisite
+        req.preconditions if "preconditions" in changes else current_version.prerequisite
     )
     new_test_data = req.test_data if "test_data" in changes else current_version.test_data
+    new_postconditions = (
+        req.postconditions if "postconditions" in changes else current_version.postconditions
+    )
+    new_expected_result = (
+        req.expected_result if "expected_result" in changes else current_version.expected_result
+    )
     new_steps: list[StepIn]
     if req.steps is not None:
         new_steps = req.steps
     else:
         new_steps = [
-            StepIn(action=s.action, expected=s.expected)
-            for s in _steps_for_version(db, current_version.id)
+            StepIn(action=s.action, expected=s.expected, test_data=s.test_data)
+            for s in current_steps_out
         ]
 
     # A content field only counts as changed if its value actually differs --
     # a form that re-submits the unchanged content alongside a new priority
     # or assignee is still a metadata-only edit.
-    current_steps = [(st.action, st.expected) for st in _steps_for_version(db, current_version.id)]
+    current_steps = [(st.action, st.expected, st.test_data) for st in current_steps_out]
     content_changed = (
         new_title != current_version.title
         or new_description != current_version.description
@@ -764,15 +1243,31 @@ def update_test_case(
         or new_scenario_description != current_version.scenario_description
         or new_prerequisite != current_version.prerequisite
         or new_test_data != current_version.test_data
-        or [(st.action, st.expected) for st in new_steps] != current_steps
+        or new_postconditions != current_version.postconditions
+        or new_expected_result != current_version.expected_result
+        or [(st.action, st.expected, st.test_data) for st in new_steps] != current_steps
     )
     was_approved = case.status == "approved" and content_changed
+
+    if "priority" in changes:
+        field_option_service.validate_code(db, tenant_id, "test_case_priority", changes["priority"])
+    _validate_option_fields(
+        db,
+        tenant_id,
+        test_type=changes.get("test_type"),
+        severity=changes.get("severity"),
+        current_test_type=case.test_type,
+        current_severity=case.severity,
+    )
+    if "module_id" in changes and changes["module_id"] is not None:
+        _validate_module(db, tenant_id, case.project_id, changes["module_id"])
 
     if not content_changed:
         pass  # metadata-only edit: nothing to version (rule A, see above)
     elif was_approved:
         # ADR-020: any content edit to an approved case forks a new version and
-        # reverts to draft, pending re-approval.
+        # reverts to draft, pending re-approval. The previous version row and its
+        # steps are left untouched (immutable snapshots, ADR-003).
         _write_version(
             db,
             tenant_id,
@@ -785,6 +1280,8 @@ def update_test_case(
             new_scenario_description,
             new_prerequisite,
             new_test_data,
+            new_postconditions,
+            new_expected_result,
         )
         case.status = "draft"
     else:
@@ -796,26 +1293,18 @@ def update_test_case(
         current_version.scenario_description = new_scenario_description
         current_version.prerequisite = new_prerequisite
         current_version.test_data = new_test_data
+        current_version.postconditions = new_postconditions
+        current_version.expected_result = new_expected_result
         if "steps" in changes:
             db.query(TestCaseVersionStep).filter(
                 TestCaseVersionStep.test_case_version_id == current_version.id
             ).delete()
             db.flush()
-            for i, step in enumerate(new_steps, start=1):
-                db.add(
-                    TestCaseVersionStep(
-                        tenant_id=tenant_id,
-                        test_case_version_id=current_version.id,
-                        step_number=i,
-                        action=step.action,
-                        expected=step.expected,
-                    )
-                )
+            _add_steps(db, tenant_id, current_version.id, new_steps)
 
     if "title" in changes and changes["title"] is not None:
         case.title = changes["title"]
     if "priority" in changes:
-        field_option_service.validate_code(db, tenant_id, "test_case_priority", changes["priority"])
         case.priority = changes["priority"]
     if "assignee_id" in changes:
         previous_assignee_id = case.assignee_id
@@ -823,9 +1312,16 @@ def update_test_case(
         if case.assignee_id is not None and case.assignee_id != previous_assignee_id:
             _notify_assignee(db, tenant_id, actor_user_id, case.assignee_id, case)
     if "module_id" in changes and changes["module_id"] is not None:
-        _validate_module(db, tenant_id, case.project_id, changes["module_id"])
         case.module_id = changes["module_id"]
+    for key in ("test_type", "severity", "environment", "requirement_ref"):
+        if key in changes:
+            setattr(case, key, changes[key])
+    if "automation_status" in changes:
+        # Never NULL: clearing falls back to the default.
+        case.automation_status = changes["automation_status"] or DEFAULT_AUTOMATION_STATUS
 
+    after_version = _get_current_version(db, case)
+    diff = audit_diff(before, _case_snapshot(case, after_version, new_steps))
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -833,7 +1329,11 @@ def update_test_case(
         action="testcase.updated",
         entity_type="test_case",
         entity_id=case.id,
-        metadata={"reverted_to_draft": was_approved, **{k: str(v) for k, v in changes.items()}},
+        metadata={
+            "reverted_to_draft": was_approved,
+            "fields": sorted(changes),
+            "changes": diff,
+        },
     )
     db.commit()
     return case
@@ -1084,47 +1584,37 @@ def deprecate_test_case(
 
 
 def delete_test_case(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, test_case_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    test_case_id: UUID,
+    *,
+    can_delete: bool = True,
 ) -> None:
-    """ADR-019: Admin/Manager may delete any case; Tester only their own drafts."""
+    """ADR-116: SOFT delete (`deleted_at` / `deleted_by`; the ORM hook then hides the
+    case from lists, search, counts, reports, exports and uniqueness checks).
+
+    Runs, run cases, defects, versions, comments and attachments are kept, so the
+    execution history of a deleted case stays readable by id (Admin / Manager) and
+    the display id is never reused. The old guard that refused deletion once a case
+    had runs or defects is gone for that reason.
+
+    `can_delete` is the caller's `testcase.delete` permission (project-role overrides
+    applied by the route). Without it a Tester-tier caller may still delete their own
+    draft, exactly as before."""
     case = _get_test_case_or_404(db, tenant_id, test_case_id)
     _authorize_case_access(db, tenant_id, role_code, actor_user_id, case)
 
-    if role_code == "tester":
-        if not (case.status == "draft" and case.created_by == actor_user_id):
-            raise ForbiddenError("Testers may only delete their own draft test cases")
-    elif role_code not in ("admin", "manager"):
-        raise ForbiddenError("Not authorized to delete test cases")
+    if not can_delete:
+        if role_code == "tester":
+            if not (case.status == "draft" and case.created_by == actor_user_id):
+                raise ForbiddenError("Testers may only delete their own draft test cases")
+        else:
+            raise ForbiddenError("Missing permission: testcase.delete")
 
-    referenced_by_run = (
-        db.execute(select(TestRunCase).where(TestRunCase.test_case_id == case.id)).first()
-        is not None
-    )
-    if referenced_by_run:
-        raise ConflictError("Cannot delete a test case that has been used in a test run")
-
-    referenced_by_defect = (
-        db.execute(select(Defect).where(Defect.test_case_id == case.id)).first() is not None
-    )
-    if referenced_by_defect:
-        raise ConflictError("Cannot delete a test case that has linked defects")
-
-    db.query(TestCaseVersionStep).filter(
-        TestCaseVersionStep.test_case_version_id.in_(
-            select(TestCaseVersion.id).where(TestCaseVersion.test_case_id == case.id)
-        )
-    ).delete(synchronize_session=False)
-    case.current_version_id = None
-    db.flush()
-    db.query(TestCaseVersion).filter(TestCaseVersion.test_case_id == case.id).delete(
-        synchronize_session=False
-    )
-    # Local import: attachment_service -> owner_access -> test_case_service
-    # would be circular at module load time otherwise.
-    from app.services import attachment_service
-
-    attachment_service.delete_attachments_for_owner(db, tenant_id, "test_case", case.id)
-    db.delete(case)
+    case.deleted_at = datetime.now(UTC)
+    case.deleted_by = actor_user_id
 
     record_audit_event(
         db,
@@ -1133,8 +1623,226 @@ def delete_test_case(
         action="testcase.deleted",
         entity_type="test_case",
         entity_id=test_case_id,
+        metadata={
+            "soft": True,
+            "display_id": case.display_id,
+            "title": case.title,
+            "status": case.status,
+        },
     )
     db.commit()
+
+
+def duplicate_test_case(
+    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, test_case_id: UUID
+) -> TestCase:
+    """ADR-116: copy the DEFINITION of a case into a new draft with a new display id
+    and the title suffixed ' (Copy)'. Executions, defects, comments, attachments,
+    requirement links and custom field values are not copied; the assignee and
+    reviewer are not carried over."""
+    source = _get_test_case_or_404(db, tenant_id, test_case_id)
+    _authorize_case_access(db, tenant_id, role_code, actor_user_id, source)
+    version = _get_current_version(db, source)
+    steps = _steps_for_version(db, version.id)
+
+    suffix = " (Copy)"
+    title = source.title[: 255 - len(suffix)] + suffix
+    display_seq, display_id = display_id_service.next_display_id(db, tenant_id, "test_case")
+    case = TestCase(
+        tenant_id=tenant_id,
+        project_id=source.project_id,
+        title=title,
+        priority=source.priority,
+        status="draft",
+        module_id=source.module_id,
+        created_by=actor_user_id,
+        display_seq=display_seq,
+        display_id=display_id,
+        test_type=source.test_type,
+        severity=source.severity,
+        automation_status=source.automation_status or DEFAULT_AUTOMATION_STATUS,
+        environment=source.environment,
+        requirement_ref=source.requirement_ref,
+    )
+    db.add(case)
+    db.flush()
+    _write_version(
+        db,
+        tenant_id,
+        case,
+        title,
+        version.description,
+        [StepIn(action=s.action, expected=s.expected, test_data=s.test_data) for s in steps],
+        actor_user_id,
+        version.scenario_id,
+        version.scenario_description,
+        version.prerequisite,
+        version.test_data,
+        version.postconditions,
+        version.expected_result,
+    )
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="testcase.duplicated",
+        entity_type="test_case",
+        entity_id=case.id,
+        metadata={
+            "source_test_case_id": str(source.id),
+            "source_display_id": source.display_id,
+            "display_id": case.display_id,
+            "title": title,
+        },
+    )
+    db.commit()
+    return case
+
+
+def list_executions(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    test_case_id: UUID,
+    *,
+    page: int = 1,
+    page_size: int = 20,
+) -> TestCaseExecutionListResponse:
+    """ADR-116: the execution history of one case for its history tab -- one row
+    per test run case (run, date, executor, status, actual result, linked defects,
+    version number), newest first. Readable for a soft-deleted case by Admin and
+    Manager."""
+    case = _get_test_case_or_404(
+        db, tenant_id, test_case_id, include_deleted=True, role_code=role_code
+    )
+    _authorize_case_access(db, tenant_id, role_code, user_id, case)
+    set_tenant_context(db, str(tenant_id))
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), EXECUTION_HISTORY_MAX_PAGE_SIZE)
+    when = func.coalesce(TestRunCase.executed_at, TestRunCase.completed_at, TestRunCase.started_at)
+    base = (
+        select(TestRunCase, TestRun, TestCaseVersion.version_number)
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .join(TestCaseVersion, TestCaseVersion.id == TestRunCase.test_case_version_id)
+        .where(
+            TestRunCase.tenant_id == tenant_id,
+            TestRunCase.test_case_id == test_case_id,
+            TestRun.deleted_at.is_(None),
+        )
+    )
+    total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
+    rows = db.execute(
+        base.order_by(when.desc().nulls_last(), TestRunCase.id.desc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    ).all()
+
+    run_case_ids = [rc.id for rc, _run, _v in rows]
+    run_ids = [run.id for _rc, run, _v in rows]
+    # Executor fallback for legacy run cases that predate executed_by.
+    step_executors: dict[UUID, UUID] = {}
+    if run_case_ids:
+        for rc_id, executor in db.execute(
+            select(ExecutionStep.test_run_case_id, ExecutionStep.executed_by)
+            .where(
+                ExecutionStep.test_run_case_id.in_(run_case_ids),
+                ExecutionStep.executed_by.is_not(None),
+            )
+            .distinct(ExecutionStep.test_run_case_id)
+            .order_by(ExecutionStep.test_run_case_id, ExecutionStep.closed_at.desc().nulls_last())
+        ):
+            step_executors[rc_id] = executor
+    names = lookups.value_map(
+        db,
+        User.id,
+        User.name,
+        [rc.executed_by for rc, _r, _v in rows] + list(step_executors.values()),
+    )
+    defects_by_rc: dict[UUID, list[LinkedDefectOut]] = {}
+    defects_by_run: dict[UUID, list[LinkedDefectOut]] = {}
+    if run_ids:
+        for d in db.execute(
+            select(
+                Defect.id,
+                Defect.display_id,
+                Defect.title,
+                Defect.status,
+                Defect.test_run_id,
+                Defect.test_run_case_id,
+            )
+            .where(Defect.test_case_id == test_case_id, Defect.test_run_id.in_(run_ids))
+            .order_by(Defect.created_at)
+        ):
+            out = LinkedDefectOut(id=d.id, display_id=d.display_id, title=d.title, status=d.status)
+            if d.test_run_case_id is not None:
+                defects_by_rc.setdefault(d.test_run_case_id, []).append(out)
+            else:
+                defects_by_run.setdefault(d.test_run_id, []).append(out)
+
+    items: list[TestCaseExecutionOut] = []
+    for rc, run, version_number in rows:
+        executor = rc.executed_by or step_executors.get(rc.id)
+        items.append(
+            TestCaseExecutionOut(
+                test_run_case_id=rc.id,
+                test_run_id=run.id,
+                run_name=run.name,
+                run_type=run.run_type,
+                run_finished=run.finished_at is not None,
+                executed_at=rc.executed_at or rc.completed_at or rc.started_at,
+                executed_by_id=executor,
+                executed_by_name=names.get(executor),
+                status=rc.status,
+                execution_status=execution_status_label(rc.status),
+                actual_result=rc.actual_result,
+                blocked_reason=rc.blocked_reason,
+                version_number=version_number,
+                defects=defects_by_rc.get(rc.id, []) + defects_by_run.get(run.id, []),
+            )
+        )
+    return TestCaseExecutionListResponse(items=items, total=total)
+
+
+def get_field_catalog() -> TestCaseFieldCatalogOut:
+    """ADR-116: the 22 fields (keys, labels, types, flags) and the default visible
+    columns, so the UI's column picker is driven by the server."""
+    fields = [
+        FieldSpecOut(
+            key=f.key,
+            label=f.label,
+            type=f.type,
+            group=f.group,
+            sortable=f.sortable,
+            filterable=f.filterable,
+            editable=f.editable,
+            mandatory_on_create=f.mandatory_on_create,
+            default_visible=f.default_visible,
+        )
+        for f in TEST_CASE_FIELDS
+    ]
+    return TestCaseFieldCatalogOut(
+        fields=fields,
+        default_columns=list(DEFAULT_VISIBLE_TEST_CASE_FIELDS),
+        sortable=[f.key for f in TEST_CASE_FIELDS if f.sortable],
+        filters=[
+            "search",
+            "priority",
+            "status",
+            "assignee_id",
+            "module_id",
+            "test_type",
+            "severity",
+            "automation_status",
+            "environment",
+            "execution_status",
+            "executed_by",
+            "quarantined",
+        ],
+        automation_statuses=list(AUTOMATION_STATUSES),
+        execution_statuses=list(EXECUTION_STATUSES),
+    )
 
 
 def _set_quarantine(

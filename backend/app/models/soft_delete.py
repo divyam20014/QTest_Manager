@@ -1,4 +1,4 @@
-"""ADR-070: soft-delete filtering for test runs and defects.
+"""ADR-070: soft-delete filtering for test runs and defects (ADR-115 adds test cases).
 
 A single ``do_orm_execute`` hook adds ``deleted_at IS NULL`` to every ORM
 SELECT that touches ``Defect`` or ``TestRun`` -- including joins, subqueries
@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.models.defect import Defect
 from app.models.execution import TestRun
+from app.models.test_case import TestCase
 
 
 @event.listens_for(Session, "do_orm_execute")
@@ -25,4 +26,5 @@ def _exclude_soft_deleted(state) -> None:  # type: ignore[no-untyped-def]
     state.statement = state.statement.options(
         with_loader_criteria(Defect, Defect.deleted_at.is_(None), include_aliases=True),
         with_loader_criteria(TestRun, TestRun.deleted_at.is_(None), include_aliases=True),
+        with_loader_criteria(TestCase, TestCase.deleted_at.is_(None), include_aliases=True),
     )

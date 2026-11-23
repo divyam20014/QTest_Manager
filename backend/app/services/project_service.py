@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.core.field_standards import CLOSED_DEFECT_STATUSES
 from app.models.defect import Defect
 from app.models.execution import TestRun
 from app.models.identity import Role, User
@@ -102,7 +103,7 @@ def metrics_for_projects(db: Session, project_ids: list[UUID]) -> dict[UUID, _Pr
 
     defect_rows = db.execute(
         select(Defect.project_id, func.count(Defect.id))
-        .where(Defect.project_id.in_(project_ids), Defect.status != "Closed")
+        .where(Defect.project_id.in_(project_ids), Defect.status.notin_(CLOSED_DEFECT_STATUSES))
         .group_by(Defect.project_id)
     ).all()
     for project_id, total in defect_rows:
@@ -379,7 +380,11 @@ def delete_project(
     # runs or any test cases would hit a raw, unhandled FK IntegrityError
     # instead of a clean error.
     has_test_cases = db.execute(
-        select(TestCase.id).where(TestCase.project_id == project.id).limit(1)
+        select(TestCase.id)
+        .where(TestCase.project_id == project.id)
+        .limit(1)
+        # ADR-116: soft-deleted cases still reference the project (FK).
+        .execution_options(include_deleted=True)
     ).first()
     has_test_runs = db.execute(
         select(TestRun.id).where(TestRun.project_id == project.id).limit(1)

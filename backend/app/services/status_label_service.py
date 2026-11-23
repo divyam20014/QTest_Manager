@@ -19,6 +19,13 @@ _BUILT_IN: dict[str, dict[str, str]] = {
         "Fixed": "Fixed",
         "Verified": "Verified",
         "Closed": "Closed",
+        # ADR-115: workflow statuses added to the 22-field standard.
+        "Assigned": "Assigned",
+        "In Progress": "In Progress",
+        "Retest": "Retest",
+        "Reopened": "Reopened",
+        "Rejected": "Rejected",
+        "Deferred": "Deferred",
     },
     "test_case": {
         "draft": "Draft",

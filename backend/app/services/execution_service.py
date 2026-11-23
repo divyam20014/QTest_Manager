@@ -6,8 +6,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
+from app.core.audit_diff import audit_diff
+from app.core.config import get_settings
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
+from app.core.text_sanitize import sanitize_markdown
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
@@ -28,6 +31,8 @@ from app.schemas.execution import (
 )
 from app.services import notification_service
 from app.services.project_service import is_assigned
+
+settings = get_settings()
 
 
 def _get_project_or_404(db: Session, tenant_id: UUID, project_id: UUID) -> Project:
@@ -122,9 +127,7 @@ def _require_execution_rights(role_code: str, user_id: UUID, run_case: TestRunCa
 
 def _require_not_blocked(run_case: TestRunCase) -> None:
     if run_case.status == "blocked":
-        raise ConflictError(
-            "This test case is blocked. Unblock it before recording results on it."
-        )
+        raise ConflictError("This test case is blocked. Unblock it before recording results on it.")
 
 
 def _finish_run(
@@ -243,9 +246,7 @@ def _validate_bundlable_cases(
 ) -> list[TestCase]:
     cases = list(
         db.execute(
-            select(TestCase).where(
-                TestCase.tenant_id == tenant_id, TestCase.id.in_(test_case_ids)
-            )
+            select(TestCase).where(TestCase.tenant_id == tenant_id, TestCase.id.in_(test_case_ids))
         ).scalars()
     )
     found_ids = {c.id for c in cases}
@@ -441,7 +442,8 @@ def add_test_run_cases(
 
     if any(row_id is not None for _, row_id in to_bundle):
         valid_row_ids = {
-            r for r, in db.execute(
+            r
+            for (r,) in db.execute(
                 select(TestDataSetRow.id).where(TestDataSetRow.tenant_id == tenant_id)
             )
         }
@@ -538,7 +540,11 @@ def assign_run_case(
     )
 
     if assigned_to is not None:
-        case = db.execute(select(TestCase).where(TestCase.id == run_case.test_case_id)).scalar_one()
+        case = db.execute(
+            select(TestCase)
+            .where(TestCase.id == run_case.test_case_id)
+            .execution_options(include_deleted=True)
+        ).scalar_one()
         assignee = db.execute(select(User).where(User.id == assigned_to)).scalar_one_or_none()
         if assignee is not None:
             notification_service.notify(
@@ -728,9 +734,10 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
     titles = {
         case_id: title
         for case_id, title in db.execute(
-            select(TestCase.id, TestCase.title).where(
-                TestCase.id.in_([rc.test_case_id for rc in run_cases])
-            )
+            select(TestCase.id, TestCase.title)
+            .where(TestCase.id.in_([rc.test_case_id for rc in run_cases]))
+            # ADR-116: a soft-deleted case still names its past run cases.
+            .execution_options(include_deleted=True)
         )
     }
     verdicts_by_case: dict[UUID, dict[str | None, int]] = {}
@@ -760,6 +767,9 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
                 passed_count=verdict_counts.get("pass", 0),
                 failed_count=verdict_counts.get("fail", 0),
                 ignored_count=verdict_counts.get("ignore", 0),
+                actual_result=run_case.actual_result,
+                executed_by=run_case.executed_by,
+                executed_at=run_case.executed_at,
             )
         )
 
@@ -808,6 +818,7 @@ def _step_out(execution_step: ExecutionStep, version_step: TestCaseVersionStep) 
         closed_at=execution_step.closed_at,
         duration_ms=execution_step.duration_ms,
         executed_by=execution_step.executed_by,
+        actual_result=execution_step.actual_result,
     )
 
 
@@ -827,7 +838,11 @@ def get_run_case_context(
     set_tenant_context(db, str(tenant_id))
 
     project = db.execute(select(Project).where(Project.id == run.project_id)).scalar_one()
-    case = db.execute(select(TestCase).where(TestCase.id == run_case.test_case_id)).scalar_one()
+    case = db.execute(
+        select(TestCase)
+        .where(TestCase.id == run_case.test_case_id)
+        .execution_options(include_deleted=True)
+    ).scalar_one()
     version = db.execute(
         select(TestCaseVersion).where(TestCaseVersion.id == run_case.test_case_version_id)
     ).scalar_one()
@@ -894,8 +909,18 @@ def open_step(
     return step
 
 
-def _recompute_run_case_status(db: Session, run_case: TestRunCase) -> None:
-    """ADR-024: recomputed from scratch every time, not tracked incrementally."""
+def _recompute_run_case_status(
+    db: Session,
+    run_case: TestRunCase,
+    *,
+    executed_by: UUID | None = None,
+    record_execution: bool = False,
+) -> None:
+    """ADR-024: recomputed from scratch every time, not tracked incrementally.
+
+    ADR-116: with `record_execution`, a case that lands on a final status (passed or
+    failed) is stamped with who executed it and when; the previous values live on in
+    the audit trail (from/to). A case that is not final keeps whatever it had."""
     verdicts = list(
         db.execute(
             select(ExecutionStep.verdict).where(ExecutionStep.test_run_case_id == run_case.id)
@@ -912,6 +937,9 @@ def _recompute_run_case_status(db: Session, run_case: TestRunCase) -> None:
 
     run_case.status = new_status
     run_case.completed_at = datetime.now(UTC) if new_status in ("passed", "failed") else None
+    if record_execution and new_status in ("passed", "failed"):
+        run_case.executed_by = executed_by
+        run_case.executed_at = run_case.completed_at
 
 
 def record_verdict(
@@ -921,7 +949,23 @@ def record_verdict(
     user_id: UUID,
     execution_step_id: UUID,
     verdict: str,
+    actual_result: str | None = None,
 ) -> ExecutionStep:
+    """Record a step verdict (and, ADR-116, the actual result).
+
+    `actual_result` is optional for pass and ignore. For `fail` it is required when
+    the REQUIRE_ACTUAL_RESULT_ON_FAIL setting is on (blocking a case already needs a
+    reason). The executor and the execution date are stamped on the run case when the
+    case reaches a final status. Re-recording a verdict while the run is open replaces
+    the step's current verdict, but the audit event carries the previous and new values
+    (verdict, actual result, status), so no earlier result is lost. The test case
+    definition is never touched."""
+    clean_actual = sanitize_markdown(actual_result) if actual_result is not None else None
+    if verdict == "fail" and settings.require_actual_result_on_fail and not clean_actual:
+        raise ValidationAppError(
+            "An actual result is required when a step fails",
+            fields={"actual_result": "Actual result is required when a step fails"},
+        )
     step = _get_execution_step_or_404(db, tenant_id, execution_step_id)
     run_case = db.execute(
         select(TestRunCase).where(TestRunCase.id == step.test_run_case_id)
@@ -944,6 +988,11 @@ def record_verdict(
         select(TestRunCase).where(TestRunCase.id == run_case.id).with_for_update()
     ).scalar_one()
 
+    before = {
+        "verdict": step.verdict,
+        "actual_result": step.actual_result,
+        "run_case_status": run_case.status,
+    }
     now = datetime.now(UTC)
     if step.opened_at is None:
         # Tolerate a verdict submitted without a prior /open call.
@@ -952,6 +1001,8 @@ def record_verdict(
     step.duration_ms = int((step.closed_at - step.opened_at).total_seconds() * 1000)
     step.verdict = verdict
     step.executed_by = user_id
+    if clean_actual is not None:
+        step.actual_result = clean_actual or None
 
     if run_case.started_at is None:
         run_case.started_at = now
@@ -961,7 +1012,29 @@ def record_verdict(
     # pre-update verdict from the database, not the value just assigned
     # above in memory -- flush first so the recompute sees it.
     db.flush()
-    _recompute_run_case_status(db, run_case)
+    _recompute_run_case_status(db, run_case, executed_by=user_id, record_execution=True)
+    # The run case carries the actual result of the execution: the latest failed
+    # step's text for a failed case, otherwise the latest text supplied.
+    if run_case.status == "failed":
+        failed_text = db.execute(
+            select(ExecutionStep.actual_result)
+            .where(
+                ExecutionStep.test_run_case_id == run_case.id,
+                ExecutionStep.verdict == "fail",
+                ExecutionStep.actual_result.is_not(None),
+            )
+            .order_by(ExecutionStep.closed_at.desc().nulls_last())
+            .limit(1)
+        ).scalar_one_or_none()
+        if failed_text:
+            run_case.actual_result = failed_text
+    elif clean_actual:
+        run_case.actual_result = clean_actual
+    after = {
+        "verdict": step.verdict,
+        "actual_result": step.actual_result,
+        "run_case_status": run_case.status,
+    }
 
     record_audit_event(
         db,
@@ -974,6 +1047,7 @@ def record_verdict(
             "verdict": verdict,
             "test_run_case_id": str(run_case.id),
             "duration_ms": step.duration_ms,
+            "changes": audit_diff(before, after),
         },
     )
     _auto_finish_if_complete(db, tenant_id, run.id, user_id)
@@ -1047,7 +1121,8 @@ def record_ci_result(
         run_case.started_at = now
 
     db.flush()
-    _recompute_run_case_status(db, run_case)
+    previous_status = run_case.status
+    _recompute_run_case_status(db, run_case, executed_by=None, record_execution=True)
 
     record_audit_event(
         db,
@@ -1057,7 +1132,15 @@ def record_ci_result(
         action="executionstep.verdict_recorded_via_ci",
         entity_type="test_run_case",
         entity_id=run_case.id,
-        metadata={"ci_status": ci_status, "verdict": verdict, "steps_updated": len(steps)},
+        metadata={
+            "ci_status": ci_status,
+            "verdict": verdict,
+            "steps_updated": len(steps),
+            "changes": audit_diff(
+                {"run_case_status": previous_status},
+                {"run_case_status": run_case.status},
+            ),
+        },
     )
     _auto_finish_if_complete(db, tenant_id, run.id, None, service_token_id)
     db.commit()
@@ -1119,6 +1202,7 @@ def block_run_case(
     user_id: UUID,
     test_run_case_id: UUID,
     reason: str,
+    actual_result: str | None = None,
 ) -> TestRunCase:
     """ADR-070 / BRD "Block Case": mark a run case Blocked with a required
     reason. Needs the same rights as recording a verdict (assignee for a
@@ -1142,11 +1226,19 @@ def block_run_case(
     ).scalar_one()
     now = datetime.now(UTC)
     previous_status = run_case.status
+    previous_actual = run_case.actual_result
     run_case.status = "blocked"
     run_case.blocked_reason = clean_reason
     run_case.completed_at = now
     if run_case.started_at is None:
         run_case.started_at = now
+    # ADR-116: blocking is an execution outcome: who and when are recorded. The
+    # reason is the explanation; an actual result may be added.
+    run_case.executed_by = user_id
+    run_case.executed_at = now
+    clean_actual = sanitize_markdown(actual_result) if actual_result else None
+    if clean_actual:
+        run_case.actual_result = clean_actual
 
     record_audit_event(
         db,
@@ -1155,7 +1247,14 @@ def block_run_case(
         action="testrun.case_blocked",
         entity_type="test_run_case",
         entity_id=run_case.id,
-        metadata={"reason": clean_reason, "previous_status": previous_status},
+        metadata={
+            "reason": clean_reason,
+            "previous_status": previous_status,
+            "changes": audit_diff(
+                {"status": previous_status, "actual_result": previous_actual},
+                {"status": "blocked", "actual_result": run_case.actual_result},
+            ),
+        },
     )
     db.flush()
     _auto_finish_if_complete(db, tenant_id, run.id, user_id)
@@ -1184,6 +1283,10 @@ def unblock_run_case(
     ).scalar_one()
     previous_reason = run_case.blocked_reason
     run_case.blocked_reason = None
+    # No longer an execution outcome; a final status recomputed below re-stamps the
+    # executor from the steps (the block itself stays in the audit trail).
+    run_case.executed_by = None
+    run_case.executed_at = None
     # ADR-075: the step timer does not run while a case is blocked. Blocking stamps
     # `completed_at`, so the time spent blocked is now - completed_at; moving the
     # open step's `opened_at` forward by that much makes both the live elapsed
@@ -1222,6 +1325,7 @@ def unblock_run_case(
         metadata={
             "previous_reason": previous_reason,
             "status": run_case.status,
+            "changes": audit_diff({"status": "blocked"}, {"status": run_case.status}),
             "blocked_seconds": int(blocked_for.total_seconds()),
         },
     )
@@ -1285,7 +1389,13 @@ def rerun_failed(
     db.flush()
 
     for rc in rerun_cases:
-        case = db.execute(select(TestCase).where(TestCase.id == rc.test_case_id)).scalar_one()
+        case = db.execute(
+            select(TestCase)
+            .where(TestCase.id == rc.test_case_id)
+            .execution_options(include_deleted=True)
+        ).scalar_one()
+        if case.deleted_at is not None:
+            continue  # ADR-116: a soft-deleted case is not re-run
         version_id = (
             case.current_version_id
             if case.status == "approved" and case.current_version_id is not None

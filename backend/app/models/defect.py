@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -17,7 +17,14 @@ class Defect(Base, TenantScopedMixin):
             "severity in ('Low','Medium','High','Critical')", name="ck_defects_severity"
         ),
         CheckConstraint(
-            "status in ('New','Open','Fixed','Verified','Closed')", name="ck_defects_status"
+            "status in ('New','Open','Fixed','Verified','Closed',"
+            "'Assigned','In Progress','Retest','Reopened','Rejected','Deferred')",
+            name="ck_defects_status",
+        ),
+        CheckConstraint(
+            "resolution is null or resolution in ('Fixed','Duplicate','Won''t Fix',"
+            "'Cannot Reproduce','By Design','Not Applicable')",
+            name="ck_defects_resolution",
         ),
         CheckConstraint(
             "root_cause is null or root_cause in ("
@@ -92,6 +99,23 @@ class Defect(Base, TenantScopedMixin):
     reported_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+    # ADR-115: human-readable id BUG_000001 (see display_id_service); immutable.
+    display_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    display_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preconditions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    labels: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list, server_default=text("'{}'::text[]")
+    )
+    # [{"no": 1, "action": "...", "test_data": "...", "expected": "..."}]; the
+    # legacy steps_to_reproduce text stays the compatibility rendering.
+    repro_steps: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    build_found: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fix_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    root_cause_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    test_run_case_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("test_run_cases.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Pass C (deferred item #4): set once the SLA-breach notification has
@@ -122,7 +146,7 @@ class DefectLink(Base, TenantScopedMixin):
     __tablename__ = "defect_links"
     __table_args__ = (
         CheckConstraint(
-            "linkable_type in ('execution_step','test_case','defect')",
+            "linkable_type in ('execution_step','test_case','defect','test_run_case')",
             name="ck_defect_links_linkable_type",
         ),
         CheckConstraint(

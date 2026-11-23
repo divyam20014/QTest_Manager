@@ -76,9 +76,10 @@ def _authorize_requirement_access(
 
 def _linked_test_case_count(db: Session, requirement_id: UUID) -> int:
     return db.execute(
-        select(func.count(RequirementTestCaseLink.id)).where(
-            RequirementTestCaseLink.requirement_id == requirement_id
-        )
+        select(func.count(RequirementTestCaseLink.id))
+        # ADR-116: links to soft-deleted test cases do not count (ORM hook on TestCase).
+        .join(TestCase, TestCase.id == RequirementTestCaseLink.test_case_id)
+        .where(RequirementTestCaseLink.requirement_id == requirement_id)
     ).scalar_one()
 
 
@@ -89,6 +90,7 @@ def _linked_test_case_counts(db: Session, requirement_ids: list[UUID]) -> dict[U
     return dict(
         db.execute(
             select(RequirementTestCaseLink.requirement_id, func.count(RequirementTestCaseLink.id))
+            .join(TestCase, TestCase.id == RequirementTestCaseLink.test_case_id)
             .where(RequirementTestCaseLink.requirement_id.in_(requirement_ids))
             .group_by(RequirementTestCaseLink.requirement_id)
         )
@@ -427,6 +429,20 @@ def link_test_case(
         entity_id=requirement.id,
         metadata={"test_case_id": str(test_case_id)},
     )
+    # ADR-116: the case's own history shows the link too.
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="testcase.requirement_linked",
+        entity_type="test_case",
+        entity_id=test_case_id,
+        metadata={
+            "requirement_id": str(requirement.id),
+            "requirement_title": requirement.title,
+            "changes": {"requirement_links": {"from": None, "to": requirement.title}},
+        },
+    )
     db.commit()
     return requirement
 
@@ -459,6 +475,19 @@ def unlink_test_case(
             entity_type="requirement",
             entity_id=requirement.id,
             metadata={"test_case_id": str(test_case_id)},
+        )
+        record_audit_event(
+            db,
+            tenant_id=tenant_id,
+            user_id=actor_user_id,
+            action="testcase.requirement_unlinked",
+            entity_type="test_case",
+            entity_id=test_case_id,
+            metadata={
+                "requirement_id": str(requirement.id),
+                "requirement_title": requirement.title,
+                "changes": {"requirement_links": {"from": requirement.title, "to": None}},
+            },
         )
     db.commit()
     return requirement

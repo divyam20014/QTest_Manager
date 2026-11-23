@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import NotFoundError, ValidationAppError
+from app.core.field_standards import is_reserved_custom_field_key
 from app.models.field_customization import CustomFieldDefinition, CustomFieldValue
 from app.schemas.field_customization import (
     CustomFieldDefinitionCreateRequest,
@@ -58,6 +59,11 @@ def create_definition(
     db: Session, tenant_id: UUID, actor_user_id: UUID, req: CustomFieldDefinitionCreateRequest
 ) -> CustomFieldDefinitionOut:
     _validate_select_options(req.field_type, req.options)
+    if is_reserved_custom_field_key(req.entity_type, req.field_key):
+        raise ValidationAppError(
+            f"'{req.field_key}' is a reserved field name for {req.entity_type}; "
+            "it is already a standard field"
+        )
 
     existing = db.execute(
         select(CustomFieldDefinition).where(

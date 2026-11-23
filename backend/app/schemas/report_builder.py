@@ -17,6 +17,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.field_standards import DEFECT_STATUSES
+
 Source = Literal["test_cases", "test_runs", "defects"]
 FieldType = Literal["text", "enum", "id", "number", "date", "bool"]
 Operator = Literal["eq", "neq", "in", "contains", "gt", "gte", "lt", "lte", "is_null"]
@@ -56,6 +58,7 @@ class FieldSpec:
 
 
 _PRIORITY = ("Low", "Medium", "High", "Critical")
+_DEFECT_SEVERITY = (*_PRIORITY, "Major", "Minor")
 
 SOURCES: dict[str, dict[str, FieldSpec]] = {
     "test_cases": {
@@ -92,12 +95,12 @@ SOURCES: dict[str, dict[str, FieldSpec]] = {
     "defects": {
         "id": FieldSpec("ID", "id", sortable=False),
         "title": FieldSpec("Title", "text"),
-        "severity": FieldSpec("Severity", "enum", groupable=True, options=_PRIORITY),
+        "severity": FieldSpec("Severity", "enum", groupable=True, options=_DEFECT_SEVERITY),
         "status": FieldSpec(
             "Status",
             "enum",
             groupable=True,
-            options=("New", "Open", "Fixed", "Verified", "Closed"),
+            options=DEFECT_STATUSES,
         ),
         "priority": FieldSpec("Priority", "text", groupable=True),
         "environment": FieldSpec("Environment", "text", groupable=True),

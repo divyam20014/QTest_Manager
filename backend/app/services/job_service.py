@@ -63,7 +63,7 @@ def run_job(db: Session, job: BackgroundJob) -> None:
     different tenants)."""
     # Imported here, not at module load, to avoid import cycles (the API
     # modules for these import both job_service and their own service).
-    from app.services import csv_import_service, export_service
+    from app.services import csv_import_service, export_service, import_export_service
 
     set_tenant_context(db, str(job.tenant_id))
     try:
@@ -76,6 +76,9 @@ def run_job(db: Session, job: BackgroundJob) -> None:
                 job.payload["csv_text"],
             )
             job.result = report.model_dump(mode="json")
+            job.status = "succeeded"
+        elif job.job_type == import_export_service.COMMIT_JOB_TYPE:
+            job.result = import_export_service.run_commit_job(db, job)
             job.status = "succeeded"
         elif job.job_type == export_service.TENANT_EXPORT_JOB_TYPE:
             job.result = export_service.run_export(db, job.tenant_id)

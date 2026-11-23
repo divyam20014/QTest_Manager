@@ -1,20 +1,18 @@
-import csv
-import io
 import json
+from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, Request, UploadFile
-from fastapi.responses import PlainTextResponse, Response
+from fastapi import APIRouter, Depends, Form, Query, Request, UploadFile
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, require_permission
+from app.core.auth import SessionContext, require_any_permission, require_permission
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import ValidationAppError
 from app.core.rate_limit import limiter
 from app.core.responses import envelope
-from app.core.xlsx_report import XLSX_MEDIA_TYPE, SheetSpec, build_workbook
-from app.services import csv_import_service, job_service
+from app.services import csv_import_service, defect_export_service, export_common, job_service
 
 settings = get_settings()
 
@@ -145,42 +143,147 @@ async def import_test_cases_mapped(
     return envelope(report.model_dump(mode="json"))
 
 
+def _export_filters(
+    search: str | None,
+    priority: str | None,
+    status: str | None,
+    assignee_id: UUID | None,
+    module_id: UUID | None,
+    test_type: str | None,
+    severity: str | None,
+    automation_status: str | None,
+    environment: str | None,
+    execution_status: str | None,
+    executed_by: UUID | None,
+    quarantined: Literal["any", "only", "exclude"],
+) -> dict:
+    """The list page's filters, so an export can be "the current filtered set"
+    (ADR-117). Unset filters are left out."""
+    raw = {
+        "search": search,
+        "priority": priority,
+        "status": status,
+        "assignee_id": assignee_id,
+        "module_id": module_id,
+        "test_type": test_type,
+        "severity": severity,
+        "automation_status": automation_status,
+        "environment": environment,
+        "execution_status": execution_status,
+        "executed_by": executed_by,
+        "quarantined": None if quarantined == "any" else quarantined,
+    }
+    return {k: v for k, v in raw.items() if v}
+
+
+def _export_data(
+    project_id: UUID,
+    columns: str | None,
+    ids: str | None,
+    filters: dict,
+    sort: str | None,
+    ctx: SessionContext,
+    db: Session,
+) -> export_common.ExportData:
+    return csv_import_service.export_test_cases_data(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        columns,
+        filters,
+        sort,
+        defect_export_service.parse_ids(ids),
+    )
+
+
 @router.get("/projects/{project_id}/test-cases/export.csv")
 def export_test_cases(
     project_id: UUID,
-    ctx: SessionContext = Depends(require_permission("testcase.bulk_import_export")),
+    columns: str | None = Query(default=None, max_length=1000),
+    ids: str | None = Query(default=None, max_length=100_000),
+    search: str | None = Query(default=None, max_length=200),
+    priority: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    assignee_id: UUID | None = Query(default=None),
+    module_id: UUID | None = Query(default=None),
+    test_type: str | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    automation_status: str | None = Query(default=None),
+    environment: str | None = Query(default=None),
+    execution_status: str | None = Query(default=None),
+    executed_by: UUID | None = Query(default=None),
+    quarantined: Literal["any", "only", "exclude"] = Query(default="any"),
+    sort: str | None = Query(default=None),
+    ctx: SessionContext = Depends(
+        require_any_permission("testcase.bulk_import_export", "testcase.export")
+    ),
     db: Session = Depends(get_db),
-) -> PlainTextResponse:
-    csv_text = csv_import_service.export_test_cases_csv(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+) -> StreamingResponse:
+    """All 22 fields by default; `columns=display_id,title,...` selects and orders
+    columns (ADR-116), `ids=` exports just the selected rows (ADR-120), every list filter
+    applies. At most 50,000 rows (`X-Result-Truncated: true` when cut). Needs
+    `testcase.bulk_import_export` or `testcase.export`."""
+    filters = _export_filters(
+        search,
+        priority,
+        status,
+        assignee_id,
+        module_id,
+        test_type,
+        severity,
+        automation_status,
+        environment,
+        execution_status,
+        executed_by,
+        quarantined,
     )
-    return PlainTextResponse(
-        csv_text,
-        media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="test_cases_export.csv"'},
-    )
+    data = _export_data(project_id, columns, ids, filters, sort, ctx, db)
+    return export_common.csv_response(data, "test_cases_export.csv")
 
 
 @router.get("/projects/{project_id}/test-cases/export.xlsx")
 def export_test_cases_xlsx(
     project_id: UUID,
-    ctx: SessionContext = Depends(require_permission("testcase.bulk_import_export")),
+    columns: str | None = Query(default=None, max_length=1000),
+    ids: str | None = Query(default=None, max_length=100_000),
+    search: str | None = Query(default=None, max_length=200),
+    priority: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    assignee_id: UUID | None = Query(default=None),
+    module_id: UUID | None = Query(default=None),
+    test_type: str | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    automation_status: str | None = Query(default=None),
+    environment: str | None = Query(default=None),
+    execution_status: str | None = Query(default=None),
+    executed_by: UUID | None = Query(default=None),
+    quarantined: Literal["any", "only", "exclude"] = Query(default="any"),
+    sort: str | None = Query(default=None),
+    ctx: SessionContext = Depends(
+        require_any_permission("testcase.bulk_import_export", "testcase.export")
+    ),
     db: Session = Depends(get_db),
 ) -> Response:
-    """ADR-071: same dataset, permission and project-access rules as
-    export.csv, rendered as a workbook (reuses the CSV rows so the two
-    formats can never disagree)."""
-    csv_text = csv_import_service.export_test_cases_csv(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    """ADR-071: same dataset, permission and project-access rules as export.csv,
+    rendered as a workbook (bold frozen header, column widths)."""
+    filters = _export_filters(
+        search,
+        priority,
+        status,
+        assignee_id,
+        module_id,
+        test_type,
+        severity,
+        automation_status,
+        environment,
+        execution_status,
+        executed_by,
+        quarantined,
     )
-    rows = list(csv.reader(io.StringIO(csv_text)))
-    headers, body = (rows[0], rows[1:]) if rows else ([], [])
-    contents = build_workbook([SheetSpec("Test Cases", headers, body)])
-    return Response(
-        contents,
-        media_type=XLSX_MEDIA_TYPE,
-        headers={"Content-Disposition": 'attachment; filename="test_cases_export.xlsx"'},
-    )
+    data = _export_data(project_id, columns, ids, filters, sort, ctx, db)
+    return export_common.xlsx_response(data, "Test Cases", "test_cases_export.xlsx")
 
 
 # --- Defect bulk import (Pass 2) -- newly built; reuses the same
@@ -191,7 +294,7 @@ def export_test_cases_xlsx(
 
 @router.get("/defects/import/template.csv")
 def download_defect_template(
-    ctx: SessionContext = Depends(require_permission("defect.create")),
+    ctx: SessionContext = Depends(require_any_permission("defect.import", "defect.create")),
 ) -> PlainTextResponse:
     return PlainTextResponse(
         csv_import_service.DEFECT_TEMPLATE_CSV,
@@ -205,7 +308,7 @@ def download_defect_template(
 async def import_defects(
     request: Request,
     file: UploadFile,
-    ctx: SessionContext = Depends(require_permission("defect.create")),
+    ctx: SessionContext = Depends(require_any_permission("defect.import", "defect.create")),
     db: Session = Depends(get_db),
 ) -> dict:
     csv_text = await _read_and_validate_csv(file)

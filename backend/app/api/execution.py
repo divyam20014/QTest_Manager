@@ -1,17 +1,20 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
     SessionContext,
     get_current_context,
+    require_any_permission,
     require_permission,
     require_project_permission,
     require_resource_permission,
 )
 from app.core.db import get_db
+from app.core.errors import ForbiddenError
+from app.core.policy import apply_access_rules
 from app.core.responses import envelope
 from app.schemas.execution import (
     BlockRunCaseRequest,
@@ -22,9 +25,23 @@ from app.schemas.execution import (
     TestRunUpdateRequest,
     VerdictRequest,
 )
-from app.services import execution_service
+from app.services import defect_retest_service, defect_service, execution_service
 
 router = APIRouter(tags=["execution"])
+
+
+def require_execute_permission(
+    request: Request,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> SessionContext:
+    """ADR-116: recording execution results needs `executionstep.record` OR the new
+    `testcase.execute` (granted to the same roles), so nobody loses access. Access
+    rules (freezes) are always evaluated against the canonical action."""
+    if "executionstep.record" not in ctx.permissions and "testcase.execute" not in ctx.permissions:
+        raise ForbiddenError("Missing permission: executionstep.record")
+    apply_access_rules(ctx, request, db, "executionstep.record")
+    return ctx
 
 
 @router.post("/projects/{project_id}/test-runs")
@@ -213,11 +230,17 @@ def delete_test_run(
 def block_run_case(
     test_run_case_id: UUID,
     req: BlockRunCaseRequest,
-    ctx: SessionContext = Depends(require_permission("executionstep.record")),
+    ctx: SessionContext = Depends(require_execute_permission),
     db: Session = Depends(get_db),
 ) -> dict:
     run_case = execution_service.block_run_case(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_run_case_id, req.reason
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        test_run_case_id,
+        req.reason,
+        actual_result=req.actual_result,
     )
     return envelope(
         {
@@ -231,7 +254,7 @@ def block_run_case(
 @router.post("/test-run-cases/{test_run_case_id}/unblock")
 def unblock_run_case(
     test_run_case_id: UUID,
-    ctx: SessionContext = Depends(require_permission("executionstep.record")),
+    ctx: SessionContext = Depends(require_execute_permission),
     db: Session = Depends(get_db),
 ) -> dict:
     run_case = execution_service.unblock_run_case(
@@ -267,7 +290,7 @@ def list_steps(
 @router.post("/execution-steps/{execution_step_id}/open")
 def open_step(
     execution_step_id: UUID,
-    ctx: SessionContext = Depends(require_permission("executionstep.record")),
+    ctx: SessionContext = Depends(require_execute_permission),
     db: Session = Depends(get_db),
 ) -> dict:
     step = execution_service.open_step(
@@ -280,10 +303,48 @@ def open_step(
 def record_verdict(
     execution_step_id: UUID,
     req: VerdictRequest,
-    ctx: SessionContext = Depends(require_permission("executionstep.record")),
+    ctx: SessionContext = Depends(require_execute_permission),
     db: Session = Depends(get_db),
 ) -> dict:
     step = execution_service.record_verdict(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, execution_step_id, req.verdict
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        execution_step_id,
+        req.verdict,
+        actual_result=req.actual_result,
     )
     return envelope(execution_service.step_to_out(db, step).model_dump(mode="json"))
+
+
+@router.get("/test-run-cases/{test_run_case_id}/defect-draft")
+def get_defect_draft(
+    test_run_case_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-118: a prefilled defect for this execution (title 'TC_000012 - <title>
+    failed', module, steps with the failing one flagged, expected, actual, environment,
+    tester, evidence). Nothing is stored; `POST /defects` with `test_run_case_id` creates
+    it (and links it to the case and this run case)."""
+    draft = defect_retest_service.build_defect_draft(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_run_case_id
+    )
+    return envelope(draft.model_dump(mode="json"))
+
+
+@router.post("/test-run-cases/{test_run_case_id}/defects/{defect_id}")
+def link_existing_defect(
+    test_run_case_id: UUID,
+    defect_id: UUID,
+    ctx: SessionContext = Depends(require_any_permission("defect.edit", "defect.create")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Link an existing defect of the same project to this run case (idempotent)."""
+    defect, created = defect_retest_service.link_defect_to_run_case(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_run_case_id, defect_id
+    )
+    out = defect_service.to_out(db, defect).model_dump(mode="json")
+    out["link_created"] = created
+    return envelope(out)

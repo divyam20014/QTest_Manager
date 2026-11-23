@@ -4,14 +4,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-RunType = Literal["Regression", "Sanity", "Smoke"]
+# ADR-118: 'Retest' can be chosen when creating or updating a run (the defect retest
+# endpoint creates such runs too).
+RunType = Literal["Regression", "Sanity", "Smoke", "Retest"]
+RunTypeInput = RunType
 RunCaseStatus = Literal["pending", "in_progress", "passed", "failed", "blocked", "ignored"]
 Verdict = Literal["pass", "fail", "ignore"]
 
 
 class TestRunCreateRequest(BaseModel):
     name: str = Field(min_length=3)
-    run_type: RunType
+    run_type: RunTypeInput
     test_case_ids: list[UUID] = Field(min_length=1)
     # ADR-097: default False keeps the current behaviour.
     exclude_quarantined: bool = False
@@ -19,7 +22,7 @@ class TestRunCreateRequest(BaseModel):
 
 class TestRunUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=3)
-    run_type: RunType | None = None
+    run_type: RunTypeInput | None = None
 
 
 class TestRunCaseAddRequest(BaseModel):
@@ -39,11 +42,15 @@ class TestRunCaseAssignRequest(BaseModel):
 
 class VerdictRequest(BaseModel):
     verdict: Verdict
+    # ADR-116: what actually happened. Required for `fail` when the
+    # REQUIRE_ACTUAL_RESULT_ON_FAIL setting is on; optional otherwise.
+    actual_result: str | None = Field(default=None, max_length=10_000)
 
 
 class BlockRunCaseRequest(BaseModel):
     # ADR-070: a reason is mandatory when blocking a case.
     reason: str = Field(min_length=3, max_length=1000)
+    actual_result: str | None = Field(default=None, max_length=10_000)
 
 
 class ExecutionStepOut(BaseModel):
@@ -57,6 +64,7 @@ class ExecutionStepOut(BaseModel):
     closed_at: datetime | None
     duration_ms: int | None
     executed_by: UUID | None
+    actual_result: str | None = None
 
 
 class TestRunCaseOut(BaseModel):
@@ -73,6 +81,10 @@ class TestRunCaseOut(BaseModel):
     passed_count: int
     failed_count: int
     ignored_count: int
+    # ADR-115: execution record fields (never on the test case definition).
+    actual_result: str | None = None
+    executed_by: UUID | None = None
+    executed_at: datetime | None = None
 
 
 class TestRunOut(BaseModel):

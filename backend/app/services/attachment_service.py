@@ -7,6 +7,7 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.audit import record_audit_event
 from app.core.config import get_settings
 from app.core.db import set_tenant_context
 from app.core.errors import NotFoundError, ValidationAppError
@@ -29,8 +30,20 @@ settings = get_settings()
 # extension, since a client-supplied Content-Type header is not trustworthy
 # on its own. Rejects anything else (e.g. .exe, .sh) outright.
 ALLOWED_ATTACHMENT_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".log",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".csv",
+    ".txt",
+    ".log",
 }
 
 # GAP-66 fix: the extension allowlist above only checks the *filename*,
@@ -190,9 +203,46 @@ def upload_attachment(
     )
     db.add(attachment)
     db.flush()
+    _audit(db, tenant_id, user_id, "attachment_added", attachment)
     out = _to_out(db, tenant_id, attachment)
     db.commit()
     return out
+
+
+def _audit(db: Session, tenant_id: UUID, user_id: UUID, verb: str, attachment: Attachment) -> None:
+    """ADR-118: upload and delete are audited on the owner's history (`defect.attachment_added`,
+    `test_case.attachment_removed`, ...)."""
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        action=f"{attachment.owner_type}.{verb}",
+        entity_type=attachment.owner_type,
+        entity_id=attachment.owner_id,
+        metadata={
+            "attachment_id": str(attachment.id),
+            "file_name": attachment.file_name,
+            "size_bytes": attachment.size_bytes,
+            "changes": {
+                "attachments": (
+                    {"from": None, "to": attachment.file_name}
+                    if verb == "attachment_added"
+                    else {"from": attachment.file_name, "to": None}
+                )
+            },
+        },
+    )
+
+
+def _file_still_referenced(db: Session, storage_path: str) -> bool:
+    """A file copied by reference (a defect raised from an execution shares the
+    execution's evidence) is only removed with its last attachment row."""
+    return (
+        db.execute(
+            select(Attachment.id).where(Attachment.storage_path == storage_path).limit(1)
+        ).first()
+        is not None
+    )
 
 
 def _get_attachment_or_404(db: Session, tenant_id: UUID, attachment_id: UUID) -> Attachment:
@@ -247,7 +297,8 @@ def delete_attachments_for_owner(
     db.flush()
     backend = get_storage_backend()
     for reference in storage_references:
-        backend.delete(reference)
+        if not _file_still_referenced(db, reference):
+            backend.delete(reference)
 
 
 def delete_attachment(
@@ -258,6 +309,10 @@ def delete_attachment(
         db, tenant_id, role_code, user_id, attachment.owner_type, attachment.owner_id
     )
     storage_reference = attachment.storage_path
+    _audit(db, tenant_id, user_id, "attachment_removed", attachment)
     db.delete(attachment)
+    db.flush()
+    keep_file = _file_still_referenced(db, storage_reference)
     db.commit()
-    get_storage_backend().delete(storage_reference)
+    if not keep_file:
+        get_storage_backend().delete(storage_reference)

@@ -4,7 +4,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-FieldKey = Literal["defect_severity", "test_case_priority", "defect_priority"]
+FieldKey = Literal[
+    "defect_severity",
+    "test_case_priority",
+    "defect_priority",
+    "test_type",
+    "test_case_severity",
+]
 StatusEntityType = Literal["test_case", "defect"]
 CustomFieldEntityType = Literal["test_case", "defect", "requirement"]
 CustomFieldType = Literal["text", "number", "boolean", "date", "select", "multi_select"]

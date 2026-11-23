@@ -13,6 +13,9 @@ NotificationType = Literal[
     "run_case_assigned",
     "test_run_completed",
     "defect_sla_breach",
+    "defect_assigned",
+    "defect_reopened",
+    "defect_retest",
 ]
 NotificationEntityType = Literal["test_case", "defect", "execution_step", "test_run"]
 

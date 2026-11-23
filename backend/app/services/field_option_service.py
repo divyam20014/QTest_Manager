@@ -6,6 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
 from app.core.errors import ConflictError, NotFoundError, ValidationAppError
+from app.core.field_standards import (
+    DEFECT_SEVERITY_ADDITIONS,
+    TEST_CASE_SEVERITY_DEFAULTS,
+    TEST_TYPE_DEFAULTS,
+)
 from app.models.defect import Defect
 from app.models.field_customization import FieldOption
 from app.models.test_case import TestCase
@@ -39,8 +44,18 @@ def seed_defaults_for_tenant(db: Session, tenant_id: UUID) -> None:
     alongside the Tier 1 subscription seed -- same "every tenant gets this
     at birth" pattern, not only a migration-time backfill of pre-existing
     tenants."""
-    for field_key in ("defect_severity", "test_case_priority", "defect_priority"):
-        for order, code in enumerate(_DEFAULTS):
+    # ADR-115: the 22-field standard's sets are added on top of the legacy four
+    # (defect severity gains Major/Minor; test case severity and Test Type are new
+    # keys) -- the same defaults the migration seeds for existing tenants.
+    option_sets: dict[str, list[str]] = {
+        "defect_severity": [*_DEFAULTS, *DEFECT_SEVERITY_ADDITIONS],
+        "test_case_priority": list(_DEFAULTS),
+        "defect_priority": list(_DEFAULTS),
+        "test_case_severity": list(TEST_CASE_SEVERITY_DEFAULTS),
+        "test_type": list(TEST_TYPE_DEFAULTS),
+    }
+    for field_key, codes in option_sets.items():
+        for order, code in enumerate(codes):
             db.add(
                 FieldOption(
                     tenant_id=tenant_id,
@@ -168,6 +183,8 @@ def delete_option(db: Session, tenant_id: UUID, actor_user_id: UUID, option_id: 
         "defect_severity": Defect.severity,
         "defect_priority": Defect.priority,
         "test_case_priority": TestCase.priority,
+        "test_case_severity": TestCase.severity,
+        "test_type": TestCase.test_type,
     }[option.field_key]
     in_use_model = Defect if option.field_key.startswith("defect_") else TestCase
     in_use = (

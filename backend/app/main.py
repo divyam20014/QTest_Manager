@@ -27,6 +27,7 @@ from app.api import (
     execution,
     export,
     field_customization,
+    import_export,
     marketing,
     notifications,
     platform,
@@ -107,7 +108,7 @@ app.add_middleware(
     allow_headers=["*"],
     # ADR-071: lets the SPA read the server-chosen filename of a file download
     # (fetch + blob) instead of falling back to a generic name.
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "X-Result-Truncated"],
 )
 
 
@@ -156,10 +157,11 @@ async def log_requests(request: Request, call_next):
 
 @app.exception_handler(AppError)
 def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"data": None, "error": {"code": exc.code, "message": exc.message}},
-    )
+    error: dict = {"code": exc.code, "message": exc.message}
+    fields = getattr(exc, "fields", None)
+    if fields:
+        error["fields"] = fields
+    return JSONResponse(status_code=exc.status_code, content={"data": None, "error": error})
 
 
 # ADR-088: FastAPI's default 422 body is `{"detail": [...]}`, which is not this
@@ -169,6 +171,11 @@ def handle_validation_error(request: Request, exc: RequestValidationError) -> JS
     first = exc.errors()[0] if exc.errors() else {}
     where = ".".join(str(part) for part in first.get("loc", ()) if part != "body")
     message = first.get("msg", "Invalid request")
+    # ADR-116: every offending field, not only the first (`error.fields`).
+    fields: dict[str, str] = {}
+    for item in exc.errors():
+        key = ".".join(str(part) for part in item.get("loc", ()) if part != "body")
+        fields.setdefault(key or "body", str(item.get("msg", "Invalid value")))
     return JSONResponse(
         status_code=422,
         content={
@@ -176,6 +183,7 @@ def handle_validation_error(request: Request, exc: RequestValidationError) -> JS
             "error": {
                 "code": "validation_error",
                 "message": f"{where}: {message}" if where else message,
+                "fields": fields,
             },
         },
     )
@@ -237,6 +245,7 @@ app.include_router(platform_auth.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
+app.include_router(import_export.router, prefix="/api/v1")
 app.include_router(test_cases.router, prefix="/api/v1")
 app.include_router(csv_import.router, prefix="/api/v1")
 app.include_router(execution.router, prefix="/api/v1")

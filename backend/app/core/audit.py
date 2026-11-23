@@ -3,7 +3,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import insert, select, text
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
@@ -87,3 +87,70 @@ def record_audit_event(
     db.add(entry)
     db.flush()
     return entry
+
+
+def record_audit_events_bulk(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    user_id: UUID | None,
+    events: list[tuple[str, str, UUID, dict | None]],
+) -> int:
+    """Append many events `(action, entity_type, entity_id, metadata)` to the hash chain in
+    one go (ADR-120: an import writes one compact event per created record). Same chain
+    rules as `record_audit_event` -- advisory lock, strictly increasing timestamps, each
+    hash covering the previous one -- but the head is read once and the rows are inserted
+    in batches, so 5,000 events cost a handful of statements instead of 10,000."""
+    if not events:
+        return 0
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:tenant_id))"), {"tenant_id": str(tenant_id)}
+    )
+    head = db.execute(
+        select(AuditLog.record_hash, AuditLog.created_at)
+        .where(AuditLog.tenant_id == tenant_id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(1)
+    ).first()
+    prev_hash = head.record_hash if head else GENESIS_HASH
+    created_at = datetime.now(UTC)
+    if head is not None and created_at <= head.created_at:
+        created_at = head.created_at + timedelta(microseconds=1)
+
+    rows: list[dict] = []
+    for action, entity_type, entity_id, metadata in events:
+        payload = {
+            "tenant_id": str(tenant_id),
+            "user_id": str(user_id) if user_id else None,
+            "platform_admin_id": None,
+            "service_token_id": None,
+            "action": action,
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
+            "metadata": metadata,
+            "created_at": created_at.isoformat(),
+            "prev_hash": prev_hash,
+        }
+        record_hash = hashlib.sha256(_canonical(payload).encode()).hexdigest()
+        rows.append(
+            {
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "platform_admin_id": None,
+                "service_token_id": None,
+                "action": action,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "metadata": metadata,
+                "prev_hash": prev_hash,
+                "record_hash": record_hash,
+                "created_at": created_at,
+            }
+        )
+        prev_hash = record_hash
+        created_at = created_at + timedelta(microseconds=1)
+
+    table = AuditLog.__table__  # type: ignore[attr-defined]
+    for start in range(0, len(rows), 1000):
+        db.execute(insert(table), rows[start : start + 1000])  # type: ignore[arg-type]
+    return len(rows)

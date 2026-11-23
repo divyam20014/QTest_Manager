@@ -5,6 +5,7 @@ from app.models.background_job import BackgroundJob
 from app.models.comment import Comment, CommentMention
 from app.models.dashboard import Dashboard, DashboardWidget
 from app.models.defect import Defect, DefectLink
+from app.models.entity_counter import EntityCounter
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.field_customization import (
     CustomFieldDefinition,
@@ -24,6 +25,7 @@ from app.models.identity import (
     Session,
     User,
 )
+from app.models.import_session import ImportSession
 from app.models.marketing import MarketingLead
 from app.models.notification import Notification
 from app.models.platform_audit import PlatformAuditEvent
@@ -106,6 +108,8 @@ __all__ = [
     "SavedReport",
     "Dashboard",
     "DashboardWidget",
+    "EntityCounter",
+    "ImportSession",
     "SavedView",
     "TestDataSet",
     "TestDataSetRow",

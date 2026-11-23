@@ -4,10 +4,15 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, exists, func, null, or_, select
+from sqlalchemy import and_, case, exists, func, null, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ForbiddenError, NotFoundError
+from app.core.field_standards import (
+    CLOSED_DEFECT_STATUSES,
+    OPEN_DEFECT_STATUSES,
+    PARKED_DEFECT_STATUSES,
+)
 from app.core.ttl_cache import cached_report
 from app.core.xlsx_report import SheetSpec, build_workbook
 from app.models.audit import AuditLog
@@ -66,9 +71,8 @@ from app.schemas.reporting import (
     WorkloadSummary,
 )
 from app.services import requirement_service, tester_visibility
-from app.services.defect_service import SLA_DAYS_BY_SEVERITY
+from app.services.defect_service import SLA_DAYS_ALL, SLA_DAYS_BY_SEVERITY
 
-OPEN_DEFECT_STATUSES = ("New", "Open")
 COMPLETED_RUN_CASE_STATUSES = ("passed", "failed", "blocked", "ignored")
 
 DOMAINS = ["Motor", "Health", "Travel", "Life", "Property"]
@@ -209,7 +213,7 @@ def get_dashboard_summary(
     # Open defects per severity and the "open as of the cutoff" baseline in one pass.
     defect_query = select(
         Defect.severity,
-        func.count().filter(Defect.status != "Closed"),
+        func.count().filter(Defect.status.notin_(CLOSED_DEFECT_STATUSES)),
         func.count().filter(
             Defect.created_at <= cutoff,
             or_(Defect.closed_at.is_(None), Defect.closed_at > cutoff),
@@ -316,7 +320,9 @@ def get_domain_distribution(
                 select(Project.domain, func.count())
                 .select_from(Defect)
                 .join(Project, Project.id == Defect.project_id)
-                .where(Defect.project_id.in_(project_ids), Defect.status != "Closed")
+                .where(
+                    Defect.project_id.in_(project_ids), Defect.status.notin_(CLOSED_DEFECT_STATUSES)
+                )
                 .group_by(Project.domain)
             )
             .tuples()
@@ -884,15 +890,18 @@ def get_defect_aging_summary(
     # age_days = floor(now - created_at in days) exceeds the severity's SLA budget,
     # i.e. when the age is at least (budget + 1) whole days.
     sla_days = case(
-        *[(Defect.severity == sev, days) for sev, days in SLA_DAYS_BY_SEVERITY.items()],
+        *[(Defect.severity == sev, days) for sev, days in SLA_DAYS_ALL.items()],
         else_=DEFAULT_SLA_DAYS,
     )
-    breached_expr = (func.now() - Defect.created_at) >= func.make_interval(0, 0, 0, sla_days + 1)
+    breached_expr = and_(
+        Defect.status.notin_(PARKED_DEFECT_STATUSES),
+        (func.now() - Defect.created_at) >= func.make_interval(0, 0, 0, sla_days + 1),
+    )
     query = (
         select(Defect.severity, func.count(), func.count().filter(breached_expr))
         .select_from(Defect)
         .join(Project, Project.id == Defect.project_id)
-        .where(Project.tenant_id == tenant_id, Defect.status != "Closed")
+        .where(Project.tenant_id == tenant_id, Defect.status.notin_(CLOSED_DEFECT_STATUSES))
     )
     if accessible is not None:
         query = query.where(Project.id.in_(accessible))
@@ -1241,9 +1250,10 @@ def get_traceability_matrix(
 
     requirement_ids = [r.id for r in requirements]
     links = db.execute(
-        select(RequirementTestCaseLink.requirement_id, RequirementTestCaseLink.test_case_id).where(
-            RequirementTestCaseLink.requirement_id.in_(requirement_ids)
-        )
+        select(RequirementTestCaseLink.requirement_id, RequirementTestCaseLink.test_case_id)
+        # ADR-116: links to soft-deleted cases are left out (ORM hook on TestCase).
+        .join(TestCase, TestCase.id == RequirementTestCaseLink.test_case_id)
+        .where(RequirementTestCaseLink.requirement_id.in_(requirement_ids))
     ).all()
     req_to_cases: dict[UUID, list[UUID]] = {}
     all_case_ids: set[UUID] = set()
@@ -1369,7 +1379,7 @@ def get_compliance_report(
         if period_to is not None:
             defect_query = defect_query.where(Defect.created_at <= period_to)
         defects = list(db.execute(defect_query).scalars())
-        open_defects = [d for d in defects if d.status != "Closed"]
+        open_defects = [d for d in defects if d.status not in CLOSED_DEFECT_STATUSES]
 
         coverage = get_coverage_report(db, tenant_id, role_code, user_id, project.id)
         aging = get_defect_aging_summary(db, tenant_id, role_code, user_id, project.id)
@@ -1459,7 +1469,7 @@ def _compliance_period_trend(
                 AuditLog.tenant_id == tenant_id,
                 AuditLog.entity_type == "defect",
                 AuditLog.action == "defect.status_changed",
-                AuditLog.event_metadata["to"].astext == "Closed",
+                AuditLog.event_metadata["to"].astext.in_(CLOSED_DEFECT_STATUSES),
                 AuditLog.created_at >= gte,
                 AuditLog.created_at < lt,
             )

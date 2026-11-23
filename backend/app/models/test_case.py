@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -33,6 +34,11 @@ class TestCase(Base, TenantScopedMixin):
         CheckConstraint(
             "priority in ('Low','Medium','High','Critical')", name="ck_test_cases_priority"
         ),
+        CheckConstraint(
+            "automation_status is null or automation_status in "
+            "('Manual','Automated','Candidate for Automation')",
+            name="ck_test_cases_automation_status",
+        ),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -54,9 +60,7 @@ class TestCase(Base, TenantScopedMixin):
     quarantined_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    quarantined_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    quarantined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Tier 3 (PV-7.3): optional module/folder grouping.
     module_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("test_modules.id"), nullable=True
@@ -75,6 +79,24 @@ class TestCase(Base, TenantScopedMixin):
             "test_case_versions.id", use_alter=True, name="fk_test_cases_current_version_id"
         ),
         nullable=True,
+    )
+    # ADR-115: human-readable id TC_000001, allocated per tenant from
+    # entity_counters (app/services/display_id_service.py); immutable (DB trigger).
+    display_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    display_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    test_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    severity: Mapped[str | None] = mapped_column(Text, nullable=True)
+    automation_status: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default="Manual", server_default="Manual"
+    )
+    environment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Free-text requirement / user-story id (the requirement link table stays
+    # the source of truth for linked requirements).
+    requirement_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ADR-115: soft delete (app/models/soft_delete.py hides rows with deleted_at set).
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
@@ -103,6 +125,9 @@ class TestCaseVersion(Base, TenantScopedMixin):
     scenario_description: Mapped[str | None] = mapped_column(String, nullable=True)
     prerequisite: Mapped[str | None] = mapped_column(String, nullable=True)
     test_data: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ADR-115: versioned content fields of the 22-field standard.
+    postconditions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expected_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
@@ -130,6 +155,7 @@ class TestCaseVersionStep(Base, TenantScopedMixin):
     step_number: Mapped[int] = mapped_column(Integer, nullable=False)
     action: Mapped[str] = mapped_column(String, nullable=False)
     expected: Mapped[str] = mapped_column(String, nullable=False)
+    test_data: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Attachment(Base, TenantScopedMixin):

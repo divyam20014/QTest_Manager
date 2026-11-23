@@ -22,7 +22,9 @@ class TestRun(Base, TenantScopedMixin):
     __tablename__ = "test_runs"
     __table_args__ = (
         CheckConstraint("char_length(name) >= 3", name="ck_test_runs_name_len"),
-        CheckConstraint("run_type in ('Regression','Sanity','Smoke')", name="ck_test_runs_type"),
+        CheckConstraint(
+            "run_type in ('Regression','Sanity','Smoke','Retest')", name="ck_test_runs_type"
+        ),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
@@ -94,6 +96,13 @@ class TestRunCase(Base, TenantScopedMixin):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # ADR-070: required explanation while status == 'blocked'; cleared on unblock.
     blocked_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ADR-115: execution-specific data lives on the execution record, never on
+    # the test case definition.
+    actual_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    executed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ExecutionStep(Base, TenantScopedMixin):
@@ -120,3 +129,4 @@ class ExecutionStep(Base, TenantScopedMixin):
     executed_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    actual_result: Mapped[str | None] = mapped_column(Text, nullable=True)

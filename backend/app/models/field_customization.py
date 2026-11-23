@@ -34,7 +34,8 @@ class FieldOption(Base, TenantScopedMixin):
     __tablename__ = "field_options"
     __table_args__ = (
         CheckConstraint(
-            "field_key in ('defect_severity','test_case_priority','defect_priority')",
+            "field_key in ('defect_severity','test_case_priority','defect_priority',"
+            "'test_type','test_case_severity')",
             name="ck_field_options_field_key",
         ),
         UniqueConstraint("tenant_id", "field_key", "code", name="uq_field_options_tenant_key_code"),
