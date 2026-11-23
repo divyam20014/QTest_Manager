@@ -64,15 +64,20 @@ test('Module grouping, request-changes, global search, and theme toggle', async 
   })
 
   // Global search finds the test case by title.
-  await page.fill('input[placeholder*="Search test cases"]', 'Flood Damage')
-  await expect(page.getByText('Verify Flood Damage Exclusion Clause')).toBeVisible({
+  // The top bar's search field opens the command palette (ADR-121).
+  await page.getByRole('search').getByRole('button').click()
+  await page.getByLabel('Command palette search').fill('Flood Damage')
+  await expect(
+    page.getByRole('dialog', { name: 'Command palette' }).getByText('Verify Flood Damage Exclusion Clause'),
+  ).toBeVisible({
     timeout: 10000,
   })
-  await page.click('main', { position: { x: 5, y: 400 } })
+  await page.keyboard.press('Escape')
 
   // Theme toggle flips the root data-theme attribute and persists it.
   const initialTheme = await page.evaluate(() => document.documentElement.dataset.theme)
   // The toggle opens the Appearance picker (ADR-100); choose a theme that differs from the current one.
+  await page.getByRole('button', { name: /account menu$/ }).click()
   await page.getByRole('button', { name: 'Appearance' }).first().click()
   await page
     .getByRole('dialog', { name: 'Appearance' })

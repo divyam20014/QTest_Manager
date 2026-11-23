@@ -187,7 +187,7 @@ test('session: logout, protected routes and an expired session send the user to 
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
   // Sign out through the account menu.
   await page.getByRole('button', { name: /account menu/i }).click()
-  await page.getByRole('button', { name: 'Logout' }).click()
+  await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page).toHaveURL(/\/login/)
   // Protected routes bounce an anonymous visitor.
   await page.goto('/projects')

@@ -44,7 +44,8 @@ test('desktop shell: account menu name, collapsed sidebar tooltips, new-tab comp
   // UX-006: the accessible name starts with the visible "Name · role" text.
   const account = page.getByRole('button', { name: /account menu$/ })
   await expect(account).toBeVisible()
-  const visible = (await account.innerText()).trim()
+  // The visible text is the name beside the avatar initials (ADR-121).
+  const visible = (await account.getByTestId('account-name').innerText()).trim()
   expect(visible.length).toBeGreaterThan(0)
   const name = (await account.getAttribute('aria-label')) ?? ''
   expect(name.startsWith(visible)).toBe(true)
@@ -72,7 +73,8 @@ test('desktop shell: account menu name, collapsed sidebar tooltips, new-tab comp
   await projects.hover()
   await expect(page.getByRole('tooltip').filter({ hasText: 'Projects' })).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('tooltip')).toBeHidden()
+  // (The sidebar toggle in the top bar keeps focus and has its own tooltip, so scope to this one.)
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Projects' })).toBeHidden()
   await page.getByRole('button', { name: 'Expand sidebar' }).click()
 
   // UX-010: every top-level screen opens with exactly one <h1> and heading

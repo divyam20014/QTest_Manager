@@ -24,10 +24,11 @@ async function signIn(page: Page) {
 }
 
 async function openAppearance(page: Page) {
-  const button = page.getByRole('button', { name: 'Appearance' })
+  // ADR-121: Appearance lives in the account menu on desktop and in the More sheet on phones.
+  const account = page.getByRole('button', { name: /account menu$/ })
   const more = page.getByRole('button', { name: 'More' })
-  await expect(button.first().or(more)).toBeVisible()
-  if (!(await button.first().isVisible())) await more.click()
+  await expect(account.or(more)).toBeVisible()
+  await (await account.isVisible() ? account : more).click()
   await page.getByRole('button', { name: 'Appearance' }).first().click()
   await expect(page.getByRole('dialog', { name: 'Appearance' })).toBeVisible()
 }
