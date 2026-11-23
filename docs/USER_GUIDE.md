@@ -28,24 +28,61 @@ and do. It is set by your Admin and is not something you change yourself.
 
 ### Finding your way around
 
-The sidebar groups the app into **Workspace** (Dashboard, Projects), **Test
-Management** (Test Cases, Test Runs, Execution Console, Defects), **Analytics**
-(Reports, Compliance Reports) and **Administration** (Admin). **User Guide**
-and **Profile** sit at the bottom. On a phone the sidebar becomes a bottom bar
-with a **More** menu. Entries your role cannot open are not shown. The search
-box in the header (or Ctrl/Cmd+K) opens the command palette to jump to any
-screen you can open. The breadcrumb above each page shows where you are.
+The sidebar lists **Dashboard**, **Projects**, **My Work**, **Test Cases**,
+**Test Execution** (Test Runs, Execution Console), **Defects**, **Reports &
+Analytics** (Reports, Compliance Reports) and **Admin**. **User Guide** and
+**Profile** sit at the bottom. A name with an arrow, such as Test Execution, is a
+group: select it to open or close its list. It stays open or closed the way you
+left it, and the group holding the page you are on opens by itself. Entries your
+role cannot open are not shown, and a group with only one visible entry shows as
+that entry. The small number beside **Defects** is your open defects and the one
+beside **My Work** is what is waiting on you (see below); both come from live
+data and are announced to screen readers when they change.
+
+Use the arrow button at the left of the header to shrink the sidebar to an icon
+rail. In the rail every entry has a tooltip, and a group opens a small panel
+with its entries (Enter or a click opens it, Escape closes it). On a phone the
+sidebar becomes a bottom bar with a **More** menu.
+
+The header is one calm row: the sidebar button and the breadcrumb on the left
+(only the current page on a phone), one search field in the middle, **+ New** (a
+test case, run, defect, requirement or project, as your role allows), the
+notification bell and your account menu on the right. The search field (or
+Ctrl/Cmd+K) opens the command palette: type to find test cases, defects,
+requirements, projects and test runs, to start something new, or to jump to any
+screen you can open.
+
+### My Work
+
+**My Work** is one page of what is waiting on you, with a tab each for **Run
+cases** (assigned to you and not finished, grouped as In progress, Failed -
+retest, Blocked and Not run; each one opens the Execution Console),
+**Defects** (open defects assigned to you or reported by you) and **Reviews**
+(test cases submitted for review with you named as the reviewer). It only reads
+data; nothing is stored for it. You see only what your role and project access
+already allow.
+
+### Favourites and Recent
+
+Select the star beside the title of a project, test case, test run, defect or
+requirement to add it to **Favourites** in the sidebar; select it again to
+remove it. **Recent** lists the last eight of those pages you opened. Both are
+kept in this browser for you only (another person on the same computer has their
+own), so they are not shared and are not on your other devices. If a saved record
+has since been deleted, its link will say it is not found; use the small x beside
+it in the sidebar to remove it.
 
 ### Appearance
 
-Open **Appearance** (the palette icon in the header, or More on a phone) to
-choose System, Light, Dark, Cobalt & Sunshine, Sage & Tangerine, Indigo & Aqua
+Open your account menu (your initials at the right of the header, or More on a
+phone) and select **Appearance** to
+pick System, Light, Dark, Cobalt & Sunshine, Sage & Tangerine, Indigo & Aqua
 or Custom. The change applies at once, including the sign-in page. Custom opens
 "Create your theme": pick a light or dark base, a primary and an accent colour
 and an optional surface tint. The theme is adjusted automatically to meet WCAG
 AA and you are told when a colour had to change. You can keep up to three named
 custom themes. The choice is remembered in this browser only, not in your
-account.
+account. The same menu has **My Account**, **Ask AI** and **Sign out**.
 
 ### Notifications
 

@@ -333,6 +333,16 @@ Any signed-in user. A dashboard of another user is 404. The team default is read
 | PUT | /dashboards/{id}/widgets | `{widgets[{widget_type, size, settings}]}` replaces the whole ordered list atomically; 422 on a bad type, size, setting, unknown key, invisible project or unknown saved report |
 | POST | /dashboards/{id}/team-default | Admin only. `{enabled: true}` publishes a copy of the dashboard as the single team default (replacing any previous one); `{enabled: false}` on the team default removes it; audit `dashboard.team_default_set` |
 
+## My Work (ADR-121)
+
+Read-only, scoped to the caller. Any signed-in user may call them (no permission code); they only return the caller's own assignments, filtered by the same project visibility as the run and test case lists (Admin and Manager: every project; others: projects they own or belong to; a Tester with the case-scope switch also only sees the cases that scope allows). Nothing is stored. Defects on the My Work page reuse `GET /defects` with `assignee_id` and `reported_by`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /my-work/summary | counts for the sidebar badge and the tab labels: `run_cases_pending, run_cases_in_progress, run_cases_failed, run_cases_blocked, run_cases_total, reviews_total` |
+| GET | /my-work/run-cases | `{items, total}` (at most 200 items): run cases assigned to the caller in an unfinished, undeleted run with status pending, in_progress, failed or blocked; each has `id, run_id, run_name, run_paused, project_id, project_name, test_case_id, test_case_display_id, title, status, blocked_reason, started_at`; ordered in progress, failed, blocked, pending |
+| GET | /my-work/reviews | `{items, total}` (at most 200): test cases in `ready_for_review` whose `reviewer_id` is the caller; `id, display_id, title, priority, project_id, project_name, created_at` |
+
 ## Saved views (ADR-096)
 
 Private per-user filter sets for the Test Cases, Defects and Test Runs lists. Any signed-in user; only the owner's views are visible (another user's id is 404). Rate limited.
