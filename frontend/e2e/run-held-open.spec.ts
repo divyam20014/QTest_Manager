@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody } from './fixtures'
 
 // A failed case keeps its run open so the failed step can be re-run after the
 // fix (ADR-070). The run page explains why the run is still active.
@@ -37,11 +37,15 @@ test('A run held open by a failed case says why, and finishes once the step is r
   if (!project.assigned_user_ids.includes(me.user_id)) {
     await post(page, `/projects/${project.id}/members`, { user_id: me.user_id })
   }
-  const created = await post(page, `/projects/${project.id}/test-cases`, {
-    title: 'Verify salvage valuation',
-    priority: 'High',
-    steps: [{ action: 'Open the claim', expected: 'The claim opens' }],
-  })
+  const created = await post(
+    page,
+    `/projects/${project.id}/test-cases`,
+    await seedCaseBody(page.request, project.id, {
+      title: 'Verify salvage valuation',
+      priority: 'High',
+      steps: [{ action: 'Open the claim', expected: 'The claim opens' }],
+    }),
+  )
   await post(page, `/test-cases/${created.id}/submit-review`, {})
   await post(page, `/test-cases/${created.id}/approve`)
   const run = await post(page, `/projects/${project.id}/test-runs`, {
@@ -58,7 +62,7 @@ test('A run held open by a failed case says why, and finishes once the step is r
   await expect(page.getByText(/Every case has results/)).toHaveCount(0)
 
   // Fail the only step: everything is recorded, one case failed -> the run stays open and says why.
-  await post(page, `/execution-steps/${steps[0].id}/verdict`, { verdict: 'fail' })
+  await post(page, `/execution-steps/${steps[0].id}/verdict`, { verdict: 'fail', actual_result: 'The claim did not open' })
   await page.reload()
   await expect(page.getByText('Every case has results, but 1 case failed.')).toBeVisible()
   await expect(page.getByText(/stays open so failed steps can be re-run/)).toBeVisible()

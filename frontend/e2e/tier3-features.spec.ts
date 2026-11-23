@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { bootstrapTenant, loginViaUi } from './fixtures'
+import { bootstrapTenant, loginViaUi, createTestCaseViaForm } from './fixtures'
 
 // Tier 3: module grouping, review-request/approval workflow, global search,
 // and the theme toggle.
@@ -39,13 +39,12 @@ test('Module grouping, request-changes, global search, and theme toggle', async 
 
   await page.click('button:has-text("New Test Case")')
   await page.waitForSelector('text=New Test Case')
-  await page.fill('#title', 'Verify Flood Damage Exclusion Clause')
-  await page.selectOption('#priority', 'High')
-  const actions = await page.$$('input[placeholder="Action"]')
-  const expecteds = await page.$$('input[placeholder="Expected outcome"]')
-  await actions[0].fill('Submit flood claim')
-  await expecteds[0].fill('Exclusion clause applied')
-  await page.click('button:has-text("Create Test Case")')
+  await createTestCaseViaForm(page, {
+    title: 'Verify Flood Damage Exclusion Clause',
+    module: 'Claims Intake',
+    priority: 'High',
+    steps: [{ action: 'Submit flood claim', expected: 'Exclusion clause applied' }],
+  })
   await expect(
     page.getByRole('link', { name: 'Verify Flood Damage Exclusion Clause' }),
   ).toBeVisible({ timeout: 10000 })
@@ -55,7 +54,7 @@ test('Module grouping, request-changes, global search, and theme toggle', async 
   await page.waitForSelector('text=Steps')
   await page.click('button:has-text("Submit for Review")')
   await page.click('div[role="dialog"] button:has-text("Submit")')
-  await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('Ready for Review').first()).toBeVisible({ timeout: 10000 })
   await page.click('button:has-text("Request Changes")')
   await page.fill('#changes-comment', 'Please clarify the exclusion wording.')
   await page.click('div[role="dialog"] button:has-text("Send Back for Changes")')

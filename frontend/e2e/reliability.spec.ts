@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { bootstrapTenant, loginViaUi } from './fixtures'
+import { bootstrapTenant, loginViaUi, createTestCaseViaForm } from './fixtures'
 
 async function createApprovedTwoStepCase(page: import('@playwright/test').Page) {
   await page.click('a:has-text("Projects")')
@@ -22,18 +22,11 @@ async function createApprovedTwoStepCase(page: import('@playwright/test').Page) 
   await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
   await page.click('button:has-text("New Test Case")')
   await page.waitForSelector('text=New Test Case')
-  await page.fill('#title', 'Verify Reliability Refresh Case')
-  await page.selectOption('#priority', 'Critical')
-  const actions = await page.$$('input[placeholder="Action"]')
-  const expecteds = await page.$$('input[placeholder="Expected outcome"]')
-  await actions[0].fill('Input Policy Number')
-  await expecteds[0].fill('ACV displayed')
-  await page.click('button:has-text("Add Step")')
-  const actions2 = await page.$$('input[placeholder="Action"]')
-  const expecteds2 = await page.$$('input[placeholder="Expected outcome"]')
-  await actions2[1].fill('Apply $500 deductible')
-  await expecteds2[1].fill('Payout = ACV - 500')
-  await page.click('button:has-text("Create Test Case")')
+  await createTestCaseViaForm(page, {
+    title: 'Verify Reliability Refresh Case',
+    priority: 'Critical',
+    steps: [{ action: 'Input Policy Number', expected: 'ACV displayed' }, { action: 'Apply $500 deductible', expected: 'Payout = ACV - 500' }],
+  })
   await expect(page.getByRole('link', { name: 'Verify Reliability Refresh Case' })).toBeVisible({
     timeout: 10000,
   })
@@ -41,7 +34,7 @@ async function createApprovedTwoStepCase(page: import('@playwright/test').Page) 
   await page.waitForSelector('text=Steps')
   await page.click('button:has-text("Submit for Review")')
   await page.click('div[role="dialog"] button:has-text("Submit")')
-  await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('Ready for Review').first()).toBeVisible({ timeout: 10000 })
   await page.click('button:has-text("Approve")')
   await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible({ timeout: 10000 })
 }

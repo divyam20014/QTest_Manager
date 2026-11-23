@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedDefectBody, reportDefectFromDialog } from './fixtures'
 
 // BRD gap plan, Phase 1 (frontend only): "Assigned to me" toggles, defect
 // status tabs, the Execution Console's MM:SS timer, defect quick view and
@@ -57,8 +57,17 @@ async function seed(page: Page): Promise<Seeded> {
       steps: [{ action: 'Submit the same claim twice', expected: 'The second submission is rejected' }],
     },
   ]
+  // ADR-116: module, preconditions, test data and an expected result are required on create.
+  const mod = await post(page, `/projects/${project.id}/modules`, { name: 'Claims' })
   for (const c of cases) {
-    const created = await post(page, `/projects/${project.id}/test-cases`, { priority: 'High', ...c })
+    const created = await post(page, `/projects/${project.id}/test-cases`, {
+      priority: 'High',
+      module_id: mod.id,
+      preconditions: 'The claim exists',
+      test_data: 'claim=C-100',
+      expected_result: 'The claim is processed',
+      ...c,
+    })
     await post(page, `/test-cases/${created.id}/submit-review`, {})
     await post(page, `/test-cases/${created.id}/approve`)
     caseIds.push(created.id)
@@ -145,39 +154,42 @@ test('Defect status tabs: counts, URL state, keyboard, and the empty tab', async
   const titles = ['Payout rounds the wrong way', 'Duplicate claim is accepted', 'Deductible ignored on renewal']
   const ids: string[] = []
   for (const title of titles) {
-    ids.push((await post(page, '/defects', { project_id: project.id, title, severity: 'High', priority: 'High' })).id)
+    ids.push((await post(page, '/defects', seedDefectBody(project.id, { title }))).id)
   }
-  const patch = await page.request.patch(`${API_BASE_URL}/defects/${ids[0]}/status`, { data: { status: 'Open' } })
+  // Rejected counts as closed (ADR-118), so the Closed tab holds it and Open keeps the other two.
+  const patch = await page.request.patch(`${API_BASE_URL}/defects/${ids[0]}/status`, {
+    data: { status: 'Rejected', resolution: 'Duplicate' },
+  })
   expect(patch.ok()).toBe(true)
 
   await page.goto('/defects')
   const tabs = page.getByRole('tablist', { name: 'Defect status' })
-  await expect(tabs.getByRole('tab')).toHaveText(['All3', 'New2', 'Open1', 'Fixed0', 'Verified0', 'Closed0'])
+  await expect(tabs.getByRole('tab')).toHaveText(['All3', 'Open2', 'Fixed0', 'Retest0', 'Reopened0', 'Deferred0', 'Closed1'])
   await expect(tabs.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
   const table = page.getByRole('table', { name: 'Defects' })
-  await expect(table.getByRole('link')).toHaveCount(3)
+  await expect(table.getByRole('link', { name: /^BUG_/ })).toHaveCount(3)
 
-  await tabs.getByRole('tab', { name: /^Open/ }).click()
-  await expect(table.getByRole('link')).toHaveCount(1)
+  await tabs.getByRole('tab', { name: /^Closed/ }).click()
+  await expect(table.getByRole('link', { name: /^BUG_/ })).toHaveCount(1)
   await expect(table.getByRole('link', { name: 'Payout rounds the wrong way' })).toBeVisible()
-  expect(new URL(page.url()).searchParams.get('status')).toBe('Open')
+  expect(new URL(page.url()).searchParams.get('status')).toBe('Closed,Rejected')
   // The table is the tab panel, labelled by the selected tab.
-  await expect(page.getByRole('tabpanel', { name: /^Open/ })).toBeVisible()
+  await expect(page.getByRole('tabpanel', { name: /^Closed/ })).toBeVisible()
 
   // Roving tabindex + arrow keys, as in the WAI-ARIA tabs pattern.
-  await tabs.getByRole('tab', { name: /^Open/ }).focus()
-  await page.keyboard.press('ArrowRight')
-  await expect(tabs.getByRole('tab', { name: /^Fixed/ })).toBeFocused()
-  await expect(tabs.getByRole('tab', { name: /^Fixed/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByText('No Fixed defects')).toBeVisible()
+  await tabs.getByRole('tab', { name: /^Closed/ }).focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(tabs.getByRole('tab', { name: /^Deferred/ })).toBeFocused()
+  await expect(tabs.getByRole('tab', { name: /^Deferred/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByText('No defects match your filters')).toBeVisible()
   await page.keyboard.press('Home')
   await expect(tabs.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'true')
   expect(new URL(page.url()).searchParams.get('status')).toBeNull()
 
   // A deep link / reload lands on the same tab.
-  await page.goto('/defects?status=New')
-  await expect(page.getByRole('tab', { name: /^New/ })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByRole('table', { name: 'Defects' }).getByRole('link')).toHaveCount(2)
+  await page.goto('/defects?status=Closed,Rejected')
+  await expect(page.getByRole('tab', { name: /^Closed/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('table', { name: 'Defects' }).getByRole('link', { name: /^BUG_/ })).toHaveCount(1)
 
   // Phone: the strip scrolls sideways inside itself, tabs are 44px, no page overflow.
   await page.setViewportSize({ width: 390, height: 844 })
@@ -188,8 +200,8 @@ test('Defect status tabs: counts, URL state, keyboard, and the empty tab', async
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
   ).toBeLessThanOrEqual(0)
-  await phoneTabs.getByRole('tab', { name: /^Closed/ }).click()
-  await expect(page.getByText('No Closed defects')).toBeVisible()
+  await phoneTabs.getByRole('tab', { name: /^Deferred/ }).click()
+  await expect(page.getByText('No defects match your filters')).toBeVisible()
 })
 
 test('A run cannot be created for a project with no test cases', async ({ page, request }) => {
@@ -233,14 +245,12 @@ test('Execution Console: MM:SS timer, defect quick view, and the run summary', a
   // Pass step 1, fail step 2 -> the report dialog opens for that step.
   await page.getByRole('button', { name: /^Pass/ }).click()
   await expect(page.getByText('1/2 steps complete')).toBeVisible()
+  await page.fill('#actual-result', 'Payout was 10% below the insured value')
   await page.getByRole('button', { name: /^Fail/ }).click()
-  await expect(page.getByRole('heading', { name: 'Report Defect' })).toBeVisible({ timeout: 10000 })
-  await page.selectOption('#defect-severity', 'Critical')
-  await page.fill('#defect-description', 'Payout is 10% below the insured value')
-  await page.click('button:has-text("Report Defect")')
+  await reportDefectFromDialog(page, { severity: 'Critical', description: 'Payout is 10% below the insured value' })
 
   // The failed step now carries a defect pill that opens the quick view.
-  const pill = page.getByRole('button', { name: /^View defect: Step 2 Failed/ })
+  const pill = page.getByRole('button', { name: /^View defect: TC_\d+ .* failed$/ })
   await expect(pill).toBeVisible({ timeout: 10000 })
   await pill.click()
   const quickView = page.getByRole('dialog', { name: 'Defect details' })

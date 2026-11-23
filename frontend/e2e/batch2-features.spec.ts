@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, seedCaseBody } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
 // ADR-097 batch 2, in a throwaway tenant: the defect leakage card on Reports,
@@ -44,7 +44,7 @@ test('a manager can quarantine a case from its page and see the badge', async ({
   test.setTimeout(120_000)
   await loginViaUi(page, t.tenantId, t.adminEmail, t.adminPassword)
   const other = await page.request.post(`${API_BASE_URL}/projects/${t.projectId}/test-cases`, {
-    data: { title: 'Stable login check', priority: 'High', steps: [{ action: 'Log in', expected: 'Home shown' }] },
+    data: await seedCaseBody(page.request, t.projectId, { title: 'Stable login check', priority: 'High', steps: [{ action: 'Log in', expected: 'Home shown' }] }),
   })
   otherCaseId = (await other.json()).data.id
   await page.request.post(`${API_BASE_URL}/test-cases/${otherCaseId}/submit-review`, { data: {} })

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { bootstrapTenant, loginViaUi } from './fixtures'
+import { bootstrapTenant, loginViaUi, createTestCaseViaForm } from './fixtures'
 
 // BRD Journey 2: author a test case, submit it for review, approve it, then
 // edit the approved case -- which must fork a new version and revert the
@@ -32,13 +32,11 @@ test('Test case authoring: draft -> submit -> approve -> edit forks a new versio
   await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
   await page.click('button:has-text("New Test Case")')
   await page.waitForSelector('text=New Test Case')
-  await page.fill('#title', 'Verify Total Loss Settlement Calculation')
-  await page.selectOption('#priority', 'Critical')
-  const actions = await page.$$('input[placeholder="Action"]')
-  const expecteds = await page.$$('input[placeholder="Expected outcome"]')
-  await actions[0].fill('Input Policy Number')
-  await expecteds[0].fill('ACV displayed')
-  await page.click('button:has-text("Create Test Case")')
+  await createTestCaseViaForm(page, {
+    title: 'Verify Total Loss Settlement Calculation',
+    priority: 'Critical',
+    steps: [{ action: 'Input Policy Number', expected: 'ACV displayed' }],
+  })
   await expect(page.getByRole('link', { name: 'Verify Total Loss Settlement Calculation' })).toBeVisible({
     timeout: 10000,
   })
@@ -47,16 +45,16 @@ test('Test case authoring: draft -> submit -> approve -> edit forks a new versio
   await page.waitForSelector('text=Steps')
   await page.click('button:has-text("Submit for Review")')
   await page.click('div[role="dialog"] button:has-text("Submit")')
-  await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('Ready for Review').first()).toBeVisible({ timeout: 10000 })
   await page.click('button:has-text("Approve")')
   await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible({ timeout: 10000 })
 
   // Editing the now-approved case must fork it to v2 and revert to Draft,
   // not mutate the approved v1 in place.
   await page.click('button:has-text("Edit")')
-  await page.fill('#title', 'Verify Total Loss Settlement Calculation (revised)')
-  await page.click('button:has-text("Save Changes")')
+  await page.fill('#tc-title', 'Verify Total Loss Settlement Calculation (revised)')
+  await page.click('button:has-text("Save changes")')
 
-  await expect(page.getByText('Draft')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('Draft').first()).toBeVisible({ timeout: 10000 })
   await expect(page.getByText('v2').first()).toBeVisible()
 })

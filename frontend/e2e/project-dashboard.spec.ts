@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { axeFindings, formatFindings } from './a11y'
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, seedDefectBody, seedCaseBody } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-102: every project opens on its own read-only Dashboard tab. Real backend,
@@ -28,21 +28,16 @@ async function seedProject(page: Page, name: string, adminId: string, cases: num
     await post(page, `/projects/${created.id}/members`, { user_id: adminId })
   }
   for (let i = 1; i <= cases; i++) {
-    const tc = await post(page, `/projects/${created.id}/test-cases`, {
+    const tc = await post(page, `/projects/${created.id}/test-cases`, await seedCaseBody(page.request, created.id, {
       title: `${name} case ${i}`,
       priority: 'High',
       steps: [{ action: 'Open', expected: 'Opens' }],
-    })
+    }))
     await post(page, `/test-cases/${tc.id}/submit-review`, {})
     await post(page, `/test-cases/${tc.id}/approve`)
   }
   for (let i = 1; i <= defects; i++) {
-    await post(page, '/defects', {
-      project_id: created.id,
-      title: `${name} defect ${i}`,
-      severity: 'High',
-      description: 'd',
-    })
+    await post(page, '/defects', seedDefectBody(created.id, { title: `${name} defect ${i}`, description: 'd' }))
   }
   return created.id as string
 }
@@ -165,10 +160,9 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   // "Report defect" lands on the defect form with this project preselected.
   if (perms.includes('defect.create')) {
     await tm.getByRole('link', { name: 'Report defect' }).click()
-    await expect(tm).toHaveURL(new RegExp(`/defects[?]projectId=${t.projectId}`))
-    const dialog = tm.getByRole('dialog')
-    await expect(dialog).toBeVisible()
-    await expect(dialog.getByRole('combobox').first()).toContainText('Apex Motor Claims')
+    await expect(tm).toHaveURL(new RegExp(`/defects/new[?]projectId=${t.projectId}`))
+    await expect(tm.getByRole('heading', { name: 'New Defect', level: 1 })).toBeVisible()
+    await expect(tm.getByRole('combobox', { name: /^Project/ })).toContainText('Apex Motor Claims')
   }
   await tctx.close()
 })

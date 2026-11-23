@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { bootstrapTenant, loginViaUi } from './fixtures'
+import { bootstrapTenant, loginViaUi, createTestCaseViaForm } from './fixtures'
 
 // UI/UX remediation Phase H: keyboard-only walkthroughs of key flows, and
 // session handling (logout, protected routes, expired session). All against a
@@ -86,24 +86,17 @@ async function createApprovedTwoStepCase(page: Page) {
   await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
   await page.click('button:has-text("New Test Case")')
   await page.waitForSelector('text=New Test Case')
-  await page.fill('#title', 'Keyboard executed case')
-  await page.selectOption('#priority', 'Critical')
-  const actions = await page.$$('input[placeholder="Action"]')
-  const expecteds = await page.$$('input[placeholder="Expected outcome"]')
-  await actions[0].fill('Open the page')
-  await expecteds[0].fill('Page opens')
-  await page.click('button:has-text("Add Step")')
-  const actions2 = await page.$$('input[placeholder="Action"]')
-  const expecteds2 = await page.$$('input[placeholder="Expected outcome"]')
-  await actions2[1].fill('Submit the form')
-  await expecteds2[1].fill('Form is saved')
-  await page.click('button:has-text("Create Test Case")')
+  await createTestCaseViaForm(page, {
+    title: 'Keyboard executed case',
+    priority: 'Critical',
+    steps: [{ action: 'Open the page', expected: 'Page opens' }, { action: 'Submit the form', expected: 'Form is saved' }],
+  })
   await expect(page.getByRole('link', { name: 'Keyboard executed case' })).toBeVisible({ timeout: 10000 })
   await page.click('a:has-text("Keyboard executed case")')
   await page.waitForSelector('text=Steps')
   await page.click('button:has-text("Submit for Review")')
   await page.click('div[role="dialog"] button:has-text("Submit")')
-  await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('Ready for Review').first()).toBeVisible({ timeout: 10000 })
   await page.click('button:has-text("Approve")')
   await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible({ timeout: 10000 })
 }
@@ -133,14 +126,26 @@ test('keyboard only: run a case with P and F, file the defect from the keyboard'
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await page.keyboard.press('p')
   await expect(verdictBar.getByText('Step 2: Submit the form')).toBeVisible({ timeout: 10000 })
+  await page.fill('#actual-result', 'The form was not saved')
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await page.keyboard.press('f')
   await expect(page.getByRole('heading', { name: 'Report Defect' })).toBeVisible({ timeout: 10000 })
   // Inside the defect dialog: operate every control from the keyboard.
   const dialog = page.getByRole('dialog')
   await dialog.locator('#defect-severity').focus()
-  await page.keyboard.type('Critical')
+  // Severity has no default: open the list, Arrow Down to Critical (after Low, Medium, High), Enter chooses it.
+  await page.keyboard.press('Enter')
+  // The severities load with the dialog; wait for them before arrowing through the list.
+  await expect(page.getByRole('option', { name: 'Critical' })).toBeVisible()
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(dialog.getByRole('combobox', { name: /Severity/ })).toContainText('Critical')
   await dialog.locator('#defect-description').focus()
+  await page.keyboard.press('Control+A')
   await page.keyboard.type('Form was not saved')
+  // The case has no environment, and a defect needs one.
+  await dialog.locator('#defect-environment').focus()
+  await page.keyboard.type('QA')
   await tabUntil(page, () =>
     page.evaluate(() => (document.activeElement as HTMLElement | null)?.textContent?.trim() === 'Report Defect'),
   )

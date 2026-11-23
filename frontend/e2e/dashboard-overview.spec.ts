@@ -39,7 +39,7 @@ test('each KPI card is one link to its list', async ({ page, request }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   const targets: [RegExp, RegExp][] = [
     [/^Active runs:/, /\/test-runs\?status=in_progress$/],
-    [/^Open defects:/, /\/defects$/],
+    [/^Open defects:/, /\/defects\?status=/],
     [/^Test cases:/, /\/test-repository$/],
     [/^Pass rate:/, /\/reporting$/],
   ]

@@ -49,7 +49,7 @@ test('empty tenant: honest empty states, working tile links, no overflow', async
   await page.goto('/')
   await page.getByRole('link', { name: /^Open defects:/ }).focus()
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/defects$/)
+  await expect(page).toHaveURL(/\/defects\?status=/)
 })
 
 test('a failed summary shows an error state and recovers on retry', async ({ page, request }) => {

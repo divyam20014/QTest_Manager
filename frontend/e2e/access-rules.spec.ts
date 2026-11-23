@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, seedCaseBody } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-092 (RBAC Phase 4): a release freeze, end to end, on a throwaway tenant.
@@ -22,9 +22,13 @@ async function noHorizontalOverflow(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0)
 }
 
+// The module is created by the first (pre-freeze) call and reused: creating one during the freeze is refused too.
+let caseModuleId: string | undefined
 async function createCase(page: Page, projectId: string, title: string) {
+  const payload = await seedCaseBody(page.request, projectId, { title, module_id: caseModuleId })
+  caseModuleId = payload.module_id as string
   const res = await page.request.post(`${API_BASE_URL}/projects/${projectId}/test-cases`, {
-    data: { title, priority: 'High', steps: [{ action: 'a', expected: 'b' }] },
+    data: payload,
   })
   const body = await res.json().catch(() => null)
   return { status: res.status(), error: body?.error }
@@ -84,13 +88,14 @@ test('Release freeze: Admin sets it, Manager is blocked with the reason, disabli
 
     // The browser form shows the reason, not "try again".
     await manager.getByRole('button', { name: 'New Test Case' }).click()
-    await manager.fill('#title', 'Blocked in the browser')
-    await manager.locator('input[placeholder="Action"]').first().fill('Open the claim')
-    await manager.locator('input[placeholder="Expected outcome"]').first().fill('Claim opens')
-    await manager
-      .getByRole('button', { name: /^(Create|Save)/ })
-      .last()
-      .click()
+    await manager.fill('#tc-title', 'Blocked in the browser')
+    await manager.locator('select#tc-module-0').selectOption({ index: 1 })
+    await manager.fill('#tc-preconditions', 'Signed in')
+    await manager.fill('#tc-test-data', 'none')
+    await manager.fill('#tc-expected', 'Claim opens')
+    await manager.locator('[data-field="action"]').first().fill('Open the claim')
+    await manager.locator('[data-field="expected"]').first().fill('Claim opens')
+    await manager.getByRole('button', { name: 'Save as Draft' }).click()
     await expect(manager.getByText(REASON)).not.toHaveCount(1) // banner + the refusal message
     await expect(manager.getByText(/try again/i)).toHaveCount(0)
 

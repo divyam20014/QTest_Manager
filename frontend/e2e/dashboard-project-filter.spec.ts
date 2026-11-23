@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedDefectBody, seedCaseBody } from './fixtures'
 
 // ADR-079: the Dashboard can be narrowed to one project, and every one of its data sources
 // follows. The choice lives in the URL. Real backend, own throwaway tenant.
@@ -26,20 +26,15 @@ async function project(page: Page, name: string, userId: string, cases: number) 
     await post(page, `/projects/${created.id}/members`, { user_id: userId })
   }
   for (let i = 1; i <= cases; i++) {
-    const tc = await post(page, `/projects/${created.id}/test-cases`, {
+    const tc = await post(page, `/projects/${created.id}/test-cases`, await seedCaseBody(page.request, created.id, {
       title: `${name} case ${i}`,
       priority: 'High',
       steps: [{ action: 'Open', expected: 'Opens' }],
-    })
+    }))
     await post(page, `/test-cases/${tc.id}/submit-review`, {})
     await post(page, `/test-cases/${tc.id}/approve`)
   }
-  await post(page, '/defects', {
-    project_id: created.id,
-    title: `${name} defect`,
-    severity: 'High',
-    description: 'Dashboard filter test',
-  })
+  await post(page, '/defects', seedDefectBody(created.id, { title: `${name} defect`, description: 'Dashboard filter test' }))
   return created.id as string
 }
 

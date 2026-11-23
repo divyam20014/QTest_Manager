@@ -271,13 +271,20 @@ test('enrolment needs the code: blocked without it and with a wrong one, re-issu
     // The new one works, and the admin list never leaks the code or its hash.
     const started = await api.post(START, { enrolment_code: fresh })
     expect(started.status).toBe(200)
-    const listing = await request.get(`${API_BASE_URL}/platform/admins?page_size=100`, {
-      headers: platformAuthHeaders(token),
-    })
-    const listText = await listing.text()
-    expect(listText).not.toContain(fresh)
-    expect(listText).not.toContain('enrolment_code_hash')
-    const row = (JSON.parse(listText).data.items as any[]).find((a) => a.id === admin.id)
+    // Finished runs leave deactivated throwaway admins behind, so the list can exceed one page.
+    let listText = ''
+    let row: any
+    for (let pageNo = 1; pageNo <= 20 && !row; pageNo++) {
+      const listing = await request.get(`${API_BASE_URL}/platform/admins?page_size=100&page=${pageNo}`, {
+        headers: platformAuthHeaders(token),
+      })
+      listText = await listing.text()
+      expect(listText).not.toContain(fresh)
+      expect(listText).not.toContain('enrolment_code_hash')
+      const items = JSON.parse(listText).data.items as any[]
+      row = items.find((a) => a.id === admin.id)
+      if (items.length < 100) break
+    }
     expect(row.enrolment_code_active).toBe(true)
     expect('enrolment_code' in row).toBe(false)
 
@@ -405,10 +412,15 @@ test('the Admins tab shows a new code once, and re-issue shows another', async (
 
   // Clean up: deactivate the throwaway admin.
   const token = await getPlatformSessionToken()
-  const admins = await page.request.get(`${API_BASE_URL}/platform/admins?page_size=100`, {
-    headers: platformAuthHeaders(token),
-  })
-  const created = ((await admins.json()).data.items as any[]).find((a) => a.email === email)
+  let created: any
+  for (let pageNo = 1; pageNo <= 20 && !created; pageNo++) {
+    const admins = await page.request.get(`${API_BASE_URL}/platform/admins?page_size=100&page=${pageNo}`, {
+      headers: platformAuthHeaders(token),
+    })
+    const items = (await admins.json()).data.items as any[]
+    created = items.find((a) => a.email === email)
+    if (items.length < 100) break
+  }
   if (created) {
     await page.request.patch(`${API_BASE_URL}/platform/admins/${created.id}`, {
       headers: platformAuthHeaders(token),

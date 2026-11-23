@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedDefectBody, seedCaseBody } from './fixtures'
 
 // The "Recent test cases" and "Recent defects" panels on Project Detail were four-column
 // tables that crammed long titles on a phone. On a phone they are now a list (wrapping
@@ -32,17 +32,12 @@ async function seed(page: Page) {
   if (!project.assigned_user_ids.includes(me.user_id)) {
     await post(page, `/projects/${project.id}/members`, { user_id: me.user_id })
   }
-  await post(page, `/projects/${project.id}/test-cases`, {
+  await post(page, `/projects/${project.id}/test-cases`, await seedCaseBody(page.request, project.id, {
     title: LONG_CASE,
     priority: 'High',
     steps: [{ action: 'Open', expected: 'Opens' }],
-  })
-  await post(page, '/defects', {
-    project_id: project.id,
-    title: LONG_DEFECT,
-    severity: 'Critical',
-    description: 'Recent lists test',
-  })
+  }))
+  await post(page, '/defects', seedDefectBody(project.id, { title: LONG_DEFECT, severity: 'Critical', description: 'Recent lists test' }))
   return project.id as string
 }
 

@@ -393,3 +393,146 @@ export function expireSessionIdle(email: string): void {
 export function nativeSelect(scope: Page | Locator, ...label: Parameters<Page['getByLabel']>): Locator {
   return scope.locator('select').and(scope.getByLabel(...label))
 }
+
+/**
+ * Body for POST /projects/{id}/test-cases with every field the API requires on create
+ * (ADR-116). Creates a module for the project when `module_id` is not given.
+ */
+export async function seedCaseBody(
+  request: APIRequestContext,
+  projectId: string,
+  extra: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  const { module_id: givenModule, ...rest } = extra
+  let moduleId = givenModule as string | undefined
+  if (!moduleId) {
+    const res = await request.post(`${API_BASE_URL}/projects/${projectId}/modules`, {
+      data: { name: `Module ${Math.random().toString(36).slice(2, 8)}` },
+    })
+    moduleId = (await res.json()).data.id as string
+  }
+  return {
+    module_id: moduleId,
+    priority: 'High',
+    preconditions: 'The user is signed in',
+    test_data: 'none',
+    expected_result: 'The outcome matches the specification',
+    steps: [{ action: 'Do X', expected: 'Y' }],
+    ...rest,
+  }
+}
+
+export interface TestCaseFormInput {
+  title: string
+  priority?: string
+  /** Module to pick; created inline when the project has none yet. */
+  module?: string
+  preconditions?: string
+  testData?: string
+  expectedResult?: string
+  steps: { action: string; expected: string }[]
+}
+
+/**
+ * Fills the full Test Case form (ADR-117) that "New Test Case" opens and saves it as a
+ * draft, supplying every field the API requires on create. The caller has already
+ * clicked "New Test Case". Afterwards it goes back to the project's Test Cases list
+ * (via the detail page's back link) so a spec can carry on from the list.
+ */
+export async function createTestCaseViaForm(page: Page, input: TestCaseFormInput): Promise<void> {
+  await page.waitForSelector('#tc-title')
+  await page.fill('#tc-title', input.title)
+  const moduleName = input.module ?? 'General'
+  const firstModule = page.locator('select#tc-module-0')
+  if ((await firstModule.count()) > 0) {
+    await firstModule.selectOption({ label: moduleName })
+  } else {
+    await page.fill('#tc-new-module', moduleName)
+    await page.getByRole('button', { name: 'Add module' }).click()
+    await page.locator('select#tc-module-0').waitFor({ state: 'attached' })
+  }
+  await page.selectOption('select#tc-priority', input.priority ?? 'High')
+  await page.fill('#tc-preconditions', input.preconditions ?? 'The user is signed in')
+  await page.fill('#tc-test-data', input.testData ?? 'policy=PX-1001')
+  await page.fill('#tc-expected', input.expectedResult ?? 'The outcome matches the specification')
+  for (let i = 0; i < input.steps.length; i++) {
+    if (i > 0) await page.getByRole('button', { name: 'Add step' }).click()
+    await page.locator('[data-field="action"]').nth(i).fill(input.steps[i].action)
+    await page.locator('[data-field="expected"]').nth(i).fill(input.steps[i].expected)
+  }
+  await page.getByRole('button', { name: 'Save as Draft' }).click()
+  await page.getByRole('heading', { name: input.title, level: 1 }).waitFor({ timeout: 15000 })
+  await page.click('a:has-text("← Test Cases")')
+}
+
+/**
+ * Body for POST /defects with every field the API requires on create (ADR-118): title,
+ * description, at least one step to reproduce, expected and actual result, environment,
+ * severity and priority. `projectId` may be left out when the body also carries an
+ * `execution_step_id` / `test_run_case_id` (the server then derives the project).
+ */
+export function seedDefectBody(
+  projectId: string | undefined,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...(projectId ? { project_id: projectId } : {}),
+    title: 'Seeded defect',
+    description: 'Seeded for the test',
+    repro_steps: [{ action: 'Open the page' }],
+    expected_result: 'The page loads',
+    actual_result: 'The page shows an error',
+    environment: 'QA',
+    severity: 'High',
+    priority: 'High',
+    ...extra,
+  }
+}
+
+/**
+ * Moves the defect open on the detail page to `status` through the "Change status" menu and its
+ * dialog (ADR-119). `resolution` is picked when the dialog asks for one; `verify` ticks the
+ * verification confirmation closing needs.
+ */
+export async function changeDefectStatus(
+  page: Page,
+  status: string,
+  options: { resolution?: string; verify?: boolean; comment?: string } = {},
+): Promise<void> {
+  await page.getByRole('button', { name: 'Change status' }).click()
+  await page.getByRole('menuitem', { name: status, exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Change status' })
+  await dialog.waitFor()
+  if (options.resolution) await nativeSelect(dialog, 'Resolution').selectOption(options.resolution)
+  if (options.comment) await dialog.getByLabel('Comment (optional)').fill(options.comment)
+  if (options.verify) await dialog.getByRole('checkbox').check()
+  await dialog.getByRole('button', { name: 'Change status' }).click()
+  await dialog.waitFor({ state: 'hidden' })
+}
+
+/**
+ * Completes the "Report Defect" dialog the Execution Console opens when a step fails
+ * (ADR-119): the dialog is prefilled from the defect draft, so only what the draft cannot know
+ * is filled here (severity, a description, and the environment when the case has none).
+ * Clicks "Report Defect".
+ */
+export async function reportDefectFromDialog(
+  page: Page,
+  input: { severity?: string; description?: string; environment?: string; title?: string } = {},
+): Promise<void> {
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('heading', { name: 'Report Defect' }).waitFor({ timeout: 15000 })
+  await dialog.locator('#defect-description').waitFor()
+  if (input.title) await dialog.locator('#defect-title').fill(input.title)
+  await dialog.locator('select#defect-severity').selectOption(input.severity ?? 'High')
+  await dialog.locator('#defect-description').fill(input.description ?? 'The step failed during execution')
+  const environment = input.environment ?? 'QA'
+  const typed = dialog.locator('input#defect-environment')
+  if ((await typed.count()) > 0) {
+    if (!(await typed.inputValue())) await typed.fill(environment)
+  } else if (!(await dialog.locator('select#defect-environment').inputValue())) {
+    await dialog.locator('select#defect-environment').selectOption('__other')
+    await dialog.locator('#defect-environment-text').fill(environment)
+  }
+  await dialog.getByRole('button', { name: 'Report Defect' }).click()
+}

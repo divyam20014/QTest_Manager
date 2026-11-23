@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody } from './fixtures'
 
 // ADR-077: with a filter on and no project chosen, the Test Repository asks the
 // tenant-wide listing once instead of asking every project. Real backend, own tenant.
@@ -29,11 +29,11 @@ async function project(page: Page, name: string, userId: string) {
 }
 
 async function testCase(page: Page, projectId: string, title: string) {
-  const created = await post(page, `/projects/${projectId}/test-cases`, {
+  const created = await post(page, `/projects/${projectId}/test-cases`, await seedCaseBody(page.request, projectId, {
     title,
     priority: 'High',
     steps: [{ action: 'Open', expected: 'Opens' }],
-  })
+  }))
   await post(page, `/test-cases/${created.id}/submit-review`, {})
   await post(page, `/test-cases/${created.id}/approve`)
 }

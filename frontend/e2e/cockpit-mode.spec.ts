@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { axeFindings, formatFindings } from './a11y'
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody } from './fixtures'
 
 // Issue 45 (ADR-094): opt-in dark cockpit mode on the Execution Console.
 // Throwaway tenant; the Admin seeds project, cases and run through the API.
@@ -50,14 +50,14 @@ async function seed(page: Page, request: Parameters<typeof bootstrapTenant>[0]) 
   }
   const caseIds: string[] = []
   for (const title of ['Verify salvage valuation', 'Verify total loss settlement']) {
-    const created = await post(page, `/projects/${project.id}/test-cases`, {
+    const created = await post(page, `/projects/${project.id}/test-cases`, await seedCaseBody(page.request, project.id, {
       title,
       priority: 'High',
       steps: [
         { action: `Open ${title}`, expected: 'It opens' },
         { action: 'Review the figures', expected: 'They match' },
       ],
-    })
+    }))
     await post(page, `/test-cases/${created.id}/submit-review`, {})
     await post(page, `/test-cases/${created.id}/approve`)
     caseIds.push(created.id)

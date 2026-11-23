@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, type SeededTenant } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, type SeededTenant, seedDefectBody } from './fixtures'
 
 // Shared throwaway-tenant seeding for the per-role specs (a11y sweep, Manager
 // and Tester browser flows): a fresh tenant with an Admin, a Manager and a
@@ -75,9 +75,15 @@ export async function seedRoleTenant(
     for (const p of [out.manager, out.tester]) {
       await post(`/projects/${project.id}/members`, { user_id: p.id })
     }
+    // ADR-116: the API requires a module, preconditions, test data and an expected result on create.
+    const mod = await post(`/projects/${project.id}/modules`, { name: 'Claims' })
     const tc = await post(`/projects/${project.id}/test-cases`, {
       title: 'Verify settlement',
       priority: 'High',
+      module_id: mod.id,
+      preconditions: 'The claim exists',
+      test_data: 'claim=C-100',
+      expected_result: 'The settlement is posted',
       steps: [
         { action: 'Open the claim', expected: 'Claim opens' },
         { action: 'Settle the claim', expected: 'Settlement posted' },
@@ -95,8 +101,8 @@ export async function seedRoleTenant(
     out.runCaseId = run.cases[0].id
     const stepsRes = await request.get(`${API_BASE_URL}/test-run-cases/${out.runCaseId}/steps`)
     const steps = (await stepsRes.json()).data
-    await post(`/execution-steps/${steps[0].id}/verdict`, { verdict: 'fail' })
-    const defect = await post('/defects', { execution_step_id: steps[0].id, severity: 'High' })
+    await post(`/execution-steps/${steps[0].id}/verdict`, { verdict: 'fail', actual_result: 'Settlement was not posted' })
+    const defect = await post('/defects', seedDefectBody(undefined, { execution_step_id: steps[0].id }))
     out.defectId = defect.id
   }
   await request.post(`${API_BASE_URL}/auth/logout`)

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedDefectBody, seedCaseBody } from './fixtures'
 
 // BRD gap Phase 3: accessibility (axe WCAG 2 A/AA), horizontal overflow and
 // phone tap-target sweep over the screens added or changed in BRD Phases 1-3,
@@ -46,14 +46,14 @@ test('Phase 1-3 screens: axe, overflow and phone tap targets in light and dark',
   }
   const caseIds: string[] = []
   for (const title of ['Verify total loss settlement', 'Reject a duplicate claim', 'Apply salvage valuation']) {
-    const created = await post(page, `/projects/${project.id}/test-cases`, {
+    const created = await post(page, `/projects/${project.id}/test-cases`, await seedCaseBody(page.request, project.id, {
       title,
       priority: 'High',
       steps: [
         { action: `Do step 1 of ${title}`, expected: 'Works' },
         { action: `Do step 2 of ${title}`, expected: 'Works' },
       ],
-    })
+    }))
     await post(page, `/test-cases/${created.id}/submit-review`, {})
     await post(page, `/test-cases/${created.id}/approve`)
     caseIds.push(created.id)
@@ -65,8 +65,8 @@ test('Phase 1-3 screens: axe, overflow and phone tap targets in light and dark',
   })
   const [first, second] = run.cases
   const firstSteps = await get(page, `/test-run-cases/${first.id}/steps`)
-  await post(page, `/execution-steps/${firstSteps[0].id}/verdict`, { verdict: 'fail' })
-  const defect = await post(page, '/defects', { execution_step_id: firstSteps[0].id, severity: 'High' })
+  await post(page, `/execution-steps/${firstSteps[0].id}/verdict`, { verdict: 'fail', actual_result: 'The step failed' })
+  const defect = await post(page, '/defects', seedDefectBody(undefined, { execution_step_id: firstSteps[0].id }))
   await post(page, `/test-run-cases/${second.id}/block`, { reason: 'Test environment is down' })
 
   const routes: { name: string; path: string }[] = [

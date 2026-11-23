@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, createTestCaseViaForm, loginViaUi, seedCaseBody, reportDefectFromDialog, changeDefectStatus, seedDefectBody } from './fixtures'
 
 // BRD Journey 4: after a fix, re-verdicting a previously-failed step to
 // Pass flips the case rollup back to Passed (not just logged in a backend
@@ -32,13 +32,11 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
   await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
   await page.click('button:has-text("New Test Case")')
   await page.waitForSelector('text=New Test Case')
-  await page.fill('#title', 'Verify Total Loss Settlement Calculation')
-  await page.selectOption('#priority', 'Critical')
-  const actions = await page.$$('input[placeholder="Action"]')
-  const expecteds = await page.$$('input[placeholder="Expected outcome"]')
-  await actions[0].fill('Input Policy Number')
-  await expecteds[0].fill('ACV displayed')
-  await page.click('button:has-text("Create Test Case")')
+  await createTestCaseViaForm(page, {
+    title: 'Verify Total Loss Settlement Calculation',
+    priority: 'Critical',
+    steps: [{ action: 'Input Policy Number', expected: 'ACV displayed' }],
+  })
   await expect(page.getByRole('link', { name: 'Verify Total Loss Settlement Calculation' })).toBeVisible({
     timeout: 10000,
   })
@@ -46,7 +44,7 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
   await page.waitForSelector('text=Steps')
   await page.click('button:has-text("Submit for Review")')
   await page.click('div[role="dialog"] button:has-text("Submit")')
-  await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText('Ready for Review').first()).toBeVisible({ timeout: 10000 })
   await page.click('button:has-text("Approve")')
   await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible({ timeout: 10000 })
 
@@ -65,10 +63,9 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
   await page.click('a:has-text("Execute")')
   await page.waitForSelector('text=Execution Console', { timeout: 10000 })
 
+  await page.fill('#actual-result', 'Payout does not match the expected value')
   await page.click('button:has-text("Fail")')
-  await expect(page.getByRole('heading', { name: 'Report Defect' })).toBeVisible({ timeout: 10000 })
-  await page.selectOption('#defect-severity', 'Critical')
-  await page.click('button:has-text("Report Defect")')
+  await reportDefectFromDialog(page, { severity: 'Critical' })
   await expect(page.getByText('Defect reported')).toBeVisible({ timeout: 10000 })
 
   // Journey 4: the fix is applied, the Tester re-runs the same step and
@@ -81,19 +78,16 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
 
   // Walk the reported defect to Closed via the Defects screen.
   await page.click('a:has-text("Defects")')
-  await page.waitForSelector('text=Step 1 Failed', { timeout: 10000 })
-  await page.click('a:has-text("Step 1 Failed")')
+  const defectLink = page.getByRole('link', { name: /failed$/ }).first()
+  await expect(defectLink).toBeVisible({ timeout: 10000 })
+  await defectLink.click()
   await page.waitForSelector('text=Traceability', { timeout: 10000 })
-  await page.click('button:has-text("Advance to Open")')
-  await page.waitForSelector('button:has-text("Advance to Fixed")', { timeout: 10000 })
-  await page.click('button:has-text("Advance to Fixed")')
-  await page.waitForSelector('button:has-text("Advance to Verified")', { timeout: 10000 })
-  await page.click('button:has-text("Advance to Verified")')
-  await page.waitForSelector('button:has-text("Advance to Closed")', { timeout: 10000 })
-  // Closing requires an explicit verification confirmation checkbox, not
-  // just clicking the same generic "Advance to" button as other transitions.
-  await page.click('input[type="checkbox"]')
-  await page.click('button:has-text("Advance to Closed")')
+  await changeDefectStatus(page, 'Open')
+  await changeDefectStatus(page, 'Fixed')
+  await changeDefectStatus(page, 'Verified')
+  // Closing requires an explicit verification confirmation tick in the status dialog, not
+  // just picking Closed; the resolution defaults to Fixed when it comes from Verified.
+  await changeDefectStatus(page, 'Closed', { verify: true })
 
   // Don't trust a screenshot/DOM text race for the final state -- confirm
   // the actual persisted status via a direct API call (same pattern used
@@ -154,7 +148,7 @@ test('Tester cannot close a defect', async ({ page, request }) => {
   const testCase = (
     await (
       await request.post(`${API_BASE_URL}/projects/${project.id}/test-cases`, {
-        data: { title: 'Verify Settlement', priority: 'High', steps: [{ action: 'Do X', expected: 'Y' }] },
+        data: await seedCaseBody(request, project.id, { title: 'Verify Settlement' }),
       })
     ).json()
   ).data
@@ -170,11 +164,13 @@ test('Tester cannot close a defect', async ({ page, request }) => {
   ).data
   const runCaseId = run.cases[0].id
   const steps = (await (await request.get(`${API_BASE_URL}/test-run-cases/${runCaseId}/steps`)).json()).data
-  await request.post(`${API_BASE_URL}/execution-steps/${steps[0].id}/verdict`, { data: { verdict: 'fail' } })
+  await request.post(`${API_BASE_URL}/execution-steps/${steps[0].id}/verdict`, {
+    data: { verdict: 'fail', actual_result: 'Observed a failure' },
+  })
   const defect = (
     await (
       await request.post(`${API_BASE_URL}/defects`, {
-        data: { execution_step_id: steps[0].id, severity: 'High' },
+        data: seedDefectBody(undefined, { execution_step_id: steps[0].id }),
       })
     ).json()
   ).data
@@ -184,13 +180,13 @@ test('Tester cannot close a defect', async ({ page, request }) => {
   await loginViaUi(page, tenant.tenantId, testerEmail, 'TesterPassw0rd1!')
   await page.goto(`/defects/${defect.id}`)
   await page.waitForSelector('text=Traceability', { timeout: 10000 })
-  await page.click('button:has-text("Advance to Open")')
-  await page.waitForSelector('button:has-text("Advance to Fixed")', { timeout: 10000 })
-  await page.click('button:has-text("Advance to Fixed")')
-  await page.waitForSelector('button:has-text("Advance to Verified")', { timeout: 10000 })
-  await page.click('button:has-text("Advance to Verified")')
+  await changeDefectStatus(page, 'Open')
+  await changeDefectStatus(page, 'Fixed')
+  await changeDefectStatus(page, 'Verified')
 
   // The transition to Closed is Manager/Admin-only (ADR-026): the Tester
-  // must not be offered a working control for it.
-  await expect(page.getByRole('button', { name: 'Advance to Closed' })).toBeDisabled({ timeout: 10000 })
+  // must not be offered a working control for it, nor the Close shortcut.
+  await expect(page.getByRole('button', { name: 'Close', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Change status' }).click()
+  await expect(page.getByRole('menuitem', { name: /^Closed/ })).toBeDisabled({ timeout: 10000 })
 })

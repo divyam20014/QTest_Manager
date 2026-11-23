@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody } from './fixtures'
 
 // Mobile redesign Phase 3: the remaining list pages as card lists, the
 // Execution Console's pinned verdict bar, the one-column Dashboard, the
@@ -39,14 +39,14 @@ async function seed(page: Page) {
     const tc = (
       await (
         await api.post(`${API_BASE_URL}/projects/${project.id}/test-cases`, {
-          data: {
+          data: await seedCaseBody(api, project.id, {
             title,
             priority: 'High',
             steps: [
               { action: 'Open the claim', expected: 'The claim loads' },
               { action: 'Submit the claim', expected: 'The claim is accepted' },
             ],
-          },
+          }),
         })
       ).json()
     ).data

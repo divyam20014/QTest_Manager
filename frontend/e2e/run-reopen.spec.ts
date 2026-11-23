@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody } from './fixtures'
 
 // ADR-075: blocking the last open case auto-finishes a run, which used to lock
 // the blocked case for good. "Reopen Run" undoes the finish. Runs against its
@@ -39,11 +39,15 @@ test('Reopen Run: a run finished by blocking its last case can be reopened and t
   if (!project.assigned_user_ids.includes(me.user_id)) {
     await post(page, `/projects/${project.id}/members`, { user_id: me.user_id })
   }
-  const created = await post(page, `/projects/${project.id}/test-cases`, {
-    title: 'Verify salvage valuation',
-    priority: 'High',
-    steps: [{ action: 'Open the claim', expected: 'The claim opens' }],
-  })
+  const created = await post(
+    page,
+    `/projects/${project.id}/test-cases`,
+    await seedCaseBody(page.request, project.id, {
+      title: 'Verify salvage valuation',
+      priority: 'High',
+      steps: [{ action: 'Open the claim', expected: 'The claim opens' }],
+    }),
+  )
   await post(page, `/test-cases/${created.id}/submit-review`, {})
   await post(page, `/test-cases/${created.id}/approve`)
   const run = await post(page, `/projects/${project.id}/test-runs`, {

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect, seedDefectBody, seedCaseBody } from './fixtures'
 
 // Mobile redesign Phase 2: bottom-sheet dialogs, 16px/44px form controls,
 // card lists in place of tables, the Filters sheet, and the Phase 1 fixes
@@ -27,17 +27,14 @@ async function seed(page: Page) {
   ).data
   for (const title of ['Verify claim settlement calculation', 'Reject a duplicate claim submission']) {
     await api.post(`${API_BASE_URL}/projects/${project.id}/test-cases`, {
-      data: { title, priority: 'High', steps: [{ action: 'Do X', expected: 'Y' }] },
+      data: await seedCaseBody(api, project.id, { title, priority: 'High', steps: [{ action: 'Do X', expected: 'Y' }] }),
     })
   }
   await api.post(`${API_BASE_URL}/defects`, {
-    data: {
-      project_id: project.id,
+    data: seedDefectBody(project.id, {
       title: 'Settlement total rounds the wrong way on multi-vehicle claims',
-      severity: 'High',
-      priority: 'High',
       description: 'Seeded for the mobile spec',
-    },
+    }),
   })
 }
 
@@ -83,14 +80,16 @@ test('mobile components: card lists, filters sheet, form sheet, pinned sign-out,
     const box = (await sheet.boundingBox())!
     return [Math.round(box.width), Math.round(box.y + box.height)]
   }).toEqual([390, 844])
-  // (Status moved to the tab strip above the list; severity is the sheet's
-  // representative select now.)
-  const status = sheet.getByRole('combobox', { name: 'Filter by severity' })
+  // (Status moved to the tab strip above the list; the project select is the sheet's
+  // representative select now; severity is a checkbox group.)
+  const status = sheet.getByRole('combobox', { name: 'Filter by project' })
   const statusBox = (await status.boundingBox())!
   expect(statusBox.height).toBeGreaterThanOrEqual(44)
   expect(statusBox.width).toBeGreaterThan(300)
   expect(await status.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
-  await nativeSelect(sheet, 'Filter by severity').selectOption('Low')
+  const lowSeverity = sheet.getByRole('group', { name: 'Severity' }).getByRole('checkbox', { name: 'Low' })
+  await lowSeverity.click()
+  await expect(lowSeverity).toBeChecked()
   await expect(sheet.getByRole('button', { name: 'Clear filters' })).toBeEnabled()
   await sheet.getByRole('button', { name: 'Done' }).click()
   await expect(sheet).toBeHidden()
@@ -104,23 +103,18 @@ test('mobile components: card lists, filters sheet, form sheet, pinned sign-out,
   await expect(sheet).toBeHidden()
   await expect(cards.getByRole('listitem')).toHaveCount(1)
 
-  // --- New Defect: bottom-sheet dialog with a pinned action bar ---------------
+  // --- New Defect: a full page with a pinned action bar -------------------------
   await page.getByRole('button', { name: 'New Defect' }).click()
-  const dialog = page.getByRole('dialog', { name: 'New Defect' })
-  await expect(dialog).toBeVisible()
-  await expect.poll(async () => {
-    const box = (await dialog.boundingBox())!
-    return [Math.round(box.width), Math.round(box.y + box.height)]
-  }).toEqual([390, 844])
-  const title = dialog.getByLabel('Title')
+  await expect(page).toHaveURL(/\/defects\/new/)
+  await expect(page.getByRole('heading', { name: 'New Defect', level: 1 })).toBeVisible()
+  const title = page.getByLabel('Title')
   expect((await title.boundingBox())!.height).toBeGreaterThanOrEqual(44)
   expect(await title.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
-  const create = dialog.getByRole('button', { name: 'Create Defect' })
+  const create = page.getByRole('button', { name: 'Create defect' })
   await expect(create).toBeInViewport()
   expect((await create.boundingBox())!.height).toBeGreaterThanOrEqual(44)
-  expect((await dialog.getByRole('button', { name: 'Close dialog' }).boundingBox())!.width).toBeGreaterThanOrEqual(44)
-  await page.keyboard.press('Escape')
-  await expect(dialog).toBeHidden()
+  await noHorizontalOverflow(page)
+  await page.goto('/defects')
 
   // --- Test Repository: cards + selection + bulk bar --------------------------
   await page.goto('/test-repository')

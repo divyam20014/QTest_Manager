@@ -29,6 +29,7 @@ test('UX-030: Tester and Manager see "No access" for admin URLs, Admin does not'
   browser,
   request,
 }) => {
+  test.setTimeout(120_000) // three sign-ins (admin, manager, tester) on a slow machine
   const tenant = await bootstrapTenant(request, 'NoAccess')
   const suffix = tenant.tenantId.slice(0, 8)
 

@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedDefectBody, seedCaseBody } from './fixtures'
 
 // BRD gap plan, Phase 3 (ADR-071): Excel exports with loading/error handling,
 // the project drilldown, and the Quality Metrics card. Each test runs against
@@ -38,14 +38,14 @@ async function seedProject(page: Page, name = 'Apex Motor Claims') {
 }
 
 async function approvedCase(page: Page, projectId: string, title: string) {
-  const created = await post(page, `/projects/${projectId}/test-cases`, {
+  const created = await post(page, `/projects/${projectId}/test-cases`, await seedCaseBody(page.request, projectId, {
     title,
     priority: 'High',
     steps: [
       { action: `Do step 1 of ${title}`, expected: 'Works' },
       { action: `Do step 2 of ${title}`, expected: 'Works' },
     ],
-  })
+  }))
   await post(page, `/test-cases/${created.id}/submit-review`, {})
   await post(page, `/test-cases/${created.id}/approve`)
   return created.id as string
@@ -80,12 +80,16 @@ test('Project drilldown shows run status chart, recent test cases and defects', 
 
   const caseId = await approvedCase(page, projectId, 'Verify total loss settlement')
   await passRun(page, projectId, [caseId])
-  await post(page, '/defects', { project_id: projectId, title: 'Payout rounds incorrectly', severity: 'High' })
+  await post(page, '/defects', seedDefectBody(projectId, { title: 'Payout rounds incorrectly' }))
 
-  await page.reload()
+  // ADR-113: the report cache is per API worker (20 s TTL), so another worker may still serve
+  // the empty summary the first visit cached; reload until it expires.
   const chart = page.getByRole('heading', { name: 'Test run status' })
-  await expect(chart).toBeVisible()
-  await expect(page.getByText('No test runs yet')).toHaveCount(0)
+  await expect(async () => {
+    await page.reload()
+    await expect(chart).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('No test runs yet')).toHaveCount(0, { timeout: 3000 })
+  }).toPass({ timeout: 45_000 })
   // Legend carries the values (not colour-only).
   const legend = page.locator('ul').filter({ hasText: 'Passed' }).first()
   await expect(legend).toContainText('Passed')
@@ -136,6 +140,7 @@ test('Quality Metrics card: honest "no data" first, real figures after a run', a
 })
 
 test('Excel exports download real workbooks and report failures', async ({ page, request }) => {
+  test.setTimeout(90_000)
   const tenant = await bootstrapTenant(request, 'BrdExcel')
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
   const projectId = await seedProject(page)
@@ -162,10 +167,10 @@ test('Excel exports download real workbooks and report failures', async ({ page,
 
   // Test cases list.
   await page.goto(`/projects/${projectId}/test-cases`)
-  await page.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: 'Export', exact: true }).click()
   const [cases] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Export Excel (test cases)' }).click(),
+    page.getByRole('menuitem', { name: 'Excel: all fields' }).click(),
   ])
   expect(cases.suggestedFilename()).toBe('test_cases_export.xlsx')
 

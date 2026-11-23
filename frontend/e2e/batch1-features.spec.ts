@@ -71,6 +71,7 @@ test('version compare shows per-step changes with text labels and a summary', as
   expect(edit.ok(), await edit.text()).toBeTruthy()
 
   await page.goto(`/test-cases/${t.caseId}`)
+  await page.getByRole('tab', { name: /^Versions/ }).click()
   await nativeSelect(page, 'Compare from version').selectOption('1')
   await nativeSelect(page, 'Compare to version').selectOption('2')
   await expect(page.getByTestId('version-diff-summary')).toHaveText('1 step changed, 1 added')

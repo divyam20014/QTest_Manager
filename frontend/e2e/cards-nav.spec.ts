@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { axeFindings, formatFindings } from './a11y'
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedDefectBody, seedCaseBody } from './fixtures'
 
 // ADR-104: interactive summary cards, the phone tab bar (badges, sliding
 // indicator, hide-on-scroll) and the collapsed desktop icon rail.
@@ -72,12 +72,12 @@ test('phone tab bar: badge, sliding indicator, hide on scroll, pinned console', 
   await page.setViewportSize({ width: 390, height: 844 })
   await signIn(page, 'CardsNavPhone')
   const project = await seedProject(page)
-  await post(page, '/defects', { project_id: project.id, title: 'Badge defect', severity: 'High', priority: 'High' })
-  const tc = await post(page, `/projects/${project.id}/test-cases`, {
+  await post(page, '/defects', seedDefectBody(project.id, { title: 'Badge defect' }))
+  const tc = await post(page, `/projects/${project.id}/test-cases`, await seedCaseBody(page.request, project.id, {
     title: 'Console case',
     priority: 'High',
     steps: [{ action: 'Do', expected: 'Done' }],
-  })
+  }))
   await post(page, `/test-cases/${tc.id}/submit-review`, {})
   await post(page, `/test-cases/${tc.id}/approve`, {})
   const run = await post(page, `/projects/${project.id}/test-runs`, {

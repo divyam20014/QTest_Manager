@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi, seedCaseBody } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-093: Admin turns on both Tester visibility switches in the UI on a
@@ -28,12 +28,12 @@ test('Tester visibility switches hide unassigned cases and Reports, and restore 
   try {
     await loginViaUi(admin, t.tenantId, t.adminEmail, t.adminPassword)
     const mine = await admin.request.post(`${API_BASE_URL}/projects/${t.projectId}/test-cases`, {
-      data: {
+      data: await seedCaseBody(admin.request, t.projectId!, {
         title: 'Assigned to the tester',
         priority: 'High',
         assignee_id: t.tester.id,
         steps: [{ action: 'a', expected: 'b' }],
-      },
+      }),
     })
     expect(mine.status()).toBe(200)
 

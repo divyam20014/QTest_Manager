@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
+import { API_BASE_URL, createTestCaseViaForm, loginViaUi, nativeSelect, seedCaseBody, reportDefectFromDialog, changeDefectStatus, seedDefectBody } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
 // Issue 36: browser create/edit flows as a Manager and as a Tester, in a
@@ -72,22 +72,23 @@ test('Manager: creates a project, authors and edits a test case, runs it, record
   // ---- author a test case in the seeded project (Manager is a member).
   await page.goto(`/projects/${t.projectId}/test-cases`)
   await page.getByRole('button', { name: 'New Test Case' }).click()
-  await page.fill('#title', CASE_TITLE)
-  await page.selectOption('#priority', 'High')
-  await page.locator('input[placeholder="Action"]').first().fill('Open the claim')
-  await page.locator('input[placeholder="Expected outcome"]').first().fill('Claim opens')
-  await page.getByRole('button', { name: 'Add Step' }).click()
-  await page.locator('input[placeholder="Action"]').nth(1).fill('Settle the claim')
-  await page.locator('input[placeholder="Expected outcome"]').nth(1).fill('Payout posted')
-  await page.getByRole('button', { name: 'Create Test Case' }).click()
+  await createTestCaseViaForm(page, {
+    title: CASE_TITLE,
+    priority: 'High',
+    module: 'Claims',
+    steps: [
+      { action: 'Open the claim', expected: 'Claim opens' },
+      { action: 'Settle the claim', expected: 'Payout posted' },
+    ],
+  })
   await expect(page.getByRole('link', { name: CASE_TITLE })).toBeVisible({ timeout: 15000 })
 
   // ---- edit it (Draft: edited in place) and see the new title everywhere.
   await page.getByRole('link', { name: CASE_TITLE }).click()
   await page.waitForSelector('text=Steps')
   await page.getByRole('button', { name: 'Edit' }).click()
-  await page.fill('#title', CASE_TITLE_EDITED)
-  await page.getByRole('button', { name: 'Save Changes' }).click()
+  await page.fill('#tc-title', CASE_TITLE_EDITED)
+  await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByText(CASE_TITLE_EDITED).first()).toBeVisible({ timeout: 15000 })
   const cases = await api(page, 'get', `/projects/${t.projectId}/test-cases?page_size=100`)
   expect(rows(cases.data).map((c) => c.title)).toContain(CASE_TITLE_EDITED)
@@ -95,7 +96,7 @@ test('Manager: creates a project, authors and edits a test case, runs it, record
   // ---- submit + approve (Manager holds testcase.approve).
   await page.getByRole('button', { name: 'Submit for Review' }).click()
   await page.locator('div[role="dialog"] button:has-text("Submit")').click()
-  await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText('Ready for Review').first()).toBeVisible({ timeout: 15000 })
   await page.getByRole('button', { name: 'Approve' }).click()
   await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible({ timeout: 15000 })
 
@@ -120,11 +121,9 @@ test('Manager: creates a project, authors and edits a test case, runs it, record
   await expect(bar).toContainText('Step 1:')
   await bar.getByRole('button', { name: 'Pass' }).click()
   await expect(bar).toContainText('Step 2:', { timeout: 15000 })
+  await bar.getByLabel('Actual result').fill('Payout posted twice')
   await bar.getByRole('button', { name: 'Fail' }).click()
-  await expect(page.getByRole('heading', { name: 'Report Defect' })).toBeVisible({ timeout: 15000 })
-  await page.selectOption('#defect-severity', 'High')
-  await page.fill('#defect-description', 'Payout posted twice')
-  await page.getByRole('button', { name: 'Report Defect' }).click()
+  await reportDefectFromDialog(page, { severity: 'High', description: 'Payout posted twice' })
   await expect(page.getByText('Defect reported')).toBeVisible({ timeout: 15000 })
 
   // Real outcomes: verdicts persisted, case rolled up to failed, defect listed.
@@ -134,24 +133,23 @@ test('Manager: creates a project, authors and edits a test case, runs it, record
   const mine = rows(defects.data).find((d) => (d.description ?? '').includes('Payout posted twice'))
   expect(mine, 'defect exists via API').toBeTruthy()
   await page.goto('/defects')
-  await expect(page.getByRole('link', { name: /Step 2 Failed/ }).first()).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('link', { name: /failed$/ }).first()).toBeVisible({ timeout: 15000 })
 
-  // ---- edit the defect (priority is an inline select on the detail screen).
+  // ---- edit the defect (priority is changed on the full edit form).
   await page.goto(`/defects/${mine.id}`)
   await page.waitForSelector('text=Traceability')
+  await page.getByRole('link', { name: 'Edit', exact: true }).click()
   await nativeSelect(page, 'Priority').selectOption('Critical')
+  await page.getByRole('button', { name: 'Save changes' }).click()
   await expect
     .poll(async () => (await api(page, 'get', `/defects/${mine.id}`)).data?.priority, { timeout: 15000 })
     .toBe('Critical')
   managerDefectId = mine.id
-  await page.getByRole('button', { name: 'Advance to Open' }).click()
-  await expect(page.getByRole('button', { name: 'Advance to Fixed' })).toBeVisible({ timeout: 15000 })
-  await page.getByRole('button', { name: 'Advance to Fixed' }).click()
-  await expect(page.getByRole('button', { name: 'Advance to Verified' })).toBeVisible({ timeout: 15000 })
-  await page.getByRole('button', { name: 'Advance to Verified' }).click()
+  await changeDefectStatus(page, 'Open')
+  await changeDefectStatus(page, 'Fixed')
+  await changeDefectStatus(page, 'Verified')
   // Manager may close a defect (defect.close), with the verification confirmation.
-  await page.getByRole('checkbox').first().check()
-  await page.getByRole('button', { name: 'Advance to Closed' }).click()
+  await changeDefectStatus(page, 'Closed', { verify: true })
   await expect
     .poll(async () => (await api(page, 'get', `/defects/${mine.id}`)).data?.status, { timeout: 15000 })
     .toBe('Closed')
@@ -223,11 +221,9 @@ test('Tester: creates and executes a run, raises a defect, adds a comment and ev
   await page.waitForSelector('text=Execution Console')
   await bar.getByRole('button', { name: 'Pass' }).click()
   await expect(bar).toContainText('Step 2:', { timeout: 15000 })
+  await bar.getByLabel('Actual result').fill('Payout posted twice')
   await bar.getByRole('button', { name: 'Fail' }).click()
-  await expect(page.getByRole('heading', { name: 'Report Defect' })).toBeVisible({ timeout: 15000 })
-  await page.selectOption('#defect-severity', 'Medium')
-  await page.fill('#defect-description', 'Tester raised defect')
-  await page.getByRole('button', { name: 'Report Defect' }).click()
+  await reportDefectFromDialog(page, { severity: 'Medium', description: 'Tester raised defect' })
   await expect(page.getByText('Defect reported')).toBeVisible({ timeout: 15000 })
   const steps = await api(page, 'get', `/test-run-cases/${runCaseId}/steps`)
   expect(steps.data.map((s: any) => s.verdict)).toEqual(['pass', 'fail'])
@@ -300,22 +296,26 @@ test('Tester: forbidden things are absent in the UI and refused by the API; deep
 
   // A Ready-for-Review case shows no Approve button to a Tester.
   const draft = await api(page, 'post', `/projects/${t.projectId}/test-cases`, {
+    ...(await seedCaseBody(page.request, t.projectId!, { priority: 'Low' })),
     title: 'Tester draft case',
-    priority: 'Low',
-    steps: [{ action: 'a', expected: 'b' }],
   })
   expect(draft.status).toBeLessThan(300)
   await api(page, 'post', `/test-cases/${draft.data.id}/submit-review`, {})
   await page.goto(`/test-cases/${draft.data.id}`)
-  await expect(page.getByText('Ready for Review')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText('Ready for Review').first()).toBeVisible({ timeout: 15000 })
   await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0)
 
   // A Tester can walk a defect to Verified but is refused the Closed step (defect.close).
-  const own = await api(page, 'post', '/defects', {
-    execution_step_id: (await api(page, 'get', `/test-run-cases/${t.runCaseId}/steps`)).data[0].id,
-    severity: 'Low',
-    description: 'Tester defect to close',
-  })
+  const own = await api(
+    page,
+    'post',
+    '/defects',
+    seedDefectBody(undefined, {
+      execution_step_id: (await api(page, 'get', `/test-run-cases/${t.runCaseId}/steps`)).data[0].id,
+      severity: 'Low',
+      description: 'Tester defect to close',
+    }),
+  )
   expect(own.status).toBeLessThan(300)
   for (const status of ['Open', 'Fixed', 'Verified']) {
     const step = await api(page, 'patch', `/defects/${own.data.id}/status`, { status })

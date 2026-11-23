@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, nativeSelect, seedDefectBody, seedCaseBody } from './fixtures'
 
 // BRD gap plan, Phase 2 (ADR-070): Block Case in the Execution Console, run
 // auto-finish, soft delete of runs and defects, and bulk priority/assignee on
@@ -37,14 +37,14 @@ async function seedProject(page: Page, name = 'Apex Motor Claims') {
 }
 
 async function approvedCase(page: Page, projectId: string, title: string, steps = 2) {
-  const created = await post(page, `/projects/${projectId}/test-cases`, {
+  const created = await post(page, `/projects/${projectId}/test-cases`, await seedCaseBody(page.request, projectId, {
     title,
     priority: 'High',
     steps: Array.from({ length: steps }, (_, i) => ({
       action: `Do step ${i + 1} of ${title}`,
       expected: `Step ${i + 1} behaves correctly`,
     })),
-  })
+  }))
   await post(page, `/test-cases/${created.id}/submit-review`, {})
   await post(page, `/test-cases/${created.id}/approve`)
   return created.id as string
@@ -136,20 +136,18 @@ test('Delete a test run and a defect: confirmation, then gone from lists and cou
     run_type: 'Smoke',
     test_case_ids: [caseId],
   })
-  const defect = await post(page, '/defects', {
-    project_id: projectId,
-    title: 'Premium rounds the wrong way',
-    severity: 'High',
-  })
+  const defect = await post(page, '/defects', seedDefectBody(projectId, { title: 'Premium rounds the wrong way' }))
 
   // --- Defect ---------------------------------------------------------------
   await page.goto(`/defects/${defect.id}`)
-  await page.getByRole('button', { name: 'Delete Defect' }).click()
+  await page.getByRole('button', { name: 'More defect actions' }).click()
+  await page.getByRole('menuitem', { name: 'Delete defect' }).click()
   let dialog = page.getByRole('alertdialog').or(page.getByRole('dialog'))
   await expect(dialog.getByText(/disappears from the defects list/)).toBeVisible()
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(page).toHaveURL(new RegExp(`/defects/${defect.id}$`))
-  await page.getByRole('button', { name: 'Delete Defect' }).click()
+  await page.getByRole('button', { name: 'More defect actions' }).click()
+  await page.getByRole('menuitem', { name: 'Delete defect' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Delete defect' }).click()
   await expect(page).toHaveURL(/\/defects$/)
   await expect(page.getByText('Premium rounds the wrong way')).toHaveCount(0)

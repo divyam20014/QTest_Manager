@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { axeFindings, formatFindings } from './a11y'
-import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect, seedDefectBody } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-099: custom dashboards. Build one (KPI + defect aging + saved report),
@@ -20,7 +20,7 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
   try {
     await loginViaUi(admin, t.tenantId, t.adminEmail, t.adminPassword)
     const d = await admin.request.post(`${API_BASE_URL}/defects`, {
-      data: { project_id: t.projectId, title: 'Dash seeded defect', severity: 'High' },
+      data: seedDefectBody(t.projectId, { title: 'Dash seeded defect' }),
     })
     expect(d.status()).toBe(200)
     const rep = await admin.request.post(`${API_BASE_URL}/report-builder/reports`, {

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { axeFindings } from './a11y'
-import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect, seedCaseBody } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-106: quick-create test case, requirement-link combobox, Create and start.
@@ -60,9 +60,12 @@ test('quick-create, link requirements, create and start (1280)', async ({ page, 
   await expect(dialog.getByRole('alert').first()).toContainText('At least 5 characters')
   await expect(dialog.getByLabel('Title')).toHaveAttribute('aria-invalid', 'true')
 
-  // Two steps by keyboard, Module, then Ctrl+Enter.
+  // Every field the API requires, two steps by keyboard, then Ctrl+Enter.
   await dialog.getByLabel('Title').fill('Quick one: claim intake')
   await nativeSelect(dialog, 'Module').selectOption(moduleId)
+  await dialog.getByLabel('Preconditions').fill('Adjuster is signed in')
+  await dialog.getByLabel('Test Data').fill('claim=C-100')
+  await dialog.getByLabel('Expected Result').fill('The claim is saved')
   await dialog.getByLabel('Step 1 action').fill('Open the claim form')
   await dialog.getByLabel('Step 1 action').press('Enter')
   await dialog.getByLabel('Step 1 expected outcome').fill('Form opens')
@@ -83,6 +86,9 @@ test('quick-create, link requirements, create and start (1280)', async ({ page, 
   const keptPriority = await nativeSelect(dialog, 'Priority').inputValue()
   expect(keptPriority).not.toBe('')
   await nativeSelect(dialog, 'Module').selectOption(moduleId)
+  await dialog.getByLabel('Preconditions').fill('Adjuster is signed in')
+  await dialog.getByLabel('Test Data').fill('claim=C-200')
+  await dialog.getByLabel('Expected Result').fill('The claim is saved')
   await dialog.getByLabel('Title').fill('Second quick case')
   await dialog.getByLabel('Step 1 action').fill('Do a')
   await dialog.getByLabel('Step 1 expected outcome').fill('See b')
@@ -93,16 +99,17 @@ test('quick-create, link requirements, create and start (1280)', async ({ page, 
   await expect(nativeSelect(dialog, 'Module')).toHaveValue(moduleId)
   await expect(dialog.getByLabel('Step 1 action')).toHaveValue('')
 
-  // More options carries the entered values into the full form.
+  // More options carries the entered values into the full form page.
   await dialog.getByLabel('Title').fill('Carried to full form')
   await dialog.getByLabel('Step 1 action').fill('Carry me')
   await dialog.getByRole('button', { name: 'More options' }).click()
-  const drawer = page.getByRole('dialog', { name: 'New Test Case' })
-  await expect(drawer.locator('#title')).toHaveValue('Carried to full form')
-  await expect(nativeSelect(drawer, 'Priority')).toHaveValue(keptPriority)
-  await expect(drawer.getByLabel('Step 1 action')).toHaveValue('Carry me')
-  await drawer.getByRole('button', { name: 'Close panel' }).click()
-  await expect(drawer).toBeHidden()
+  await expect(page).toHaveURL(/\/test-cases\/new$/)
+  await expect(page.locator('#tc-title')).toHaveValue('Carried to full form')
+  await expect(page.locator('select#tc-priority')).toHaveValue(keptPriority)
+  await expect(page.locator('[data-field="action"]').first()).toHaveValue('Carry me')
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: 'Discard changes' }).click()
+  await expect(page).toHaveURL(/\/test-cases$/)
 
   // Link requirements from case detail through the combobox.
   await page.getByRole('link', { name: 'Quick one: claim intake' }).first().click()
@@ -155,9 +162,8 @@ test.describe('phone', () => {
     const me = await (await page.request.get(`${API_BASE_URL}/auth/me`)).json()
     const { projectId } = await seed(page, (me.data?.user_id ?? me.data?.id) as string)
     const tc = await post(page, `/projects/${projectId}/test-cases`, {
+      ...(await seedCaseBody(page.request, projectId)),
       title: 'Phone case',
-      priority: 'High',
-      steps: [{ action: 'a', expected: 'b' }],
     })
 
     await page.goto(`/projects/${projectId}/test-cases?quick=1`)

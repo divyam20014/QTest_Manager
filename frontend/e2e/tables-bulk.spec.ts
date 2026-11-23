@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { axeFindings, formatFindings } from './a11y'
-import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect, seedCaseBody } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
 // ADR-105: shared table prefs (density, columns) and Test Cases bulk actions,
@@ -24,7 +24,7 @@ test.beforeAll(async ({ request }) => {
   expect(verify.ok(), await verify.text()).toBeTruthy()
   for (const title of titles) {
     const res = await request.post(`${API_BASE_URL}/projects/${t.projectId}/test-cases`, {
-      data: { title, priority: 'Low', steps: [{ action: 'Do it', expected: 'Done' }] },
+      data: await seedCaseBody(request, t.projectId!, { title, priority: 'Low', steps: [{ action: 'Do it', expected: 'Done' }] }),
     })
     expect(res.ok(), await res.text()).toBeTruthy()
   }
@@ -88,6 +88,10 @@ test('bulk priority and assign with summary, axe at 1280', async ({ page }) => {
   await nativeSelect(page.getByRole('dialog'), 'Assignee').selectOption({ label: 'Manager E2E' })
   await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click()
   await expect(page.getByText('2 updated')).toBeVisible()
+  // Assignee is not one of the nine default columns (ADR-117): switch it on to see the result.
+  await page.getByRole('button', { name: /^Columns/ }).click()
+  await page.getByRole('checkbox', { name: 'Assignee' }).check()
+  await page.keyboard.press('Escape')
   await expect(rows(page).filter({ hasText: titles[0] })).toContainText('Manager E2E')
 })
 

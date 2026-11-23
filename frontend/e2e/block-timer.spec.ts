@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody } from './fixtures'
 
 // ADR-075: the step timer does not run while a case is blocked.
 
@@ -38,11 +38,11 @@ test('A blocked case shows "Timer paused while blocked" instead of a running clo
   }
   const caseIds: string[] = []
   for (const title of ['Verify salvage valuation', 'Verify total loss settlement']) {
-    const created = await post(page, `/projects/${project.id}/test-cases`, {
+    const created = await post(page, `/projects/${project.id}/test-cases`, await seedCaseBody(page.request, project.id, {
       title,
       priority: 'High',
       steps: [{ action: `Open ${title}`, expected: 'It opens' }],
-    })
+    }))
     await post(page, `/test-cases/${created.id}/submit-review`, {})
     await post(page, `/test-cases/${created.id}/approve`)
     caseIds.push(created.id)

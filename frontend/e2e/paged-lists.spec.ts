@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedDefectBody, seedCaseBody } from './fixtures'
 
 // ADR-078: the Defects list and the Test Runs overview are paged by the server, so only
 // one page is downloaded however many rows exist; the status tabs get their counts from a
@@ -35,17 +35,22 @@ test('Defects: one page at a time, tab counts from the server, page 2 and a stat
   }
   const ids: string[] = []
   for (let i = 1; i <= 53; i++) {
-    const defect = await post(page, '/defects', {
-      project_id: project.id,
-      title: `Paged defect ${String(i).padStart(2, '0')}`,
-      severity: 'Medium',
-      description: 'Created by the paging test',
-    })
+    const defect = await post(
+      page,
+      '/defects',
+      seedDefectBody(project.id, {
+        title: `Paged defect ${String(i).padStart(2, '0')}`,
+        severity: 'Medium',
+        description: 'Created by the paging test',
+      }),
+    )
     ids.push(defect.id as string)
   }
-  // Move three of them to Open so the tabs have different counts.
+  // Reject three of them (a closed state) so the tabs have different counts.
   for (const id of ids.slice(0, 3)) {
-    const res = await page.request.patch(`${API_BASE_URL}/defects/${id}/status`, { data: { status: 'Open' } })
+    const res = await page.request.patch(`${API_BASE_URL}/defects/${id}/status`, {
+      data: { status: 'Rejected', resolution: 'Duplicate' },
+    })
     expect(res.ok()).toBeTruthy()
   }
 
@@ -65,8 +70,8 @@ test('Defects: one page at a time, tab counts from the server, page 2 and a stat
   expect(listRequests.every((u) => u.searchParams.get('page') === '1')).toBeTruthy()
   // Tab counts come from the counts endpoint, not from the rows on screen.
   await expect(page.getByRole('tab', { name: /^All\s*53/ })).toBeVisible()
-  await expect(page.getByRole('tab', { name: /^New\s*50/ })).toBeVisible()
-  await expect(page.getByRole('tab', { name: /^Open\s*3/ })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /^Open\s*50/ })).toBeVisible()
+  await expect(page.getByRole('tab', { name: /^Closed\s*3/ })).toBeVisible()
   expect(countRequests.length).toBeGreaterThan(0)
 
   // Page 2 holds the remaining three (the oldest).
@@ -77,13 +82,13 @@ test('Defects: one page at a time, tab counts from the server, page 2 and a stat
 
   // A status tab asks the server for that status and starts again from page 1.
   // (Page 2 also has 3 rows, so wait for the request itself, not just the row count.)
-  await page.getByRole('tab', { name: /^Open/ }).click()
+  await page.getByRole('tab', { name: /^Closed/ }).click()
   await expect
-    .poll(() => listRequests.some((u) => u.searchParams.get('status') === 'Open'))
+    .poll(() => listRequests.some((u) => u.searchParams.get('status') === 'Closed,Rejected'))
     .toBeTruthy()
-  const openRequest = listRequests.find((u) => u.searchParams.get('status') === 'Open')!
+  const openRequest = listRequests.find((u) => u.searchParams.get('status') === 'Closed,Rejected')!
   expect(openRequest.searchParams.get('page')).toBe('1')
-  await expect(page.getByRole('tab', { name: /^Open/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: /^Closed/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('table tbody tr')).toHaveCount(3)
   // The whole tab fits one page: the footer says so and the Next button is disabled.
   await expect(page.getByText('Showing 1-3 of 3')).toBeVisible()
@@ -112,11 +117,11 @@ test('Test Runs overview: one request for a page of runs across projects', async
     if (!project.assigned_user_ids.includes(me.user_id)) {
       await post(page, `/projects/${project.id}/members`, { user_id: me.user_id })
     }
-    const created = await post(page, `/projects/${project.id}/test-cases`, {
+    const created = await post(page, `/projects/${project.id}/test-cases`, await seedCaseBody(page.request, project.id, {
       title: `Verify ${name}`,
       priority: 'High',
       steps: [{ action: 'Open', expected: 'Opens' }],
-    })
+    }))
     await post(page, `/test-cases/${created.id}/submit-review`, {})
     await post(page, `/test-cases/${created.id}/approve`)
     projectIds.push(project.id as string)

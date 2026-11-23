@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { API_BASE_URL, loginViaUi, nativeSelect } from './fixtures'
+import { API_BASE_URL, loginViaUi, nativeSelect, seedDefectBody } from './fixtures'
 import { seedRoleTenant } from './roleTenant'
 
 // ADR-098: build a defects report (filter + group by severity), run, save,
@@ -23,7 +23,7 @@ test('Report builder: build, run, save, reload, export, and hidden-from-Testers'
       ['Builder defect three', 'Low'],
     ]) {
       const r = await admin.request.post(`${API_BASE_URL}/defects`, {
-        data: { project_id: t.projectId, title, severity },
+        data: seedDefectBody(t.projectId, { title, severity }),
       })
       expect(r.status()).toBe(200)
     }
