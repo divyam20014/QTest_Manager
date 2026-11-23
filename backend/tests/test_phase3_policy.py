@@ -227,7 +227,7 @@ def test_resource_not_locked_does_not_block_the_reopen_endpoint(
 
     reopen_resp = client.post(f"/api/v1/defects/{defect['id']}/reopen")
     assert reopen_resp.status_code == 200, reopen_resp.text
-    assert reopen_resp.json()["data"]["status"] == "Open"
+    assert reopen_resp.json()["data"]["status"] == "Reopened"  # ADR-118
 
     # And once reopened, the generic edit route works again.
     edit_resp = client.patch(

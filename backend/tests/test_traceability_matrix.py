@@ -94,7 +94,10 @@ def _run_case_to_verdict(client: TestClient, project_id: str, case_id: str, verd
     run_case_id = run["cases"][0]["id"]
     steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
     for step in steps:
-        client.post(f"/api/v1/execution-steps/{step['id']}/verdict", json={"verdict": verdict})
+        client.post(
+            f"/api/v1/execution-steps/{step['id']}/verdict",
+            json={"verdict": verdict, "actual_result": "Observed result"},
+        )
 
 
 def test_uncovered_requirement_shows_all_zero(client: TestClient, platform_admin: dict) -> None:

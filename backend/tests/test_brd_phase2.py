@@ -197,7 +197,10 @@ def test_failed_case_keeps_the_run_open_so_it_can_be_re_run_after_the_fix(
     steps = _steps(client, run_case_id)
     # One failed step makes the case 'failed' (ADR-024) but its remaining steps
     # are still to be executed, so the run must NOT lock underneath the tester.
-    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "fail"})
+    client.post(
+        f"/api/v1/execution-steps/{steps[0]['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
+    )
     detail = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
     assert detail["cases"][0]["status"] == "failed"
     assert detail["finished_at"] is None
@@ -223,7 +226,10 @@ def test_run_with_a_failed_case_can_still_be_finished_by_hand(
     _, project, case = _setup_admin_project_and_case(client, platform_admin)
     run = _make_run(client, project["id"], [case["id"]])
     for step in _steps(client, run["cases"][0]["id"]):
-        client.post(f"/api/v1/execution-steps/{step['id']}/verdict", json={"verdict": "fail"})
+        client.post(
+            f"/api/v1/execution-steps/{step['id']}/verdict",
+            json={"verdict": "fail", "actual_result": "Observed a failure"},
+        )
     assert client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]["finished_at"] is None
     assert client.post(f"/api/v1/test-runs/{run['id']}/finish").status_code == 200
 

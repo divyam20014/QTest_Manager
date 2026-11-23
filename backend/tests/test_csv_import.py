@@ -263,12 +263,10 @@ def test_export_round_trip(client: TestClient, platform_admin: dict) -> None:
     export_response = client.get(f"/api/v1/projects/{project['id']}/test-cases/export.csv")
     assert export_response.status_code == 200
     assert "Round Trip Test Case" in export_response.text
-    assert "Claims" in export_response.text
-    assert "Total Loss" in export_response.text
-    assert (
-        "Step one action|Step one expected;Step two action|Step two expected"
-        in export_response.text
-    )
+    # ADR-120: the module is one 'Module/Submodule' path and steps are one per line.
+    assert "Claims/Total Loss" in export_response.text
+    assert "1. Step one action |  | Step one expected" in export_response.text
+    assert "2. Step two action |  | Step two expected" in export_response.text
 
 
 def _generate_bulk_csv(project_name: str, n: int) -> str:

@@ -14,7 +14,10 @@ from tests.test_execution import (
 
 def _fail_case(client: TestClient, run_case_id: str) -> None:
     step = _steps(client, run_case_id)[0]
-    r = client.post(f"/api/v1/execution-steps/{step['id']}/verdict", json={"verdict": "fail"})
+    r = client.post(
+        f"/api/v1/execution-steps/{step['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
+    )
     assert r.status_code == 200, r.text
 
 

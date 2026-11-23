@@ -125,7 +125,8 @@ def test_nested_module_and_delete_reassigns_children(
     assert fetched["module_id"] == parent["id"]
 
     remaining = client.get(f"/api/v1/projects/{project_id}/modules").json()["data"]
-    assert [m["id"] for m in remaining] == [parent["id"]]
+    # (the shared test builder also creates a default "General" module for the case)
+    assert [m["id"] for m in remaining if m["name"] != "General"] == [parent["id"]]
 
 
 def test_module_tenant_isolation(client: TestClient, platform_admin: dict) -> None:

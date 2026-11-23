@@ -577,9 +577,9 @@ def test_attachment_upload_sanitizes_traversal_filename(
 def test_attachment_deleted_with_parent_test_case(
     client: TestClient, platform_admin: dict
 ) -> None:
-    """Deleting a test case must also delete its attachments (DB rows + the
-    underlying file) rather than orphaning them -- previously, delete_test_case
-    never touched the Attachment table at all."""
+    """Deleting a test case must not leave its attachments reachable. ADR-116: the
+    delete is soft, so the rows and files are kept with the case's history, but they
+    are no longer downloadable (the owner's test case is gone for every caller)."""
     bootstrap = _bootstrap_tenant(client, platform_admin, "OrphanCleanup Co", "admin@orphan.com")
     tenant_id = bootstrap["tenant"]["id"]
     _login_and_verify(client, tenant_id, "admin@orphan.com", "AdminPassw0rd!")

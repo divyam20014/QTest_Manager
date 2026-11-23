@@ -65,7 +65,15 @@ def test_new_tenant_is_seeded_with_the_four_default_options(
     _setup(client, platform_admin)
     severities = client.get("/api/v1/field-options?field_key=defect_severity").json()["data"]
     priorities = client.get("/api/v1/field-options?field_key=test_case_priority").json()["data"]
-    assert {o["code"] for o in severities} == {"Low", "Medium", "High", "Critical"}
+    # ADR-115 adds Major/Minor to the defect severity defaults (legacy four stay).
+    assert {o["code"] for o in severities} == {
+        "Low",
+        "Medium",
+        "High",
+        "Critical",
+        "Major",
+        "Minor",
+    }
     assert {o["code"] for o in priorities} == {"Low", "Medium", "High", "Critical"}
 
 

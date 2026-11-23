@@ -204,7 +204,10 @@ def test_quality_metrics_compute_from_real_data(client: TestClient, platform_adm
     run_case_id = run["cases"][0]["id"]
     steps = _steps(client, run_case_id)
     # Fail step 1 -> defect from step; pass the rest.
-    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "fail"})
+    client.post(
+        f"/api/v1/execution-steps/{steps[0]['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
+    )
     from_step = client.post(
         "/api/v1/defects", json={"execution_step_id": steps[0]["id"], "severity": "High"}
     )
@@ -249,7 +252,10 @@ def test_quality_metrics_exclude_soft_deleted_runs_and_defects(
     _, project, case = _setup_admin_project_and_case(client, platform_admin)
     run = _make_run(client, project["id"], [case["id"]])
     steps = _steps(client, run["cases"][0]["id"])
-    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "fail"})
+    client.post(
+        f"/api/v1/execution-steps/{steps[0]['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
+    )
     defect = client.post(
         "/api/v1/defects", json={"execution_step_id": steps[0]["id"], "severity": "High"}
     ).json()["data"]

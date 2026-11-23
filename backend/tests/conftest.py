@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 TEST_DB_NAME = "qtesthub_test"
@@ -80,6 +81,103 @@ def _clean_tenant_data():
                 "RESTART IDENTITY CASCADE"
             )
         )
+
+
+# --- ADR-116: shared test-case builder -------------------------------------------------
+#
+# Creating a test case through the API now needs a module, preconditions, test data and a
+# case-level expected result (many dozens of tests create cases with just title, priority
+# and steps). Rather than weakening that validation, the test HTTP client fills in
+# harmless defaults for the fields a request leaves out. A test that exercises the
+# validation itself sends the header `X-Test-Strict-Create: 1` (stripped before the
+# request goes out) and gets the API exactly as a real client does.
+
+STRICT_CREATE_HEADER = "X-Test-Strict-Create"
+_CREATE_PATH = re.compile(
+    r"^(?:https?://[^/]+)?(?:/api/v1)?/projects/([0-9a-fA-F-]{36})/test-cases/?$"
+)
+
+
+# --- ADR-118: shared defect builder ------------------------------------------------------
+#
+# Creating a defect through the API now needs a description, at least one step to
+# reproduce, expected and actual result, environment, severity and priority. Older tests
+# send just a title and a severity; the test client fills the fields a request leaves out
+# (never one it sends). `X-Test-Strict-Create: 1` talks to the API exactly as a client.
+
+_DEFECT_PATH = re.compile(r"^(?:https?://[^/]+)?(?:/api/v1)?/defects/?$")
+
+
+def _fill_defect_create_defaults(body: dict) -> dict:
+    out = dict(body)
+    from_execution = bool(out.get("execution_step_id") or out.get("test_run_case_id"))
+    out.setdefault("priority", "Medium")
+    if out.get("environment") is None and out.get("environment_id") is None:
+        out["environment"] = "QA"
+    if "actual_result" not in out:
+        out["actual_result"] = "The behaviour differs from the expected result"
+    if not from_execution:
+        out.setdefault("description", "Steps and details are described below")
+        if not out.get("repro_steps") and not out.get("steps_to_reproduce"):
+            out["repro_steps"] = [{"action": "Perform the action that triggers the defect"}]
+        out.setdefault("expected_result", "The feature behaves as specified")
+    return out
+
+
+def _default_module_id(project_id: str) -> str | None:
+    with _owner_engine.begin() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id FROM test_modules WHERE project_id = :p AND parent_id IS NULL "
+                "AND name = 'General' LIMIT 1"
+            ),
+            {"p": project_id},
+        ).first()
+        if row is None:
+            row = conn.execute(
+                text(
+                    "INSERT INTO test_modules (tenant_id, project_id, name) "
+                    "SELECT tenant_id, id, 'General' FROM projects WHERE id = :p RETURNING id"
+                ),
+                {"p": project_id},
+            ).first()
+    return str(row[0]) if row else None
+
+
+@pytest.fixture(autouse=True)
+def _fill_test_case_create_defaults(monkeypatch):
+    original = TestClient.request
+
+    def request(self, method, url, **kwargs):  # type: ignore[no-untyped-def]
+        headers = kwargs.get("headers")
+        strict = False
+        if headers:
+            headers = dict(headers)
+            for key in list(headers):
+                if key.lower() == STRICT_CREATE_HEADER.lower():
+                    strict = True
+                    headers.pop(key)
+            kwargs["headers"] = headers
+        body = kwargs.get("json")
+        match = _CREATE_PATH.match(str(url))
+        if method.upper() == "POST" and _DEFECT_PATH.match(str(url)) and isinstance(body, dict):
+            if not strict:
+                kwargs["json"] = _fill_defect_create_defaults(body)
+        if method.upper() == "POST" and match and isinstance(body, dict) and not strict:
+            body = dict(body)
+            if "module_id" not in body:
+                module_id = _default_module_id(match.group(1))
+                if module_id:
+                    body["module_id"] = module_id
+            if "preconditions" not in body and "prerequisite" not in body:
+                body["preconditions"] = "Environment is ready"
+            body.setdefault("test_data", "none")
+            body.setdefault("expected_result", "The feature behaves as specified")
+            kwargs["json"] = body
+        return original(self, method, url, **kwargs)
+
+    monkeypatch.setattr(TestClient, "request", request)
+    yield
 
 
 @pytest.fixture

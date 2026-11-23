@@ -85,7 +85,10 @@ def _setup_failed_step(client: TestClient, platform_admin: dict) -> tuple[str, d
     ).json()["data"]
     run_case_id = run["cases"][0]["id"]
     steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
-    client.post(f"/api/v1/execution-steps/{steps[1]['id']}/verdict", json={"verdict": "fail"})
+    client.post(
+        f"/api/v1/execution-steps/{steps[1]['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
+    )
     return tenant_id, project, {"run": run, "step": steps[1]}
 
 
@@ -290,8 +293,12 @@ def test_add_link_appears_on_defect_detail(client: TestClient, platform_admin: d
     )
     assert link_response.status_code == 200
     detail = link_response.json()["data"]
-    assert len(detail["links"]) == 1
-    assert detail["links"][0]["linkable_id"] == ctx["step"]["id"]
+    # ADR-118: a defect raised from an execution is linked to its run case automatically,
+    # so the hand-made step link is the second one.
+    kinds = {link["linkable_type"] for link in detail["links"]}
+    assert kinds == {"test_run_case", "execution_step"}
+    step_link = next(lk for lk in detail["links"] if lk["linkable_type"] == "execution_step")
+    assert step_link["linkable_id"] == ctx["step"]["id"]
 
 
 def test_filter_defects_by_test_run_id(client: TestClient, platform_admin: dict) -> None:

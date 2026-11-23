@@ -207,9 +207,19 @@ def test_every_test_case_read_route_is_known() -> None:
         "/api/v1/test-cases/{test_case_id}/comments",
         # scoped in test_data_set_service.list_data_sets
         "/api/v1/test-cases/{test_case_id}/data-sets",
+        # scoped through test_case_service._authorize_case_access (ADR-116)
+        "/api/v1/test-cases/{test_case_id}/executions",
+        # scoped through test_case_service.get_test_case (ADR-118)
+        "/api/v1/test-cases/{test_case_id}/defects",
         # no case data
+        "/api/v1/test-cases/columns",
         "/api/v1/test-cases/import/jobs/{job_id}",
         "/api/v1/test-cases/import/template.csv",
+        # ADR-120: import templates and the caller's own import preview / job (no case data)
+        "/api/v1/test-cases/import-template.csv",
+        "/api/v1/test-cases/import-template.xlsx",
+        "/api/v1/test-cases/import/preview/{token}/rows",
+        "/api/v1/test-cases/import/status/{job_id}",
     }
     found = {
         r.path

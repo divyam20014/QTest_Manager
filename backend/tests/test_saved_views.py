@@ -138,3 +138,43 @@ def test_requires_sign_in() -> None:
     from app.main import app
 
     assert TestClient(app).get(URL).status_code == 401
+
+
+def test_columns_are_stored_validated_and_clearable(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """ADR-117: a saved view carries an ordered list of column keys."""
+    _setup_admin_project_and_case(client, platform_admin)
+    created = client.post(
+        URL,
+        json={
+            "list_key": "test_cases",
+            "name": "My columns",
+            "filters": {"testType": "Functional", "executionStatus": "Fail"},
+            "sort": "-last_executed_at",
+            "columns": ["display_id", "title", "severity", "title"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    view = created.json()["data"]
+    assert view["columns"] == ["display_id", "title", "severity"]  # de-duplicated, ordered
+    assert view["sort"] == "-last_executed_at"
+
+    # Survives a listing and a PATCH that does not mention columns.
+    client.patch(f"{URL}/{view['id']}", json={"name": "Renamed cols"})
+    listed = client.get(URL, params={"list_key": "test_cases"}).json()["data"]
+    assert listed[0]["columns"] == ["display_id", "title", "severity"]
+
+    replaced = client.patch(f"{URL}/{view['id']}", json={"columns": ["title"]})
+    assert replaced.json()["data"]["columns"] == ["title"]
+    cleared = client.patch(f"{URL}/{view['id']}", json={"columns": None})
+    assert cleared.json()["data"]["columns"] is None
+
+    for bad in (["Bad Key"], ["a"] * 41 and [f"c{i}" for i in range(41)], [1], "title"):
+        r = client.post(
+            URL, json={"list_key": "test_cases", "name": "bad", "filters": {}, "columns": bad}
+        )
+        assert r.status_code == 422, (bad, r.text)
+    # No columns at all stays valid (older clients).
+    plain = _create(client, "plain", list_key="test_cases", filters={})
+    assert plain.json()["data"]["columns"] is None

@@ -149,7 +149,8 @@ def test_marking_any_step_fail_flags_case_failed(client: TestClient, platform_ad
     assert pass_response.json()["data"]["duration_ms"] is not None
 
     fail_response = client.post(
-        f"/api/v1/execution-steps/{steps[1]['id']}/verdict", json={"verdict": "fail"}
+        f"/api/v1/execution-steps/{steps[1]['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
     )
     assert fail_response.status_code == 200
 
@@ -207,7 +208,10 @@ def test_re_verdict_after_fix_flips_case_back_to_passed(
 
     for step in steps:
         client.post(f"/api/v1/execution-steps/{step['id']}/verdict", json={"verdict": "pass"})
-    client.post(f"/api/v1/execution-steps/{steps[1]['id']}/verdict", json={"verdict": "fail"})
+    client.post(
+        f"/api/v1/execution-steps/{steps[1]['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
+    )
 
     failed_run = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
     failed_case = next(c for c in failed_run["cases"] if c["id"] == run_case_id)
@@ -526,7 +530,8 @@ def test_concurrent_verdicts_on_different_steps_do_not_corrupt_rollup(
         thread_client = TestClient(client.app)
         thread_client.cookies.update(client.cookies)
         return thread_client.post(
-            f"/api/v1/execution-steps/{step_id}/verdict", json={"verdict": verdict}
+            f"/api/v1/execution-steps/{step_id}/verdict",
+            json={"verdict": verdict, "actual_result": "Observed result"},
         ).json()
 
     with ThreadPoolExecutor(max_workers=3) as pool:

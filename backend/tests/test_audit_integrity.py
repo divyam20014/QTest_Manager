@@ -90,7 +90,10 @@ def _run_full_scenario(client: TestClient, platform_admin: dict) -> str:
     ).json()["data"]
     run_case_id = run["cases"][0]["id"]
     steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
-    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "fail"})
+    client.post(
+        f"/api/v1/execution-steps/{steps[0]['id']}/verdict",
+        json={"verdict": "fail", "actual_result": "Observed a failure"},
+    )
 
     defect = client.post(
         "/api/v1/defects", json={"execution_step_id": steps[0]["id"], "severity": "Critical"}

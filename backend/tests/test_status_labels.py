@@ -125,5 +125,5 @@ def test_label_customization_does_not_affect_reopen_counter_logic(
 
     reopened = client.post(f"/api/v1/defects/{defect['id']}/reopen")
     assert reopened.status_code == 200, reopened.text
-    assert reopened.json()["data"]["status"] == "Open"
+    assert reopened.json()["data"]["status"] == "Reopened"  # ADR-118
     assert reopened.json()["data"]["reopened_count"] == 1
