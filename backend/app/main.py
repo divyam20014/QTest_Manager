@@ -29,6 +29,7 @@ from app.api import (
     field_customization,
     import_export,
     marketing,
+    my_work,
     notifications,
     platform,
     platform_auth,
@@ -282,6 +283,7 @@ app.include_router(shared_steps.router, prefix="/api/v1")
 app.include_router(test_data_sets.router, prefix="/api/v1")
 app.include_router(test_suites.router, prefix="/api/v1")
 app.include_router(test_plans.router, prefix="/api/v1")
+app.include_router(my_work.router, prefix="/api/v1")
 app.include_router(marketing.public_router, prefix="/api/v1")
 app.include_router(marketing.admin_router, prefix="/api/v1")
 
