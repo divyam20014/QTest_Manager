@@ -43,7 +43,7 @@ test('deleting a project needs its name typed; cancel keeps it', async ({ page, 
   const name = 'Confirm Delete Project'
   await createProject(page, name)
   await page.getByRole('link', { name }).click()
-  await page.click('nav[aria-label="Project sections"] >> text=Details')
+  await page.click('nav[aria-label="Project sections"] >> text=Settings')
 
   await page.getByRole('button', { name: 'Delete Project' }).click()
   const dialog = page.getByRole('dialog')
@@ -57,13 +57,13 @@ test('deleting a project needs its name typed; cancel keeps it', async ({ page, 
   // Escape cancels: the project is still there.
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Project settings' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Delete Project' }).click()
   await page.getByRole('dialog').getByLabel(/Type .* to confirm/).fill(name)
   await page.getByRole('dialog').getByRole('button', { name: 'Delete project' }).click()
   await expect(page).toHaveURL(/\/projects$/, { timeout: 10000 })
-  await expect(page.getByRole('link', { name })).toHaveCount(0)
+  await expect(page.getByRole('main').getByRole('link', { name })).toHaveCount(0)
 })
 
 test('removing an environment asks first; cancel keeps it', async ({ page, request }) => {

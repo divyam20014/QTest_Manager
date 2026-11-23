@@ -67,15 +67,14 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   for (const h of ['Health', 'Trends', 'Risk & activity']) {
     await expect(page.getByRole('heading', { level: 2, name: h })).toBeVisible()
   }
-  await expect(page.getByRole('link', { name: 'Dashboard', exact: true }).last()).toHaveAttribute(
-    'aria-current',
-    'page',
-  )
+  await expect(
+    page.getByRole('navigation', { name: 'Project sections' }).getByRole('link', { name: 'Overview', exact: true }),
+  ).toHaveAttribute('aria-current', 'page')
   await expect(page.getByText('3 of 3')).toBeVisible({ timeout: 20_000 })
   expect(scoped.length).toBeGreaterThan(0)
   expect(scoped.filter((u) => !u.includes(`project_id=${a}`) && !u.includes(`projectId=${a}`))).toEqual([])
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Alpha Project')
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Dashboard')
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Overview')
 
   // axe on the dashboard tab.
   const findings = await axeFindings(page)
@@ -99,10 +98,14 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   await tabs.getByRole('link', { name: 'Defects' }).click()
   await expect(page).toHaveURL(new RegExp(`/defects[?]projectId=${a}`))
 
-  // Details tab keeps the old content.
+  // ADR-122: the old Details content is split over Team, Settings, Planning, Releases and Activity.
   await page.goto(`/projects/${a}`)
-  await tabs.getByRole('link', { name: 'Details' }).click()
-  await expect(page).toHaveURL(new RegExp(`/projects/${a}/details$`))
+  await tabs.getByRole('link', { name: 'Team' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${a}/team$`))
+  await expect(page.getByRole('heading', { name: 'Team Members' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Team')
+  // The old /details URL still works and shows the same cards together.
+  await page.goto(`/projects/${a}/details`)
   await expect(page.getByRole('heading', { name: 'Team Members' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Test run status' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Details')

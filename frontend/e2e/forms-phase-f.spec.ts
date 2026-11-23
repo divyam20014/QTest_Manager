@@ -77,8 +77,13 @@ test('data tables have accessible names; inputs that only had a placeholder are 
   await expect(page.getByRole('table', { name: 'Projects' })).toBeVisible({ timeout: 10000 })
 
   await page.getByRole('link', { name: 'Labelled Inputs Project' }).click()
-  await page.click('nav[aria-label="Project sections"] >> text=Details')
-  for (const name of ['New build name', 'New release name', 'New suite name', 'New plan name']) {
+  // ADR-122: builds and releases live on the Releases tab, suites and plans on Planning.
+  await page.click('nav[aria-label="Project sections"] >> text=Releases')
+  for (const name of ['New build name', 'New release name']) {
+    await expect(page.getByRole('textbox', { name })).toBeVisible()
+  }
+  await page.click('nav[aria-label="Project sections"] >> text=Planning')
+  for (const name of ['New suite name', 'New plan name']) {
     await expect(page.getByRole('textbox', { name })).toBeVisible()
   }
 

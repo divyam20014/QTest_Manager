@@ -24,7 +24,7 @@ test('Module grouping, request-changes, global search, and theme toggle', async 
   await page.fill('#region', 'North America')
   await page.click('button:has-text("Create Project")')
   await page.click('a:has-text("Tier3 Feature Project")')
-  await page.click('nav[aria-label="Project sections"] >> text=Details')
+  await page.click('nav[aria-label="Project sections"] >> text=Team')
   await page.waitForSelector('text=Team Members')
 
   await page.click('nav[aria-label="Project sections"] >> text=Test Cases')

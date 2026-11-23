@@ -26,7 +26,7 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
   await page.fill('#region', 'North America')
   await page.click('button:has-text("Create Project")')
   await page.click('a:has-text("Apex Motor Claims Modernization")')
-  await page.click('nav[aria-label="Project sections"] >> text=Details')
+  await page.click('nav[aria-label="Project sections"] >> text=Team')
   await page.waitForSelector('text=Team Members')
 
   await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
@@ -51,7 +51,7 @@ test('Re-verdicting a failed step to Pass flips the case back to Passed, and the
   await page.click('a:has-text("← Test Cases")')
   await page.waitForSelector('text=Verify Total Loss Settlement Calculation', { timeout: 10000 })
   await page.click('a:has-text("← Apex Motor Claims Modernization")')
-  await page.click('nav[aria-label="Project sections"] >> text=Details')
+  await page.click('nav[aria-label="Project sections"] >> text=Team')
   await page.waitForSelector('text=Team Members', { timeout: 10000 })
   await page.click('main a:has-text("Test Runs")')
   await page.click('button:has-text("New Test Run")')

@@ -26,7 +26,7 @@ test('Test case authoring: draft -> submit -> approve -> edit forks a new versio
   await page.fill('#region', 'North America')
   await page.click('button:has-text("Create Project")')
   await page.click('a:has-text("Apex Motor Claims Modernization")')
-  await page.click('nav[aria-label="Project sections"] >> text=Details')
+  await page.click('nav[aria-label="Project sections"] >> text=Team')
   await page.waitForSelector('text=Team Members')
 
   await page.click('nav[aria-label="Project sections"] >> text=Test Cases')
