@@ -13,6 +13,7 @@ from app.schemas.test_asset import (
     EnvironmentUpdateRequest,
     ReleaseBulkCreateRequest,
     ReleaseCreateRequest,
+    ReleaseUpdateRequest,
 )
 from app.services import test_asset_service
 
@@ -133,6 +134,19 @@ def bulk_create_releases(
         db, ctx.tenant_id, ctx.user_id, project_id, req
     )
     return envelope([r.model_dump(mode="json") for r in releases])
+
+
+@router.patch("/releases/{release_id}")
+def update_release(
+    release_id: UUID,
+    req: ReleaseUpdateRequest,
+    ctx: SessionContext = Depends(require_permission("environment.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    release = test_asset_service.update_release(
+        db, ctx.tenant_id, ctx.user_id, ctx.role_code, release_id, req
+    )
+    return envelope(release.model_dump(mode="json"))
 
 
 @router.delete("/releases/{release_id}")

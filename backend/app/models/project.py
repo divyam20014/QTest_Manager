@@ -14,7 +14,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -59,6 +59,9 @@ class Project(Base, TenantScopedMixin):
     # A caller may pass ProjectUpdateRequest.expected_version to detect a
     # concurrent edit (409) instead of silently losing their write.
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    # ADR-122: optional project-tab order and hidden tabs, `{"order": [...], "hidden": [...]}`,
+    # validated against an allowlist by ProjectUpdateRequest. NULL = the default tab set.
+    nav_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class ProjectMember(Base):

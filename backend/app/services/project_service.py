@@ -139,6 +139,7 @@ def to_out(
         assigned_user_ids=assigned_user_ids,
         created_at=project.created_at,
         version=project.version,
+        nav_config=project.nav_config,  # type: ignore[arg-type]  # dict validated by pydantic
         test_case_count=metrics.test_case_count,
         approved_test_case_count=metrics.approved_test_case_count,
         test_run_count=metrics.test_run_count,

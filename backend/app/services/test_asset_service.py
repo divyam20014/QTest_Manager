@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import select
@@ -17,7 +18,9 @@ from app.schemas.test_asset import (
     ReleaseBulkCreateRequest,
     ReleaseCreateRequest,
     ReleaseOut,
+    ReleaseUpdateRequest,
 )
+from app.services import project_service
 
 
 def _env_to_out(env: Environment) -> EnvironmentOut:
@@ -229,6 +232,7 @@ def _release_to_out(release: Release) -> ReleaseOut:
         name=release.name,
         release_date=release.release_date,
         notes=release.notes,
+        status=release.status,  # type: ignore[arg-type]  # validated on write
         created_at=release.created_at,
     )
 
@@ -253,6 +257,7 @@ def create_release(
         name=req.name,
         release_date=req.release_date,
         notes=req.notes,
+        status=req.status,
     )
     db.add(release)
     db.flush()
@@ -281,7 +286,7 @@ def bulk_create_releases(
     for row in req.releases:
         release = Release(
             tenant_id=tenant_id, project_id=project_id, name=row.name,
-            release_date=row.release_date, notes=row.notes,
+            release_date=row.release_date, notes=row.notes, status=row.status,
         )
         db.add(release)
         created.append(release)
@@ -298,6 +303,50 @@ def bulk_create_releases(
         )
     db.commit()
     return [_release_to_out(r) for r in created]
+
+
+def update_release(
+    db: Session,
+    tenant_id: UUID,
+    actor_user_id: UUID,
+    role_code: str,
+    release_id: UUID,
+    req: ReleaseUpdateRequest,
+) -> ReleaseOut:
+    """ADR-122: edit a release. Project visibility follows get_project (a Tester outside the
+    project sees 404); the permission gate is the one the other release writes use."""
+    release = db.execute(
+        select(Release).where(Release.tenant_id == tenant_id, Release.id == release_id)
+    ).scalar_one_or_none()
+    if release is None:
+        raise NotFoundError("Release not found")
+    project_service.get_project(db, tenant_id, role_code, actor_user_id, release.project_id)
+    changes = req.model_dump(exclude_unset=True)
+    before = {field: getattr(release, field) for field in changes}
+    for field, value in changes.items():
+        setattr(release, field, value)
+    db.flush()
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="release.updated",
+        entity_type="release",
+        entity_id=release.id,
+        metadata={
+            "project_id": str(release.project_id),
+            "changes": {
+                field: {"from": _jsonable(before[field]), "to": _jsonable(value)}
+                for field, value in changes.items()
+            },
+        },
+    )
+    db.commit()
+    return _release_to_out(release)
+
+
+def _jsonable(value: object) -> object:
+    return value.isoformat() if isinstance(value, date) else value
 
 
 def delete_release(db: Session, tenant_id: UUID, actor_user_id: UUID, release_id: UUID) -> None:

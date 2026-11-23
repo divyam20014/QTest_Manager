@@ -10,6 +10,33 @@ Priority = Literal["Low", "Medium", "High", "Critical"]
 ProjectStatus = Literal["On Track", "At Risk", "Delayed", "Completed"]
 
 
+# ADR-122: the project workspace tabs a nav_config may order or hide. Core tabs are always shown
+# (reorderable, never hidden); optional tabs may be hidden, except Settings, which stays reachable
+# for whoever may edit the project. The frontend keeps the same lists in lib/projectNav.ts.
+CORE_NAV_KEYS = ("overview", "requirements", "test-cases", "test-runs", "defects", "reports")
+OPTIONAL_NAV_KEYS = ("test-plans", "releases", "team", "activity", "settings")
+ALL_NAV_KEYS = CORE_NAV_KEYS + OPTIONAL_NAV_KEYS
+HIDEABLE_NAV_KEYS = tuple(k for k in OPTIONAL_NAV_KEYS if k != "settings")
+
+
+class NavConfig(BaseModel):
+    order: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS))
+    hidden: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS))
+
+    @model_validator(mode="after")
+    def _validate_keys(self) -> "NavConfig":
+        for label, keys in (("order", self.order), ("hidden", self.hidden)):
+            unknown = [k for k in keys if k not in ALL_NAV_KEYS]
+            if unknown:
+                raise ValueError(f"Unknown project tab in {label}: {', '.join(unknown)}")
+            if len(set(keys)) != len(keys):
+                raise ValueError(f"Duplicate project tab in {label}")
+        locked = [k for k in self.hidden if k not in HIDEABLE_NAV_KEYS]
+        if locked:
+            raise ValueError(f"These project tabs cannot be hidden: {', '.join(locked)}")
+        return self
+
+
 class ProjectCreateRequest(BaseModel):
     name: str = Field(min_length=3)
     domain: Domain
@@ -48,6 +75,8 @@ class ProjectUpdateRequest(BaseModel):
     # of silently overwriting another caller's change. Omit to keep the
     # previous last-write-wins behavior unchanged.
     expected_version: int | None = None
+    # ADR-122: send null to go back to the default tabs.
+    nav_config: NavConfig | None = None
 
 
 class ProjectOut(BaseModel):
@@ -67,6 +96,7 @@ class ProjectOut(BaseModel):
     assigned_user_ids: list[UUID]
     created_at: datetime
     version: int
+    nav_config: NavConfig | None = None
     test_case_count: int = 0
     approved_test_case_count: int = 0
     test_run_count: int = 0

@@ -1,7 +1,8 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EnvironmentCreateRequest(BaseModel):
@@ -45,10 +46,29 @@ class BuildBulkCreateRequest(BaseModel):
     builds: list[BuildCreateRequest] = Field(min_length=1, max_length=500)
 
 
+ReleaseStatus = Literal["Planned", "In Progress", "Released", "Cancelled"]
+
+
 class ReleaseCreateRequest(BaseModel):
     name: str = Field(min_length=1)
     release_date: date | None = None
     notes: str | None = None
+    status: ReleaseStatus | None = None
+
+
+class ReleaseUpdateRequest(BaseModel):
+    """PATCH /releases/{id} (ADR-122): only the fields sent change; null clears optional ones."""
+
+    name: str | None = Field(default=None, min_length=1)
+    release_date: date | None = None
+    notes: str | None = None
+    status: ReleaseStatus | None = None
+
+    @model_validator(mode="after")
+    def _name_not_null(self) -> "ReleaseUpdateRequest":
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("Release name cannot be empty")
+        return self
 
 
 class ReleaseBulkCreateRequest(BaseModel):
@@ -61,4 +81,5 @@ class ReleaseOut(BaseModel):
     name: str
     release_date: date | None
     notes: str | None
+    status: ReleaseStatus | None = None
     created_at: datetime

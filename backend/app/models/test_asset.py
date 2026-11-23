@@ -49,4 +49,6 @@ class Release(Base, TenantScopedMixin):
     name: Mapped[str] = mapped_column(String, nullable=False)
     release_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ADR-122: Planned / In Progress / Released / Cancelled; NULL (every older row) = unset.
+    status: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
