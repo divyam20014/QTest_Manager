@@ -98,38 +98,97 @@ Creating and configuring projects is a Manager task.
 
 ### Test Cases
 
-Test Cases (in the sidebar) is where tests are written and kept. A test case
-has a title, steps with expected results and a priority, and it is versioned:
-editing creates a new version and the earlier ones stay viewable.
+Test Cases (in the sidebar) is where tests are written and kept. Each test case
+has a generated ID (`TC_000001`), is versioned (editing the steps or content
+creates a new version and the earlier ones stay viewable) and moves through a
+**Review Status**: Draft, Ready for Review, Approved or Deprecated. How a case
+last *ran* is a separate thing, its **Execution Status** (Pass, Fail, Blocked,
+Skipped or Not Run), taken from the most recent run.
 
-Step by step:
+Writing a test case:
 
-1. Open **Test Cases**, filter or search for the case you need, and open it.
-2. To write one, choose **New Test Case**, or use **Quick add**: enter a title,
-   priority, an optional module and up to three steps, then press Create or
-   Ctrl/Cmd+Enter. **Create and add another** keeps the priority and module so
-   you can enter a batch. **More options** opens the full form.
-3. On a case you can attach files, add comments (@-mention a teammate to notify
+1. Open **Test Cases** and choose **New Test Case** (pick a project if asked).
+   The form has six sections you can collapse; fields marked * are required and
+   are checked when you leave them. A section with a problem shows how many
+   fields to fix, and your entries are kept if saving fails.
+   - **Basic Information**: the Test Case ID (read-only, with a copy button),
+     Requirement / User Story ID, the Module, then optional Sub-module and
+     Feature, the Title (5 to 255 characters) and a Description in Markdown with
+     a Preview tab. Nothing is stored as HTML.
+   - **Classification**: Test Type, Priority, Severity, Automation Status
+     (Manual, Automated or Candidate for Automation) and Environment.
+   - **Test Preparation**: Preconditions and Test Data. For JSON test data the
+     form tells you whether it is valid and can pretty-print it; tick **Must be
+     valid JSON** to refuse malformed text.
+   - **Test Execution Instructions**: the step builder (below), the overall
+     Expected Result and optional Postconditions.
+   - **Execution Details**: read-only. It shows the latest execution (status,
+     actual result, who, when, linked defects) and links to the execution
+     history. Executing happens in a test run, so the definition is never
+     overwritten by a result.
+   - **Additional Information**: author, assignee, comments and attachments
+     (available once the case is saved).
+2. **Save as Draft** creates the case in Draft. **Save & Submit for Review**
+   also sends it for review. **Cancel** asks first if you have unsaved changes.
+3. **Quick add** (in the more-actions menu) asks only for the required fields:
+   title, module, priority, preconditions, test data, expected result and up to
+   three steps. **Create and add another** keeps the module, priority and setup
+   text for a batch; **More options** opens the full form with what you typed.
+
+The step builder: each step has an automatic number, an **Action**, optional
+**Test data** and a required **Expected result**. **Add step** appends a row;
+edit any row in place; the bin removes a step and a toast offers **Undo**. To
+reorder, drag a row by its handle, or use the **Move up** / **Move down**
+buttons (or the Arrow keys on the handle) if you cannot drag. Steps renumber
+automatically, up to 200 per case. Pasting several lines into an Action creates
+one step per line.
+
+Step by step on an existing case:
+
+1. Filter or search (by Test Case ID, title, requirement or module) and open the
+   case. Its tabs are **Details**, **Steps**, **Executions**, **Versions**,
+   **Comments & Attachments** and **History**.
+2. **Executions** lists every run of the case: the run, date, who ran it, the
+   status, the actual result, the version run and any defects raised. **History**
+   shows what changed, with the old and new value of each field.
+3. **Edit** opens the form, **Duplicate** copies the case into a new Draft (new
+   ID, title ending "(Copy)", no results, comments or defects), and **Delete**
+   removes it from lists and reports after a confirmation. Runs, defects and
+   history already recorded are kept.
+4. On a case you can attach files, add comments (@-mention a teammate to notify
    them), fill in any custom fields your organization defined, and use the
-   **Linked Requirements** card to type, pick a requirement to link it and use
-   the x on a chip to unlink it.
-4. **Compare Versions** shows a summary such as "1 step changed, 1 added", then
+   **Linked Requirements** card to link or unlink a requirement.
+5. **Compare Versions** shows a summary such as "1 step changed, 1 added", then
    each changed field and step labelled Added, Removed or Changed.
-5. **Templates** imports ready-made Insurance QA Pack cases (Claims,
+6. **Templates** imports ready-made Insurance QA Pack cases (Claims,
    Underwriting, Policy Admin) as a starting set you can edit.
-6. If AI features are enabled for your organization, you can ask the AI
+7. If AI features are enabled for your organization, you can ask the AI
    reviewer for suggestions on a case. Suggestions only: nothing changes
    automatically.
 
-Use the **Columns** menu on any list to hide columns or switch to Compact rows;
-it is remembered per table. The **Views** menu next to the filters (Test Cases,
-Defects, Test Runs) saves your filters under a name. Pick a view to apply it,
-use the star to make it your default, the pencil to rename and the bin to
-delete. Views are private to you, up to 25 per list.
+Columns and views. The list opens with nine columns: Test Case ID, Title,
+Module, Test Type, Priority, Automation Status, Execution Status, Executed By
+and Last Execution Date. The **Columns** menu has three modes: **Default** (those
+nine), **All fields** (all 22 fields of the test case standard) and **Custom**
+(tick the ones you want; Review Status and Assignee are extra optional
+columns). Click a sortable header to sort. **Filters** cover test type, priority,
+severity, automation status, environment, execution status, executed by, module,
+review status and assignee; the tabs above the table filter by Review Status.
+Choose a row to open a quick-view drawer; the row menu has Open, Edit, Duplicate
+and Delete.
 
-What is limited: bulk edit, CSV import and export, and quarantining a flaky test
-are Manager tools; priorities and statuses use the sets your organization
-configured, so you may see different options from the defaults.
+The **Views** menu saves your filters, sort **and columns** under a name, so a
+custom column set comes back with the view. Pick a view to apply it, use the
+star to make it your default, the pencil to rename and the bin to delete. Views
+are private to you, up to 25 per list. The **Export** menu downloads Excel or
+CSV, either with **all fields** or with the **selected columns**, and contains
+only the rows that match the current filters.
+
+What is limited: the buttons you can use follow your permissions (create, edit,
+delete, export); a disabled button says which permission is missing. Bulk edit,
+import and quarantining a flaky test are Manager tools; priorities, test
+types and severities use the sets your organization configured, so you may see
+different options from the defaults.
 
 ### Test Runs and the Execution Console
 
@@ -139,7 +198,9 @@ a run) is where you work through one.
 
 1. Open a run assigned to you and open the first case. In the console, mark each
    step **Pass**, **Fail**, **Blocked** or **Ignore**, add notes, and attach
-   evidence (screenshots, logs) or a comment directly to the step.
+   evidence (screenshots, logs) or a comment directly to the step. The **Actual
+   result** box above the buttons is required to fail a step (the console asks
+   inline) and optional for Pass; it appears in the case's Executions tab.
 2. When a step fails, link it to a new or existing defect without leaving the
    console. A blocked case asks for the reason.
 3. Move to the next case. A run finishes by itself once every case is complete:
@@ -157,11 +218,83 @@ deleting runs, and **Rerun failed**, are for people who can create runs
 
 ### Defects
 
-**Defects** lists issues found in testing. Log one with **Report defect** (or
-from a failed step), then follow it through its statuses. You can set severity,
-categorize the root cause, and attach files or comments. The list has
-quick-create and next-step actions that appear only when your role allows them.
-Severity and status names are your organization's own sets.
+**Defects** lists the issues found in testing, for every project or, from a
+project's **Defects** tab, for that project. Each defect has a generated Bug ID
+(`BUG_000001`) that never changes.
+
+Reporting a defect:
+
+1. Choose **New Defect** (on a test case's **Defects** tab it opens with that case
+   already linked). The form has six sections you can collapse; fields marked *
+   are required and are checked when you leave them. A section with a problem
+   shows how many fields to fix, and your entries are kept if saving fails.
+   - **Bug Overview**: the Bug ID (read-only, with a copy button), the Project,
+     the Title (5 to 255 characters), a Description in Markdown with a Preview
+     tab, and the Component / Module.
+   - **Reproduction Details**: Preconditions, the **Steps to Reproduce** (the same
+     step builder as test cases: numbered by position, reorder by dragging or with
+     the Move up / Move down buttons, paste several lines to create a step per
+     line), the Expected Result and the Actual Result. Both results can be
+     corrected after saving.
+   - **Environment & Evidence**: attachments (screenshots, logs: the allowed types
+     and the 10 MB limit are checked as you add a file, and files are uploaded when
+     you save), the Environment and the Build / Version Found.
+   - **Classification**: Severity, Priority and Status. A new defect is New, or
+     Assigned once you choose an assignee. When you edit, only the statuses the
+     defect may move to are listed. A **Resolution** is asked for only where the
+     rules need one, with the reason beside the field.
+   - **Ownership & Tracking**: Root Cause and notes, the Reporter and Date Reported
+     (set automatically), the Assignee (only if you may assign defects) and the
+     Fix Version / Target Milestone (pick a release or type a version).
+   - **Traceability**: **Linked Test Cases** (search by Test Case ID or title; each
+     link is a chip you can unlink) and **Labels / Tags** (up to 20 labels of 40
+     characters, lower-cased).
+2. Required on create: Title, Description, at least one step, Expected Result,
+   Actual Result, Environment, Severity and Priority. **Create defect** saves;
+   **Cancel** asks before discarding entries.
+
+From a failed step in the Execution Console, **Report Defect** opens already filled
+from the failure: a title with the Test Case ID, the module, the steps up to and
+including the failing one (marked "Failed here"), the expected and actual result,
+the environment and the evidence attached to the step. Choose a severity, check
+the other fields and save: the defect is linked to the test case and the run case,
+and its Bug ID appears in the console's Defects panel. **Link Existing Defect**
+attaches a defect that already exists instead of creating another.
+
+The list: the default columns are Bug ID, Title, Module, Severity, Priority, Status,
+Reporter, Assignee, Date Reported and Fix Version. **Columns** switches between
+**Default**, **All fields** (all 22) and **Custom**, and **Views** saves the filters,
+sort and columns together. The tabs group the statuses: **Open** is everything not yet
+Closed or Rejected (the number on the sidebar and the dashboard's Open defects), then
+Fixed, Retest, Reopened, Deferred (parked, still open) and **Closed** (Closed and
+Rejected). **Filters** covers status (several at once), severity, priority, assignee,
+reporter, module, labels, linked test case, date range, fix version, environment and
+resolution; the search box finds a Bug ID, title, description or label. Click a row for
+a quick view, or use its menu: Open, Edit, Assign, Change status, Delete (each only
+when your role allows it). **Export** (when you may export) gives Excel or CSV with all
+fields or the columns shown, for the filtered set or for the rows you ticked.
+
+A defect's page has the tabs **Details**, **Steps**, **Linked Test Cases** (the latest
+execution of each, with the run; link another or unlink), **Retests**, **Comments &
+Attachments** and **History** (every change with its old and new value).
+
+Status rules: a defect normally moves New, Assigned, In Progress, Fixed, Retest,
+Closed. A Fixed, Retest, Closed or Rejected defect can be Reopened. New, Assigned
+and In Progress defects can be Rejected or Deferred, and a Deferred one can go back
+to Assigned or New. **Change status** lists only the allowed next statuses and asks for a
+**resolution** when one is required: Rejected needs one of Duplicate, Won't Fix,
+Cannot Reproduce, By Design or Not Applicable; Closed needs one of those or Fixed (it
+defaults to Fixed after a retest); open statuses carry none. Closing needs you to
+confirm the defect was verified, and closing or reopening needs the close permission.
+
+Retesting a fix: when a defect is **Fixed**, **Start retest** creates a Retest run with
+its linked test cases, assigned to the reporter or a tester you pick, and moves the
+defect to Retest. Execute that run as usual. When it has been executed, the defect
+shows **Retest passed: Close** (or **Verify**, if you may not close) and **Retest
+failed: Reopen**. Nothing is overwritten: each retest is its own run case, listed on
+the **Retests** tab, and the earlier failure stays in the history.
+
+Severity, priority and status names are your organization's own sets.
 
 ### Requirements (view)
 
@@ -223,10 +356,15 @@ becomes a real test case.
 ### Test case management
 
 From the Test Cases list, tick rows (up to 100) and use the bar to **bulk edit**:
-assign, change priority, move to a module or quarantine. **Import** and
-**Export** use CSV (download the template first to see the columns; imports are
-capped at 2,000 rows per file). You can submit cases for review where your
-workflow requires it.
+assign, change priority, move to a module or quarantine. **Import** takes Excel or
+CSV through a wizard that checks the file first (see *Importing and exporting* below).
+**Export** offers Excel or CSV with all 22 fields or only the
+columns you selected, for the rows matching the current filters. A case's
+**Review Status** (Draft, Ready for Review, Approved, Deprecated) is where you
+approve or send changes back; its **Execution Status** only reflects the latest
+run. Save a column set together with your filters as a **view** from the Views
+menu to reuse it. You can submit cases for review where your workflow requires
+it.
 
 **Quarantine** a flaky test from its page or from the Flaky Tests card, giving a
 reason. A Quarantined badge shows on the case. Quarantine never deletes
@@ -235,12 +373,61 @@ readiness and the leakage card always show the quarantined count separately, so
 a quarantined case cannot hide a failure. Use **Remove quarantine** when it is
 stable again.
 
+#### Importing and exporting test cases and defects
+
+Both the **Test Cases** and the **Defects** list have an import wizard (**More actions**,
+then **Import test cases** or **Import defects**) and an **Export** menu. Importing needs
+the permission to create (or import) test cases or defects; Testers can import into the
+projects they are assigned to.
+
+1. **Choose the file.** Download the Excel or CSV template first. It has all 22 fields
+   with the same headers as the list, an example row, an Instructions sheet and dropdown
+   lists of the allowed values (amber headers are mandatory). Fill one row per test case or
+   defect and upload the file as `.xlsx` or `.csv` (up to 10 MB and 20,000 rows; formulas
+   and macros are not accepted). On the defect list pick the project first.
+2. **Write the steps in one cell**, one step per line, as
+   `1. Open the page | url=/login | The page opens`: action, test data and expected result
+   separated by bars (keep the bars when a part is empty). The Module column is a path such
+   as `Claims/Total Loss/Settlement`; missing modules are created. Leave the ID column empty
+   to get the next ids; an id such as `TC_000250` is kept when it is not used yet.
+3. **Review.** The wizard checks every row without importing anything and shows how many
+   rows are valid, have warnings or have errors, each problem with the row number and the
+   column, the modules that would be created and, with **Show errors and warnings only**,
+   just the rows that need attention. **Download error report (CSV)** gives the list to
+   fix the file with. Warnings (a title that already exists, an id that is already used and
+   will be replaced by a new one) never block the import.
+4. **Confirm.** Choose **All or nothing** (the default: nothing is imported unless every
+   row is valid) or **Skip invalid rows** (the valid rows are imported). Large files (more
+   than 2,000 rows) are imported in the background and the wizard shows the progress. The
+   result lists the counts and the skipped rows, and **View imported** opens the list.
+
+Defect imports follow the status rules: any status is accepted when its resolution fits
+(Fixed, Rejected and Closed need one), the reporter is you and the date is the import time.
+Linked test cases are given by their ids (`TC_000012; TC_000013`) and must exist in the
+project. Assignees are given by email and must be project members; assigning needs the
+assign permission, and importing a defect as Closed or Rejected needs the close permission.
+
+**Export** offers Excel or CSV with all fields, the columns shown in the list, or only the
+rows you selected. The exported file uses the template's headers, so it can be imported
+again as it is (the columns that only describe results, such as Execution Status or
+Reporter, are ignored on import). An export holds at most 50,000 rows; narrow the filters if
+you see the "truncated" notice.
+
 ### Defect triage
 
-On **Defects**, review new defects, set severity and status, assign them, record
-the root cause and close them. A defect you reported being closed notifies the
-reporter. Use saved **Views** (for example "Open and critical") to keep a triage
-list one click away.
+On **Defects**, review new defects (the **Open** tab, or tick several statuses in
+**Filters**), set severity and priority, assign them, change their status and close
+them. **Assign** and **Change status** are in each row's menu and on the defect's
+page; a New defect can be set to Assigned in the same step. Moving a defect to
+Rejected or Closed asks for a resolution, and closing needs the verification
+confirmation. Reopening and closing need the close permission, which Managers and
+Admins have; you can also confirm a retest result with **Retest passed: Close** or
+reopen the defect with **Retest failed: Reopen**. A defect you reported being
+closed notifies the reporter, and assigning or reopening one notifies the assignee.
+Use saved **Views** (for example "Open and critical", with the columns you want)
+to keep a triage list one click away, and **Export** to hand a filtered list, or
+only the rows you ticked, to someone else as Excel or CSV. Deleting a defect hides
+it from lists and reports; its history is kept.
 
 ### Reports
 
@@ -346,9 +533,13 @@ maintain this list.
 - **General**: organization-wide configuration.
 - **Branding**: the look of your workspace.
 - **Fields**: the organization's own option sets and fields: defect severities
-  and priorities, test case priorities, defect and test case status labels, and
-  custom fields for test cases, defects and requirements. Users see these
-  automatically on the matching screens.
+  and priorities, test case priorities, defect and test case status labels (a
+  defect has eleven statuses; their workflow and resolution rules are fixed, only
+  the names you show are yours), and custom fields for test cases, defects and
+  requirements. Users see these automatically on the matching screens. The
+  permissions that control defects are Create, Edit, Assign, Change status,
+  Close, Delete and Export (under **Access Control**); the built-in Tester role
+  cannot assign, close or export.
 - **Security & SSO**: single sign-on and sign-in requirements such as MFA.
 - **Integrations**: SCIM and service tokens for connecting other systems.
 - **Data**: **Tester visibility** (limit Testers to assigned cases, hide Reports
