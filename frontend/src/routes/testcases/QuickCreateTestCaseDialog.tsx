@@ -42,7 +42,7 @@ export function QuickCreateTestCaseDialog({
   onMoreOptions: (draft: QuickDraft) => void
 }) {
   return (
-    <Dialog open={open} onClose={onClose} title="Quick add test case" className="max-w-xl">
+    <Dialog open={open} onClose={onClose} title="Quick add test case" className="max-w-2xl">
       <QuickForm projectId={projectId} modules={modules} onClose={onClose} onMoreOptions={onMoreOptions} />
     </Dialog>
   )
@@ -102,10 +102,14 @@ function QuickForm({
         title: d.title.trim(),
         priority: d.priority,
         module_id: d.module_id || null,
+        preconditions: d.preconditions.trim(),
+        test_data: d.test_data.trim(),
+        expected_result: d.expected_result.trim(),
         steps: cleanSteps(d.steps),
       }),
     onSuccess: (_created, d) => {
       queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['test-repository'] })
       showToast('success', `Test case "${d.title.trim()}" created`)
       if (pendingAnother.current) {
         setDraft(carryOver(d))
@@ -122,6 +126,7 @@ function QuickForm({
     const found = validateDraft(draft)
     setErrors(found)
     if (found.title) return titleRef.current?.focus()
+    if (found.module || found.preconditions || found.test_data || found.expected_result) return
     if (found.stepRow !== undefined) return stepRefs.current[found.stepRow * 2]?.focus()
     pendingAnother.current = another
     mutation.mutate(draft)
@@ -143,13 +148,22 @@ function QuickForm({
     }
   }
 
+  const apiFields = mutation.error instanceof ApiError ? mutation.error.fields : undefined
+  const fieldError = (key: string): string | undefined => apiFields?.[key]
   const serverError =
     mutation.error instanceof ApiError
-      ? mutation.error.message
+      ? apiFields
+        ? null
+        : mutation.error.message
       : mutation.error
         ? 'Could not create the test case'
         : null
-  const dirty = !!draft.title || draft.steps.some((s) => s.action || s.expected)
+  const dirty =
+    !!draft.title ||
+    !!draft.preconditions ||
+    !!draft.test_data ||
+    !!draft.expected_result ||
+    draft.steps.some((s) => s.action || s.expected)
 
   return (
     <form
@@ -202,20 +216,67 @@ function QuickForm({
             </Select>
           )}
         </FormField>
-        <FormField id="qc-module" label="Module">
+        <FormField id="qc-module" label="Module" required error={errors.module ?? fieldError('module_id')}>
           {(field) => (
             <Select
               {...field}
               value={draft.module_id}
-              onChange={(e) => setDraft({ ...draft, module_id: e.target.value })}
+              onChange={(e) => {
+                setDraft({ ...draft, module_id: e.target.value })
+                setErrors((x) => ({ ...x, module: undefined }))
+              }}
             >
-              <option value="">No module</option>
+              <option value="">Select a module…</option>
               {modules.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.parent_id ? `↳ ${m.name}` : m.name}
                 </option>
               ))}
             </Select>
+          )}
+        </FormField>
+      </div>
+
+      <FormField id="qc-preconditions" label="Preconditions" required error={errors.preconditions ?? fieldError('preconditions')}>
+        {(field) => (
+          <Input
+            {...field}
+            value={draft.preconditions}
+            onChange={(e) => {
+              setDraft({ ...draft, preconditions: e.target.value })
+              setErrors((x) => ({ ...x, preconditions: undefined }))
+            }}
+          />
+        )}
+      </FormField>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormField id="qc-test-data" label="Test Data" required error={errors.test_data ?? fieldError('test_data')}>
+          {(field) => (
+            <Input
+              {...field}
+              value={draft.test_data}
+              onChange={(e) => {
+                setDraft({ ...draft, test_data: e.target.value })
+                setErrors((x) => ({ ...x, test_data: undefined }))
+              }}
+            />
+          )}
+        </FormField>
+        <FormField
+          id="qc-expected"
+          label="Expected Result"
+          required
+          error={errors.expected_result ?? fieldError('expected_result')}
+        >
+          {(field) => (
+            <Input
+              {...field}
+              value={draft.expected_result}
+              onChange={(e) => {
+                setDraft({ ...draft, expected_result: e.target.value })
+                setErrors((x) => ({ ...x, expected_result: undefined }))
+              }}
+            />
           )}
         </FormField>
       </div>

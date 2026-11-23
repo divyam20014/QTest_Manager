@@ -25,6 +25,8 @@ export const SEGMENT_LABELS: Record<string, string> = {
   'user-guide': 'User Guide',
   dashboards: 'Manage',
   details: 'Details',
+  new: 'New',
+  edit: 'Edit',
 }
 
 const ID_LABELS: Record<string, string> = {

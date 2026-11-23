@@ -20,11 +20,20 @@ export function CsvDropZone({
   onSelect,
   disabled,
   helpText,
+  accept = '.csv,text/csv',
+  fileLabel = 'a CSV file',
+  inputLabel,
 }: {
   file: File | null
   onSelect: (file: File | null) => void
   disabled?: boolean
   helpText?: string
+  /** The `accept` of the hidden file input (default: CSV only). */
+  accept?: string
+  /** Shown in "Drag and drop ...". */
+  fileLabel?: string
+  /** Accessible name of the hidden file input. */
+  inputLabel?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -42,7 +51,7 @@ export function CsvDropZone({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{file.name}</p>
             <p className="text-xs text-[var(--muted-foreground)]">
-              {file.type || 'text/csv'} · {formatBytes(file.size)}
+              {file.type || 'file'} · {formatBytes(file.size)}
             </p>
           </div>
         </div>
@@ -95,13 +104,14 @@ export function CsvDropZone({
     >
       <UploadCloud className="size-7 text-[var(--muted-foreground)]" />
       <p className="text-sm font-medium">
-        Drag and drop a CSV file, or <span className="text-[var(--link)] underline">browse</span>
+        Drag and drop {fileLabel}, or <span className="text-[var(--link)] underline">browse</span>
       </p>
       {helpText && <p className="text-xs text-[var(--muted-foreground)]">{helpText}</p>}
       <input
         ref={inputRef}
         type="file"
-        accept=".csv,text/csv"
+        accept={accept}
+        aria-label={inputLabel}
         disabled={disabled}
         onChange={(e) => handleFiles(e.target.files)}
         className="sr-only"

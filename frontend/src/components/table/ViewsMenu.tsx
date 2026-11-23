@@ -70,7 +70,13 @@ export function ViewsMenu({
 
   const save = useMutation({
     mutationFn: () =>
-      createSavedView({ list_key: listKey, name: name.trim(), filters: current.filters, sort: current.sort }),
+      createSavedView({
+        list_key: listKey,
+        name: name.trim(),
+        filters: current.filters,
+        sort: current.sort,
+        ...(current.columns !== undefined ? { columns: current.columns } : {}),
+      }),
     onSuccess: () => {
       setName('')
       void refresh()
@@ -154,7 +160,7 @@ export function ViewsMenu({
                       type="button"
                       role="menuitem"
                       onClick={() => {
-                        onApply({ filters: v.filters, sort: v.sort })
+                        onApply({ filters: v.filters, sort: v.sort, columns: v.columns })
                         setOpen(false)
                       }}
                       className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 truncate rounded-md px-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] max-md:min-h-11"

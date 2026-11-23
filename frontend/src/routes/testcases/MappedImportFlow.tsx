@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 
 import {
   detectTestCaseColumns,
-  importTestCases,
   importTestCasesMapped,
-  templateDownloadUrl,
   type ColumnDetectionResult,
   type ImportPreset,
   type ImportReport,
@@ -14,7 +12,7 @@ import { ApiError } from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CsvDropZone } from '@/components/ui/csv-drop-zone'
-import { Dialog, DialogFooter } from '@/components/ui/dialog'
+import { DialogFooter } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
 import { FormError } from '@/components/ui/form-field'
 
@@ -43,7 +41,7 @@ function downloadErrorReport(report: ImportReport) {
   URL.revokeObjectURL(url)
 }
 
-function ImportResultPanel({ report }: { report: ImportReport }) {
+export function ImportResultPanel({ report }: { report: ImportReport }) {
   return (
     <div className="flex flex-col gap-2 rounded-md border border-[var(--border)] p-3">
       <div className="flex gap-3 text-xs">
@@ -69,11 +67,13 @@ function ImportResultPanel({ report }: { report: ImportReport }) {
   )
 }
 
+// ADR-120: the standard import is the wizard in components/import/ImportWizard.tsx; this is the
+// legacy column-mapping path for files from other tools, reached from that wizard.
 // Pass 3, item 2/3: flexible mapped-import flow -- any CSV, any column
 // names, mapped onto QTestHub's fields. Presets (TestRail/Zephyr/Jira) only
 // pre-fill a *starting point* for the mapping; the user still reviews and
 // confirms every field before anything is imported.
-function MappedImportFlow({
+export function MappedImportFlow({
   onImported,
   onCancel,
 }: {
@@ -201,97 +201,3 @@ function MappedImportFlow({
   )
 }
 
-export function ImportDialog({
-  open,
-  onClose,
-  projectId,
-}: {
-  open: boolean
-  onClose: () => void
-  projectId: string
-}) {
-  const queryClient = useQueryClient()
-  const [report, setReport] = useState<ImportReport | null>(null)
-  const [mode, setMode] = useState<'standard' | 'flexible'>('standard')
-  const [file, setFile] = useState<File | null>(null)
-
-  const importMutation = useMutation({
-    mutationFn: (file: File) => importTestCases(file),
-    onSuccess: (data) => {
-      setReport(data)
-      queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
-    },
-  })
-
-  function handleClose() {
-    setReport(null)
-    setMode('standard')
-    setFile(null)
-    importMutation.reset()
-    onClose()
-  }
-
-  function handleMappedImported(data: ImportReport) {
-    setReport(data)
-    queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
-  }
-
-  const serverError = importMutation.error instanceof ApiError ? importMutation.error.message : null
-
-  return (
-    <Dialog open={open} onClose={handleClose} title="Import Test Cases" className="max-w-xl">
-      <div className="flex flex-col gap-3 text-sm">
-        {report ? (
-          <ImportResultPanel report={report} />
-        ) : mode === 'flexible' ? (
-          <MappedImportFlow onImported={handleMappedImported} onCancel={() => setMode('standard')} />
-        ) : (
-          <>
-            <p className="text-[var(--muted-foreground)]">
-              Upload a CSV with columns: Title, Module (required), Sub Module, Project Name,
-              Priority, Status, Description (required), Scenario Id, Scenario Description,
-              Prerequisite, Test Data, Assignee Email, Steps. Each row names its own project, so
-              one file can cover multiple projects.{' '}
-              <a
-                href={templateDownloadUrl}
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Download template
-              </a>
-              . Have a CSV from another tool (TestRail, Zephyr, Jira) or different column names?{' '}
-              <button
-                type="button"
-                className="underline"
-                onClick={() => setMode('flexible')}
-              >
-                Use flexible import instead
-              </button>
-              .
-            </p>
-
-            <CsvDropZone file={file} onSelect={setFile} disabled={importMutation.isPending} />
-
-            <FormError>{serverError}</FormError>
-          </>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={handleClose}>
-            Close
-          </Button>
-          {!report && mode === 'standard' && (
-            <Button
-              size="sm"
-              disabled={!file || importMutation.isPending}
-              onClick={() => file && importMutation.mutate(file)}
-            >
-              {importMutation.isPending ? 'Importing…' : 'Import'}
-            </Button>
-          )}
-        </DialogFooter>
-      </div>
-    </Dialog>
-  )
-}

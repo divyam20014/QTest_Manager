@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Ban, Bug, CheckCircle2, ChevronDown, CircleDot, Gauge, PauseCircle, XCircle } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
-import { listDefects, type Defect } from '@/api/defects'
+import { getDefectDraft, listDefects, type Defect } from '@/api/defects'
 import {
   blockRunCase,
   getRunCaseContext,
@@ -26,6 +26,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { useCockpitMode } from '@/lib/cockpitMode'
 import { describeClock, formatClock, formatDurationMs } from '@/lib/duration'
@@ -36,6 +37,7 @@ import { cn } from '@/lib/utils'
 import { BlockCaseDialog } from './BlockCaseDialog'
 import { DefectQuickCreateDialog, type FailedStepContext } from './DefectQuickCreateDialog'
 import { DefectQuickViewDialog } from './DefectQuickViewDialog'
+import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
 
 export function ExecutionConsole() {
   const { runCaseId } = useParams<{ runCaseId: string }>()
@@ -95,12 +97,31 @@ export function ExecutionConsole() {
     )
   }
   const quickViewDefect = runDefects.find((d) => d.id === quickViewDefectId) ?? null
-  const caseDefects: Defect[] = runDefects.filter(
-    (d) => d.test_run_case_id === runCaseId,
-  )
+  // The defects of this run case: raised from it, or linked to it afterwards (ADR-118). The draft endpoint
+  // lists both; the run's own list covers a defect raised here before the draft loads.
+  const runCaseDefectsQuery = useQuery({
+    queryKey: ['defects', 'run-case', runCaseId],
+    queryFn: () => getDefectDraft(runCaseId!).then((d) => d.existing_defects),
+    enabled: !!runCaseId,
+    retry: false,
+  })
+  const caseDefects: { id: string; display_id: string | null; title: string; severity: string; status: string }[] = [
+    ...(runCaseDefectsQuery.data ?? []),
+    ...runDefects.filter((d) => d.test_run_case_id === runCaseId && !(runCaseDefectsQuery.data ?? []).some((x) => x.id === d.id)),
+  ]
 
   const steps = stepsQuery.data ?? []
   const currentStep = steps.find((s) => s.verdict === null) ?? null
+  // Actual result typed for the step being executed (ADR-116): required to Fail, optional for Pass.
+  // Kept with the step id so moving to the next step starts with an empty box.
+  const [actualDraft, setActualDraft] = useState<{ stepId: string | null; text: string; error: string | null }>({
+    stepId: null,
+    text: '',
+    error: null,
+  })
+  const actualResult = actualDraft.stepId === (currentStep?.id ?? null) ? actualDraft.text : ''
+  const actualError = actualDraft.stepId === (currentStep?.id ?? null) ? actualDraft.error : null
+  const actualRef = useRef<HTMLTextAreaElement>(null)
   const runLocked = contextQuery.data?.run_finished || contextQuery.data?.run_paused
   // A blocked case takes no verdicts until it is unblocked.
   const blocked = contextQuery.data?.status === 'blocked'
@@ -173,11 +194,14 @@ export function ExecutionConsole() {
   }, [runFinished, context?.run_id])
 
   const verdictMutation = useMutation({
-    mutationFn: ({ stepId, verdict }: { stepId: string; verdict: Verdict }) => recordVerdict(stepId, verdict),
+    mutationFn: ({ stepId, verdict, actualResult }: { stepId: string; verdict: Verdict; actualResult?: string }) =>
+      recordVerdict(stepId, verdict, actualResult),
     onSuccess: (updatedStep) => {
       refreshAfterChange()
+      setActualDraft({ stepId: null, text: '', error: null })
       if (updatedStep.verdict === 'fail' && context) {
         setFailedStepContext({
+          runCaseId: runCaseId!,
           executionStepId: updatedStep.id,
           projectId: context.project_id,
           projectName: context.project_name,
@@ -207,12 +231,22 @@ export function ExecutionConsole() {
   function handleDefectDialogClose() {
     setFailedStepContext(null)
     queryClient.invalidateQueries({ queryKey: ['defects', 'by-run', runId] })
+    queryClient.invalidateQueries({ queryKey: ['defects', 'run-case', runCaseId] })
   }
 
   const submitVerdict = (verdict: Verdict) => {
-    if (currentStep && !verdictMutation.isPending) {
-      verdictMutation.mutate({ stepId: currentStep.id, verdict })
+    if (!currentStep || verdictMutation.isPending) return
+    // Failing a step needs the actual result (inline, required); Pass keeps it optional; Ignore sends none.
+    if (verdict === 'fail' && !actualResult.trim()) {
+      setActualDraft({ stepId: currentStep.id, text: actualResult, error: 'Describe what actually happened to fail this step.' })
+      actualRef.current?.focus()
+      return
     }
+    verdictMutation.mutate({
+      stepId: currentStep.id,
+      verdict,
+      actualResult: verdict === 'ignore' ? undefined : actualResult,
+    })
   }
 
   // Keyboard shortcuts: P/F/I act on the current step. Disabled while the
@@ -239,7 +273,7 @@ export function ExecutionConsole() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep?.id, failedStepContext, quickViewDefectId, blockOpen, blocked, runLocked, verdictMutation.isPending])
+  }, [currentStep?.id, failedStepContext, quickViewDefectId, blockOpen, blocked, runLocked, verdictMutation.isPending, actualResult])
 
   if (stepsQuery.isLoading) {
     return (
@@ -431,7 +465,7 @@ export function ExecutionConsole() {
                 isCurrent={currentStep?.id === step.id}
                 defects={defectsForStep(step)}
                 onOpenDefect={(d) => setQuickViewDefectId(d.id)}
-                onVerdict={(verdict) => verdictMutation.mutate({ stepId: step.id, verdict })}
+                onVerdict={(verdict, actual) => verdictMutation.mutate({ stepId: step.id, verdict, actualResult: actual })}
                 isSubmitting={verdictMutation.isPending}
                 disabled={!!runLocked || blocked}
                 timerPaused={blocked}
@@ -492,6 +526,27 @@ export function ExecutionConsole() {
             aria-label="Record a verdict for the current step"
             className={cn('shrink-0 border-t border-[var(--border)] bg-[var(--background)] p-3 max-xl:sticky max-xl:bottom-0 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom))] max-xl:z-30 max-xl:rounded-b-lg max-xl:shadow-[0_-6px_16px_-8px_rgb(0_0_0/0.25)]', cockpit && 'cockpit-verdicts')}
           >
+            <div className="mb-2 flex flex-col gap-1">
+              <label htmlFor="actual-result" className="text-xs font-medium">
+                Actual result{' '}
+                <span className="font-normal text-[var(--muted-foreground)]">(required to fail a step, optional for Pass)</span>
+              </label>
+              <Textarea
+                id="actual-result"
+                ref={actualRef}
+                rows={2}
+                className="min-h-14 max-md:min-h-14"
+                value={actualResult}
+                aria-invalid={actualError ? true : undefined}
+                aria-describedby={actualError ? 'actual-result-error' : undefined}
+                onChange={(e) => setActualDraft({ stepId: currentStep.id, text: e.target.value, error: null })}
+              />
+              {actualError && (
+                <p id="actual-result-error" role="alert" className="text-xs text-[var(--destructive)]">
+                  {actualError}
+                </p>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-3 max-md:flex-col max-md:items-stretch max-md:gap-2">
               <p className="min-w-0 truncate text-sm text-[var(--muted-foreground)] max-md:line-clamp-2 max-md:whitespace-normal">
                 Step {currentStep.step_number}: {currentStep.action}
@@ -583,7 +638,7 @@ export function ExecutionConsole() {
           </CardHeader>
           <CardContent>
             {caseDefects.length === 0 ? (
-              <p className="text-xs text-[var(--muted-foreground)]">No defects reported for this test case yet.</p>
+              <p className="text-xs text-[var(--muted-foreground)]">No defects reported or linked for this test case yet.</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {caseDefects.map((d) => (
@@ -592,12 +647,15 @@ export function ExecutionConsole() {
                       to={`/defects/${d.id}`}
                       className="flex flex-col gap-1 rounded-md border border-[var(--border)] px-2.5 py-2 text-xs hover:bg-[var(--muted)]"
                     >
-                      <span className="truncate font-medium">{d.title}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-mono">{d.display_id ?? ''}</span>
+                        <span className="truncate font-medium">{d.title}</span>
+                      </span>
                       <span className="flex items-center gap-1.5">
                         <Badge tone={d.severity === 'Critical' || d.severity === 'High' ? 'critical' : 'neutral'}>
                           {d.severity}
                         </Badge>
-                        <Badge tone="neutral">{d.status}</Badge>
+                        <DefectStatusBadge status={d.status} />
                       </span>
                     </Link>
                   </li>
@@ -674,7 +732,7 @@ function StepCard({
   isCurrent: boolean
   defects: Defect[]
   onOpenDefect: (defect: Defect) => void
-  onVerdict: (verdict: Verdict) => void
+  onVerdict: (verdict: Verdict, actualResult?: string) => void
   isSubmitting: boolean
   disabled: boolean
   // ADR-075: the step timer does not run while the case is blocked.
@@ -803,10 +861,13 @@ function ReverdictControl({
   onVerdict,
   isSubmitting,
 }: {
-  onVerdict: (verdict: Verdict) => void
+  onVerdict: (verdict: Verdict, actualResult?: string) => void
   isSubmitting: boolean
 }) {
   const [open, setOpen] = useState(false)
+  const [actual, setActual] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const id = useId()
 
   if (!open) {
     return (
@@ -820,44 +881,55 @@ function ReverdictControl({
     )
   }
 
+  function submit(verdict: Verdict) {
+    if (verdict === 'fail' && !actual.trim()) {
+      setError('Describe what actually happened to fail this step.')
+      return
+    }
+    onVerdict(verdict, verdict === 'ignore' ? undefined : actual)
+    setOpen(false)
+    setActual('')
+    setError(null)
+  }
+
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      <Button
-        size="sm"
-        variant="success"
-        onClick={() => {
-          onVerdict('pass')
-          setOpen(false)
-        }}
-        disabled={isSubmitting}
-      >
-        Pass
-      </Button>
-      <Button
-        size="sm"
-        variant="destructive"
-        onClick={() => {
-          onVerdict('fail')
-          setOpen(false)
-        }}
-        disabled={isSubmitting}
-      >
-        Fail
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => {
-          onVerdict('ignore')
-          setOpen(false)
-        }}
-        disabled={isSubmitting}
-      >
-        Ignore
-      </Button>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={isSubmitting}>
-        Cancel
-      </Button>
+    <div className="mt-3 flex flex-col gap-2">
+      <div className="flex flex-col gap-1">
+        <label htmlFor={id} className="text-xs font-medium">
+          Actual result <span className="font-normal text-[var(--muted-foreground)]">(required to fail, optional for Pass)</span>
+        </label>
+        <Textarea
+          id={id}
+          rows={2}
+          className="min-h-14"
+          value={actual}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          onChange={(e) => {
+            setActual(e.target.value)
+            setError(null)
+          }}
+        />
+        {error && (
+          <p id={`${id}-error`} role="alert" className="text-xs text-[var(--destructive)]">
+            {error}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="success" onClick={() => submit('pass')} disabled={isSubmitting}>
+          Pass
+        </Button>
+        <Button size="sm" variant="destructive" onClick={() => submit('fail')} disabled={isSubmitting}>
+          Fail
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => submit('ignore')} disabled={isSubmitting}>
+          Ignore
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={isSubmitting}>
+          Cancel
+        </Button>
+      </div>
     </div>
   )
 }

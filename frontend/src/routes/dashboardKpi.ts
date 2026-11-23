@@ -1,4 +1,5 @@
 import type { Defect, Severity } from '@/api/defects'
+import { isClosedStatus } from '@/lib/defectWorkflow'
 import type { TestRunSummary } from '@/api/execution'
 
 // Pure helpers for the Overview dashboard's KPI row and "Needs attention" list
@@ -75,13 +76,13 @@ export interface AttentionItem {
 const SEVERITY_RANK: Partial<Record<Severity, number>> = { Critical: 0, High: 1 }
 
 /**
- * Open (not Closed) Critical/High defects worst-first then newest, followed by
+ * Open (not Closed or Rejected) Critical/High defects worst-first then newest, followed by
  * paused unfinished runs (stalled work), newest first. Callers pass what the
  * role-scoped endpoints already returned, so this never widens visibility.
  */
 export function buildNeedsAttention(defects: Defect[], runs: TestRunSummary[]): AttentionItem[] {
   const defectItems = defects
-    .filter((d) => d.status !== 'Closed' && SEVERITY_RANK[d.severity] !== undefined)
+    .filter((d) => !isClosedStatus(d.status) && SEVERITY_RANK[d.severity] !== undefined)
     .sort(
       (a, b) =>
         (SEVERITY_RANK[a.severity] ?? 99) - (SEVERITY_RANK[b.severity] ?? 99) ||

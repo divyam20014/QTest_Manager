@@ -97,7 +97,7 @@ export function ProjectDashboard() {
           <>
             {hasPermission(user, 'defect.create') && (
               <Link
-                to={`/defects?projectId=${project.id}&action=create`}
+                to={`/defects/new?projectId=${project.id}`}
                 className={buttonVariants({ variant: 'outline' })}
               >
                 Report defect

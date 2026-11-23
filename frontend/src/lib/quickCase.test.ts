@@ -5,7 +5,7 @@ import {
   addStepRow,
   carryOver,
   cleanSteps,
-  draftToFormValues,
+  draftToPrefill,
   emptyDraft,
   filterOptions,
   removeStepRow,
@@ -18,9 +18,12 @@ describe('quick-create helpers', () => {
       title: 'Login works',
       priority: 'High',
       module_id: 'm1',
+      preconditions: 'User exists',
+      test_data: 'user=a',
+      expected_result: 'Signed in',
       steps: [{ action: 'a', expected: 'b' }],
     })
-    expect(next).toEqual(emptyDraft('High', 'm1'))
+    expect(next).toEqual({ ...emptyDraft('High', 'm1'), preconditions: 'User exists', test_data: 'user=a' })
   })
 
   it('step rows: capped at 3, never below 1', () => {
@@ -31,12 +34,27 @@ describe('quick-create helpers', () => {
     expect(removeStepRow(steps, 1)).toHaveLength(2)
   })
 
-  it('validates title, priority and steps like the full form', () => {
-    expect(validateDraft(emptyDraft('High'))).toMatchObject({ title: expect.any(String), steps: expect.any(String) })
-    const ok = { ...emptyDraft('High'), title: 'Valid title', steps: [{ action: 'a', expected: 'b' }] }
+  it('validates every field the API requires on create', () => {
+    expect(validateDraft(emptyDraft('High'))).toMatchObject({
+      title: expect.any(String),
+      module: 'Module is required',
+      preconditions: expect.any(String),
+      test_data: expect.any(String),
+      expected_result: expect.any(String),
+      steps: expect.any(String),
+    })
+    const ok = {
+      ...emptyDraft('High', 'm1'),
+      title: 'Valid title',
+      preconditions: 'pre',
+      test_data: 'data',
+      expected_result: 'result',
+      steps: [{ action: 'a', expected: 'b' }],
+    }
     expect(validateDraft(ok)).toEqual({})
     expect(validateDraft({ ...ok, steps: [{ action: 'a', expected: '' }] }).stepRow).toBe(0)
     expect(validateDraft({ ...ok, priority: '' }).priority).toBe('Required')
+    expect(validateDraft({ ...ok, module_id: '' }).module).toBe('Module is required')
   })
 
   it('cleanSteps drops blank rows and trims', () => {
@@ -48,15 +66,16 @@ describe('quick-create helpers', () => {
     ).toEqual([{ action: 'a', expected: 'b' }])
   })
 
-  it('draftToFormValues carries entered values, keeps base steps when none entered', () => {
-    const base = { title: '', steps: [{ action: '', expected: '' }], description: 'x' }
-    const merged = draftToFormValues(
-      { title: 'T title', priority: 'Low', module_id: 'm', steps: [{ action: 'a', expected: '' }] },
-      base,
-    )
-    expect(merged).toMatchObject({ title: 'T title', priority: 'Low', module_id: 'm', description: 'x' })
-    expect(merged.steps[0].action).toBe('a')
-    expect(draftToFormValues(emptyDraft('Low'), base).steps).toBe(base.steps)
+  it('draftToPrefill carries entered values and leaves steps alone when none were entered', () => {
+    const merged = draftToPrefill({
+      ...emptyDraft('Low', 'm'),
+      title: 'T title',
+      preconditions: 'pre',
+      steps: [{ action: 'a', expected: '' }],
+    })
+    expect(merged).toMatchObject({ title: 'T title', priority: 'Low', module_id: 'm', preconditions: 'pre' })
+    expect(merged.steps?.[0].action).toBe('a')
+    expect(draftToPrefill(emptyDraft('Low')).steps).toBeUndefined()
   })
 
   it('filterOptions matches case-insensitively and hides selected', () => {

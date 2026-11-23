@@ -8,6 +8,8 @@ export interface SavedView {
   name: string
   filters: Record<string, string>
   sort: string | null
+  /** ADR-117: ordered visible column keys (test cases), or null for the page default. */
+  columns: string[] | null
   is_default: boolean
   created_at: string
   updated_at: string
@@ -22,6 +24,7 @@ export function createSavedView(req: {
   name: string
   filters: Record<string, string>
   sort?: string | null
+  columns?: string[] | null
   is_default?: boolean
 }): Promise<SavedView> {
   return apiFetch<SavedView>('/saved-views', { method: 'POST', body: JSON.stringify(req) })
@@ -29,7 +32,13 @@ export function createSavedView(req: {
 
 export function updateSavedView(
   id: string,
-  req: Partial<{ name: string; filters: Record<string, string>; sort: string | null; is_default: boolean }>,
+  req: Partial<{
+    name: string
+    filters: Record<string, string>
+    sort: string | null
+    columns: string[] | null
+    is_default: boolean
+  }>,
 ): Promise<SavedView> {
   return apiFetch<SavedView>(`/saved-views/${id}`, { method: 'PATCH', body: JSON.stringify(req) })
 }

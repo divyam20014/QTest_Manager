@@ -14,7 +14,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useIsMobile, usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
 import { categoricalColor } from '@/routes/reporting/palette'
-import { STATUS_TONE as DEFECT_STATUS_TONE, severityTone } from '@/routes/defects/statusDisplay'
+import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
+import { severityTone } from '@/routes/defects/statusDisplay'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
 
 const ProjectRunStatusChart = lazy(() =>
@@ -269,9 +270,7 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
                 badges={(d) => (
                   <>
                     <StatusBadge tone={severityTone(d.severity)}>{d.severity}</StatusBadge>
-                    <StatusBadge tone={DEFECT_STATUS_TONE[d.status] ?? 'neutral'}>
-                      {d.status_label ?? d.status}
-                    </StatusBadge>
+                    <DefectStatusBadge status={d.status} label={d.status_label} />
                   </>
                 )}
                 meta={(d) => (
@@ -305,7 +304,7 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
                           <StatusBadge tone={severityTone(d.severity)}>{d.severity}</StatusBadge>
                         </td>
                         <td className="px-2 py-1.5">
-                          <StatusBadge tone={DEFECT_STATUS_TONE[d.status] ?? 'neutral'}>{d.status_label ?? d.status}</StatusBadge>
+                          <DefectStatusBadge status={d.status} label={d.status_label} />
                         </td>
                         <td className="whitespace-nowrap px-2 py-1.5 text-xs text-[var(--muted-foreground)]">
                           {formatDate(d.created_at)}

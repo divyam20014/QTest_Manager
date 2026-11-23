@@ -33,9 +33,10 @@ describe('notification unread state', () => {
 })
 
 describe('nav count badges', () => {
-  it('counts everything not Closed as open', () => {
+  it('counts everything not Closed or Rejected as open (Deferred is parked, still open)', () => {
     expect(openDefectCount(undefined)).toBe(0)
     expect(openDefectCount({ counts: { New: 2, Open: 1, Closed: 5 }, total: 8 })).toBe(3)
+    expect(openDefectCount({ counts: { New: 1, Deferred: 2, Closed: 1, Rejected: 3 }, total: 7 })).toBe(3)
   })
 
   it('hides at 0, caps at 99+, and names the count for screen readers', () => {

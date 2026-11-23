@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 /**
@@ -9,8 +9,20 @@ import { useSearchParams } from 'react-router-dom'
  * back to its default removes that param rather than writing it
  * explicitly, keeping URLs clean.
  */
+/** How long an update stays authoritative if the router never renders it (a superseded navigation). */
+const PENDING_MS = 1500
+
 export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
   const [searchParams, setSearchParams] = useSearchParams()
+  // react-router hands a functional update the params of the LAST RENDER, not of the latest pending
+  // navigation, so two updates before a re-render (a fast second click, a slow machine) would build
+  // on stale params and bring back a filter the first one removed. `pending` carries the params of
+  // the last update until the router has rendered them.
+  const pending = useRef<{ params: URLSearchParams; at: number } | null>(null)
+  useEffect(() => {
+    // Forget it once the router has rendered it (an unrelated re-render with the old params must not).
+    if (pending.current && pending.current.params.toString() === searchParams.toString()) pending.current = null
+  }, [searchParams])
 
   const values = useMemo(() => {
     const out = { ...defaults }
@@ -30,7 +42,8 @@ export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
     (patch: Partial<Record<keyof T, string>>) => {
       setSearchParams(
         (prev) => {
-          const next = new URLSearchParams(prev)
+          const fresh = pending.current && Date.now() - pending.current.at < PENDING_MS ? pending.current.params : null
+          const next = new URLSearchParams(fresh ?? prev)
           for (const key of Object.keys(patch) as (keyof T)[]) {
             const value = patch[key] as string
             if (value === '' || value === defaults[key]) {
@@ -39,6 +52,7 @@ export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
               next.set(key as string, value)
             }
           }
+          pending.current = { params: next, at: Date.now() }
           return next
         },
         { replace: true },
@@ -53,6 +67,7 @@ export function useUrlFilters<T extends Record<string, string>>(defaults: T) {
   )
 
   const clearAll = useCallback(() => {
+    pending.current = null
     setSearchParams(new URLSearchParams(), { replace: true })
   }, [setSearchParams])
 

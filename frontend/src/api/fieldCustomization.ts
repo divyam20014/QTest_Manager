@@ -1,6 +1,11 @@
 import { apiFetch } from '@/api/client'
 
-export type FieldKey = 'defect_severity' | 'test_case_priority' | 'defect_priority'
+export type FieldKey =
+  | 'defect_severity'
+  | 'test_case_priority'
+  | 'defect_priority'
+  | 'test_type'
+  | 'test_case_severity'
 export type StatusEntityType = 'test_case' | 'defect'
 export type CustomFieldEntityType = 'test_case' | 'defect' | 'requirement'
 export type CustomFieldType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multi_select'

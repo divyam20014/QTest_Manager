@@ -1,32 +1,39 @@
 import { VersionDiffView } from './VersionDiffView'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronUp } from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ChevronDown, ChevronUp, Unlink } from 'lucide-react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { reviewTestCase } from '@/api/ai'
 import { ApiError } from '@/api/client'
-import { listDefects } from '@/api/defects'
-import { STATUS_TONE } from '@/routes/defects/statusDisplay'
+import { linkTestCase, listDefectsOfTestCase, unlinkTestCase } from '@/api/defects'
+import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
+import { DefectPicker } from '@/routes/defects/pickers'
+import {  } from '@/routes/defects/DefectActionDialogs'
+import { useDefectPermissions } from '@/lib/useDefectPermissions'
+import { IconButton } from '@/components/ui/icon-button'
 import {
   approveTestCase,
   compareTestCaseVersions,
   deleteTestCase,
   deprecateTestCase,
+  duplicateTestCase,
   unquarantineTestCase,
   getTestCase,
   getTestCaseHistory,
+  listTestCaseExecutions,
   listTestCaseVersions,
   requestChanges,
   submitForReview,
-  updateTestCase,
-  type TestCaseUpdateRequest,
+  type TestCase,
   type TestCaseVersion,
 } from '@/api/testCases'
+import type { HistoryEntry } from '@/api/history'
 import { listUsers } from '@/api/users'
-import { listModules } from '@/api/modules'
-import { listSharedSteps } from '@/api/sharedSteps'
-import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
+import { HistoryTimeline } from '@/components/HistoryTimeline'
+import { changesOf } from '@/lib/historyChanges'
+import { MarkdownText } from '@/components/Markdown'
+import { Tabs, type TabItem } from '@/components/ui/tabs'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsCard } from '@/components/CommentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
@@ -39,7 +46,7 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogFooter, Drawer } from '@/components/ui/dialog'
+import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -51,7 +58,8 @@ import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { FormError } from '@/components/ui/form-field'
 import { LinkedRequirementsCard } from './LinkedRequirementsCard'
-import { TestCaseForm, type TestCaseFormValues } from './TestCaseForm'
+import { ExecutionStatusBadge } from './ExecutionStatusBadge'
+import { formatWhen } from '@/lib/formatWhen'
 import { STATUS_DISPLAY } from './statusDisplay'
 
 export function TestCaseDetail() {
@@ -60,7 +68,7 @@ export function TestCaseDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
-  const [editOpen, setEditOpen] = useState(false)
+  const [searchParams] = useSearchParams()
   const [quarantineOpen, setQuarantineOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -81,15 +89,10 @@ export function TestCaseDetail() {
   })
   const canListUsers = useCanListUsers()
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
-  const modulesQuery = useQuery({
-    queryKey: ['test-modules', caseQuery.data?.project_id],
-    queryFn: () => listModules(caseQuery.data!.project_id),
-    enabled: !!caseQuery.data?.project_id,
-  })
-  const sharedStepsQuery = useQuery({
-    queryKey: ['shared-steps', caseQuery.data?.project_id],
-    queryFn: () => listSharedSteps(caseQuery.data!.project_id),
-    enabled: !!caseQuery.data?.project_id,
+  const executionsQuery = useQuery({
+    queryKey: ['test-cases', 'executions', testCaseId],
+    queryFn: () => listTestCaseExecutions(testCaseId!, { page_size: 50 }),
+    enabled: !!testCaseId,
   })
   const historyQuery = useQuery({
     queryKey: ['test-cases', 'history', testCaseId],
@@ -102,12 +105,14 @@ export function TestCaseDetail() {
     queryClient.invalidateQueries({ queryKey: ['test-cases', 'versions', testCaseId] })
   }
 
-  const updateMutation = useMutation({
-    mutationFn: (req: TestCaseUpdateRequest) => updateTestCase(testCaseId!, req),
-    onSuccess: () => {
-      invalidate()
-      setEditOpen(false)
+  const duplicateMutation = useMutation({
+    mutationFn: () => duplicateTestCase(testCaseId!),
+    onSuccess: (copy) => {
+      queryClient.invalidateQueries({ queryKey: ['test-cases'] })
+      showToast('success', `Duplicated as ${copy.display_id ?? 'a new draft'}`)
+      navigate(`/test-cases/${copy.id}`)
     },
+    onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not duplicate the test case'),
   })
 
   const ACTION_SUCCESS_MESSAGE: Record<'submit' | 'approve' | 'deprecate' | 'delete', string> = {
@@ -169,21 +174,11 @@ export function TestCaseDetail() {
   const isAssignedReviewer =
     testCase.reviewer_id === null || testCase.reviewer_id === user?.user_id || isAdmin(user)
   const canActOnReview = canApprove && isAssignedReviewer
-  const updateError = updateMutation.error instanceof ApiError ? updateMutation.error.message : null
   const usersById = new Map((usersQuery.data ?? []).map((u) => [u.id, u.name]))
-
-  const formValues: TestCaseFormValues = {
-    title: testCase.title,
-    module_id: testCase.module_id ?? '',
-    description: testCase.description,
-    priority: testCase.priority,
-    assignee_id: testCase.assignee_id ?? '',
-    scenario_id: testCase.scenario_id ?? '',
-    scenario_description: testCase.scenario_description ?? '',
-    prerequisite: testCase.prerequisite ?? '',
-    test_data: testCase.test_data ?? '',
-    steps: testCase.steps.map((s) => ({ action: s.action, expected: s.expected })),
-  }
+  const canEdit = hasPermission(user, 'testcase.edit')
+  const canCreate = hasPermission(user, 'testcase.create')
+  const canDelete = hasPermission(user, 'testcase.delete')
+  const executions = executionsQuery.data
 
   return (
     <div className="flex flex-col gap-6">
@@ -200,7 +195,13 @@ export function TestCaseDetail() {
         title={testCase.title}
         meta={
           <>
-            <StatusBadge tone={STATUS_DISPLAY[testCase.status].tone}>{STATUS_DISPLAY[testCase.status].label}</StatusBadge>
+            {testCase.display_id && (
+              <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 font-mono text-xs">{testCase.display_id}</span>
+            )}
+            <StatusBadge tone={STATUS_DISPLAY[testCase.status].tone}>
+              Review Status: {STATUS_DISPLAY[testCase.status].label}
+            </StatusBadge>
+            <ExecutionStatusBadge status={testCase.execution_status} />
             {testCase.quarantined && <QuarantinedBadge title={testCase.quarantine_reason} />}
             <span className="text-xs text-[var(--muted-foreground)]">v{testCase.version_number}</span>
           </>
@@ -209,8 +210,23 @@ export function TestCaseDetail() {
         actionsClassName="grid grid-cols-2 md:flex md:flex-wrap"
         actions={
           <>
-        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!canEdit}
+          title={canEdit ? undefined : 'You need the Edit test case permission'}
+          onClick={() => navigate(`/test-cases/${testCase.id}/edit`)}
+        >
           Edit
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!canCreate || duplicateMutation.isPending}
+          title={canCreate ? 'Copy this test case into a new draft' : 'You need the Create test case permission'}
+          onClick={() => duplicateMutation.mutate()}
+        >
+          Duplicate
         </Button>
         <Button variant="outline" size="sm" onClick={() => setReviewOpen(true)}>
           Review with AI
@@ -284,12 +300,13 @@ export function TestCaseDetail() {
           onClick={() =>
             ask({
               title: 'Delete this test case?',
-              description: `“${testCase.title}” and its steps, version history and comments are permanently deleted. This cannot be undone.`,
+              description: `“${testCase.title}” is removed from lists, search, reports and exports. Its runs, defects, versions and comments are kept, so past results stay intact.`,
               confirmLabel: 'Delete test case',
               run: () => runAction.mutateAsync('delete'),
             })
           }
-          disabled={runAction.isPending}
+          disabled={runAction.isPending || !canDelete}
+          title={canDelete ? undefined : 'You need the Delete test case permission'}
         >
           Delete
         </Button>
@@ -309,98 +326,19 @@ export function TestCaseDetail() {
       {confirmDialog}
       <FormError>{actionError}</FormError>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Details</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <p className="text-xs text-[var(--muted-foreground)]">Scenario ID</p>
-            <p>{testCase.scenario_id || '—'}</p>
-          </div>
-          <div className="sm:col-span-1 lg:col-span-3">
-            <p className="text-xs text-[var(--muted-foreground)]">Scenario Description</p>
-            <p>{testCase.scenario_description || '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--muted-foreground)]">Prerequisite</p>
-            <p>{testCase.prerequisite || '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[var(--muted-foreground)]">Test Data</p>
-            <p>{testCase.test_data || '—'}</p>
-          </div>
-          <div className="border-l border-[var(--border)] pl-3 sm:col-span-2 lg:col-span-2">
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Last Execution Result <span className="italic">(read-only, from the most recent run)</span>
-            </p>
-            {testCase.last_execution_result ? (
-              <p>
-                {testCase.last_execution_result} — executed by{' '}
-                {testCase.last_executed_by_name ?? 'Unknown'} on{' '}
-                {testCase.last_execution_date
-                  ? new Date(testCase.last_execution_date).toLocaleString()
-                  : '—'}
-              </p>
-            ) : (
-              <p>Not yet executed</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Steps</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ol className="flex flex-col gap-3 text-sm">
-              {testCase.steps.map((step) => (
-                <li key={step.step_number} className="border-b border-[var(--border)] pb-2 last:border-0">
-                  <p className="font-medium">
-                    {step.step_number}. {step.action}
-                  </p>
-                  <p className="text-[var(--muted-foreground)]">Expected: {step.expected}</p>
-                </li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
-
-        <VersionHistoryCard
-          testCaseId={testCase.id}
-          versions={versionsQuery.data ?? []}
-          usersById={usersById}
-        />
-      </div>
-
-      <LinkedRequirementsCard
-        testCaseId={testCase.id}
-        projectId={testCase.project_id}
-        canManage={hasPermission(user, 'requirement.manage')}
+      <Tabs
+        defaultKey={searchParams.get('tab') ?? 'details'}
+        items={buildTabs({
+          testCase,
+          versions: versionsQuery.data ?? [],
+          usersById,
+          history: historyQuery.data,
+          executions,
+          executionsLoading: executionsQuery.isLoading,
+          canManageRequirements: hasPermission(user, 'requirement.manage'),
+        })}
       />
-      <LinkedDefectsCard testCaseId={testCase.id} />
-      <TestDataSetsCard testCaseId={testCase.id} />
-      <CustomFieldsCard ownerType="test_case" ownerId={testCase.id} />
-      <AttachmentsCard ownerType="test_case" ownerId={testCase.id} />
-      <CommentsCard ownerType="test_case" ownerId={testCase.id} />
-      <ActivityTimelineCard entries={historyQuery.data} actionLabels={TEST_CASE_HISTORY_ACTION_LABEL} />
 
-      {/* GAP-91 item 1: a 10+ field form no longer fits well in a centered
-          Dialog -- a full-height Drawer gives it real room. */}
-      <Drawer open={editOpen} onClose={() => setEditOpen(false)} title="Edit Test Case">
-        <TestCaseForm
-          defaultValues={formValues}
-          submitLabel="Save Changes"
-          isSubmitting={updateMutation.isPending}
-          serverError={updateError}
-          users={usersQuery.data ?? []}
-          modules={modulesQuery.data ?? []}
-          sharedSteps={sharedStepsQuery.data ?? []}
-          onSubmit={(values) => updateMutation.mutate(values)}
-        />
-      </Drawer>
       <ReviewWithAIDialog
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}
@@ -476,7 +414,8 @@ export function TestCaseDetail() {
 
 const TEST_CASE_HISTORY_ACTION_LABEL: Record<string, string> = {
   'testcase.created': 'Test case created',
-  'testcase.updated': 'Updated (new version)',
+  'testcase.duplicated': 'Duplicated from another test case',
+  'testcase.updated': 'Updated',
   'testcase.submitted_for_review': 'Submitted for review',
   'testcase.approved': 'Approved',
   'testcase.deprecated': 'Deprecated',
@@ -661,34 +600,388 @@ function VersionHistoryCard({
   )
 }
 
-function LinkedDefectsCard({ testCaseId }: { testCaseId: string }) {
-  const defectsQuery = useQuery({
-    queryKey: ['defects', 'by-test-case', testCaseId],
-    queryFn: () => listDefects({ test_case_id: testCaseId }),
+/**
+ * The Defects tab (ADR-118 / ADR-119): every defect linked to this case through either link model, from
+ * the same source the defect's own Linked Test Cases tab reads. Defects can be reported from here (the
+ * form opens with this case already linked), linked from the project's defects, or unlinked.
+ */
+function DefectsTab({ testCase }: { testCase: TestCase }) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const { show: showToast } = useToast()
+  const { ask, dialog } = useConfirm()
+  const perms = useDefectPermissions()
+  const query = useQuery({
+    queryKey: ['defects', 'of-test-case', testCase.id],
+    queryFn: () => listDefectsOfTestCase(testCase.id),
   })
-  const defects = defectsQuery.data ?? []
+  const defects = query.data ?? []
+  function refresh() {
+    void queryClient.invalidateQueries({ queryKey: ['defects'] })
+    void queryClient.invalidateQueries({ queryKey: ['test-cases'] })
+  }
+  const link = useMutation({
+    mutationFn: (defectId: string) => linkTestCase(defectId, testCase.id),
+    onSuccess: () => {
+      refresh()
+      showToast('success', 'Defect linked')
+    },
+    onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not link the defect'),
+  })
+  const unlink = useMutation({
+    mutationFn: (defectId: string) => unlinkTestCase(defectId, testCase.id),
+    onSuccess: () => {
+      refresh()
+      showToast('success', 'Defect unlinked')
+    },
+    onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not unlink the defect'),
+  })
+  const busy = link.isPending || unlink.isPending
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Linked Defects {defects.length > 0 && `(${defects.length})`}</CardTitle>
+        <CardTitle>Defects {defects.length > 0 && `(${defects.length})`}</CardTitle>
       </CardHeader>
-      <CardContent>
-        {defects.length === 0 ? (
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-xs text-[var(--muted-foreground)]">
+          The defects found by this test case or linked to it. The same links show on each defect's Linked Test Cases tab.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          {perms.canEdit && (
+            <div className="min-w-[16rem] max-w-xl flex-1">
+              <DefectPicker
+                id="case-link-defect"
+                projectId={testCase.project_id}
+                excludeIds={defects.map((d) => d.id)}
+                label="Link an existing defect"
+                disabled={busy}
+                onPick={(item) => link.mutate(item.id)}
+              />
+            </div>
+          )}
+          {perms.canCreate && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate(`/defects/new?projectId=${testCase.project_id}`, {
+                  state: {
+                    prefill: { project_id: testCase.project_id, test_case_ids: [testCase.id], module_id: testCase.module_id ?? '' },
+                    caseInfo: [{ id: testCase.id, display_id: testCase.display_id, title: testCase.title }],
+                  },
+                })
+              }
+            >
+              Report defect
+            </Button>
+          )}
+        </div>
+        {query.isLoading ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Loading defects…</p>
+        ) : defects.length === 0 ? (
           <p className="text-sm text-[var(--muted-foreground)]">No defects linked to this test case.</p>
         ) : (
-          <ul className="flex flex-col gap-2 text-sm">
-            {defects.map((d) => (
-              <li key={d.id} className="flex items-center justify-between border-b border-[var(--border)] pb-2 last:border-0">
-                <Link to={`/defects/${d.id}`} className="underline-offset-2 hover:underline">
-                  {d.title}
-                </Link>
-                <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>
-              </li>
-            ))}
-          </ul>
+          <div className="relative overflow-x-auto rounded-lg border border-[var(--border)]">
+            <table aria-label="Linked defects" className="w-full text-sm">
+              <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
+                <tr>
+                  {['Bug ID', 'Title', 'Status', 'Severity', 'Priority', 'Assignee', ''].map((h, i) => (
+                    <th key={`${h}-${i}`} scope="col" className="px-3 py-2 font-medium">
+                      {h || <span className="sr-only">Actions</span>}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {defects.map((d) => (
+                  <tr key={d.id} className="border-t border-[var(--border)] align-top">
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <Link to={`/defects/${d.id}`} className="font-mono text-xs underline-offset-2 hover:underline">
+                        {d.display_id ?? d.id.slice(0, 8)}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2">{d.title}</td>
+                    <td className="px-3 py-2">
+                      <DefectStatusBadge status={d.status} />
+                    </td>
+                    <td className="px-3 py-2">{d.severity}</td>
+                    <td className="px-3 py-2">{d.priority}</td>
+                    <td className="px-3 py-2">{d.assigned_to_name ?? 'Unassigned'}</td>
+                    <td className="px-3 py-2 text-right">
+                      {perms.canEdit && (
+                        <IconButton
+                          aria-label={`Unlink ${d.display_id ?? d.title}`}
+                          disabled={busy}
+                          onClick={() =>
+                            ask({
+                              title: `Unlink ${d.display_id ?? 'this defect'}?`,
+                              description: 'The defect and this test case stay as they are; only the link between them is removed.',
+                              confirmLabel: 'Unlink defect',
+                              run: () => unlink.mutateAsync(d.id),
+                            })
+                          }
+                        >
+                          <Unlink aria-hidden="true" />
+                        </IconButton>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+      {dialog}
+    </Card>
+  )
+}
+
+interface TabArgs {
+  testCase: TestCase
+  versions: TestCaseVersion[]
+  usersById: Map<string, string>
+  history: HistoryEntry[] | undefined
+  executions: { items: import('@/api/testCases').TestCaseExecution[]; total: number } | undefined
+  executionsLoading: boolean
+  canManageRequirements: boolean
+}
+
+function buildTabs({ testCase, versions, usersById, history, executions, executionsLoading, canManageRequirements }: TabArgs): TabItem[] {
+  return [
+    {
+      key: 'details',
+      label: 'Details',
+      content: (
+        <div className="flex flex-col gap-6">
+          <DetailsCard testCase={testCase} usersById={usersById} />
+          <LinkedRequirementsCard testCaseId={testCase.id} projectId={testCase.project_id} canManage={canManageRequirements} />
+          <TestDataSetsCard testCaseId={testCase.id} />
+          <CustomFieldsCard ownerType="test_case" ownerId={testCase.id} />
+        </div>
+      ),
+    },
+    { key: 'steps', label: 'Steps', count: testCase.steps.length, content: <StepsCard testCase={testCase} /> },
+    {
+      key: 'executions',
+      label: 'Executions',
+      count: executions?.total,
+      content: <ExecutionsTab loading={executionsLoading} data={executions} testCaseId={testCase.id} />,
+    },
+    { key: 'defects', label: 'Defects', count: testCase.linked_defect_count, content: <DefectsTab testCase={testCase} /> },
+    {
+      key: 'versions',
+      label: 'Versions',
+      count: versions.length,
+      content: <VersionHistoryCard testCaseId={testCase.id} versions={versions} usersById={usersById} />,
+    },
+    {
+      key: 'discussion',
+      label: 'Comments & Attachments',
+      count: testCase.comment_count + testCase.attachment_count,
+      content: (
+        <div className="flex flex-col gap-6">
+          <CommentsCard ownerType="test_case" ownerId={testCase.id} />
+          <AttachmentsCard ownerType="test_case" ownerId={testCase.id} />
+        </div>
+      ),
+    },
+    { key: 'history', label: 'History', content: <HistoryTab entries={history} /> },
+  ]
+}
+
+function Field({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className={wide ? 'sm:col-span-2 lg:col-span-3' : undefined}>
+      <p className="text-xs text-[var(--muted-foreground)]">{label}</p>
+      <div className="mt-0.5 min-w-0 break-words text-sm">{children}</div>
+    </div>
+  )
+}
+
+function DetailsCard({ testCase, usersById }: { testCase: TestCase; usersById: Map<string, string> }) {
+  const dash = <span className="text-[var(--muted-foreground)]">—</span>
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Details</CardTitle>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Field label="Test Case ID">{testCase.display_id ? <span className="font-mono">{testCase.display_id}</span> : dash}</Field>
+        <Field label="Requirement / User Story ID">{testCase.requirement_ref ?? dash}</Field>
+        <Field label="Module">{testCase.module_path ?? 'Ungrouped'}</Field>
+        <Field label="Test Type">{testCase.test_type ?? dash}</Field>
+        <Field label="Priority">{testCase.priority}</Field>
+        <Field label="Severity">{testCase.severity ?? dash}</Field>
+        <Field label="Automation Status">{testCase.automation_status ?? dash}</Field>
+        <Field label="Environment">{testCase.environment ?? dash}</Field>
+        <Field label="Created By">{testCase.created_by_name ?? usersById.get(testCase.created_by) ?? dash}</Field>
+        <Field label="Assignee">{testCase.assignee_id ? (usersById.get(testCase.assignee_id) ?? 'Unknown') : 'Unassigned'}</Field>
+        <Field label="Review Status">
+          {STATUS_DISPLAY[testCase.status].label}
+          {testCase.status === 'ready_for_review' && (
+            <span className="text-xs text-[var(--muted-foreground)]">
+              {' '}
+              (reviewer: {testCase.reviewer_id ? (testCase.reviewer_name ?? 'Unknown') : 'anyone who can approve'})
+            </span>
+          )}
+        </Field>
+        <Field label="Description" wide>
+          <MarkdownText source={testCase.description} />
+        </Field>
+        <Field label="Preconditions" wide>
+          <MarkdownText source={testCase.preconditions ?? testCase.prerequisite} />
+        </Field>
+        <Field label="Test Data" wide>
+          {testCase.test_data ? (
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-[var(--muted)] p-2 font-mono text-xs">{testCase.test_data}</pre>
+          ) : (
+            dash
+          )}
+        </Field>
+        <Field label="Expected Result" wide>
+          <MarkdownText source={testCase.expected_result} />
+        </Field>
+        <Field label="Postconditions" wide>
+          <MarkdownText source={testCase.postconditions} />
+        </Field>
+        {(testCase.scenario_id || testCase.scenario_description) && (
+          <Field label="Scenario" wide>
+            {[testCase.scenario_id, testCase.scenario_description].filter(Boolean).join(' - ')}
+          </Field>
+        )}
+        <div className="border-l border-[var(--border)] pl-3 sm:col-span-2 lg:col-span-3">
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Latest execution <span className="italic">(read-only: results are recorded in test runs, never on the definition)</span>
+          </p>
+          {testCase.execution_status === 'Not Run' ? (
+            <p className="mt-1 text-sm">Not yet executed.</p>
+          ) : (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <ExecutionStatusBadge status={testCase.execution_status} />
+              <span>
+                by {testCase.last_executed_by ?? 'Unknown'} on {formatWhen(testCase.last_executed_at)}
+              </span>
+              {testCase.last_actual_result && <span className="text-[var(--muted-foreground)]">Actual: {testCase.last_actual_result}</span>}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function StepsCard({ testCase }: { testCase: TestCase }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Steps</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ol className="flex flex-col gap-3 text-sm">
+          {testCase.steps.map((step) => (
+            <li key={step.step_number} className="border-b border-[var(--border)] pb-3 last:border-0">
+              <p className="break-words font-medium">
+                {step.step_number}. {step.action}
+              </p>
+              {step.test_data && <p className="mt-0.5 break-words text-[var(--muted-foreground)]">Test data: {step.test_data}</p>}
+              <p className="mt-0.5 break-words text-[var(--muted-foreground)]">Expected: {step.expected}</p>
+            </li>
+          ))}
+        </ol>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ExecutionsTab({
+  loading,
+  data,
+  testCaseId,
+}: {
+  loading: boolean
+  data: { items: import('@/api/testCases').TestCaseExecution[]; total: number } | undefined
+  testCaseId: string
+}) {
+  void testCaseId
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Execution history</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-xs text-[var(--muted-foreground)]">
+          One row per time this test case was run, newest first. Executing happens in a test run, so the definition above is
+          never overwritten.
+        </p>
+        {loading ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Loading executions…</p>
+        ) : !data || data.items.length === 0 ? (
+          <p className="text-sm text-[var(--muted-foreground)]">This test case has not been executed yet.</p>
+        ) : (
+          <div className="relative overflow-x-auto rounded-lg border border-[var(--border)]">
+            <table aria-label="Execution history" className="w-full text-sm">
+              <thead className="bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
+                <tr>
+                  {['Run', 'Date', 'Executed by', 'Status', 'Actual result', 'Version', 'Defects'].map((h) => (
+                    <th key={h} scope="col" className="px-3 py-2 font-medium">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map((e) => (
+                  <tr key={e.test_run_case_id} className="border-t border-[var(--border)] align-top">
+                    <td className="px-3 py-2">
+                      <Link to={`/test-runs/${e.test_run_id}`} className="underline-offset-2 hover:underline">
+                        {e.run_name}
+                      </Link>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">{formatWhen(e.executed_at)}</td>
+                    <td className="px-3 py-2">{e.executed_by_name ?? '—'}</td>
+                    <td className="px-3 py-2">
+                      <ExecutionStatusBadge status={e.execution_status} />
+                    </td>
+                    <td className="max-w-[24rem] whitespace-pre-wrap break-words px-3 py-2">
+                      {e.actual_result || e.blocked_reason || <span className="text-[var(--muted-foreground)]">—</span>}
+                    </td>
+                    <td className="px-3 py-2">v{e.version_number}</td>
+                    <td className="px-3 py-2">
+                      {e.defects.length === 0 ? (
+                        '—'
+                      ) : (
+                        <span className="flex flex-wrap gap-x-2">
+                          {e.defects.map((d) => (
+                            <Link key={d.id} to={`/defects/${d.id}`} className="underline underline-offset-2">
+                              {d.display_id ?? d.title}
+                            </Link>
+                          ))}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {data && data.total > data.items.length && (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Showing the latest {data.items.length} of {data.total} executions.
+          </p>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** Audit timeline for this test case, with before / after values where the event recorded them. */
+function HistoryTab({ entries }: { entries: HistoryEntry[] | undefined }) {
+  return (
+    <HistoryTimeline
+      entries={entries?.map((e) => ({ id: e.id, action: e.action, user_name: e.user_name, created_at: e.created_at, changes: changesOf(e.event_metadata) }))}
+      labels={TEST_CASE_HISTORY_ACTION_LABEL}
+    />
   )
 }

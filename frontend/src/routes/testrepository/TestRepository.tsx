@@ -8,7 +8,6 @@ import { listProjects, type Project } from '@/api/projects'
 import {
   approveTestCase,
   bulkUpdateTestCases,
-  createTestCase,
   deleteTestCase,
   deprecateTestCase,
   listAllTestCases,
@@ -16,22 +15,21 @@ import {
   submitForReview,
   type Priority,
   type TestCase,
-  type TestCaseCreateRequest,
   type TestCaseStatus,
 } from '@/api/testCases'
-import { listModules } from '@/api/modules'
 import { listUsers } from '@/api/users'
 import { QuarantinedBadge } from '@/components/ui/QuarantinedBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/useConfirm'
-import { Drawer } from '@/components/ui/dialog'
+import { Dialog } from '@/components/ui/dialog'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { SegmentedToggle } from '@/components/ui/segmented'
 import { type FilterChip } from '@/components/list/FilterChips'
+import { hasPermission } from '@/api/auth'
 import { useAuth } from '@/lib/auth'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { FilterTabs } from '@/components/ui/filter-tabs'
@@ -50,7 +48,7 @@ import {
 import { useRowContextMenu, type RowContextMenuItem } from '@/components/table/RowContextMenu'
 import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
 import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
-import { TestCaseForm, type TestCaseFormValues } from '@/routes/testcases/TestCaseForm'
+import { ExecutionStatusBadge } from '@/routes/testcases/ExecutionStatusBadge'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
@@ -60,8 +58,10 @@ import { BulkMetadataDialog, type BulkMetadataKind } from './BulkMetadataDialog'
 
 const REPO_COLUMNS: TableColumnDef[] = [
   { key: 'title', label: 'Title', alwaysVisible: true, defaultWidth: 280 },
+  { key: 'display_id', label: 'Test Case ID', defaultWidth: 120 },
   { key: 'project', label: 'Project', defaultWidth: 160 },
-  { key: 'status', label: 'Status', alwaysVisible: true, defaultWidth: 140 },
+  { key: 'status', label: 'Review Status', alwaysVisible: true, defaultWidth: 140 },
+  { key: 'execution', label: 'Execution Status', defaultWidth: 140 },
   { key: 'priority', label: 'Priority', defaultWidth: 110 },
   { key: 'assignee', label: 'Assignee', defaultWidth: 140 },
   { key: 'steps', label: 'Steps', defaultWidth: 80, defaultHidden: true },
@@ -84,34 +84,23 @@ const REPO_DETAIL: RowDetailConfig<RepoRow> = {
   title: ({ case: tc }) => tc.title,
   badges: ({ case: tc }) => (
     <>
-      <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>{tc.status_label}</StatusBadge>
+      <ExecutionStatusBadge status={tc.execution_status} />
+      <StatusBadge tone={STATUS_DISPLAY[tc.status].tone}>Review: {tc.status_label}</StatusBadge>
       <LevelBadge tone={priorityTone(tc.priority)}>{tc.priority} priority</LevelBadge>
       {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
     </>
   ),
   fields: ({ case: tc, project }) => [
-    { label: 'ID', value: <span className="font-mono text-xs">{tc.id.slice(0, 8)}</span> },
+    { label: 'Test Case ID', value: <span className="font-mono text-xs">{tc.display_id ?? tc.id.slice(0, 8)}</span> },
+    { label: 'Module', value: tc.module_path ?? 'Ungrouped' },
     { label: 'Project', value: project.name },
     { label: 'Version', value: `v${tc.version_number}` },
     { label: 'Steps', value: tc.steps.length },
     { label: 'Created', value: new Date(tc.created_at).toLocaleDateString() },
-    { label: 'Last result', value: tc.last_execution_result ?? 'Never executed' },
+    { label: 'Execution status', value: tc.execution_status },
   ],
   description: ({ case: tc }) => tc.description,
   href: ({ case: tc }) => `/test-cases/${tc.id}`,
-}
-
-const DEFAULT_FORM_VALUES: TestCaseFormValues = {
-  title: '',
-  module_id: '',
-  description: '',
-  priority: 'Medium',
-  assignee_id: '',
-  scenario_id: '',
-  scenario_description: '',
-  prerequisite: '',
-  test_data: '',
-  steps: [{ action: '', expected: '' }],
 }
 
 // The one inline next-action each status has (BRD: "inline actions" --
@@ -195,6 +184,7 @@ export function TestRepository() {
     )
   }
   const assigneeFilter = mine && user ? user.user_id : ''
+  const canCreate = hasPermission(user, 'testcase.create')
   // Bug #8: deprecated cases cluttered the list by default (every seeded
   // case here happened to be deprecated) -- hidden unless explicitly
   // toggled on, or unless the status filter itself is set to Deprecated.
@@ -239,8 +229,7 @@ export function TestRepository() {
   // drawer rather than inventing a new creation flow.
   useEffect(() => {
     if (searchParams.get('action') === 'create') {
-      setCreateProjectId(projectId)
-      setCreateOpen(true)
+      startCreate(projectId)
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev)
@@ -279,11 +268,6 @@ export function TestRepository() {
   })
   const canListUsers = useCanListUsers()
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: listUsers, enabled: canListUsers })
-  const createModulesQuery = useQuery({
-    queryKey: ['test-modules', createProjectId],
-    queryFn: () => listModules(createProjectId),
-    enabled: !!createProjectId,
-  })
 
   const projects = projectsQuery.data?.items ?? []
   // A project the list reports as empty has nothing to fetch or show. (An
@@ -618,16 +602,16 @@ export function TestRepository() {
       showToast('error', err instanceof ApiError ? err.message : 'Could not delete that test case'),
   })
 
-  const createMutation = useMutation({
-    mutationFn: (req: TestCaseCreateRequest) => createTestCase(createProjectId, req),
-    onSuccess: () => {
-      invalidateRepository()
-      setCreateOpen(false)
-      showToast('success', 'Test case created')
-    },
-    // No onError toast -- `createError` below already renders this inline.
-  })
-  const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
+  // The create form is a full page per project. With a project chosen (or only one to choose from) go
+  // straight there; otherwise ask which project first.
+  function startCreate(preferred: string) {
+    const target = preferred || (projects.length === 1 ? projects[0].id : '')
+    if (target) navigate(`/projects/${target}/test-cases/new`)
+    else {
+      setCreateProjectId('')
+      setCreateOpen(true)
+    }
+  }
 
   async function runBulk(kind: 'next-action' | 'delete') {
     const targets = rows.filter((r) => selected.has(r.case.id))
@@ -698,6 +682,16 @@ export function TestRepository() {
       ),
     },
     {
+      key: 'display_id',
+      header: 'Test Case ID',
+      card: 'meta',
+      cell: ({ case: tc }) => (
+        <Link to={`/test-cases/${tc.id}`} className="font-mono text-xs underline-offset-2 hover:underline">
+          {tc.display_id ?? tc.id.slice(0, 8)}
+        </Link>
+      ),
+    },
+    {
       key: 'project',
       header: 'Project',
       limitWidth: true,
@@ -713,8 +707,14 @@ export function TestRepository() {
       cardCell: ({ project }) => project.name,
     },
     {
+      key: 'execution',
+      header: 'Execution Status',
+      card: 'badge',
+      cell: ({ case: tc }) => <ExecutionStatusBadge status={tc.execution_status} />,
+    },
+    {
       key: 'status',
-      header: 'Status',
+      header: 'Review Status',
       card: 'badge',
       cell: ({ case: tc }) => (
         <span className="inline-flex flex-wrap items-center gap-1">
@@ -867,14 +867,14 @@ export function TestRepository() {
         title="Test Cases"
         description="Every test case across your projects."
         actions={
-          <Button onClick={() => { setCreateProjectId(projectId); setCreateOpen(true) }} disabled={projects.length === 0}>
+          <Button onClick={() => startCreate(projectId)} disabled={projects.length === 0 || !canCreate} title={canCreate ? undefined : 'You need the Create test case permission'}>
             New Test Case
           </Button>
         }
       />
 
       <FilterTabs
-        label="Test case status"
+        label="Review status"
         items={statusTabs}
         value={status}
         onChange={changeStatus}
@@ -1119,18 +1119,19 @@ export function TestRepository() {
         </div>
       )}
 
-      {/* GAP-91 item 1: a 10+ field form no longer fits well in a centered
-          Dialog -- a full-height Drawer gives it real room. */}
-      <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case">
-        <div className="flex flex-col gap-3">
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="New Test Case">
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (createProjectId) navigate(`/projects/${createProjectId}/test-cases/new`)
+          }}
+        >
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="create-project" required>Project</Label>
-            <Select
-              id="create-project"
-              required
-              value={createProjectId}
-              onChange={(e) => setCreateProjectId(e.target.value)}
-            >
+            <Label htmlFor="create-project" required>
+              Project
+            </Label>
+            <Select id="create-project" required value={createProjectId} onChange={(e) => setCreateProjectId(e.target.value)}>
               <option value="" disabled>
                 Select a project…
               </option>
@@ -1141,23 +1142,17 @@ export function TestRepository() {
               ))}
             </Select>
           </div>
-          {createProjectId ? (
-            <TestCaseForm
-              defaultValues={DEFAULT_FORM_VALUES}
-              submitLabel="Create Test Case"
-              isSubmitting={createMutation.isPending}
-              serverError={createError}
-              users={usersQuery.data ?? []}
-              modules={createModulesQuery.data ?? []}
-              onSubmit={(values) => createMutation.mutate(values)}
-            />
-          ) : (
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Choose a project above to continue.
-            </p>
-          )}
-        </div>
-      </Drawer>
+          <p className="text-sm text-[var(--muted-foreground)]">The test case form opens for that project.</p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!createProjectId}>
+              Continue
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   )
 }

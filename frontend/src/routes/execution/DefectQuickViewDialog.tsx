@@ -4,7 +4,8 @@ import type { Defect } from '@/api/defects'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
-import { STATUS_TONE, severityTone } from '@/routes/defects/statusDisplay'
+import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
+import { severityTone } from '@/routes/defects/statusDisplay'
 
 // BRD FR-EXEC-04: a tester who sees a defect pill on a step can inspect the
 // defect without leaving the Execution Console (and losing their place in
@@ -20,7 +21,7 @@ export function DefectQuickViewDialog({ defect, onClose }: { defect: Defect | nu
             <p className="break-words text-base font-semibold">{defect.title}</p>
             <div className="flex flex-wrap items-center gap-1.5">
               <StatusBadge tone={severityTone(defect.severity)}>Severity: {defect.severity}</StatusBadge>
-              <StatusBadge tone={STATUS_TONE[defect.status]}>Status: {defect.status_label}</StatusBadge>
+              <DefectStatusBadge status={defect.status} label={`Status: ${defect.status_label}`} />
             </div>
           </div>
 

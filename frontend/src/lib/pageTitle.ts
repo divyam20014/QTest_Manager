@@ -11,6 +11,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/test-runs': 'Test Runs',
   '/execution': 'Execution',
   '/defects': 'Defects',
+  '/defects/new': 'New Defect',
   '/dashboards': 'Manage Dashboards',
   '/reporting': 'Reporting',
   '/reporting/builder': 'Report builder',
@@ -41,6 +42,7 @@ export function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/accept-invite')) return 'Accept Invitation'
   if (pathname === '/user-guide') return 'User Guide'
   if (EXACT_TITLES[pathname]) return EXACT_TITLES[pathname]
+  if (/^\/defects\/[^/]+\/edit$/.test(pathname)) return 'Edit Defect'
   if (pathname.startsWith('/dashboards/')) return 'Dashboard'
   if (/^\/projects\/[^/]+$/.test(pathname)) return 'Project Dashboard'
   if (/^\/projects\/[^/]+\/details$/.test(pathname)) return 'Project Details'

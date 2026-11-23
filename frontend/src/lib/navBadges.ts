@@ -1,7 +1,10 @@
-/** Open defects = everything not Closed (same definition as the dashboard backlog). */
+/**
+ * Open defects = everything not Closed or Rejected (ADR-118: the same definition as the dashboard
+ * KPI and every backend count). A Deferred defect is parked but still open.
+ */
 export function openDefectCount(status: { counts: Record<string, number>; total: number } | undefined): number {
   if (!status) return 0
-  return Math.max(0, status.total - (status.counts['Closed'] ?? 0))
+  return Math.max(0, status.total - (status.counts['Closed'] ?? 0) - (status.counts['Rejected'] ?? 0))
 }
 
 /** Badge text: hidden at 0, capped at "99+". */

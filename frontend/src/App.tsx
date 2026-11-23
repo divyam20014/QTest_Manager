@@ -20,6 +20,8 @@ const Dashboard = lazyRoute(() => import('@/routes/Dashboard'), 'Dashboard')
 const MyAccount = lazyRoute(() => import('@/routes/MyAccount'), 'MyAccount')
 const DefectDetail = lazyRoute(() => import('@/routes/defects/DefectDetail'), 'DefectDetail')
 const DefectsList = lazyRoute(() => import('@/routes/defects/DefectsList'), 'DefectsList')
+const DefectCreatePage = lazyRoute(() => import('@/routes/defects/DefectFormPage'), 'DefectCreatePage')
+const DefectEditPage = lazyRoute(() => import('@/routes/defects/DefectFormPage'), 'DefectEditPage')
 const ExecutionConsole = lazyRoute(() => import('@/routes/execution/ExecutionConsole'), 'ExecutionConsole')
 const ExecutionOverview = lazyRoute(() => import('@/routes/execution/ExecutionOverview'), 'ExecutionOverview')
 const TestRunDetail = lazyRoute(() => import('@/routes/execution/TestRunDetail'), 'TestRunDetail')
@@ -45,6 +47,8 @@ const ReportBuilder = lazyRoute(() => import('@/routes/reporting/ReportBuilder')
 const TestRepository = lazyRoute(() => import('@/routes/testrepository/TestRepository'), 'TestRepository')
 const TestCaseDetail = lazyRoute(() => import('@/routes/testcases/TestCaseDetail'), 'TestCaseDetail')
 const TestCasesList = lazyRoute(() => import('@/routes/testcases/TestCasesList'), 'TestCasesList')
+const TestCaseCreatePage = lazyRoute(() => import('@/routes/testcases/TestCaseFormPage'), 'TestCaseCreatePage')
+const TestCaseEditPage = lazyRoute(() => import('@/routes/testcases/TestCaseFormPage'), 'TestCaseEditPage')
 const UserGuide = lazyRoute(() => import('@/routes/userGuide/UserGuide'), 'UserGuide')
 const PlatformDocs = lazyRoute(() => import('@/routes/platformAdmin/PlatformDocs'), 'PlatformDocs')
 
@@ -94,7 +98,9 @@ export function App() {
           />
           <Route path="/requirements/:requirementId" element={<RequirementDetail />} />
           <Route path="/projects/:projectId/test-cases" element={<TestCasesList />} />
+          <Route path="/projects/:projectId/test-cases/new" element={<TestCaseCreatePage />} />
           <Route path="/test-cases/:testCaseId" element={<TestCaseDetail />} />
+          <Route path="/test-cases/:testCaseId/edit" element={<TestCaseEditPage />} />
           <Route path="/projects/:projectId/test-runs" element={<TestRunsList />} />
           <Route path="/test-runs/:runId" element={<TestRunDetail />} />
           <Route path="/test-run-cases/:runCaseId" element={<ExecutionConsole />} />
@@ -102,7 +108,9 @@ export function App() {
           <Route path="/test-runs" element={<TestRunsOverview />} />
           <Route path="/execution" element={<ExecutionOverview />} />
           <Route path="/defects" element={<DefectsList />} />
+          <Route path="/defects/new" element={<DefectCreatePage />} />
           <Route path="/defects/:defectId" element={<DefectDetail />} />
+          <Route path="/defects/:defectId/edit" element={<DefectEditPage />} />
           <Route path="/reporting" element={<Reporting />} />
           <Route path="/reporting/builder" element={<ReportBuilder />} />
           <Route path="/admin" element={<Navigate to="/admin/users" replace />} />

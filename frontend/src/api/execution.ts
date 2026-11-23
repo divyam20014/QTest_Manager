@@ -196,10 +196,17 @@ export function openStep(stepId: string): Promise<ExecutionStep> {
   return apiFetch<ExecutionStep>(`/execution-steps/${stepId}/open`, { method: 'POST' })
 }
 
-export function recordVerdict(stepId: string, verdict: Verdict): Promise<ExecutionStep> {
+/** ADR-116: `actualResult` is what actually happened; the UI requires it for Fail. */
+export function recordVerdict(
+  stepId: string,
+  verdict: Verdict,
+  actualResult?: string | null,
+): Promise<ExecutionStep> {
+  const body: { verdict: Verdict; actual_result?: string } = { verdict }
+  if (actualResult && actualResult.trim()) body.actual_result = actualResult.trim()
   return apiFetch<ExecutionStep>(`/execution-steps/${stepId}/verdict`, {
     method: 'POST',
-    body: JSON.stringify({ verdict }),
+    body: JSON.stringify(body),
   })
 }
 

@@ -15,11 +15,14 @@ export function Tooltip({
   content,
   children,
   side = 'top',
+  align = 'center',
   className,
 }: {
   content: ReactNode
   children: ReactNode
   side?: 'top' | 'bottom'
+  /** `end` right-aligns the bubble to its trigger, for triggers at the right edge of a scrolling table. */
+  align?: 'center' | 'end'
   className?: string
 }) {
   const id = useId()
@@ -32,7 +35,8 @@ export function Tooltip({
         id={id}
         role="tooltip"
         className={cn(
-          'pointer-events-none absolute left-1/2 z-[var(--z-dropdown)] -translate-x-1/2 whitespace-nowrap rounded-[var(--radius-control)] bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] invisible opacity-0 shadow-md transition-[opacity,visibility] duration-[var(--motion-base)] group-hover/tooltip:visible group-hover/tooltip:opacity-100 group-focus-within/tooltip:visible group-focus-within/tooltip:opacity-100 motion-reduce:transition-none',
+          'pointer-events-none absolute z-[var(--z-dropdown)] whitespace-nowrap rounded-[var(--radius-control)] bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] invisible opacity-0 shadow-md transition-[opacity,visibility] duration-[var(--motion-base)] group-hover/tooltip:visible group-hover/tooltip:opacity-100 group-focus-within/tooltip:visible group-focus-within/tooltip:opacity-100 motion-reduce:transition-none',
+          align === 'end' ? 'right-0' : 'left-1/2 -translate-x-1/2',
           side === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
         )}
       >

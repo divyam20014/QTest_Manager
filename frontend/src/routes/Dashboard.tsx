@@ -26,6 +26,7 @@ import { getQuickCreateActions } from '@/lib/quickCreate'
 import { canAccessPath } from '@/lib/routeAccess'
 import { levelTone } from '@/lib/statusTones'
 import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
+import { OPEN_DEFECTS_HREF } from '@/lib/defectWorkflow'
 import { useThemePreference } from '@/lib/useThemePreference'
 import { capCategories, buildNeedsAttention, countTrend, rateTrend } from '@/routes/dashboardKpi'
 import { KpiCard, KpiCardSkeleton } from '@/routes/dashboardKpiCard'
@@ -99,7 +100,7 @@ function OnboardingChecklist({
             <li key={step.label}>
               <Link
                 to={step.href}
-                className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--muted)]"
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--muted)] max-md:min-h-11"
               >
                 <span
                   className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${
@@ -306,7 +307,8 @@ export function Dashboard() {
           label: 'Open defects',
           value: openDefects.toLocaleString(),
           trend: countTrend(openDefects, prev?.open_defects, days, false),
-          href: '/defects',
+          // The same group as the number: every status except Closed and Rejected (ADR-118).
+          href: OPEN_DEFECTS_HREF,
         },
         {
           label: 'Test cases',

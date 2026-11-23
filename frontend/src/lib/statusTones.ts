@@ -13,6 +13,9 @@ const LEVEL_TONE: Record<string, BadgeTone> = {
   Low: 'neutral',
   Medium: 'warning',
   High: 'warning',
+  // Test case severity (ADR-115): Critical / Major / Minor.
+  Major: 'warning',
+  Minor: 'neutral',
   Critical: 'critical',
 }
 

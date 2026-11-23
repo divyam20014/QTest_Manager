@@ -5,18 +5,21 @@ export const API_BASE_URL = resolveApiBase(import.meta.env.VITE_API_BASE_URL)
 
 export interface ApiEnvelope<T> {
   data: T | null
-  error: { code: string; message: string } | null
+  error: { code: string; message: string; fields?: Record<string, string> } | null
 }
 
 export class ApiError extends Error {
   code: string
   /** HTTP status of the failed response (403 drives the "No access" state). */
   status?: number
+  /** Per-field messages (`error.fields`) when the API names the offending fields. */
+  fields?: Record<string, string>
 
-  constructor(message: string, code: string, status?: number) {
+  constructor(message: string, code: string, status?: number, fields?: Record<string, string>) {
     super(message)
     this.code = code
     this.status = status
+    this.fields = fields
   }
 }
 
@@ -46,7 +49,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       code,
       message,
     })
-    throw new ApiError(message, code, response.status)
+    throw new ApiError(message, code, response.status, body.error?.fields)
   }
 
   return body.data as T

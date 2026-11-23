@@ -17,6 +17,7 @@ import { type ComponentType, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { getDefectStatusCounts } from '@/api/defects'
+import { openDefectCount } from '@/lib/navBadges'
 import { getUnreadCount } from '@/api/notifications'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -121,7 +122,8 @@ export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: 
     enabled: canSeeDefects,
     staleTime: 60_000,
   })
-  const openDefects = canSeeDefects ? (defectCounts.data?.counts.New ?? 0) + (defectCounts.data?.counts.Open ?? 0) : 0
+  // Everything not Closed or Rejected: the same group as the sidebar badge and the dashboard (ADR-118).
+  const openDefects = canSeeDefects ? openDefectCount(defectCounts.data) : 0
   const unreadCount = unread.data?.count ?? 0
 
   const exempt = moreOpen || focusWithin || NEVER_HIDE_PATH.test(location.pathname)

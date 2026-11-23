@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { listDefects } from '@/api/defects'
-import { STATUS_TONE } from '@/routes/defects/statusDisplay'
+import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
 import {
   addTestRunCases,
   assignRunCase,
@@ -554,7 +554,7 @@ function LinkedDefectsCard({ runId }: { runId: string }) {
               >
                 {d.title}
               </Link>
-              <Badge tone={STATUS_TONE[d.status]}>{d.status}</Badge>
+              <DefectStatusBadge status={d.status} label={d.status_label} />
             </li>
           ))}
         </ul>

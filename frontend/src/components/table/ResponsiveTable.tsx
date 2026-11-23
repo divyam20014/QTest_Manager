@@ -88,6 +88,8 @@ interface ResponsiveTableProps<T> {
   label: string
   /** Extra classes for the desktop scroll wrapper. */
   className?: string
+  /** Desktop: 8px instead of 16px of horizontal cell padding, for lists with many default columns. */
+  dense?: boolean
 }
 
 export function ResponsiveTable<T>(props: ResponsiveTableProps<T>) {
@@ -109,7 +111,9 @@ function DesktopTable<T>({
   loading,
   label,
   className,
+  dense,
 }: ResponsiveTableProps<T>) {
+  const px = dense ? 'px-2' : 'px-4'
   const visible = columns.filter((c) => !prefs || prefs.isVisible(c.key))
   const colCount = visible.length + (selection ? 1 : 0) + (rowActions ? 1 : 0)
   const scrollInside = rows.length > 25 && !state && !loading
@@ -154,7 +158,7 @@ function DesktopTable<T>({
         <thead className="sticky top-0 z-10 bg-[var(--muted)] text-left text-xs text-[var(--muted-foreground)]">
           <tr>
             {selection && (
-              <th className="w-10 px-4 py-2">
+              <th className={cn('w-10 py-2', px)}>
                 <input
                   type="checkbox"
                   aria-label="Select all on this page"
@@ -165,17 +169,17 @@ function DesktopTable<T>({
             )}
             {visible.map((c) =>
               prefs ? (
-                <ResizableTh key={c.key} width={prefs.width(c.key)} onResize={(w) => prefs.setWidth(c.key, w)}>
+                <ResizableTh key={c.key} width={prefs.width(c.key)} onResize={(w) => prefs.setWidth(c.key, w)} className={dense ? 'px-2' : undefined}>
                   {c.headerCell ?? c.header}
                 </ResizableTh>
               ) : (
-                <th key={c.key} className="px-4 py-2 font-medium">
+                <th key={c.key} className={cn('py-2 font-medium', px)}>
                   {c.headerCell ?? c.header}
                 </th>
               ),
             )}
             {rowActions && (
-              <th className="px-4 py-2 font-medium">
+              <th className={cn('py-2 font-medium', px)}>
                 <span className="sr-only">Actions</span>
               </th>
             )}
@@ -202,7 +206,7 @@ function DesktopTable<T>({
                   onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(e, row) : undefined}
                 >
                   {selection && (
-                    <td className="px-4 py-2">
+                    <td className={cn('py-2', px)}>
                       <input
                         type="checkbox"
                         aria-label={selection.label(row)}
@@ -214,13 +218,13 @@ function DesktopTable<T>({
                   {visible.map((c) => (
                     <td
                       key={c.key}
-                      className={cn('px-4 py-2', c.tdClassName)}
+                      className={cn('py-2', px, c.tdClassName)}
                       style={c.limitWidth && prefs ? { maxWidth: prefs.width(c.key) } : undefined}
                     >
                       {c.cell(row)}
                     </td>
                   ))}
-                  {rowActions && <td className="px-4 py-2 text-right">{rowActions(row)}</td>}
+                  {rowActions && <td className={cn('py-2 text-right', px)}>{rowActions(row)}</td>}
                 </tr>
               )
             })
