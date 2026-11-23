@@ -79,8 +79,12 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | GET | /projects | list (scoped to assigned for Tester); supports `search`/`domain`/`status`/`priority`/`sort`/`page`/`page_size`, returns `{items, total}` incl. per-project metrics (ADR-033) | all |
 | POST | /projects | create; accepts optional `Idempotency-Key` header to dedupe a retried/duplicated request (ADR-040) | admin, manager |
 | GET | /projects/{id} | detail | assigned/all per role |
-| PATCH | /projects/{id} | update; response includes `version` (incremented per update); optional `expected_version` in the request body enables opt-in optimistic-concurrency (409 on a stale version, ADR-040) | admin, manager (assigned) |
+| PATCH | /projects/{id} | update; response includes `version` (incremented per update); optional `expected_version` in the request body enables opt-in optimistic-concurrency (409 on a stale version, ADR-040). `nav_config` (ADR-122) = `{order: [tab keys], hidden: [tab keys]}` or `null` (back to the default tabs): keys must be among `overview, requirements, test-cases, test-runs, defects, reports, test-plans, releases, team, activity, settings`, no repeats; only `test-plans, releases, team, activity` may be hidden (a core tab or `settings` in `hidden`, or any unknown key, is a 422); a tab missing from `order` is appended in default order. Changing it needs the same `project.edit` and assignment as any project edit and is audited as `project.updated`. `GET /projects` and `GET /projects/{id}` return `nav_config` | admin, manager (assigned) |
 | DELETE | /projects/{id} | delete (blocked if active runs exist) | admin, manager (assigned) |
+| GET | /projects/{id}/releases | the project releases, newest first: `id, project_id, name, release_date, notes, status, created_at`; `status` is `Planned`, `In Progress`, `Released`, `Cancelled` or null (ADR-122) | all (visible project) |
+| POST | /projects/{id}/releases | create a release (`name`, optional `release_date`, `notes`, `status`); `/releases/bulk` creates up to 500 | `environment.manage` |
+| PATCH | /releases/{id} | edit a release (ADR-122): only the fields sent change (`name` cannot be empty or null; `release_date`, `notes` and `status` accept null to clear); a bad `status` or date is a 422; the release must belong to a project the caller can see (a Tester outside the project gets 404, another tenant 404); audit `release.updated` with the before and after of each changed field | `environment.manage` |
+| DELETE | /releases/{id} | delete a release (audit `release.deleted`) | `environment.manage` |
 | POST | /projects/{id}/members | assign user | admin, manager |
 | DELETE | /projects/{id}/members/{userId} | unassign | admin, manager |
 

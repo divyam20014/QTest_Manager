@@ -126,12 +126,46 @@ elsewhere; a project you cannot access shows "No access to this project".
 ### Projects
 
 A project is the container for test cases, defects and requirements. You see
-the projects you are assigned to. Opening one shows its Dashboard (summary
-tiles, release readiness, trends and risk widgets, read only). The tabs above
-it switch to Details, Requirements, Test Cases, Test Runs and Defects. The
-buttons at the top (**New test run**, **New test case**, **Report defect**) take
-you straight there for this project. You only see the buttons your role allows.
+the projects you are assigned to. Opening one shows its **Overview** (summary
+tiles, release readiness, trends and risk widgets, read only). The buttons on
+the Overview (**New test run**, **New test case**, **Report defect**) take you
+straight there for this project. You only see the buttons your role allows.
 Creating and configuring projects is a Manager task.
+
+#### The project workspace
+
+Every page of a project shares one header and one row of tabs. The header shows
+the project name, its status and priority, the owner, how many of its test cases
+are approved (a bar and the real counts; "0 test cases" when there are
+none), a star to add the project to your Favourites, and (if you can edit the
+project) a gear that opens its Settings. The small up-down button beside the name
+is the **project switcher**: type to search, recent projects come first, and
+choosing one keeps you on the same tab when the other project has it, otherwise
+it opens that project's Overview.
+
+The tabs are **Overview**, **Requirements**, **Test Cases**, **Test Runs**,
+**Defects**, **Reports**, **Planning** (test suites and test plans),
+**Releases** (releases and builds; managers can edit a release's name, target
+date, status and notes), **Team** (members and project roles), **Activity**
+(what changed recently, plus the newest test cases and defects) and **Settings**
+(project details, tabs and deleting the project; only people who can edit the
+project see it). Small numbers beside Test Cases, Test Runs and Defects are the
+real counts (defects are the open ones). Defects and Reports open the usual
+Defects and Reports pages for this project, with the project header and tabs
+above them. When the tabs do not fit (a phone, a narrow window) the last ones
+move into a **More** menu; the tab you are on always stays visible. The old
+**Details** page (`/projects/{id}/details`) still works and shows these sections
+together.
+
+**Choosing the tabs.** In **Settings > Project navigation**, a manager can move
+tabs up or down with the arrow buttons (they work from the keyboard, and the
+change is announced) and untick **Show** for Planning, Releases, Team or Activity.
+Requirements, Test Cases, Test Runs, Defects, Reports and Overview are always
+shown (they can be moved) and Settings always stays for people who can edit.
+**Save tabs** stores it for everyone on that project; **Reset to defaults** puts
+the standard order back. A hidden tab is only left out of the tab row: its page
+still opens from a direct link, with a short note saying the tab is hidden (and a
+link to settings if you can edit), and nobody gains or loses access to any data.
 
 ### Test Cases
 
@@ -360,10 +394,11 @@ anyone whose role can view all projects, including custom roles.
 ### Setting up projects
 
 **Projects** lists every project. **New Project** creates one with a name,
-domain, priority, budget and timeline. In a project's **Details** tab you manage
-members, builds, suites and plans. Keep the builds and environments current so
-runs can target them (environments are maintained under Admin, see "For
-Admins").
+domain, priority, budget and timeline. In a project you manage members on the
+**Team** tab, builds and releases on **Releases**, suites and plans on
+**Planning**, and the project's own details, visible tabs and deletion on
+**Settings**. Keep the builds and environments current so runs can target them
+(environments are maintained under Admin, see "For Admins").
 
 ### Requirements and coverage
 

@@ -171,6 +171,7 @@ Constraint: application layer must block deleting/deactivating the last active `
 | currency_code | CHAR(3) NOT NULL | ADR-013 |
 | region | TEXT NOT NULL | free text, GAP open re: enum vs free text |
 | owner_id | UUID NOT NULL FK users | |
+| nav_config | JSONB NULL | ADR-122: `{order, hidden}` project tab order and hidden tabs, validated by the API against a fixed key list; NULL = default tabs |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | |
 
 ### `project_members`
