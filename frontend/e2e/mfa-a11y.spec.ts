@@ -28,15 +28,49 @@ const COMBOS = [
   { width: 1280, height: 800, theme: 'dark' },
 ] as const
 
-async function scanAll(page: Page, label: string, problems: string[]) {
+// A dialog that is still fading out underneath a newly opened one leaves two stacked
+// backdrops, and axe then measures contrast through both. Scan only once every
+// transition has finished and no more than `maxDialogs` dialogs are left.
+async function settle(page: Page, maxDialogs = 1) {
+  // Looping animations (spinners, skeleton pulses) never finish: only wait for finite ones.
+  await page
+    .waitForFunction(
+      (max) =>
+        document
+          .getAnimations()
+          .every((a) => a.effect?.getComputedTiming().iterations === Infinity) &&
+        document.querySelectorAll('[role="dialog"]').length <= max,
+      maxDialogs,
+      { timeout: 10_000 },
+    )
+    .catch(async () => {
+      const state = await page.evaluate(() => ({
+        dialogs: [...document.querySelectorAll('[role="dialog"]')].map(
+          (d) => d.getAttribute('aria-label') ?? d.textContent?.slice(0, 40),
+        ),
+        animations: document
+          .getAnimations()
+          .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+          .map((a) => (a as CSSAnimation).animationName ?? a.constructor.name),
+      }))
+      throw new Error(`UI did not settle before the axe scan: ${JSON.stringify(state)}`)
+    })
+}
+
+// `scope` limits the scan to one subtree. Used for a dialog stacked on another dialog (the
+// step-up prompt over the action's own confirm): the page behind two backdrops is inert.
+async function scanAll(page: Page, label: string, problems: string[], scope?: string) {
+  await settle(page, scope ? 2 : 1)
   const original = page.viewportSize() ?? { width: 1280, height: 800 }
   for (const c of COMBOS) {
     await page.setViewportSize({ width: c.width, height: c.height })
     await page.evaluate((t) => {
       document.documentElement.dataset.theme = t
     }, c.theme)
+    // Colours transition on a theme switch: measure only once they have settled.
+    await settle(page, scope ? 2 : 1)
     await page.waitForTimeout(250)
-    const findings = await axeFindings(page)
+    const findings = await axeFindings(page, {}, scope)
     problems.push(...formatFindings(`${label} @${c.width} ${c.theme}`, findings))
   }
   await page.setViewportSize(original)
@@ -241,7 +275,7 @@ test('Platform Admin verify step, console dialogs and Audit tab pass axe; dialog
       'autocomplete',
       'one-time-code',
     )
-    await scanAll(page, 'platform-step-up', problems)
+    await scanAll(page, 'platform-step-up', problems, `[role="dialog"][aria-label="Confirm it's you"]`)
     await stepUp.getByLabel('Authentication code').fill('000000')
     await stepUp.getByRole('button', { name: 'Confirm' }).click()
     await expect(stepUp.getByRole('alert')).toBeVisible()

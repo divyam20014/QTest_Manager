@@ -19,8 +19,13 @@ export interface Finding {
 export async function axeFindings(
   page: Page,
   allow: Readonly<Record<string, string>> = {},
+  include?: string,
 ): Promise<Finding[]> {
-  const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze()
+  // `include` scopes the scan to one subtree, e.g. the top modal: the page behind a modal is
+  // inert and dimmed by its backdrop(s), so measuring its contrast says nothing about users.
+  const builder = new AxeBuilder({ page }).withTags(AXE_TAGS)
+  if (include) builder.include(include)
+  const results = await builder.analyze()
   return results.violations
     .filter((v) => !(v.id in allow))
     .map((v) => ({
