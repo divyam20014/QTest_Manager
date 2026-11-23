@@ -35,6 +35,14 @@ const SEGMENT_TITLES: Record<string, string> = {
   defects: 'Defect',
 }
 
+const PROJECT_TAB_TITLES: Record<string, string> = {
+  'test-plans': 'Planning',
+  releases: 'Releases',
+  team: 'Team',
+  activity: 'Activity',
+  settings: 'Settings',
+}
+
 function isId(segment: string) {
   return /^[0-9a-f-]{8,}$/i.test(segment)
 }
@@ -45,8 +53,11 @@ export function getPageTitle(pathname: string): string {
   if (EXACT_TITLES[pathname]) return EXACT_TITLES[pathname]
   if (/^\/defects\/[^/]+\/edit$/.test(pathname)) return 'Edit Defect'
   if (pathname.startsWith('/dashboards/')) return 'Dashboard'
-  if (/^\/projects\/[^/]+$/.test(pathname)) return 'Project Dashboard'
+  if (/^\/projects\/[^/]+$/.test(pathname)) return 'Project Overview'
   if (/^\/projects\/[^/]+\/details$/.test(pathname)) return 'Project Details'
+  // ADR-122: project workspace tabs.
+  const projectTab = /^\/projects\/[^/]+\/(test-plans|releases|team|activity|settings)$/.exec(pathname)
+  if (projectTab) return `Project ${PROJECT_TAB_TITLES[projectTab[1]]}`
 
   const segments = pathname.split('/').filter(Boolean)
   // Walk backwards: the most specific recognizable segment wins (e.g.

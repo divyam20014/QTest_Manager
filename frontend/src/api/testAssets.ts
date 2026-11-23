@@ -33,14 +33,22 @@ export interface Release {
   name: string
   release_date: string | null
   notes: string | null
+  /** ADR-122; null for releases that never had a status set. */
+  status: ReleaseStatus | null
   created_at: string
 }
+
+export const RELEASE_STATUSES = ['Planned', 'In Progress', 'Released', 'Cancelled'] as const
+export type ReleaseStatus = (typeof RELEASE_STATUSES)[number]
 
 export interface ReleaseCreateRequest {
   name: string
   release_date?: string | null
   notes?: string | null
+  status?: ReleaseStatus | null
 }
+
+export type ReleaseUpdateRequest = Partial<ReleaseCreateRequest>
 
 export function listEnvironments(): Promise<Environment[]> {
   return apiFetch<Environment[]>('/environments')
@@ -78,6 +86,10 @@ export function createRelease(projectId: string, req: ReleaseCreateRequest): Pro
     method: 'POST',
     body: JSON.stringify(req),
   })
+}
+
+export function updateRelease(id: string, req: ReleaseUpdateRequest): Promise<Release> {
+  return apiFetch<Release>(`/releases/${id}`, { method: 'PATCH', body: JSON.stringify(req) })
 }
 
 export function deleteRelease(id: string): Promise<{ deleted: boolean }> {

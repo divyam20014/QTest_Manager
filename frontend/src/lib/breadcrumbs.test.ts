@@ -25,10 +25,34 @@ describe('buildCrumbs', () => {
     expect(buildCrumbs(`/projects/${PID}/defects`).map((c) => c.label)).toContain('Project')
   })
 
-  it('adds a current "Dashboard" crumb on a bare project page', () => {
+  it('adds a current "Overview" crumb on a bare project page', () => {
     const crumbs = buildCrumbs(`/projects/${PID}`, { project: 'Apollo' })
-    expect(crumbs.map((c) => c.label)).toEqual(['Dashboard', 'Projects', 'Apollo', 'Dashboard'])
+    expect(crumbs.map((c) => c.label)).toEqual(['Dashboard', 'Projects', 'Apollo', 'Overview'])
     expect(crumbs[3].current).toBe(true)
+  })
+
+  it('labels the project workspace tabs with their tab names', () => {
+    for (const [segment, label] of [
+      ['test-plans', 'Planning'],
+      ['releases', 'Releases'],
+      ['team', 'Team'],
+      ['activity', 'Activity'],
+      ['settings', 'Settings'],
+    ]) {
+      const crumbs = buildCrumbs(`/projects/${PID}/${segment}`, { project: 'Apollo' })
+      expect(crumbs.map((c) => c.label)).toEqual(['Dashboard', 'Projects', 'Apollo', label])
+    }
+  })
+
+  it('keeps the project in the trail for Defects and Reports opened from a project tab', () => {
+    const defects = buildCrumbs('/defects', { project: 'Apollo', search: `?projectId=${PID}` })
+    expect(defects.map((c) => c.label)).toEqual(['Dashboard', 'Projects', 'Apollo', 'Defects'])
+    expect(defects[2].path).toBe(`/projects/${PID}`)
+    expect(defects[3].current).toBe(true)
+    const reports = buildCrumbs('/reporting', { project: 'Apollo', search: `?project=${PID}` })
+    expect(reports.map((c) => c.label)).toEqual(['Dashboard', 'Projects', 'Apollo', 'Reports'])
+    // Without a project the pages stay top level.
+    expect(buildCrumbs('/defects', { search: '?status=open' })).toEqual([])
   })
 
   it('does not link prefix-only segments that have no list page', () => {

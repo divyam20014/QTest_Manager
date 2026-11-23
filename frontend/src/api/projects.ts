@@ -37,6 +37,9 @@ export interface Project {
   owner_id: string
   assigned_user_ids: string[]
   created_at: string
+  version: number
+  /** ADR-122: saved project-tab order and hidden tabs; null = the default tabs. */
+  nav_config: NavConfig | null
   test_case_count: number
   approved_test_case_count: number
   test_run_count: number
@@ -72,7 +75,17 @@ export interface ProjectCreateRequest {
   region: string
 }
 
-export type ProjectUpdateRequest = Partial<ProjectCreateRequest>
+export interface NavConfig {
+  order: string[]
+  hidden: string[]
+}
+
+export type ProjectUpdateRequest = Partial<ProjectCreateRequest> & {
+  /** Send null to go back to the default tabs. */
+  nav_config?: NavConfig | null
+  /** Reject the write (409) when the project changed since this version. */
+  expected_version?: number
+}
 
 export function listProjects(params: ProjectListParams = {}): Promise<ProjectListResponse> {
   const query = new URLSearchParams()

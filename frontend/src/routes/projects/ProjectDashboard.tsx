@@ -8,16 +8,11 @@ import { useAuth } from '@/lib/auth'
 import type { DashboardWidget, WidgetType } from '@/api/dashboards'
 import { getProject } from '@/api/projects'
 import { listReleases } from '@/api/testAssets'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { RecordPin } from '@/components/RecordPin'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { DetailSkeleton } from '@/components/ui/skeleton'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { WidgetView } from '@/routes/dashboards/Widgets'
-import { ProjectTabs } from './ProjectTabs'
-import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
-// ADR-102: a fixed, read-only dashboard built from the ADR-099 widget
+// ADR-102 / ADR-122: the Overview tab, a fixed, read-only dashboard built from the ADR-099 widget
 // components with this project's id preset. No customization, no new API.
 const SECTIONS: {
   title: string
@@ -85,40 +80,26 @@ export function ProjectDashboard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title={project.name}
-        meta={
-          <>
-            <RecordPin type="project" id={project.id} title={project.name} url={`/projects/${project.id}`} />
-            <StatusBadge tone={STATUS_TONE[project.status]}>{project.status}</StatusBadge>
-            <StatusBadge tone={PRIORITY_TONE[project.priority]}>{project.priority}</StatusBadge>
-            <StatusBadge tone="info">{project.domain}</StatusBadge>
-          </>
-        }
-        actions={
-          <>
-            {hasPermission(user, 'defect.create') && (
-              <Link
-                to={`/defects/new?projectId=${project.id}`}
-                className={buttonVariants({ variant: 'outline' })}
-              >
-                Report defect
-              </Link>
-            )}
-            {hasPermission(user, 'testcase.create') && (
-              <Link to={`/projects/${project.id}/test-cases?quick=1`} className={buttonVariants({ variant: 'outline' })}>
-                New test case
-              </Link>
-            )}
-            {hasPermission(user, 'testrun.create') && (
-              <Link to={`/projects/${project.id}/test-runs`} className={buttonVariants()}>
-                New test run
-              </Link>
-            )}
-          </>
-        }
-      />
-      <ProjectTabs projectId={project.id} />
+      <div className="flex flex-wrap items-center justify-end gap-2 max-md:w-full" data-testid="project-quick-actions">
+        {hasPermission(user, 'defect.create') && (
+          <Link
+            to={`/defects/new?projectId=${project.id}`}
+            className={buttonVariants({ variant: 'outline' })}
+          >
+            Report defect
+          </Link>
+        )}
+        {hasPermission(user, 'testcase.create') && (
+          <Link to={`/projects/${project.id}/test-cases?quick=1`} className={buttonVariants({ variant: 'outline' })}>
+            New test case
+          </Link>
+        )}
+        {hasPermission(user, 'testrun.create') && (
+          <Link to={`/projects/${project.id}/test-runs`} className={buttonVariants()}>
+            New test run
+          </Link>
+        )}
+      </div>
       {SECTIONS.map((section) => (
         <section key={section.title} aria-labelledby={`pd-${section.title.charAt(0)}`} className="flex flex-col gap-3">
           <h2 id={`pd-${section.title.charAt(0)}`} className="text-lg font-semibold">

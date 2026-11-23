@@ -6,6 +6,7 @@ import { lazyRoute } from '@/lib/lazyRoute'
 
 import { usePageTitleFromRoute } from '@/lib/usePageTitle'
 import { AdminLayout } from '@/routes/admin/AdminLayout'
+import { ProjectLayout, ProjectScoped } from '@/routes/projects/ProjectChrome'
 import { NotFound } from '@/routes/NotFound'
 import { HomeGate } from '@/routes/HomeGate'
 import { MarketingRoute } from '@/routes/MarketingRoute'
@@ -34,6 +35,11 @@ const Environments = lazyRoute(() => import('@/routes/admin/Environments'), 'Env
 const RolesPermissions = lazyRoute(() => import('@/routes/admin/RolesPermissions'), 'RolesPermissions')
 const Settings = lazyRoute(() => import('@/routes/admin/Settings'), 'Settings')
 const UsersRoles = lazyRoute(() => import('@/routes/admin/UsersRoles'), 'UsersRoles')
+const ProjectActivity = lazyRoute(() => import('@/routes/projects/ProjectActivity'), 'ProjectActivity')
+const ProjectPlanning = lazyRoute(() => import('@/routes/projects/ProjectPlanning'), 'ProjectPlanning')
+const ProjectReleases = lazyRoute(() => import('@/routes/projects/ProjectReleases'), 'ProjectReleases')
+const ProjectSettings = lazyRoute(() => import('@/routes/projects/ProjectSettings'), 'ProjectSettings')
+const ProjectTeam = lazyRoute(() => import('@/routes/projects/ProjectTeam'), 'ProjectTeam')
 const ProjectDetail = lazyRoute(() => import('@/routes/projects/ProjectDetail'), 'ProjectDetail')
 const ProjectDashboard = lazyRoute(() => import('@/routes/projects/ProjectDashboard'), 'ProjectDashboard')
 const ProjectsList = lazyRoute(() => import('@/routes/projects/ProjectsList'), 'ProjectsList')
@@ -91,29 +97,49 @@ export function App() {
           <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
           <Route path="/my-work" element={<MyWork />} />
           <Route path="/projects" element={<ProjectsList />} />
-          <Route path="/projects/:projectId" element={<ProjectDashboard />} />
-          <Route path="/projects/:projectId/details" element={<ProjectDetail />} />
-          <Route path="/projects/:projectId/requirements" element={<RequirementsList />} />
-          <Route
-            path="/projects/:projectId/traceability-matrix"
-            element={<TraceabilityMatrix />}
-          />
+          {/* ADR-122: every project page sits in ProjectLayout (header + tab strip). */}
+          <Route path="/projects/:projectId" element={<ProjectLayout />}>
+            <Route index element={<ProjectDashboard />} />
+            <Route path="details" element={<ProjectDetail />} />
+            <Route path="requirements" element={<RequirementsList />} />
+            <Route path="traceability-matrix" element={<TraceabilityMatrix />} />
+            <Route path="test-cases" element={<TestCasesList />} />
+            <Route path="test-cases/new" element={<TestCaseCreatePage />} />
+            <Route path="test-runs" element={<TestRunsList />} />
+            <Route path="test-plans" element={<ProjectPlanning />} />
+            <Route path="releases" element={<ProjectReleases />} />
+            <Route path="team" element={<ProjectTeam />} />
+            <Route path="activity" element={<ProjectActivity />} />
+            <Route path="settings" element={<ProjectSettings />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
           <Route path="/requirements/:requirementId" element={<RequirementDetail />} />
-          <Route path="/projects/:projectId/test-cases" element={<TestCasesList />} />
-          <Route path="/projects/:projectId/test-cases/new" element={<TestCaseCreatePage />} />
           <Route path="/test-cases/:testCaseId" element={<TestCaseDetail />} />
           <Route path="/test-cases/:testCaseId/edit" element={<TestCaseEditPage />} />
-          <Route path="/projects/:projectId/test-runs" element={<TestRunsList />} />
           <Route path="/test-runs/:runId" element={<TestRunDetail />} />
           <Route path="/test-run-cases/:runCaseId" element={<ExecutionConsole />} />
           <Route path="/test-repository" element={<TestRepository />} />
           <Route path="/test-runs" element={<TestRunsOverview />} />
           <Route path="/execution" element={<ExecutionOverview />} />
-          <Route path="/defects" element={<DefectsList />} />
+          <Route
+            path="/defects"
+            element={
+              <ProjectScoped param="projectId">
+                <DefectsList />
+              </ProjectScoped>
+            }
+          />
           <Route path="/defects/new" element={<DefectCreatePage />} />
           <Route path="/defects/:defectId" element={<DefectDetail />} />
           <Route path="/defects/:defectId/edit" element={<DefectEditPage />} />
-          <Route path="/reporting" element={<Reporting />} />
+          <Route
+            path="/reporting"
+            element={
+              <ProjectScoped param="project">
+                <Reporting />
+              </ProjectScoped>
+            }
+          />
           <Route path="/reporting/builder" element={<ReportBuilder />} />
           <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
           <Route element={<AdminLayout />}>

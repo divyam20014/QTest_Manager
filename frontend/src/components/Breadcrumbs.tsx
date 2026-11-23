@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { listDashboards } from '@/api/dashboards'
 import { getProject } from '@/api/projects'
-import { buildCrumbs, isIdSegment } from '@/lib/breadcrumbs'
+import { buildCrumbs, isIdSegment, scopedProjectId } from '@/lib/breadcrumbs'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
@@ -24,7 +24,10 @@ export function Breadcrumbs() {
   })
 
   // /projects/:id/... -- "Projects > <project name> > ..." (shares the project page's cache).
-  const projectId = segments[0] === 'projects' && segments[1] && isIdSegment(segments[1]) ? segments[1] : undefined
+  const projectId =
+    segments[0] === 'projects' && segments[1] && isIdSegment(segments[1])
+      ? segments[1]
+      : scopedProjectId(location.pathname, location.search)
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
     queryFn: () => getProject(projectId!),
@@ -34,6 +37,7 @@ export function Breadcrumbs() {
 
   const crumbs = buildCrumbs(location.pathname, {
     project: projectQuery.data?.name,
+    search: location.search,
     dashboardName: dashList.data?.find((d) => d.id === segments[1])?.name,
   })
   // Top-level pages: the page title already names the place.

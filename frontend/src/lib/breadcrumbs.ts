@@ -26,6 +26,10 @@ export const SEGMENT_LABELS: Record<string, string> = {
   'user-guide': 'User Guide',
   dashboards: 'Manage',
   details: 'Details',
+  'test-plans': 'Planning',
+  releases: 'Releases',
+  team: 'Team',
+  activity: 'Activity',
   new: 'New',
   edit: 'Edit',
 }
@@ -59,6 +63,15 @@ export interface Crumb {
 export interface CrumbNames {
   project?: string
   dashboardName?: string
+  /** Query string of the location (`?projectId=` on Defects, `?project=` on Reports). */
+  search?: string
+}
+
+/** The project a top-level page is scoped to by its query string (Defects, Reports tabs). */
+export function scopedProjectId(pathname: string, search = ''): string | undefined {
+  const params = new URLSearchParams(search)
+  const id = pathname === '/defects' ? params.get('projectId') : pathname === '/reporting' ? params.get('project') : null
+  return id && isIdSegment(id) ? id : undefined
 }
 
 /**
@@ -77,6 +90,16 @@ export function buildCrumbs(pathname: string, names: CrumbNames = {}): Crumb[] {
       { path: '/settings', label: 'Settings', link: false, current: true },
     ]
   }
+  // ADR-122: Defects and Reports opened from a project's tab keep the project in the trail.
+  const scoped = scopedProjectId(pathname, names.search)
+  if (scoped) {
+    return [
+      { path: '/', label: 'Dashboard', link: true, current: false },
+      { path: '/projects', label: 'Projects', link: true, current: false },
+      { path: `/projects/${scoped}`, label: names.project ?? 'Project', link: true, current: false },
+      { path: pathname, label: SEGMENT_LABELS[segments[0]] === 'Reporting' ? 'Reports' : SEGMENT_LABELS[segments[0]], link: false, current: true },
+    ]
+  }
   if (segments.length <= 1 && segments[0] !== 'dashboards') return []
   const onDash = segments[0] === 'dashboards' && segments.length > 1
   const projectId = segments[0] === 'projects' && isIdSegment(segments[1] ?? '') ? segments[1] : undefined
@@ -93,7 +116,7 @@ export function buildCrumbs(pathname: string, names: CrumbNames = {}): Crumb[] {
     })
     .filter((_, index) => !(onDash && index === 0))
   if (projectId && segments.length === 2) {
-    rest.push({ path: pathname + '#dashboard', label: 'Dashboard', link: false, current: false })
+    rest.push({ path: pathname + '#dashboard', label: 'Overview', link: false, current: false })
   }
   const crumbs: Crumb[] = [{ path: '/', label: 'Dashboard', link: true, current: false }, ...rest]
   const last = crumbs.length - 1
