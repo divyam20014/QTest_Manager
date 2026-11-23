@@ -49,6 +49,8 @@ class SavedView(Base, TenantScopedMixin):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     sort: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # ADR-115: optional saved column layout (visible columns/order/widths).
+    columns: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(JSONB, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

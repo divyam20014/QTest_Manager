@@ -16,7 +16,7 @@ _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.\- ]{1,64}$")
+_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.\-' ]{1,64}$")
 
 
 def _is_uuid(v: str) -> bool:
@@ -35,6 +35,14 @@ def _is_text(v: str) -> bool:
     return len(v) <= 200
 
 
+_LIST_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.\-' ]{1,64}(,[A-Za-z0-9_.\-' ]{1,64}){0,19}$")
+
+
+def _is_token_list(v: str) -> bool:
+    """One or more comma-separated tokens (a multi-value filter such as status)."""
+    return bool(_LIST_TOKEN_RE.match(v))
+
+
 def _is_bool(v: str) -> bool:
     return v in ("true", "false")
 
@@ -50,14 +58,31 @@ FILTER_ALLOWLIST: dict[str, dict[str, Callable[[str], bool]]] = {
         "assigneeId": _is_uuid,
         "moduleId": _is_uuid,
         "quarantined": _is_token,
+        # ADR-116: filters added with the 22-field standard.
+        "testType": _is_text,
+        "severity": _is_text,
+        "automationStatus": _is_text,
+        "environment": _is_text,
+        "executionStatus": _is_text,
+        "executedBy": _is_uuid,
     },
     "defects": {
         "projectId": _is_uuid,
-        "status": _is_token,
-        "severity": _is_token,
+        "status": _is_token_list,
+        "severity": _is_token_list,
         "reportedBy": _is_uuid,
         "createdFrom": _is_date,
         "createdTo": _is_date,
+        # ADR-118: filters added with the 22-field defect standard.
+        "priority": _is_token_list,
+        "assigneeId": _is_uuid,
+        "moduleId": _is_uuid,
+        "labels": _is_token_list,
+        "testCaseId": _is_uuid,
+        "fixVersion": _is_text,
+        "environment": _is_text,
+        "resolution": _is_token,
+        "search": _is_text,
     },
     "test_runs": {
         "projectId": _is_uuid,
@@ -69,9 +94,34 @@ SORT_ALLOWLIST: dict[str, set[str]] = {
     "test_cases": {
         f"{sign}{field}"
         for sign in ("", "-")
-        for field in ("created_at", "title", "priority", "status")
+        for field in (
+            "created_at",
+            "title",
+            "priority",
+            "status",
+            "display_id",
+            "test_type",
+            "severity",
+            "automation_status",
+            "last_executed_at",
+            "execution_status",
+        )
     },
-    "defects": set(),
+    "defects": {
+        f"{sign}{field}"
+        for sign in ("", "-")
+        for field in (
+            "display_id",
+            "title",
+            "severity",
+            "priority",
+            "status",
+            "assignee",
+            "date_reported",
+            "created_at",
+            "fix_version",
+        )
+    },
     "test_runs": set(),
 }
 
@@ -91,6 +141,29 @@ def validate_view(list_key: str, filters: dict[str, Any], sort: str | None) -> N
         raise ValueError(f"Sort '{sort}' is not allowed for {list_key}")
 
 
+MAX_COLUMNS = 40
+_COLUMN_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+
+
+def clean_columns(value: Any) -> list[str] | None:
+    """A saved column layout is an ordered list of column keys (de-duplicated).
+    Keys are checked for shape only: which columns exist is the list page's own
+    metadata, and an unknown key is simply ignored when the view is applied."""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError("columns must be a list of column keys")
+    if len(value) > MAX_COLUMNS:
+        raise ValueError(f"A view can hold at most {MAX_COLUMNS} columns")
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not _COLUMN_KEY_RE.match(item):
+            raise ValueError("columns has an invalid column key")
+        if item not in out:
+            out.append(item)
+    return out
+
+
 def _clean_name(v: str) -> str:
     v = v.strip()
     if not 1 <= len(v) <= 60:
@@ -104,6 +177,13 @@ class SavedViewCreateRequest(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
     sort: str | None = Field(default=None, max_length=50)
     is_default: bool = False
+    # ADR-117: optional ordered list of visible column keys.
+    columns: list[str] | None = None
+
+    @field_validator("columns", mode="before")
+    @classmethod
+    def _columns(cls, v: Any) -> list[str] | None:
+        return clean_columns(v)
 
     @field_validator("name")
     @classmethod
@@ -121,6 +201,12 @@ class SavedViewUpdateRequest(BaseModel):
     filters: dict[str, Any] | None = None
     sort: str | None = Field(default=None, max_length=50)
     is_default: bool | None = None
+    columns: list[str] | None = None
+
+    @field_validator("columns", mode="before")
+    @classmethod
+    def _columns(cls, v: Any) -> list[str] | None:
+        return clean_columns(v)
 
     @field_validator("name")
     @classmethod
@@ -137,3 +223,5 @@ class SavedViewOut(BaseModel):
     is_default: bool
     created_at: datetime
     updated_at: datetime
+    # ADR-117: optional saved column layout (ordered column keys).
+    columns: dict[str, Any] | list[Any] | None = None

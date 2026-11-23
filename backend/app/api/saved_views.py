@@ -31,6 +31,7 @@ def _out(view: SavedView) -> dict:
         is_default=view.is_default,
         created_at=view.created_at,
         updated_at=view.updated_at,
+        columns=view.columns,
     ).model_dump(mode="json")
 
 

@@ -70,6 +70,7 @@ def create_view(
         name=req.name,
         filters=req.filters,
         sort=req.sort,
+        columns=req.columns,
         is_default=req.is_default,
     )
     db.add(view)
@@ -97,6 +98,8 @@ def update_view(
             raise ValidationAppError(str(exc)) from None
         view.filters = new_filters
         view.sort = new_sort
+    if "columns" in fields:
+        view.columns = req.columns
     if req.name is not None:
         view.name = req.name
     if req.is_default is not None:

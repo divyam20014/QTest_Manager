@@ -1,6 +1,8 @@
 import csv
 import io
+import re
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import insert, select, text
@@ -9,7 +11,22 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_audit_event
 from app.core.config import get_settings
 from app.core.errors import ForbiddenError, NotFoundError, ValidationAppError
-from app.models.defect import Defect
+from app.core.field_standards import (
+    AUTOMATION_STATUSES,
+    CONTENT_TEXT_MAX,
+    DEFAULT_AUTOMATION_STATUS,
+    DESCRIPTION_MAX,
+    MAX_STEPS,
+    SHORT_TEXT_MAX,
+    STEP_DATA_MAX,
+    STEP_TEXT_MAX,
+    TEST_DATA_MAX,
+    TITLE_MAX,
+)
+from app.core.import_columns import TEST_CASE_COLUMNS
+from app.core.import_steps import format_steps
+from app.core.text_sanitize import clean_plain, sanitize_markdown
+from app.models.defect import Defect, DefectLink
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
@@ -20,7 +37,15 @@ from app.schemas.csv_import import (
     ImportReport,
     ImportRowResult,
 )
-from app.services import field_option_service, tester_visibility
+from app.schemas.defect import normalise_labels
+from app.services import (
+    defect_service,
+    display_id_service,
+    export_common,
+    field_option_service,
+    test_case_service,
+    tester_visibility,
+)
 from app.services.project_service import is_assigned
 from app.services.test_case_service import _last_executions
 
@@ -46,6 +71,20 @@ EXPECTED_HEADERS = [
     "Test Data",
     "Assignee Email",
     "Steps",
+]
+
+# ADR-116: optional columns of the 22-field standard. A file that carries ANY of
+# them is a "standard" import and must also fill Prerequisite (preconditions), Test
+# Data and Expected Result for every row (the mandatory fields of a new case); the
+# legacy 13-column file keeps its old rules.
+EXTENDED_HEADERS = [
+    "Requirement ID",
+    "Test Type",
+    "Severity",
+    "Automation Status",
+    "Environment",
+    "Expected Result",
+    "Postconditions",
 ]
 
 STATUS_MAP = {
@@ -99,9 +138,10 @@ def _insert_in_chunks(db: Session, model: type, rows: list[dict]) -> None:
     list(db.execute(insert(table).returning(table.c.id), rows))
 
 
-def _parse_steps(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
+def _parse_steps(raw: str) -> tuple[list[tuple[str, str, str | None]], list[str]]:
+    """'Action|Expected' (optionally '|Test data') steps separated by ';'."""
     errors: list[str] = []
-    steps: list[tuple[str, str]] = []
+    steps: list[tuple[str, str, str | None]] = []
     if not raw or not raw.strip():
         return steps, ["Steps column is empty; at least one step is required."]
 
@@ -110,11 +150,26 @@ def _parse_steps(raw: str) -> tuple[list[tuple[str, str]], list[str]]:
         if not chunk:
             continue
         parts = chunk.split("|")
-        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
-            errors.append(f"Malformed step '{chunk}' (expected 'Action|Expected').")
+        if len(parts) not in (2, 3) or not parts[0].strip() or not parts[1].strip():
+            errors.append(f"Malformed step '{chunk}' (expected 'Action|Expected[|Test data]').")
             continue
-        steps.append((parts[0].strip(), parts[1].strip()))
+        action = sanitize_markdown(parts[0])
+        expected = sanitize_markdown(parts[1])
+        data = clean_plain(parts[2]) if len(parts) == 3 else ""
+        if not action or not expected:
+            errors.append(f"Malformed step '{chunk}' (empty action or expected result).")
+            continue
+        if (
+            len(action) > STEP_TEXT_MAX
+            or len(expected) > STEP_TEXT_MAX
+            or len(data) > STEP_DATA_MAX
+        ):
+            errors.append(f"Step '{chunk[:40]}...' is too long.")
+            continue
+        steps.append((action, expected, data or None))
 
+    if len(steps) > MAX_STEPS:
+        errors.append(f"A test case may have at most {MAX_STEPS} steps.")
     if not steps and not errors:
         errors.append("Steps column is empty; at least one step is required.")
     return steps, errors
@@ -124,9 +179,20 @@ def import_test_cases(
     db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, csv_text: str
 ) -> ImportReport:
     reader = csv.DictReader(io.StringIO(csv_text))
-    if reader.fieldnames is None or list(reader.fieldnames) != EXPECTED_HEADERS:
+    headers = list(reader.fieldnames or [])
+    # The 13 legacy headers, in order, optionally followed by any of the ADR-116
+    # extension columns.
+    legacy_ok = headers[: len(EXPECTED_HEADERS)] == EXPECTED_HEADERS
+    extras = headers[len(EXPECTED_HEADERS) :]
+    if (
+        not headers
+        or not legacy_ok
+        or len(set(extras)) != len(extras)
+        or any(h not in EXTENDED_HEADERS for h in extras)
+    ):
         raise ValidationAppError(
-            f"CSV headers must be exactly: {', '.join(EXPECTED_HEADERS)}. "
+            f"CSV headers must be exactly: {', '.join(EXPECTED_HEADERS)}"
+            f" (optionally followed by: {', '.join(EXTENDED_HEADERS)}). "
             f"Download /test-cases/import/template.csv for a valid example, or use "
             f"/test-cases/import/detect-columns for a flexible, mapped import instead."
         )
@@ -146,7 +212,7 @@ def import_test_cases(
 #: Canonical target fields a column can be mapped onto. Keys double as the
 #: row dict keys _import_test_case_rows already expects (EXPECTED_HEADERS),
 #: so a mapped row is simply "the same row dict, assembled differently."
-TARGET_FIELDS = list(EXPECTED_HEADERS)
+TARGET_FIELDS = [*EXPECTED_HEADERS, *EXTENDED_HEADERS]
 REQUIRED_TARGET_FIELDS = ["Title", "Module", "Project Name", "Priority", "Description", "Steps"]
 
 # Best-effort, NOT verified against a real export from any of these tools --
@@ -347,6 +413,16 @@ def _import_test_case_rows(
     valid_priorities = {
         o.code for o in field_option_service.list_options(db, tenant_id, "test_case_priority")
     }
+    valid_test_types = {
+        o.code for o in field_option_service.list_options(db, tenant_id, "test_type")
+    }
+    valid_severities = {
+        o.code for o in field_option_service.list_options(db, tenant_id, "test_case_severity")
+    }
+    automation_by_lower = {a.lower(): a for a in AUTOMATION_STATUSES}
+    # ADR-116: a file with any of the extension columns is a "standard" import and
+    # must fill the mandatory fields of a new case; the legacy file keeps its rules.
+    standard_mode = bool(rows) and any(h in rows[0] for h in EXTENDED_HEADERS)
 
     error_rows: list[ImportRowResult] = []
     created_count = 0
@@ -414,20 +490,60 @@ def _import_test_case_rows(
         title = (row.get("Title") or "").strip()
         if len(title) < 5:
             errors.append("Title must be at least 5 characters.")
+        elif len(title) > TITLE_MAX:
+            errors.append(f"Title must be at most {TITLE_MAX} characters.")
 
         module_name = (row.get("Module") or "").strip()
         if not module_name:
             errors.append("Module is required.")
         sub_module_name = (row.get("Sub Module") or "").strip()
 
-        description = (row.get("Description") or "").strip()
+        description = sanitize_markdown(row.get("Description") or "")
         if not description:
             errors.append("Description is required.")
+        elif len(description) > DESCRIPTION_MAX:
+            errors.append(f"Description must be at most {DESCRIPTION_MAX} characters.")
 
-        scenario_id = (row.get("Scenario Id") or "").strip() or None
-        scenario_description = (row.get("Scenario Description") or "").strip() or None
-        prerequisite = (row.get("Prerequisite") or "").strip() or None
-        test_data = (row.get("Test Data") or "").strip() or None
+        scenario_id = clean_plain(row.get("Scenario Id") or "")[:SHORT_TEXT_MAX] or None
+        scenario_description = sanitize_markdown(row.get("Scenario Description") or "") or None
+        prerequisite = sanitize_markdown(row.get("Prerequisite") or "") or None
+        test_data = clean_plain(row.get("Test Data") or "") or None
+        expected_result = sanitize_markdown(row.get("Expected Result") or "") or None
+        postconditions = sanitize_markdown(row.get("Postconditions") or "") or None
+        requirement_ref = clean_plain(row.get("Requirement ID") or "") or None
+        environment = clean_plain(row.get("Environment") or "") or None
+        test_type = clean_plain(row.get("Test Type") or "") or None
+        severity = clean_plain(row.get("Severity") or "") or None
+        automation_raw = clean_plain(row.get("Automation Status") or "")
+        automation_status = automation_by_lower.get(automation_raw.lower())
+        if automation_raw and automation_status is None:
+            errors.append(
+                f"Automation Status '{automation_raw}' is invalid; must be one of "
+                f"{list(AUTOMATION_STATUSES)}."
+            )
+        automation_status = automation_status or DEFAULT_AUTOMATION_STATUS
+        if test_type is not None and test_type not in valid_test_types:
+            errors.append(f"Test Type '{test_type}' is not a configured option.")
+        if severity is not None and severity not in valid_severities:
+            errors.append(f"Severity '{severity}' is not a configured option.")
+        for label, value, limit in (
+            ("Requirement ID", requirement_ref, SHORT_TEXT_MAX),
+            ("Environment", environment, SHORT_TEXT_MAX),
+            ("Prerequisite", prerequisite, CONTENT_TEXT_MAX),
+            ("Expected Result", expected_result, CONTENT_TEXT_MAX),
+            ("Postconditions", postconditions, CONTENT_TEXT_MAX),
+            ("Test Data", test_data, TEST_DATA_MAX),
+        ):
+            if value is not None and len(value) > limit:
+                errors.append(f"{label} must be at most {limit} characters.")
+        if standard_mode:
+            for label, value in (
+                ("Prerequisite (preconditions)", prerequisite),
+                ("Test Data", test_data),
+                ("Expected Result", expected_result),
+            ):
+                if not value:
+                    errors.append(f"{label} is required.")
 
         project_name = (row.get("Project Name") or "").strip()
         project = projects_by_name.get(project_name.lower())
@@ -510,6 +626,11 @@ def _import_test_case_rows(
                 "assignee_id": assignee.id if assignee else None,
                 "module_id": module_id,
                 "created_by": actor_user_id,
+                "test_type": test_type,
+                "severity": severity,
+                "automation_status": automation_status,
+                "environment": environment,
+                "requirement_ref": requirement_ref,
             }
         )
 
@@ -524,13 +645,15 @@ def _import_test_case_rows(
             "scenario_description": scenario_description,
             "prerequisite": prerequisite,
             "test_data": test_data,
+            "postconditions": postconditions,
+            "expected_result": expected_result,
             "created_by": actor_user_id,
             "approved_by": actor_user_id if status_internal == "approved" else None,
             "approved_at": datetime.now(UTC) if status_internal == "approved" else None,
         }
         version_rows.append(version_row)
 
-        for i, (action, expected) in enumerate(steps, start=1):
+        for i, (action, expected, step_data) in enumerate(steps, start=1):
             step_rows.append(
                 {
                     "tenant_id": tenant_id,
@@ -538,6 +661,7 @@ def _import_test_case_rows(
                     "step_number": i,
                     "action": action,
                     "expected": expected,
+                    "test_data": step_data,
                 }
             )
 
@@ -546,6 +670,13 @@ def _import_test_case_rows(
     error_count = len(error_rows)
 
     if case_rows:
+        # One reservation for the whole batch (ADR-115), assigned in CSV order.
+        first_seq = display_id_service.reserve_range(db, tenant_id, "test_case", len(case_rows))
+        for offset, case_row in enumerate(case_rows):
+            case_row["display_seq"] = first_seq + offset
+            case_row["display_id"] = display_id_service.format_display_id(
+                "test_case", first_seq + offset
+            )
         _insert_in_chunks(db, TestCase, case_rows)
         _insert_in_chunks(db, TestCaseVersion, version_rows)
         _insert_in_chunks(db, TestCaseVersionStep, step_rows)
@@ -593,12 +724,82 @@ def _import_test_case_rows(
     )
 
 
-EXPORT_CHUNK = 500
+EXPORT_CHUNK = export_common.EXPORT_CHUNK
+
+# ADR-120: export columns, in file order: the 22 standard fields under the catalogue's own
+# labels (the same headers as the import template) followed by the few extra columns of the
+# legacy file layout. Key -> header. `module` is the full 'Module/Submodule/Feature' path;
+# `status` is the lifecycle ("Review") status; `execution_status` is the derived outcome.
+EXPORT_COLUMNS: list[tuple[str, str]] = [(c.key, c.header) for c in TEST_CASE_COLUMNS]
+EXPORT_COLUMN_KEYS = [k for k, _ in EXPORT_COLUMNS]
+EXPORT_HEADER_BY_KEY = dict(EXPORT_COLUMNS)
 
 
-def export_test_cases_csv(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
-) -> str:
+def parse_export_columns(columns: str | None) -> list[str]:
+    """`columns=display_id,title,...` -> validated keys in the requested order
+    (default: every column). Unknown or repeated keys are a 422."""
+    if columns is None or not columns.strip():
+        return list(EXPORT_COLUMN_KEYS)
+    keys = [c.strip() for c in columns.split(",") if c.strip()]
+    unknown = [k for k in keys if k not in EXPORT_HEADER_BY_KEY]
+    if unknown:
+        raise ValidationAppError(
+            f"Unknown export column(s): {', '.join(unknown)}. "
+            f"Valid keys: {', '.join(EXPORT_COLUMN_KEYS)}."
+        )
+    if len(set(keys)) != len(keys):
+        raise ValidationAppError("Export columns must not repeat")
+    return keys
+
+
+def _filtered_cases(
+    db: Session, tenant_id: UUID, case_query: Any, filters: dict[str, Any], sort: str
+) -> list[TestCase]:
+    """Walks the shared list filter/sort/paging page by page so an export of a
+    filtered view can never disagree with the list about which rows match."""
+    page = 1
+    out: list[TestCase] = []
+    criteria: dict[str, Any] = {
+        "search": None,
+        "priority": None,
+        "status": None,
+        "assignee_id": None,
+        "module_id": None,
+        **filters,
+    }
+    while True:
+        rows, _total, _cursor = test_case_service._filter_sort_page(
+            db,
+            case_query.order_by(None),  # the requested sort replaces the default one
+            tenant_id=tenant_id,
+            sort=sort,
+            page=page,
+            page_size=test_case_service.MAX_PAGE_SIZE,
+            include_total=False,
+            **criteria,
+        )
+        out.extend(rows)
+        if len(rows) < test_case_service.MAX_PAGE_SIZE:
+            return out
+        page += 1
+
+
+def export_test_cases_data(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID,
+    columns: str | None = None,
+    filters: dict[str, Any] | None = None,
+    sort: str | None = None,
+    ids: list[UUID] | None = None,
+) -> export_common.ExportData:
+    """`filters` / `sort` (ADR-117) are the list page's own filters (the keyword
+    arguments of `test_case_service.list_test_cases`), so "export the current view"
+    produces exactly the rows the list shows; `ids` (ADR-120) narrows to the selected
+    rows. At most `EXPORT_MAX_ROWS` rows (the result is flagged when it was cut)."""
+    keys = parse_export_columns(columns)
     project = db.execute(
         select(Project).where(Project.tenant_id == tenant_id, Project.id == project_id)
     ).scalar_one_or_none()
@@ -607,105 +808,102 @@ def export_test_cases_csv(
     if role_code == "tester" and not is_assigned(db, project, user_id):
         raise ForbiddenError("You are not assigned to this project")
 
+    # Soft-deleted cases are excluded by the ORM hook; ADR-093 scoping applies to a
+    # scoped Tester's export.
     case_query = (
         select(TestCase)
         .where(TestCase.tenant_id == tenant_id, TestCase.project_id == project_id)
-        .order_by(TestCase.created_at)
+        .order_by(TestCase.created_at, TestCase.id)
     )
-    # ADR-093: a scoped Tester's export holds only the cases they may see.
+    if ids is not None:
+        case_query = case_query.where(TestCase.id.in_(ids))
     case_query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, case_query)
-    cases = list(db.execute(case_query).scalars())
+    if filters or sort:
+        cases = _filtered_cases(db, tenant_id, case_query, filters or {}, sort or "created_at")
+    else:
+        cases = list(db.execute(case_query).scalars())
+    truncated = len(cases) > export_common.EXPORT_MAX_ROWS
+    cases = cases[: export_common.EXPORT_MAX_ROWS]
 
     users_by_id = {
         u.id: u for u in db.execute(select(User).where(User.tenant_id == tenant_id)).scalars()
     }
-    modules_by_id = {
-        m.id: m
-        for m in db.execute(
-            select(TestModule).where(TestModule.tenant_id == tenant_id)
-        ).scalars()
-    }
+    module_paths = test_case_service._module_paths(
+        db, {c.module_id for c in cases if c.module_id is not None}
+    )
+    data = export_common.ExportData(
+        headers=[EXPORT_HEADER_BY_KEY[k] for k in keys], truncated=truncated
+    )
 
-    # Pass 3, item 1: Actual_Result/Executed_By/Execution_Date are informational
-    # only on export (reflecting real execution history) -- they are never
-    # accepted back on import (see _import_test_case_rows/import_test_cases_mapped,
-    # neither reads these column names), so an export->reimport round trip
-    # correctly drops them rather than trying to "restore" derived data.
-    export_headers = [*EXPECTED_HEADERS, "Actual Result", "Executed By", "Execution Date"]
-
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(export_headers)
-
-    # ADR-113: versions, steps and last-execution are fetched per chunk of cases
-    # (a handful of queries per 500 cases) instead of several per case.
-    versions_by_id: dict = {}
-    steps_by_version: dict = {}
+    # ADR-113: serialized per chunk of cases (a handful of queries per 500 cases)
+    # instead of several per case. `to_out_many` is the one place the derived
+    # fields (execution status, executor, linked defects, counts) are computed, so
+    # the export can never disagree with the list.
+    outs: dict = {}
     last_by_case: dict = {}
     for case_index, case in enumerate(cases):
         if case_index % EXPORT_CHUNK == 0:
             chunk = cases[case_index : case_index + EXPORT_CHUNK]
-            versions_by_id = {
-                v.id: v
-                for v in db.execute(
-                    select(TestCaseVersion).where(
-                        TestCaseVersion.id.in_([c.current_version_id for c in chunk])
-                    )
-                ).scalars()
-            }
-            steps_by_version = {vid: [] for vid in versions_by_id}
-            for step in db.execute(
-                select(TestCaseVersionStep)
-                .where(TestCaseVersionStep.test_case_version_id.in_(list(versions_by_id)))
-                .order_by(
-                    TestCaseVersionStep.test_case_version_id, TestCaseVersionStep.step_number
-                )
-            ).scalars():
-                steps_by_version[step.test_case_version_id].append(step)
+            outs = {o.id: o for o in test_case_service.to_out_many(db, chunk)}
             last_by_case = _last_executions(db, tenant_id, [c.id for c in chunk])
-        version = versions_by_id[case.current_version_id]
-        steps = steps_by_version[version.id]
-        steps_cell = ";".join(f"{s.action}|{s.expected}" for s in steps)
+        out = outs[case.id]
+        steps_cell = format_steps([(s.action, s.test_data, s.expected) for s in out.steps])
         assignee_email = users_by_id[case.assignee_id].email if case.assignee_id else ""
+        module_cell = module_paths[case.module_id][1] if case.module_id in module_paths else ""
+        last_result = last_by_case.get(case.id, (None, None, None))[0]
+        values = {
+            "display_id": out.display_id or "",
+            "title": out.title,
+            "module": module_cell,
+            "project": project.name,
+            "priority": out.priority,
+            "status": STATUS_DISPLAY.get(out.status, out.status),
+            "description": out.description,
+            "scenario_id": out.scenario_id or "",
+            "scenario_description": out.scenario_description or "",
+            "preconditions": out.preconditions or "",
+            "test_data": out.test_data or "",
+            "assignee": assignee_email,
+            "steps": steps_cell,
+            "requirement_ref": out.requirement_ref or "",
+            "test_type": out.test_type or "",
+            "severity": out.severity or "",
+            "automation_status": out.automation_status or "",
+            "environment": out.environment or "",
+            "expected_result": out.expected_result or "",
+            "postconditions": out.postconditions or "",
+            "execution_status": out.execution_status,
+            "actual_result": out.last_actual_result or last_result or "",
+            "executed_by": out.last_executed_by or out.last_executed_by_name or "",
+            "last_executed_at": (
+                (out.last_executed_at or out.last_execution_date).isoformat()
+                if (out.last_executed_at or out.last_execution_date)
+                else ""
+            ),
+            "linked_defects": "; ".join(d.display_id or str(d.id) for d in out.linked_defects),
+            "created_by": out.created_by_name or "",
+            "attachments": f"{out.attachment_count} attachments, {out.comment_count} comments",
+        }
+        data.rows.append([export_common.safe_text(values[k]) for k in keys])
+    return data
 
-        module_name = ""
-        sub_module_name = ""
-        if case.module_id is not None:
-            module = modules_by_id.get(case.module_id)
-            if module is not None:
-                if module.parent_id is None:
-                    module_name = module.name
-                else:
-                    sub_module_name = module.name
-                    parent = modules_by_id.get(module.parent_id)
-                    module_name = parent.name if parent is not None else ""
 
-        last_result, last_executed_by_name, last_execution_date = last_by_case.get(
-            case.id, (None, None, None)
+def export_test_cases_csv(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID,
+    columns: str | None = None,
+    filters: dict[str, Any] | None = None,
+    sort: str | None = None,
+    ids: list[UUID] | None = None,
+) -> str:
+    return export_common.to_csv(
+        export_test_cases_data(
+            db, tenant_id, role_code, user_id, project_id, columns, filters, sort, ids
         )
-
-        writer.writerow(
-            [
-                case.title,
-                module_name,
-                sub_module_name,
-                project.name,
-                case.priority,
-                STATUS_DISPLAY.get(case.status, case.status),
-                version.description,
-                version.scenario_id or "",
-                version.scenario_description or "",
-                version.prerequisite or "",
-                version.test_data or "",
-                assignee_email,
-                steps_cell,
-                last_result or "",
-                last_executed_by_name or "",
-                last_execution_date.isoformat() if last_execution_date else "",
-            ]
-        )
-
-    return buffer.getvalue()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -744,15 +942,54 @@ DEFECT_TEMPLATE_CSV = (
 # intentionally not import columns.
 
 
+# ADR-118: optional columns of the 22-field defect standard. A file that carries ANY of
+# them is a "standard" import and must also satisfy the new mandatory rules (steps to
+# reproduce, expected and actual result, environment); the legacy 11-column file keeps
+# its old rules. `Bug ID` is kept when it is well formed and unique, otherwise the next
+# id is assigned; `Linked Test Case IDs` are test case display ids (';' separated) of the
+# row's project.
+DEFECT_EXTENDED_HEADERS = [
+    "Bug ID",
+    "Preconditions",
+    "Build Found",
+    "Fix Version",
+    "Labels",
+    "Linked Test Case IDs",
+    "Root Cause",
+    "Root Cause Notes",
+]
+_BUG_ID_RE = re.compile(r"^BUG_(\d{6,})$")
+_ROOT_CAUSES = {
+    "requirements_gap",
+    "code_defect",
+    "design_flaw",
+    "test_data_issue",
+    "environment_issue",
+    "third_party_integration",
+    "other",
+}
+
+
 def import_defects(
     db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, csv_text: str
 ) -> ImportReport:
     reader = csv.DictReader(io.StringIO(csv_text))
-    if reader.fieldnames is None or list(reader.fieldnames) != DEFECT_EXPECTED_HEADERS:
+    headers = list(reader.fieldnames or [])
+    # The 11 legacy headers, in order, optionally followed by any of the ADR-118
+    # extension columns.
+    extras = headers[len(DEFECT_EXPECTED_HEADERS) :]
+    if (
+        not headers
+        or headers[: len(DEFECT_EXPECTED_HEADERS)] != DEFECT_EXPECTED_HEADERS
+        or len(set(extras)) != len(extras)
+        or any(h not in DEFECT_EXTENDED_HEADERS for h in extras)
+    ):
         raise ValidationAppError(
-            f"CSV headers must be exactly: {', '.join(DEFECT_EXPECTED_HEADERS)}. "
+            f"CSV headers must be exactly: {', '.join(DEFECT_EXPECTED_HEADERS)}"
+            f" (optionally followed by: {', '.join(DEFECT_EXTENDED_HEADERS)}). "
             f"Download /defects/import/template.csv for a valid example."
         )
+    standard_mode = bool(extras)
 
     rows = list(reader)
     if len(rows) > settings.csv_import_max_rows:
@@ -824,6 +1061,34 @@ def import_defects(
     created_count = 0
     total_rows = 0
     defect_rows: list[dict] = []
+    link_rows: list[tuple[UUID, list[UUID]]] = []  # (defect id, test case ids)
+    # Bug ids already used in this tenant (soft-deleted defects keep theirs).
+    taken_ids: set[str] = set()
+    if "Bug ID" in extras:
+        taken_ids = {
+            d
+            for d in db.execute(
+                select(Defect.display_id)
+                .where(Defect.tenant_id == tenant_id, Defect.display_id.is_not(None))
+                .execution_options(include_deleted=True)
+            ).scalars()
+            if d is not None
+        }
+    case_ids_by_project: dict[UUID, dict[str, UUID]] = {}
+
+    def _case_ids(project_id: UUID) -> dict[str, UUID]:
+        if project_id not in case_ids_by_project:
+            case_ids_by_project[project_id] = {
+                cid: tid
+                for cid, tid in db.execute(
+                    select(TestCase.display_id, TestCase.id).where(
+                        TestCase.tenant_id == tenant_id,
+                        TestCase.project_id == project_id,
+                        TestCase.display_id.is_not(None),
+                    )
+                )
+            }
+        return case_ids_by_project[project_id]
 
     for row_number, row in enumerate(rows, start=1):
         total_rows += 1
@@ -866,12 +1131,63 @@ def import_defects(
             assignee = users_by_email.get(assignee_email.lower())
             if assignee is None:
                 errors.append(f"Assignee email '{assignee_email}' does not match an active user.")
-            elif project is not None and assignee.id not in _project_members(
-                project.id
-            ) and assignee.id != project.owner_id:
+            elif (
+                project is not None
+                and assignee.id not in _project_members(project.id)
+                and assignee.id != project.owner_id
+            ):
                 errors.append(
                     f"Assignee '{assignee_email}' is not a member of project '{project_name}'."
                 )
+
+        steps_text = (row.get("Steps to Reproduce") or "").strip()
+        expected_text = (row.get("Expected Result") or "").strip()
+        actual_text = (row.get("Actual Result") or "").strip()
+        environment_text = (row.get("Environment") or "").strip()
+        steps = defect_service.steps_from_text(steps_text)
+        if standard_mode:
+            # ADR-118: the mandatory fields of a new defect apply to a standard file.
+            if not steps:
+                errors.append("Steps to Reproduce is required (at least one step).")
+            if not expected_text:
+                errors.append("Expected Result is required.")
+            if not actual_text:
+                errors.append("Actual Result is required.")
+            if not environment_text:
+                errors.append("Environment is required.")
+        if len(title) > TITLE_MAX:
+            errors.append(f"Title must be at most {TITLE_MAX} characters.")
+
+        labels: list[str] = []
+        linked_ids: list[UUID] = []
+        root_cause = (row.get("Root Cause") or "").strip()
+        bug_id = (row.get("Bug ID") or "").strip()
+        if standard_mode:
+            try:
+                labels = (
+                    normalise_labels(
+                        [x for x in re.split(r"[;,]", row.get("Labels") or "") if x.strip()]
+                    )
+                    or []
+                )
+            except ValueError as exc:
+                errors.append(f"Labels: {exc}")
+            if root_cause and root_cause not in _ROOT_CAUSES:
+                errors.append(
+                    f"Root Cause '{root_cause}' is invalid; must be one of {sorted(_ROOT_CAUSES)}."
+                )
+            if project is not None:
+                known = _case_ids(project.id)
+                refs = [x.strip() for x in re.split(r"[;,]", row.get("Linked Test Case IDs") or "")]
+                for ref in refs:
+                    if not ref:
+                        continue
+                    if ref not in known:
+                        errors.append(
+                            f"Linked test case '{ref}' does not exist in project '{project_name}'."
+                        )
+                    elif known[ref] not in linked_ids:
+                        linked_ids.append(known[ref])
 
         if errors:
             error_rows.append(ImportRowResult(row_number=row_number, status="error", errors=errors))
@@ -880,32 +1196,84 @@ def import_defects(
         assert project is not None
 
         module_id = _resolve_module(project.id, (row.get("Module") or "").strip())
+        repro_rows = defect_service.steps_to_json(steps) if steps else None
 
+        defect_id = uuid4()
         defect_rows.append(
             {
-                "id": uuid4(),
+                "id": defect_id,
                 "tenant_id": tenant_id,
                 "project_id": project.id,
                 "title": title,
                 "severity": severity,
                 "priority": priority,
                 "status": "New",
-                "description": description,
-                "steps_to_reproduce": (row.get("Steps to Reproduce") or "").strip() or None,
-                "expected_result": (row.get("Expected Result") or "").strip() or None,
-                "actual_result": (row.get("Actual Result") or "").strip() or None,
-                "environment": (row.get("Environment") or "").strip() or None,
+                "description": sanitize_markdown(description),
+                "steps_to_reproduce": steps_text or None,
+                "repro_steps": repro_rows,
+                "expected_result": sanitize_markdown(expected_text) or None,
+                "actual_result": sanitize_markdown(actual_text) or None,
+                "environment": environment_text or None,
                 "module_id": module_id,
                 "assigned_to": assignee.id if assignee else None,
                 "reported_by": actor_user_id,
+                "preconditions": sanitize_markdown(row.get("Preconditions") or "") or None,
+                "build_found": clean_plain(row.get("Build Found") or "") or None,
+                "fix_version": clean_plain(row.get("Fix Version") or "") or None,
+                "labels": labels,
+                "root_cause": root_cause or None,
+                "root_cause_notes": sanitize_markdown(row.get("Root Cause Notes") or "") or None,
+                "test_case_id": linked_ids[0] if linked_ids else None,
+                "_requested_bug_id": bug_id,
             }
         )
+        if len(linked_ids) > 1:
+            link_rows.append((defect_id, linked_ids[1:]))
         created_count += 1
 
     error_count = len(error_rows)
 
     if defect_rows:
+        # A provided Bug ID is kept only when it is well formed, unused in this tenant and
+        # not repeated in the file; every other row is assigned the next id. The counter
+        # is moved past the kept ids BEFORE the range for the others is reserved, so an
+        # assigned id can never collide with a kept one.
+        kept: dict[int, int] = {}
+        seen: set[str] = set()
+        for index, defect_row in enumerate(defect_rows):
+            requested = defect_row.pop("_requested_bug_id")
+            match = _BUG_ID_RE.match(requested) if requested else None
+            if match and requested not in taken_ids and requested not in seen:
+                seen.add(requested)
+                kept[index] = int(match.group(1))
+                defect_row["display_seq"] = kept[index]
+                defect_row["display_id"] = requested
+        if kept:
+            display_id_service.ensure_counter_above(db, tenant_id, "defect", max(kept.values()))
+        missing = [i for i in range(len(defect_rows)) if i not in kept]
+        if missing:
+            first_seq = display_id_service.reserve_range(db, tenant_id, "defect", len(missing))
+            for offset, index in enumerate(missing):
+                defect_rows[index]["display_seq"] = first_seq + offset
+                defect_rows[index]["display_id"] = display_id_service.format_display_id(
+                    "defect", first_seq + offset
+                )
         db.execute(insert(Defect), defect_rows)
+        if link_rows:
+            db.execute(
+                insert(DefectLink),
+                [
+                    {
+                        "tenant_id": tenant_id,
+                        "defect_id": defect_id,
+                        "linkable_type": "test_case",
+                        "linkable_id": case_id,
+                        "link_type": "relates_to",
+                    }
+                    for defect_id, case_ids in link_rows
+                    for case_id in case_ids
+                ],
+            )
 
     batch_id = uuid4()
     record_audit_event(
