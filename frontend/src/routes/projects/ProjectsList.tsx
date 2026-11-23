@@ -358,16 +358,20 @@ export function ProjectsList() {
             setDensity={columnPrefs.setDensity}
           />
         }
+        // A tester's list is already limited to the projects they are assigned to (FR-PROJ-002), so
+        // "All" and "My" would be the same thing: the toggle is only for managers and admins.
         quick={
-          <SegmentedToggle
-            label="Which projects to show"
-            value={mine ? 'mine' : 'all'}
-            onChange={(v) => setMine(v === 'mine')}
-            options={[
-              { value: 'all', label: 'All projects' },
-              { value: 'mine', label: 'My projects' },
-            ]}
-          />
+          isManagerOrAbove(user) ? (
+            <SegmentedToggle
+              label="Which projects to show"
+              value={mine ? 'mine' : 'all'}
+              onChange={(v) => setMine(v === 'mine')}
+              options={[
+                { value: 'all', label: 'All projects' },
+                { value: 'mine', label: 'My projects' },
+              ]}
+            />
+          ) : undefined
         }
         filters={
           <>

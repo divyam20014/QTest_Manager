@@ -257,6 +257,8 @@ test('Tester: forbidden things are absent in the UI and refused by the API; deep
   await page.goto('/projects')
   await expect(page.getByRole('heading', { level: 1, name: 'Projects' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'New Project' })).toHaveCount(0)
+  // A tester's list is already only their assigned projects: no All/My projects toggle.
+  await expect(page.getByRole('group', { name: 'Which projects to show' })).toHaveCount(0)
   const create = await api(page, 'post', '/projects', {
     name: 'Tester project',
     domain: 'Motor',
