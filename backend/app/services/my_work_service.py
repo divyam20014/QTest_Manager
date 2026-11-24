@@ -11,6 +11,7 @@ Manager see every project; anyone else only projects they own or belong to), and
 scoped Tester (ADR-093) additionally only sees the test cases that scope allows.
 """
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import Select, func, or_, select
@@ -43,7 +44,9 @@ def _visible_projects_clause(tenant_id: UUID, role_code: str, user_id: UUID, col
     return or_(column.in_(owned), column.in_(member_of))
 
 
-def _run_case_query(tenant_id: UUID, role_code: str, user_id: UUID) -> Select:
+def _run_case_query(
+    tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID | None = None
+) -> Select:
     query = (
         select(TestRunCase, TestRun, Project.name, TestCase.title, TestCase.display_id)
         .join(TestRun, TestRun.id == TestRunCase.test_run_id)
@@ -56,6 +59,8 @@ def _run_case_query(tenant_id: UUID, role_code: str, user_id: UUID) -> Select:
             TestRun.finished_at.is_(None),
         )
     )
+    if project_id is not None:
+        query = query.where(TestRun.project_id == project_id)
     clause = _visible_projects_clause(tenant_id, role_code, user_id, TestRun.project_id)
     return query if clause is None else query.where(clause)
 
@@ -77,9 +82,14 @@ def _review_query(db: Session, tenant_id: UUID, role_code: str, user_id: UUID) -
 
 
 def list_run_cases(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID | None = None,
 ) -> MyRunCaseListResponse:
-    base = _run_case_query(tenant_id, role_code, user_id)
+    base = _run_case_query(tenant_id, role_code, user_id, project_id)
+    today = datetime.now(UTC).date()
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
     rows = db.execute(
         base.order_by(TestRun.created_at.desc(), TestRunCase.id).limit(MAX_ITEMS)
@@ -98,6 +108,12 @@ def list_run_cases(
             status=rc.status,  # type: ignore[arg-type]
             blocked_reason=rc.blocked_reason,
             started_at=rc.started_at,
+            due_date=rc.due_date,
+            overdue=(
+                rc.due_date is not None
+                and rc.due_date < today
+                and rc.status in ("pending", "in_progress")
+            ),
         )
         for rc, run, project_name, title, display_id in rows
     ]

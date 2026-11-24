@@ -129,3 +129,62 @@ class TeamDefaultIn(BaseModel):
 
 def settings_size_ok(settings: dict[str, Any]) -> bool:
     return len(json.dumps(settings, separators=(",", ":"))) <= MAX_SETTINGS_BYTES
+
+
+# --- ADR-123: project dashboards ----------------------------------------------------------
+# A project dashboard layout is an ordered list of catalogue widgets (visible ones only: a
+# hidden widget is simply absent) with a fixed S / M / L size. The widgets read their data from
+# the existing report endpoints with the viewer's own session and the page's project, so the
+# catalogue carries no per-widget settings.
+
+MAX_WIDGETS_PER_PROJECT_DASHBOARD = 20
+PROJECT_DASHBOARD_NAME = "Project dashboard"
+
+# (widget_type, default size) in the built-in order.
+PROJECT_WIDGET_CATALOGUE: tuple[tuple[str, str], ...] = (
+    ("kpi_strip", "L"),
+    ("test_status", "S"),
+    ("execution_trend", "M"),
+    ("defect_severity", "S"),
+    ("module_coverage", "M"),
+    ("requirement_traceability", "S"),
+    ("tester_performance", "M"),
+    ("tester_workload", "M"),
+    ("upcoming_milestones", "S"),
+    ("release_readiness", "M"),
+    ("my_pending", "S"),
+    ("overdue_cases", "M"),
+    ("recent_activity", "S"),
+    ("recent_defects", "L"),
+)
+PROJECT_WIDGET_TYPES = tuple(key for key, _ in PROJECT_WIDGET_CATALOGUE)
+
+ProjectWidgetType = Literal[
+    "kpi_strip",
+    "test_status",
+    "execution_trend",
+    "defect_severity",
+    "module_coverage",
+    "requirement_traceability",
+    "tester_performance",
+    "tester_workload",
+    "release_readiness",
+    "upcoming_milestones",
+    "overdue_cases",
+    "recent_defects",
+    "my_pending",
+    "recent_activity",
+]
+
+
+class ProjectWidgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    widget_type: ProjectWidgetType
+    size: Size = "M"
+
+
+class ProjectLayoutIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    widgets: list[ProjectWidgetIn] = Field(max_length=MAX_WIDGETS_PER_PROJECT_DASHBOARD)

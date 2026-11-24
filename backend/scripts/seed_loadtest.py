@@ -43,6 +43,13 @@ def _owner_dsn() -> str:
 def _parse() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--scale", type=float, default=1.0)
+    p.add_argument(
+        "--projects",
+        type=int,
+        default=20,
+        help="number of projects (default 20); each gets 10000 x scale test cases, so "
+        "--projects 1 --scale 5 is one 50k-case project",
+    )
     p.add_argument("--skip-audit", action="store_true")
     p.add_argument("--drop", action="store_true", help="delete the load tenant and all its rows")
     return p.parse_args()
@@ -375,9 +382,9 @@ def main() -> int:
     manager_id = conn.execute(
         "select id from users where tenant_id=%s and email=%s", (tid, MANAGER_EMAIL)
     ).fetchone()[0]
-    for idx in range(20):
+    for idx in range(args.projects):
         seed_project(conn, tid, idx, users, admin_id, manager_id, args.scale)
-        print(f"project {idx + 1}/20 done ({time.time() - t0:.0f}s)", flush=True)
+        print(f"project {idx + 1}/{args.projects} done ({time.time() - t0:.0f}s)", flush=True)
     if not args.skip_audit:
         seed_audit(conn, tid, users, int(500000 * args.scale))
         print(f"audit done ({time.time() - t0:.0f}s)", flush=True)

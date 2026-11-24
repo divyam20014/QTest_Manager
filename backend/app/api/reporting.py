@@ -38,6 +38,72 @@ def dashboard_summary(
     return envelope(summary.model_dump(mode="json"))
 
 
+# ADR-123: project dashboard aggregates. The project is always an explicit, required query
+# parameter and is checked against the caller's project scope in the service, so a request can
+# never aggregate a project the caller cannot open. Like /dashboard/*, the status, module,
+# overdue and milestone endpoints stay open to a Tester when Reports are hidden (the project
+# Overview must render, and they only count what the Tester may already list); the tester
+# comparison is a /reports/* endpoint and honours the hidden switch.
+@router.get("/reports/project-test-status")
+def project_test_status(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_project_test_status(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/module-coverage")
+def module_coverage(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_module_coverage(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/tester-performance", dependencies=[Depends(require_reports_not_hidden)])
+def tester_performance(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_tester_performance(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/overdue-run-cases")
+def overdue_run_cases(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_overdue_run_cases(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
+@router.get("/reports/upcoming-milestones")
+def upcoming_milestones(
+    project_id: UUID = Query(),
+    ctx: SessionContext = Depends(require_permission("report.view")),
+    db: Session = Depends(get_db),
+) -> dict:
+    report = reporting_service.get_upcoming_milestones(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
+    return envelope(report.model_dump(mode="json"))
+
+
 @router.get("/dashboard/domain-distribution")
 def domain_distribution(
     ctx: SessionContext = Depends(require_permission("report.view")), db: Session = Depends(get_db)

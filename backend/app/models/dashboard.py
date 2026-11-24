@@ -28,8 +28,9 @@ class Dashboard(Base, TenantScopedMixin):
     __table_args__ = (
         CheckConstraint("char_length(name) between 1 and 60", name="ck_dashboards_name_len"),
         CheckConstraint(
-            "(is_team_default and owner_user_id is null) or "
-            "(not is_team_default and owner_user_id is not null)",
+            "(is_team_default and owner_user_id is null and project_id is null) or "
+            "(not is_team_default and owner_user_id is not null) or "
+            "(not is_team_default and owner_user_id is null and project_id is not null)",
             name="ck_dashboards_owner_vs_default",
         ),
         Index(
@@ -39,10 +40,28 @@ class Dashboard(Base, TenantScopedMixin):
             postgresql_where=text("is_team_default"),
         ),
         Index("ix_dashboards_owner", "owner_user_id"),
+        # ADR-123: one layout per (project, user) and one default per project.
+        Index(
+            "uq_dashboards_project_user",
+            "project_id",
+            "owner_user_id",
+            unique=True,
+            postgresql_where=text("project_id is not null and owner_user_id is not null"),
+        ),
+        Index(
+            "uq_dashboards_project_default",
+            "project_id",
+            unique=True,
+            postgresql_where=text("project_id is not null and owner_user_id is null"),
+        ),
     )
 
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    # ADR-123: set on a project dashboard layout (own, or the project default when owner is NULL).
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(60), nullable=False)
     is_team_default: Mapped[bool] = mapped_column(

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import ForbiddenError, NotFoundError
 from app.core.field_standards import (
     CLOSED_DEFECT_STATUSES,
+    EXECUTION_STATUS_BY_RUN_CASE_STATUS,
     OPEN_DEFECT_STATUSES,
     PARKED_DEFECT_STATUSES,
 )
@@ -57,16 +58,25 @@ from app.schemas.reporting import (
     LeakageReleaseRow,
     LeakageTrendPoint,
     Metric,
+    MilestoneRow,
+    ModuleCoverageReport,
+    ModuleCoverageRow,
     MostReopenedDefect,
+    OverdueRunCaseRow,
+    OverdueRunCasesReport,
     ProjectStatusBreakdown,
+    ProjectTestStatus,
     QualityMetricsReport,
     ReleaseReadinessReport,
     ReopenSummary,
     RunTypeFilter,
     TestCaseSummary,
+    TesterPerformanceReport,
+    TesterPerformanceRow,
     TestRunSummary,
     TraceabilityMatrixEntry,
     TraceabilityMatrixReport,
+    UpcomingMilestonesReport,
     WorkloadEntry,
     WorkloadSummary,
 )
@@ -2123,3 +2133,343 @@ def defect_leakage_to_xlsx(report: DefectLeakageReport) -> bytes:
             ),
         ]
     )
+
+
+# --- ADR-123: project dashboard aggregates ------------------------------------------------
+# Each is one SQL GROUP BY over one project's rows (never serialising cases), narrowed by the
+# caller's project scope and the ADR-093 Tester case scope, and cached per tenant / role / user.
+
+# A run case counts as "executed" for a case's derived status (ADR-116) in these states.
+EXECUTED_RUN_CASE_STATUSES = tuple(EXECUTION_STATUS_BY_RUN_CASE_STATUS)
+# Overdue = past its due date and not yet executed (blocked / failed work was acted on).
+OVERDUE_RUN_CASE_STATUSES = ("pending", "in_progress")
+OPEN_RELEASE_STATUSES = ("Planned", "In Progress")
+MILESTONE_LIMIT = 10
+OVERDUE_LIMIT = 50
+
+_BUCKET_BY_STATUS = {
+    "passed": "passed",
+    "failed": "failed",
+    "blocked": "blocked",
+    "ignored": "skipped",
+}
+
+
+def _require_project_scope(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> Project:
+    """403 for a project outside a Tester's scope, 404 for an unknown project (like the other
+    project-scoped reports); the caller can never aggregate another project."""
+    accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
+    if accessible is not None and project_id not in accessible:
+        raise ForbiddenError("Project not accessible")
+    return _get_project_or_404(db, tenant_id, project_id)
+
+
+def _percentage(numerator: int, denominator: int) -> float | None:
+    return round(100 * numerator / denominator, 1) if denominator else None
+
+
+def _latest_status_join(tenant_id: UUID, project_id: UUID):
+    """`test_cases` LEFT JOIN the lean latest-executed-run-case-per-case (ADR-116), restricted
+    to the project's runs. Returns (latest subquery, select-from) for the callers' GROUP BYs."""
+    from app.services.test_case_service import _latest_exec_select
+
+    latest = _latest_exec_select(tenant_id, project_id=project_id, lean=True).subquery("latest")
+    return latest, TestCase.__table__.outerjoin(latest, latest.c.test_case_id == TestCase.id)
+
+
+def _status_buckets(rows: list[tuple[str | None, int]]) -> dict[str, int]:
+    out = {"passed": 0, "failed": 0, "blocked": 0, "skipped": 0, "not_run": 0}
+    for status, n in rows:
+        out[_BUCKET_BY_STATUS.get(status or "", "not_run")] += n
+    return out
+
+
+@cached_report("project_test_status")
+def get_project_test_status(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> ProjectTestStatus:
+    _require_project_scope(db, tenant_id, role_code, user_id, project_id)
+    latest, source = _latest_status_join(tenant_id, project_id)
+    query = (
+        select(latest.c.status, func.count())
+        .select_from(source)
+        .where(
+            TestCase.tenant_id == tenant_id,
+            TestCase.project_id == project_id,
+            TestCase.deleted_at.is_(None),
+        )
+        .group_by(latest.c.status)
+    )
+    query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, query)
+    b = _status_buckets([(s, n) for s, n in db.execute(query).all()])
+    executed = b["passed"] + b["failed"] + b["blocked"] + b["skipped"]
+    total = executed + b["not_run"]
+    return ProjectTestStatus(
+        project_id=project_id,
+        total=total,
+        executed=executed,
+        passed=b["passed"],
+        failed=b["failed"],
+        blocked=b["blocked"],
+        skipped=b["skipped"],
+        not_run=b["not_run"],
+        execution_percentage=_percentage(executed, total),
+        pass_rate=_percentage(b["passed"], executed),
+    )
+
+
+@cached_report("module_coverage")
+def get_module_coverage(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> ModuleCoverageReport:
+    _require_project_scope(db, tenant_id, role_code, user_id, project_id)
+    latest, source = _latest_status_join(tenant_id, project_id)
+    query = (
+        select(TestCase.module_id, latest.c.status, func.count())
+        .select_from(source)
+        .where(
+            TestCase.tenant_id == tenant_id,
+            TestCase.project_id == project_id,
+            TestCase.deleted_at.is_(None),
+        )
+        .group_by(TestCase.module_id, latest.c.status)
+    )
+    query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, query)
+    per_module: dict[UUID | None, list[tuple[str | None, int]]] = {}
+    for module_id, status, n in db.execute(query).all():
+        per_module.setdefault(module_id, []).append((status, n))
+    names = {
+        mid: name
+        for mid, name in db.execute(
+            select(TestModule.id, TestModule.name).where(
+                TestModule.tenant_id == tenant_id, TestModule.project_id == project_id
+            )
+        ).all()
+    }
+    rows: list[ModuleCoverageRow] = []
+    for module_id, statuses in per_module.items():
+        b = _status_buckets(statuses)
+        executed = b["passed"] + b["failed"] + b["blocked"] + b["skipped"]
+        total = executed + b["not_run"]
+        rows.append(
+            ModuleCoverageRow(
+                module_id=module_id,
+                module_name=names.get(module_id, "No module") if module_id else "No module",
+                total=total,
+                executed=executed,
+                passed=b["passed"],
+                failed=b["failed"],
+                blocked=b["blocked"],
+                skipped=b["skipped"],
+                not_run=b["not_run"],
+                coverage_percentage=_percentage(executed, total),
+            )
+        )
+    # Largest modules first; the unmodulated bucket last on ties.
+    rows.sort(key=lambda r: (-r.total, r.module_id is None, r.module_name.lower()))
+    return ModuleCoverageReport(project_id=project_id, rows=rows)
+
+
+@cached_report("tester_performance")
+def get_tester_performance(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> TesterPerformanceReport:
+    """Per tester: the cases whose latest executed result (ADR-116) they recorded, with the
+    pass rate over those, plus the defects they reported in the project. The "executed by"
+    here is exactly the Test Cases list's `executed_by` filter, so a row links to a list that
+    shows the same number."""
+    _require_project_scope(db, tenant_id, role_code, user_id, project_id)
+    from app.services.test_case_service import _latest_exec_select
+
+    latest = _latest_exec_select(tenant_id, project_id=project_id, lean=True).subquery("latest")
+    step_executor = (
+        select(ExecutionStep.executed_by)
+        .where(
+            ExecutionStep.test_run_case_id == latest.c.run_case_id,
+            ExecutionStep.executed_by.is_not(None),
+        )
+        .order_by(ExecutionStep.closed_at.desc().nulls_last())
+        .limit(1)
+        .correlate(latest)
+        .scalar_subquery()
+    )
+    executor = func.coalesce(latest.c.executed_by, step_executor)
+    query = (
+        select(executor.label("executor"), latest.c.status, func.count())
+        .select_from(TestCase.__table__.join(latest, latest.c.test_case_id == TestCase.id))
+        .where(
+            TestCase.tenant_id == tenant_id,
+            TestCase.project_id == project_id,
+            TestCase.deleted_at.is_(None),
+        )
+        .group_by(executor, latest.c.status)
+    )
+    query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, query)
+    per_user: dict[UUID | None, list[tuple[str | None, int]]] = {}
+    for executor_id, status, n in db.execute(query).all():
+        per_user.setdefault(executor_id, []).append((status, n))
+    defects: dict[UUID | None, int] = {
+        reporter: n
+        for reporter, n in db.execute(
+            select(Defect.reported_by, func.count())
+            .where(Defect.tenant_id == tenant_id, Defect.project_id == project_id)
+            .group_by(Defect.reported_by)
+        ).all()
+    }
+    names = _resolve_user_names(db, {u for u in (*per_user, *defects) if u is not None})
+    rows: list[TesterPerformanceRow] = []
+    for uid in set(per_user) | set(defects):
+        b = _status_buckets(per_user.get(uid, []))
+        executed = b["passed"] + b["failed"] + b["blocked"] + b["skipped"]
+        if not executed and not defects.get(uid):
+            continue
+        rows.append(
+            TesterPerformanceRow(
+                user_id=uid,
+                user_name=names.get(uid) if uid else None,
+                executed=executed,
+                passed=b["passed"],
+                failed=b["failed"],
+                blocked=b["blocked"],
+                skipped=b["skipped"],
+                pass_rate=_percentage(b["passed"], executed),
+                defects_raised=defects.get(uid, 0),
+            )
+        )
+    rows.sort(key=lambda r: (-r.executed, -r.defects_raised, (r.user_name or "").lower()))
+    return TesterPerformanceReport(project_id=project_id, rows=rows)
+
+
+def _today() -> date:
+    return datetime.now(UTC).date()
+
+
+def _overdue_base(tenant_id: UUID, project_id: UUID, today: date):
+    return (
+        select(TestRunCase.id)
+        .select_from(TestRunCase)
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .join(TestCase, TestCase.id == TestRunCase.test_case_id)
+        .where(
+            TestRunCase.tenant_id == tenant_id,
+            TestRun.project_id == project_id,
+            TestRun.finished_at.is_(None),
+            TestRunCase.due_date.is_not(None),
+            TestRunCase.due_date < today,
+            TestRunCase.status.in_(OVERDUE_RUN_CASE_STATUSES),
+        )
+    )
+
+
+@cached_report("overdue_run_cases")
+def get_overdue_run_cases(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> OverdueRunCasesReport:
+    """Run cases past their due date and not yet executed, in the project's open runs. The
+    same filter backs the Execution Console's `?overdue=1` list, so the totals agree."""
+    _require_project_scope(db, tenant_id, role_code, user_id, project_id)
+    today = _today()
+    base = tester_visibility.scope_case_query(
+        db, tenant_id, role_code, user_id, _overdue_base(tenant_id, project_id, today)
+    )
+    total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
+    rows = db.execute(
+        base.with_only_columns(
+            TestRunCase.id,
+            TestRun.id,
+            TestRun.name,
+            TestCase.id,
+            TestCase.display_id,
+            TestCase.title,
+            TestRunCase.status,
+            TestRunCase.assigned_to,
+            TestRunCase.due_date,
+        )
+        .order_by(TestRunCase.due_date, TestRunCase.id)
+        .limit(OVERDUE_LIMIT)
+    ).all()
+    names = _resolve_user_names(db, {r[7] for r in rows if r[7] is not None})
+    items = [
+        OverdueRunCaseRow(
+            run_case_id=r[0],
+            run_id=r[1],
+            run_name=r[2],
+            test_case_id=r[3],
+            test_case_display_id=r[4],
+            title=r[5],
+            status=r[6],
+            assignee_id=r[7],
+            assignee_name=names.get(r[7]) if r[7] else None,
+            due_date=r[8],
+            days_overdue=(today - r[8]).days,
+        )
+        for r in rows
+    ]
+    return OverdueRunCasesReport(project_id=project_id, total=total, items=items)
+
+
+@cached_report("upcoming_milestones")
+def get_upcoming_milestones(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> UpcomingMilestonesReport:
+    """Releases dated today or later that are not Released / Cancelled, plus the earliest open
+    due date of each open run (run cases not yet executed). Soonest first."""
+    _require_project_scope(db, tenant_id, role_code, user_id, project_id)
+    today = _today()
+    items: list[MilestoneRow] = []
+    for rid, name, when, status in db.execute(
+        select(Release.id, Release.name, Release.release_date, Release.status)
+        .where(
+            Release.tenant_id == tenant_id,
+            Release.project_id == project_id,
+            Release.release_date.is_not(None),
+            Release.release_date >= today,
+            or_(Release.status.is_(None), Release.status.in_(OPEN_RELEASE_STATUSES)),
+        )
+        .order_by(Release.release_date, Release.id)
+        .limit(MILESTONE_LIMIT)
+    ).all():
+        items.append(
+            MilestoneRow(
+                kind="release",
+                id=rid,
+                name=name,
+                milestone_date=when,
+                days_until=(when - today).days,
+                detail=status,
+            )
+        )
+    run_query = (
+        select(TestRun.id, TestRun.name, func.min(TestRunCase.due_date), func.count())
+        .select_from(TestRunCase)
+        .join(TestRun, TestRun.id == TestRunCase.test_run_id)
+        .join(TestCase, TestCase.id == TestRunCase.test_case_id)
+        .where(
+            TestRunCase.tenant_id == tenant_id,
+            TestRun.project_id == project_id,
+            TestRun.finished_at.is_(None),
+            TestRunCase.due_date.is_not(None),
+            TestRunCase.due_date >= today,
+            TestRunCase.status.in_(OVERDUE_RUN_CASE_STATUSES),
+        )
+        .group_by(TestRun.id, TestRun.name)
+        .order_by(func.min(TestRunCase.due_date), TestRun.id)
+        .limit(MILESTONE_LIMIT)
+    )
+    run_query = tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, run_query)
+    for rid, name, when, n in db.execute(run_query).all():
+        items.append(
+            MilestoneRow(
+                kind="run_due",
+                id=rid,
+                name=name,
+                milestone_date=when,
+                days_until=(when - today).days,
+                detail=f"{n} open case{'s' if n != 1 else ''} due",
+                open_cases=n,
+            )
+        )
+    items.sort(key=lambda m: (m.milestone_date, m.kind, str(m.id)))
+    return UpcomingMilestonesReport(project_id=project_id, items=items[:MILESTONE_LIMIT])

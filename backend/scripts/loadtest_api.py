@@ -89,6 +89,18 @@ def endpoints(pid: str, role: str) -> list[tuple[str, str, dict, bool]]:
         ("report defect-reopen-summary", "/reports/defect-reopen-summary", {}, False),
         ("report release-readiness (project)", "/reports/release-readiness", {"project_id": pid}, False),
         ("report workload (project)", "/reports/workload", {"project_id": pid}, False),
+        *[
+            (f"report {name} (project)", f"/reports/{name}", {"project_id": pid}, False)
+            for name in (
+                "project-test-status",
+                "module-coverage",
+                "tester-performance",
+                "overdue-run-cases",
+                "upcoming-milestones",
+            )
+        ],
+        ("my-work run-cases (project)", "/my-work/run-cases", {"project_id": pid}, False),
+        ("project dashboard layout", f"/projects/{pid}/dashboard", {}, False),
         ("report flaky-tests (project)", "/reports/flaky-tests", {"project_id": pid}, False),
         ("report quality-metrics", "/reports/quality-metrics", {}, False),
         ("report defect-leakage", "/reports/defect-leakage", {}, False),

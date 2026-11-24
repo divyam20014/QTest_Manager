@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ADR-118: 'Retest' can be chosen when creating or updating a run (the defect retest
 # endpoint creates such runs too).
@@ -11,6 +11,16 @@ RunTypeInput = RunType
 RunCaseStatus = Literal["pending", "in_progress", "passed", "failed", "blocked", "ignored"]
 Verdict = Literal["pass", "fail", "ignore"]
 
+# ADR-123: a run-case due date must be a plausible calendar date.
+DUE_DATE_MIN = date(2000, 1, 1)
+DUE_DATE_MAX = date(2100, 12, 31)
+
+
+def _check_due_date(value: date | None) -> date | None:
+    if value is not None and not (DUE_DATE_MIN <= value <= DUE_DATE_MAX):
+        raise ValueError("due_date must be between 2000-01-01 and 2100-12-31")
+    return value
+
 
 class TestRunCreateRequest(BaseModel):
     name: str = Field(min_length=3)
@@ -18,6 +28,10 @@ class TestRunCreateRequest(BaseModel):
     test_case_ids: list[UUID] = Field(min_length=1)
     # ADR-097: default False keeps the current behaviour.
     exclude_quarantined: bool = False
+    # ADR-123: optional due date applied to every case bundled by this request.
+    due_date: date | None = None
+
+    _v_due = field_validator("due_date")(_check_due_date)
 
 
 class TestRunUpdateRequest(BaseModel):
@@ -34,10 +48,19 @@ class TestRunCaseAddRequest(BaseModel):
     # fully backward compatible with every existing caller.
     data_row_ids: dict[UUID, list[UUID]] = Field(default_factory=dict)
     exclude_quarantined: bool = False
+    due_date: date | None = None
+
+    _v_due = field_validator("due_date")(_check_due_date)
 
 
 class TestRunCaseAssignRequest(BaseModel):
+    # ADR-123: `assigned_to` and `due_date` are independent. A body that names only
+    # `due_date` leaves the assignee alone; a body without `due_date` leaves the due date
+    # alone; `null` clears. (A body that names neither still clears the assignee, as before.)
     assigned_to: UUID | None = None
+    due_date: date | None = None
+
+    _v_due = field_validator("due_date")(_check_due_date)
 
 
 class VerdictRequest(BaseModel):
@@ -75,6 +98,7 @@ class TestRunCaseOut(BaseModel):
     status: RunCaseStatus
     blocked_reason: str | None = None
     assigned_to: UUID | None
+    due_date: date | None = None
     started_at: datetime | None
     completed_at: datetime | None
     step_count: int
@@ -132,6 +156,7 @@ class RunCaseContextOut(BaseModel):
     version_number: int
     assignee_id: UUID | None
     assignee_name: str | None
+    due_date: date | None = None
     status: RunCaseStatus
     blocked_reason: str | None = None
     # Pass 5 item 2: when this run case was bundled from a specific

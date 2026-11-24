@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -93,6 +94,8 @@ class TestRunCase(Base, TenantScopedMixin):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ADR-123: optional assignment-level due date (overdue = past due and not yet executed).
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # ADR-070: required explanation while status == 'blocked'; cleared on unblock.
     blocked_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -154,11 +154,26 @@ def assign_run_case(
     ctx: SessionContext = Depends(require_permission("testrun.create")),
     db: Session = Depends(get_db),
 ) -> dict:
+    sent = req.model_fields_set
     run_case = execution_service.assign_run_case(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_run_case_id, req.assigned_to
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        test_run_case_id,
+        req.assigned_to,
+        update_assignee="assigned_to" in sent or "due_date" not in sent,
+        due_date=req.due_date,
+        update_due_date="due_date" in sent,
     )
     assigned_to = str(run_case.assigned_to) if run_case.assigned_to else None
-    return envelope({"id": str(run_case.id), "assigned_to": assigned_to})
+    return envelope(
+        {
+            "id": str(run_case.id),
+            "assigned_to": assigned_to,
+            "due_date": run_case.due_date.isoformat() if run_case.due_date else None,
+        }
+    )
 
 
 @router.post("/test-runs/{run_id}/pause")

@@ -200,7 +200,13 @@ def _last_execution(
     return _last_executions(db, tenant_id, [test_case_id]).get(test_case_id, (None, None, None))
 
 
-def _latest_exec_select(tenant_id: UUID, case_ids: list[UUID] | None = None):
+def _latest_exec_select(
+    tenant_id: UUID,
+    case_ids: list[UUID] | None = None,
+    project_id: UUID | None = None,
+    *,
+    lean: bool = False,
+):
     """ADR-116: the latest EXECUTED run case of each test case (status passed /
     failed / blocked / ignored, in a live run). Execution status, executed-by and
     last-executed-at are derived from it; nothing is stored on the test case.
@@ -208,7 +214,12 @@ def _latest_exec_select(tenant_id: UUID, case_ids: list[UUID] | None = None):
     A run case still pending or in progress does not hide the last result: the
     case keeps showing it until a newer run case is actually executed. Legacy run
     cases (no `executed_at`) fall back to completed_at / started_at, and a missing
-    `executed_by` falls back to the last step executor."""
+    `executed_by` falls back to the last step executor.
+
+    `lean=True` (ADR-123 aggregates) skips that per-row step-executor lookup and
+    `actual_result`: it keeps the same winner per case (same ORDER BY) but exposes the
+    raw `executed_by`, so a caller aggregating many cases applies the fallback only to
+    the winning rows."""
     when = func.coalesce(TestRunCase.executed_at, TestRunCase.completed_at, TestRunCase.started_at)
     step_executor = (
         select(ExecutionStep.executed_by)
@@ -221,15 +232,21 @@ def _latest_exec_select(tenant_id: UUID, case_ids: list[UUID] | None = None):
         .correlate(TestRunCase)
         .scalar_subquery()
     )
+    columns = [
+        TestRunCase.test_case_id.label("test_case_id"),
+        TestRunCase.id.label("run_case_id"),
+        TestRunCase.status.label("status"),
+        (
+            TestRunCase.executed_by
+            if lean
+            else func.coalesce(TestRunCase.executed_by, step_executor)
+        ).label("executed_by"),
+        when.label("executed_at"),
+    ]
+    if not lean:
+        columns.append(TestRunCase.actual_result.label("actual_result"))
     stmt = (
-        select(
-            TestRunCase.test_case_id.label("test_case_id"),
-            TestRunCase.id.label("run_case_id"),
-            TestRunCase.status.label("status"),
-            func.coalesce(TestRunCase.executed_by, step_executor).label("executed_by"),
-            when.label("executed_at"),
-            TestRunCase.actual_result.label("actual_result"),
-        )
+        select(*columns)
         .join(TestRun, TestRun.id == TestRunCase.test_run_id)
         .where(
             TestRunCase.tenant_id == tenant_id,
@@ -239,6 +256,10 @@ def _latest_exec_select(tenant_id: UUID, case_ids: list[UUID] | None = None):
         .distinct(TestRunCase.test_case_id)
         .order_by(TestRunCase.test_case_id, when.desc().nulls_last(), TestRunCase.id.desc())
     )
+    if project_id is not None:
+        # ADR-123: a run only bundles cases of its own project, so narrowing the runs
+        # narrows the DISTINCT ON to one project's run cases (project dashboard aggregates).
+        stmt = stmt.where(TestRun.project_id == project_id)
     if case_ids is not None:
         stmt = stmt.where(TestRunCase.test_case_id.in_(case_ids))
     return stmt
@@ -531,6 +552,8 @@ def _filter_sort_page(
         query = query.outerjoin(latest, latest.c.test_case_id == TestCase.id)
         if execution_status == NOT_RUN:
             query = query.where(latest.c.status.is_(None))
+        elif execution_status == "Executed":
+            query = query.where(latest.c.status.is_not(None))
         elif execution_status:
             codes = [
                 code

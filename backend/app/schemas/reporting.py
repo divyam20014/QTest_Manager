@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -352,3 +352,93 @@ class DefectLeakageReport(BaseModel):
     quarantined_test_cases: int
     releases: list[LeakageReleaseRow]
     trend: list[LeakageTrendPoint]
+
+
+# --- ADR-123: project dashboard aggregates ------------------------------------------------
+
+
+class ProjectTestStatus(BaseModel):
+    """Test cases of one project by the derived execution status of each case (ADR-116:
+    the latest executed run case; `skipped` = ignored). `executed` = passed + failed +
+    blocked + skipped, and `total` = executed + not_run, so the KPIs add up."""
+
+    project_id: UUID
+    total: int
+    executed: int
+    passed: int
+    failed: int
+    blocked: int
+    skipped: int
+    not_run: int
+    execution_percentage: float | None  # executed / total, None when there are no cases
+    pass_rate: float | None  # passed / executed, None when nothing has been executed
+
+
+class ModuleCoverageRow(BaseModel):
+    module_id: UUID | None  # None = cases with no module
+    module_name: str
+    total: int
+    executed: int
+    passed: int
+    failed: int
+    blocked: int
+    skipped: int
+    not_run: int
+    coverage_percentage: float | None  # executed / total
+
+
+class ModuleCoverageReport(BaseModel):
+    project_id: UUID
+    rows: list[ModuleCoverageRow]
+
+
+class TesterPerformanceRow(BaseModel):
+    user_id: UUID | None  # None = executed by an unknown / removed user
+    user_name: str | None
+    executed: int
+    passed: int
+    failed: int
+    blocked: int
+    skipped: int
+    pass_rate: float | None
+    defects_raised: int
+
+
+class TesterPerformanceReport(BaseModel):
+    project_id: UUID
+    rows: list[TesterPerformanceRow]
+
+
+class OverdueRunCaseRow(BaseModel):
+    run_case_id: UUID
+    run_id: UUID
+    run_name: str
+    test_case_id: UUID
+    test_case_display_id: str | None
+    title: str
+    status: str
+    assignee_id: UUID | None
+    assignee_name: str | None
+    due_date: date
+    days_overdue: int
+
+
+class OverdueRunCasesReport(BaseModel):
+    project_id: UUID
+    total: int
+    items: list[OverdueRunCaseRow]
+
+
+class MilestoneRow(BaseModel):
+    kind: Literal["release", "run_due"]
+    id: UUID  # release id, or run id for a run_due row
+    name: str
+    milestone_date: date
+    days_until: int
+    detail: str | None = None  # release status, or "n open cases"
+    open_cases: int | None = None
+
+
+class UpcomingMilestonesReport(BaseModel):
+    project_id: UUID
+    items: list[MilestoneRow]

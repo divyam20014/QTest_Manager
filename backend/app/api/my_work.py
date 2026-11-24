@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import SessionContext, get_current_context
@@ -23,9 +25,13 @@ def my_work_summary(
 
 @router.get("/my-work/run-cases")
 def my_work_run_cases(
-    ctx: SessionContext = Depends(get_current_context), db: Session = Depends(get_db)
+    project_id: UUID | None = Query(default=None),
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
 ) -> dict:
-    out = my_work_service.list_run_cases(db, ctx.tenant_id, ctx.role_code, ctx.user_id)
+    out = my_work_service.list_run_cases(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+    )
     return envelope(out.model_dump(mode="json"))
 
 

@@ -28,7 +28,8 @@ from app.services import defect_service, test_case_service
 
 router = APIRouter(tags=["test-cases"])
 
-ExecutionStatusFilter = Literal["Pass", "Fail", "Blocked", "Skipped", "Not Run"]
+# "Executed" (ADR-123) = any result: the complement of "Not Run".
+ExecutionStatusFilter = Literal["Pass", "Fail", "Blocked", "Skipped", "Not Run", "Executed"]
 
 
 def _list_envelope(

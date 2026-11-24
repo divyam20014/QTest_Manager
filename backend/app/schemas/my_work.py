@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -20,6 +20,9 @@ class MyRunCaseOut(BaseModel):
     status: MyRunCaseStatus
     blocked_reason: str | None
     started_at: datetime | None
+    # ADR-123: assignment due date; `overdue` = past due and not yet executed.
+    due_date: date | None = None
+    overdue: bool = False
 
 
 class MyRunCaseListResponse(BaseModel):

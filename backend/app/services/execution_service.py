@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import cast
 from uuid import UUID
 
@@ -275,6 +275,7 @@ def _bundle_case_into_run(
     run_id: UUID,
     case: TestCase,
     test_data_row_id: UUID | None = None,
+    due_date: date | None = None,
 ) -> TestRunCase:
     run_case = TestRunCase(
         tenant_id=tenant_id,
@@ -283,6 +284,7 @@ def _bundle_case_into_run(
         test_case_version_id=case.current_version_id,
         test_data_row_id=test_data_row_id,
         status="pending",
+        due_date=due_date,
     )
     db.add(run_case)
     db.flush()
@@ -335,7 +337,7 @@ def create_test_run(
     db.flush()
 
     for case in cases:
-        _bundle_case_into_run(db, tenant_id, run.id, case)
+        _bundle_case_into_run(db, tenant_id, run.id, case, due_date=req.due_date)
 
     record_audit_event(
         db,
@@ -348,6 +350,7 @@ def create_test_run(
             "name": run.name,
             "case_count": len(cases),
             "excluded_quarantined": excluded_quarantined,
+            **({"due_date": req.due_date.isoformat()} if req.due_date else {}),
         },
     )
     db.commit()
@@ -452,7 +455,9 @@ def add_test_run_cases(
             raise ValidationAppError(f"Unknown data row id(s): {', '.join(bad_rows)}")
 
     for case, row_id in to_bundle:
-        _bundle_case_into_run(db, tenant_id, run.id, case, test_data_row_id=row_id)
+        _bundle_case_into_run(
+            db, tenant_id, run.id, case, test_data_row_id=row_id, due_date=req.due_date
+        )
 
     record_audit_event(
         db,
@@ -515,20 +520,35 @@ def assign_run_case(
     actor_user_id: UUID,
     test_run_case_id: UUID,
     assigned_to: UUID | None,
+    *,
+    update_assignee: bool = True,
+    due_date: date | None = None,
+    update_due_date: bool = False,
 ) -> TestRunCase:
+    """ADR-123: assignee and due date are updated independently (`update_assignee`,
+    `update_due_date`); a plain call still just (re)assigns."""
     run_case = _get_run_case_or_404(db, tenant_id, test_run_case_id)
     run = _authorize_run_case_access(db, tenant_id, role_code, actor_user_id, run_case)
     if run.finished_at is not None:
         raise ConflictError("Cannot reassign a case on a finished test run")
 
-    if assigned_to is not None:
+    if not update_assignee:
+        assigned_to = run_case.assigned_to
+    if update_due_date:
+        run_case.due_date = due_date
+
+    if update_assignee and assigned_to is not None:
         user_exists = db.execute(
             select(User).where(User.tenant_id == tenant_id, User.id == assigned_to)
         ).scalar_one_or_none()
         if user_exists is None:
             raise NotFoundError("Assignee not found in this tenant")
 
-    run_case.assigned_to = assigned_to
+    if update_assignee:
+        run_case.assigned_to = assigned_to
+    metadata: dict[str, str | None] = {"assigned_to": str(assigned_to) if assigned_to else None}
+    if update_due_date:
+        metadata["due_date"] = due_date.isoformat() if due_date else None
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -536,10 +556,10 @@ def assign_run_case(
         action="testruncase.assigned",
         entity_type="test_run_case",
         entity_id=run_case.id,
-        metadata={"assigned_to": str(assigned_to) if assigned_to else None},
+        metadata=metadata,
     )
 
-    if assigned_to is not None:
+    if update_assignee and assigned_to is not None:
         case = db.execute(
             select(TestCase)
             .where(TestCase.id == run_case.test_case_id)
@@ -761,6 +781,7 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
                 status=cast(RunCaseStatus, run_case.status),
                 blocked_reason=run_case.blocked_reason,
                 assigned_to=run_case.assigned_to,
+                due_date=run_case.due_date,
                 started_at=run_case.started_at,
                 completed_at=run_case.completed_at,
                 step_count=step_count,
@@ -875,6 +896,7 @@ def get_run_case_context(
         version_number=version.version_number,
         assignee_id=run_case.assigned_to,
         assignee_name=assignee_name,
+        due_date=run_case.due_date,
         status=cast(RunCaseStatus, run_case.status),
         blocked_reason=run_case.blocked_reason,
         data_row_id=run_case.test_data_row_id,

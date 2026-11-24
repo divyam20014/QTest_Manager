@@ -33,6 +33,7 @@ from app.api import (
     notifications,
     platform,
     platform_auth,
+    project_dashboards,
     projects,
     report_builder,
     report_schedule,
@@ -279,6 +280,7 @@ app.include_router(report_schedule.router, prefix="/api/v1")
 app.include_router(saved_views.router, prefix="/api/v1")
 app.include_router(report_builder.router, prefix="/api/v1")
 app.include_router(dashboards.router, prefix="/api/v1")
+app.include_router(project_dashboards.router, prefix="/api/v1")
 app.include_router(shared_steps.router, prefix="/api/v1")
 app.include_router(test_data_sets.router, prefix="/api/v1")
 app.include_router(test_suites.router, prefix="/api/v1")

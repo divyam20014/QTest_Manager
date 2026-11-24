@@ -63,7 +63,12 @@ def _get_readable(db: Session, ctx: SessionContext, dashboard_id: UUID) -> Dashb
     d = db.execute(
         select(Dashboard).where(Dashboard.tenant_id == ctx.tenant_id, Dashboard.id == dashboard_id)
     ).scalar_one_or_none()
-    if d is None or not (d.is_team_default or d.owner_user_id == ctx.user_id):
+    # ADR-123: a project dashboard layout (project_id set) is never an org dashboard.
+    if (
+        d is None
+        or d.project_id is not None
+        or not (d.is_team_default or d.owner_user_id == ctx.user_id)
+    ):
         raise NotFoundError("Dashboard not found")
     return d
 
@@ -131,6 +136,7 @@ def list_dashboards(db: Session, ctx: SessionContext) -> list[dict[str, Any]]:
         select(Dashboard)
         .where(
             Dashboard.tenant_id == ctx.tenant_id,
+            Dashboard.project_id.is_(None),
             (Dashboard.owner_user_id == ctx.user_id) | Dashboard.is_team_default,
         )
         .order_by(Dashboard.is_team_default.desc(), Dashboard.name, Dashboard.id)
@@ -145,7 +151,9 @@ def get_dashboard(db: Session, ctx: SessionContext, dashboard_id: UUID) -> dict[
 def create_dashboard(db: Session, ctx: SessionContext, req: DashboardCreate) -> dict[str, Any]:
     set_tenant_context(db, str(ctx.tenant_id))
     count = db.execute(
-        select(func.count()).select_from(Dashboard).where(Dashboard.owner_user_id == ctx.user_id)
+        select(func.count())
+        .select_from(Dashboard)
+        .where(Dashboard.owner_user_id == ctx.user_id, Dashboard.project_id.is_(None))
     ).scalar_one()
     if count >= MAX_DASHBOARDS_PER_USER:
         raise ConflictError(f"You can have at most {MAX_DASHBOARDS_PER_USER} dashboards")
