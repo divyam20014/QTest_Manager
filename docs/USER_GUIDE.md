@@ -28,9 +28,12 @@ and do. It is set by your Admin and is not something you change yourself.
 
 ### Finding your way around
 
-The sidebar lists **Dashboard**, **Projects**, **My Work**, **Test Cases**,
-**Test Execution** (Test Runs, Execution Console), **Defects**, **Reports &
-Analytics** (Reports, Compliance Reports) and **Admin**. **User Guide** and
+Everything starts from the **sidebar** on the left (a bottom bar with a **More**
+menu on a phone). It lists **Dashboard**, **Projects**, **My Work**, **Test
+Cases**, **Test Execution** (Test Runs, Execution Console), **Defects**,
+**Reports & Analytics** (Reports, Compliance Reports) and **Admin**. (An admin
+sees the Test Cases entry as "Test Management" in Admin > Workspace; it is the
+same entry, shown as the plain Test Cases link while it holds one page.) **User Guide** and
 **Profile** sit at the bottom. A name with an arrow, such as Test Execution, is a
 group: select it to open or close its list. It stays open or closed the way you
 left it, and the group holding the page you are on opens by itself. Entries your
@@ -38,6 +41,20 @@ role cannot open are not shown, and a group with only one visible entry shows as
 that entry. The small number beside **Defects** is your open defects and the one
 beside **My Work** is what is waiting on you (see below); both come from live
 data and are announced to screen readers when they change.
+
+A quick map of where things live:
+
+- **What is waiting on me?** My Work, or the Dashboard's attention list.
+- **One project's numbers, plans, people and settings?** Projects, then the
+  project. Its header has a **project switcher** (search by name; your recent
+  projects come first and you stay on the same tab where the other project has
+  it), and its tabs hold the Overview dashboard, Requirements, Test Cases, Test
+  Runs, Planning, Releases, Defects, Reports, Team, Activity and Settings.
+- **The same records as a board or a calendar?** The **List / Board / Calendar**
+  switch above Defects, Test Cases and Test Runs (see "Views" below).
+- **Something I use often?** Star it (Favourites) or find it under Recent.
+- **Anything at all?** Ctrl/Cmd+K, the command palette.
+- **Changing the menus for everyone?** Admin > Workspace (admins only).
 
 Use the arrow button at the left of the header to shrink the sidebar to an icon
 rail. In the rail every entry has a tooltip, and a group opens a small panel
@@ -154,8 +171,9 @@ real counts (defects are the open ones). Defects and Reports open the usual
 Defects and Reports pages for this project, with the project header and tabs
 above them. When the tabs do not fit (a phone, a narrow window) the last ones
 move into a **More** menu; the tab you are on always stays visible. The old
-**Details** page (`/projects/{id}/details`) still works and shows these sections
-together.
+**Details** page (`/projects/{id}/details`) no longer exists as a page: its
+sections are now the Overview, Team, Planning, Releases, Activity and Settings
+tabs, and an old link or bookmark to it opens the project's Overview.
 
 **Choosing the tabs.** In **Settings > Project navigation**, a manager can move
 tabs up or down with the arrow buttons (they work from the keyboard, and the

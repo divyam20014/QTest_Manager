@@ -1814,3 +1814,52 @@ The sidebar has a single **Admin** item (ADR-108 follow-up). The pages behind it
 **Deviations from the plan.** The default project dashboard widget set per tenant was not built: the Phase 4 default is stored per project (a `dashboards` row with `project_id`), so a tenant default would need either a second storage path or a new fallback tier in `project_dashboard_service`; it is not a cheap reuse and is left out rather than faked. No new permission codes (decision 7). Hiding applies to top-level sidebar entries only; the leaves of a group (for example Compliance Reports) follow their group.
 
 **Consequences.** A new sidebar entry appears in the Workspace page by being added to `NAV_REGISTRY` (and to `NAV_ENTRY_KEYS` in `schemas/workspace.py`, which the API uses to validate); a new project tab is picked up from `PROJECT_TABS` and `ALL_NAV_KEYS` as before; a new list with a board or calendar adds a key to `VIEW_MODE_LISTS` and `LIST_VIEW_MODES` and calls `useListModes`. A real tenant-wide "module off" (blocking the API) is deliberately not part of this: it would be a second authorisation layer.
+
+
+## ADR-126: Workspace redesign: final audit, known limits and what was not built
+
+**Context.** Phases 2 to 6 (ADR-121 to ADR-125) replaced the shell, added My Work, the project workspace and tabs, the configurable project Overview, the Board and Calendar views and the admin Workspace settings. This is phase 7 of the QA-workspace plan: prove the whole redesign is correct, accessible, responsive, fast enough and documented, and close what the audit finds. Every figure below is from the dev stack in Docker on a slow, memory-starved Windows machine, run one test at a time.
+
+**Audit result.** The plan's completion criteria were walked against the running app (rebuilt `api` and `web` images): the registry sidebar with groups, badges, favourites and recent; the My Work page; the top bar and command palette; the project workspace (header, switcher, tabs, module visibility and order); the project Overview dashboard with its Customise panel and its aggregates; run-case due dates; List / Board / Calendar views; the tenant Workspace settings; and the RBAC matrix across Admin, assigned Manager, unassigned Manager, Tester and a custom role. All pass; the evidence is the named backend tests (`test_workspace_config`, `test_rbac_matrix`, `test_project_dashboard`, `test_calendar`, `test_project_nav_config`, ...) and Playwright specs (`nav-workspace`, `project-workspace`, `project-overview-dashboard`, `views`, `workspace-settings`, and the extended `a11y-sweep` and `mobile-screens`).
+
+**Decisions and fixes made in this phase.**
+
+1. **`/projects/:id/details` redirects to the project Overview** (`LegacyProjectDetailsRedirect`). The page was a re-assembly of cards that now live in the Overview, Team, Planning, Releases, Activity and Settings tabs and nothing linked to it; the Overview is the one tab every member can open (Settings needs `project.edit`). `ProjectDetail.tsx` was deleted and its breadcrumb and page-title entries removed. Specs that opened `/details` now open `/activity` (which carries the recent-lists drill-down) or assert the redirect.
+2. **Test Management label.** The sidebar shows a one-leaf group as its leaf (ADR-121), so Admin > Workspace listed "Test Management" while the menu said "Test Cases". The behaviour was kept (the group grows when Planning or Modules get top-level pages) and the Workspace row now says so. The user guide says the same.
+3. **Requirements coverage summary.** `GET /projects/{id}/requirements/coverage?summary=true` returns the three totals with `requirements: []`, computed by two COUNT queries; the Overview's Requirement traceability widget uses it. At 2,500 requirements the full report is 368 KB and 230 to 500 ms; the summary is 0.2 KB and about 80 to 140 ms. The default (full) response is unchanged for the Requirements list. Test: `test_coverage_summary_matches_the_full_report_without_the_rows` (totals equal the full report, a requirement with two cases counts once, soft-deleted cases drop out of both).
+4. **`useApplyDefaultView`** (a default saved view must not overwrite a filter the user already has) is proven for filters by `viewsHelpers.test.tsx`: the default is applied once when nothing is set; not applied when the URL has filters; not applied when a filter is set while the views are still loading; nothing happens when no view is default. Still open: a sort chosen before the views arrive is not tracked (`urlFilters.active` has no sort), so a default view that carries a sort can replace it on a first visit. The patch was not reverted.
+5. **Accessibility fixes found by the new sweeps.** Project Settings for a person without `project.edit` rendered the inline no-access block with no `<h1>` (axe `page-has-heading-one`, Tester); it now renders the page variant. Three off-scale `rounded` classes (sidebar pin button, search shortcut key, calendar day link) failed the existing design-scale test and became `rounded-md`. Two specs were corrected, neither a product defect: `brd-phase2` counted a deleted record's title in the sidebar Recent list (Recent keeps a link until its x is pressed, by design) and `nav-workspace` measured contrast during a colour transition (it now waits with `settle`).
+6. **Tests added to the existing suites.** `a11y-sweep.spec.ts`: My Work, the five moved project tabs, three boards, the calendar and `/admin/workspace` join the route sweep (Admin, Manager, Tester), and a new test scans ten workspace pages at 1440 light, 1280 dark, 768 light, 375 dark and 375 light for every role: axe at every impact level and no horizontal overflow, and it reports (does not fail) targets under 24 px and, on a phone, under 44 px. `mobile-screens.spec.ts`: the same pages at 390 px with an overflow and 24 px target check, the agenda calendar and 44 px Workspace controls. `e2e/a11y.ts` gained `settle` and `smallTargets`.
+
+**Measured** (one throwaway tenant, one project of 50,000 test cases, 125,000 run cases, 25,000 defects, 2,500 requirements; deleted afterwards, name-guarded). Cold is the first call per user; warm is repeats inside the 20 s report cache. Milliseconds, cold admin / manager / tester, then warm p50, after `ANALYZE`:
+
+| endpoint | cold | warm |
+|---|---|---|
+| project-test-status | 163 / 204 / 247 | 29 |
+| module-coverage | 212 / 193 / 201 | 23 |
+| tester-performance | 422 / 445 / 462 | 27 |
+| overdue-run-cases, upcoming-milestones | 29 to 41 | 22 to 27 |
+| dashboard summary, execution-trend | 171 to 207 | 23 to 30 |
+| release-readiness | 707 / 289 / 423 | 24 |
+| requirements coverage, full / summary | 227 to 465 / 129 to 143 | 369 / 110 |
+| project dashboard layout, workspace GET | 33 to 132 | 36 to 110 |
+| calendar (project / all projects) | 77 to 185 | 83 / 100 |
+| nav badges: defect status-counts / my-work summary | 58 to 68 / 156 to 164 | 63 / 148 |
+| board columns, defects and runs | 52 to 651 | 50 to 106 |
+| **board columns, test cases by `execution_status`** | **534 to 2545** | **754 to 968** |
+| traceability matrix (the page, not the widget) | 2019 to 3794 | 162 |
+
+A first pass on freshly loaded tables (before `ANALYZE`) was slower on the report endpoints (dashboard summary up to 1.2 s, release-readiness up to 1.1 s). Over about 500 ms cold: the four test-case board columns, the traceability matrix and, for the first user only, release-readiness. The test-case board is the risk ADR-124 named: each column is the list endpoint with the ADR-116 derived-status join, uncached, and a board loads four columns at once. It is acceptable on a normal project and slow at 50,000 cases; a grouped-count endpoint with `cached_report` is the next step and was not built here because it needs its own contract and tests.
+
+**Import timing.** `test_bulk_import_2000_rows_under_2_5_seconds` still fails (4.0 s alone, 7.4 s under load; the threshold is unchanged). Profile: the import is already batched (`insertmanyvalues`, 16 statements for 2,000 cases). About 3 of the 4 seconds is the three multi-row INSERTs inside PostgreSQL (2,000 cases about 1.05 s with 15 indexes, 9 foreign keys and the display-id trigger on `test_cases`; 2,000 versions about 1.0 s; the steps about 1.0 s) plus the driver's statement splitting; the Python work (validation, display ids, step parsing) is under 0.2 s. There is no per-row query left to remove, so no fix was made. The 3.05 s measured in ADR-115 grew with the indexes added since (ADR-113, ADR-116, ADR-123); dropping or deferring an index would trade away list speed and is left to a decision.
+
+**Known limits.**
+
+- WCAG 2.2 target size (2.5.8) is reported, not enforced: breadcrumb links (20 px tall), the "View" links on dashboard widgets (16 px) and legend links on the Overview are under 24 px on desktop. axe at WCAG 2.1 AA is clean at every impact level. On a phone the primary controls meet 44 px; secondary text links in boards and lists are 28 px.
+- Favourites and recent are per browser; a deleted record stays in Recent until its x is pressed.
+- The Dashboard summary can be up to 20 s stale on the other API worker after a write (ADR-113). `dashboard-project-filter.spec.ts` depends on that: it fails with a 20 s TTL and two workers and passes with `REPORT_CACHE_TTL_SECONDS=0`.
+- Hiding a menu entry or tab is cosmetic (ADR-125); the API enforces every permission as before.
+
+**Deliberately not built.** Gantt and timeline (no task dependencies exist), project templates, the Calendar, Documents and Test Automation modules (no backing data; no placeholder pages), an organisation-level Team page, and tenant default dashboard widgets (the default project dashboard is stored per project; a tenant tier needs a second storage path or a new fallback in `project_dashboard_service`). Overdue and upcoming items exist only because run cases carry a due date (ADR-123); test cases and defects still have none.
+
+**Consequences.** The audit leaves no open product defect. Open items, by value: a cached grouped-count endpoint for the test-case board; sort handling in `useApplyDefaultView`; larger targets for widget "View" links and breadcrumbs if WCAG 2.2 AA becomes the gate; pruning Recent when a record is deleted; the import timing decision above.

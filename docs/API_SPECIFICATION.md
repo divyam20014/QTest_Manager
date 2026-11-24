@@ -93,7 +93,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 |---|---|---|---|
 | GET | /projects/{id}/requirements | list, paginated | assigned/all per role |
 | POST | /projects/{id}/requirements | create (version 1) | admin, manager (`requirement.manage`) |
-| GET | /projects/{id}/requirements/coverage | RTM/coverage report: total/covered requirement counts + percentage | assigned/all per role |
+| GET | /projects/{id}/requirements/coverage | RTM/coverage report: total/covered requirement counts + percentage; `?summary=true` returns the totals only (`requirements` empty, ADR-126) | assigned/all per role |
 | GET | /requirements/{id} | detail incl. linked test cases | assigned/all per role |
 | GET | /requirements/{id}/versions | immutable version history, newest first | assigned/all per role |
 | PATCH | /requirements/{id} | edit; always forks a new version (no draft/approved workflow) | admin, manager (`requirement.manage`) |
