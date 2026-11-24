@@ -70,9 +70,14 @@ import { buildTestCaseColumn } from './testCaseCells'
 import { formatWhen } from '@/lib/formatWhen'
 import { STATUS_DISPLAY } from './statusDisplay'
 import { levelTone } from '@/lib/statusTones'
+import { ViewSwitcher } from '@/components/list/ViewSwitcher'
+import { useViewMode, type ViewMode } from '@/lib/viewMode'
+import { TestCasesBoard } from './TestCasesBoard'
 
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
 const PAGE_SIZE = 25
+// ADR-124: a board of test cases by (derived) execution status is offered next to the list.
+const TC_MODES: readonly ViewMode[] = ['list', 'board']
 
 // ADR-096 / ADR-117: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
 const TC_VIEW_KEYS = [
@@ -134,6 +139,7 @@ export function TestCasesList() {
       environment: '',
       executionStatus: '',
       executedBy: '',
+      view: '',
       sort: 'created_at',
       page: '1',
     }),
@@ -147,6 +153,10 @@ export function TestCasesList() {
   }
   useApplyDefaultView('test_cases', urlFilters.active.length > 0, applyView)
   const v = urlFilters.values
+  const { mode: viewMode, setMode: setViewMode } = useViewMode('test_cases', TC_MODES, {
+    raw: v.view,
+    set: (value) => urlFilters.setFilters({ view: value }),
+  })
   const search = v.search
   const priority = v.priority
   const status = v.status as TestCaseStatus | ''
@@ -545,15 +555,16 @@ export function TestCasesList() {
           <ViewsMenu
             listKey="test_cases"
             current={{
-              filters: compactFilters(urlFilters.values, TC_VIEW_KEYS),
+              filters: { ...compactFilters(urlFilters.values, TC_VIEW_KEYS), view: viewMode },
               sort: urlFilters.values.sort === 'created_at' ? null : urlFilters.values.sort,
               columns: cols.keys,
             }}
             onApply={applyView}
           />
         }
+        view={<ViewSwitcher modes={TC_MODES} value={viewMode} onChange={setViewMode} />}
         columns={
-          <TestCaseColumnMenu
+          viewMode === 'board' ? undefined : <TestCaseColumnMenu
             catalog={catalog}
             keys={cols.keys}
             mode={cols.mode}
@@ -734,6 +745,10 @@ export function TestCasesList() {
       />
 
       <div id="tc-panel" role="tabpanel" aria-labelledby={filterTabId('tc-panel', status)} className="flex flex-col gap-4">
+        {viewMode === 'board' ? (
+          <TestCasesBoard projectId={projectId!} params={{ ...baseParams, status }} usersById={usersById} />
+        ) : (
+        <>
         <ResponsiveTable
           label="Test cases"
           rows={visibleItems}
@@ -789,6 +804,8 @@ export function TestCasesList() {
         />
 
         <Pagination page={page} totalPages={totalPages} total={total} noun="test case" pageSize={PAGE_SIZE} onPageChange={setPage} />
+        </>
+        )}
       </div>
 
       {selectedCases.size > 0 && bulkEnabled && (

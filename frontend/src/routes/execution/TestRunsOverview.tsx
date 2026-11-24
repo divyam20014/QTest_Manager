@@ -23,8 +23,14 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
+import { ViewSwitcher } from '@/components/list/ViewSwitcher'
+import { parseViewMode, useViewMode, type ViewMode } from '@/lib/viewMode'
+import { RunsBoard } from './RunsBoard'
+import { RunsCalendar } from './RunsCalendar'
 
 const RUNS_PAGE_SIZE = 50
+// ADR-124: runs are also shown as a board by status and on a calendar.
+const RUN_MODES: readonly ViewMode[] = ['list', 'board', 'calendar']
 
 type OverviewRow = { project: Project; run: TestRunSummary }
 
@@ -110,7 +116,8 @@ export function TestRunsOverview() {
   // full bidirectional URL sync like Test Cases/Defects got, since this
   // page has only the one boolean toggle) so landing on that link
   // actually pre-filters.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { mode: viewMode, setMode: setViewMode } = useViewMode('test_runs', RUN_MODES)
   // Bug #9: this previously defaulted to hiding finished runs, so a
   // tenant with only finished runs saw a dead-end "No test runs match"
   // on first visit even though data existed. Show everything by default;
@@ -129,6 +136,18 @@ export function TestRunsOverview() {
     setProjectId(view.filters.projectId ?? '')
     const saved = view.filters.status ?? (view.filters.activeOnly === 'true' ? 'in_progress' : '')
     setStatus((RUN_STATUSES as string[]).includes(saved) ? (saved as RunStatus) : '')
+    // The saved view mode (and the calendar's overdue switch) live in the URL; one update sets both.
+    const mode = parseViewMode(view.filters.view, RUN_MODES)
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev)
+        if (mode) p.set('view', mode)
+        if (view.filters.overdue === 'true') p.set('overdue', 'true')
+        else p.delete('overdue')
+        return p
+      },
+      { replace: true },
+    )
   }
   useApplyDefaultView('test_runs', Boolean(projectId) || Boolean(status), applyView)
 
@@ -203,13 +222,15 @@ export function TestRunsOverview() {
     <div className="flex flex-col gap-4">
       <PageHeader title="Test Runs" description="Test runs across every project you can see." />
 
-      <FilterTabs
-        label="Test run status"
-        items={statusTabs}
-        value={status}
-        onChange={(key) => setStatus(key as RunStatus | '')}
-        panelId="runs-panel"
-      />
+      {viewMode === 'list' && (
+        <FilterTabs
+          label="Test run status"
+          items={statusTabs}
+          value={status}
+          onChange={(key) => setStatus(key as RunStatus | '')}
+          panelId="runs-panel"
+        />
+      )}
 
       <ListToolbar
         search={{ id: 'runs-search', value: search, onChange: setSearch, placeholder: 'Search runs by name…' }}
@@ -217,18 +238,24 @@ export function TestRunsOverview() {
         onClearFilters={() => setProjectId('')}
         chips={chips}
         onRemoveChip={() => setProjectId('')}
+        view={<ViewSwitcher modes={RUN_MODES} value={viewMode} onChange={setViewMode} />}
         saved={
           <ViewsMenu
             listKey="test_runs"
             current={{
-              filters: { ...(projectId ? { projectId } : {}), ...(status ? { status } : {}) },
+              filters: {
+                ...(projectId ? { projectId } : {}),
+                ...(status ? { status } : {}),
+                view: viewMode,
+                ...(viewMode === 'calendar' && searchParams.get('overdue') === 'true' ? { overdue: 'true' } : {}),
+              },
               sort: null,
             }}
             onApply={applyView}
           />
         }
         columns={
-          <ColumnVisibilityMenu
+          viewMode !== 'list' ? undefined : <ColumnVisibilityMenu
             columns={OVERVIEW_COLUMN_DEFS}
             isVisible={columnPrefs.isVisible}
             toggleVisible={columnPrefs.toggleVisible}
@@ -258,10 +285,16 @@ export function TestRunsOverview() {
 
       <div
         id="runs-panel"
-        role="tabpanel"
-        aria-labelledby={filterTabId('runs-panel', status)}
+        role={viewMode === 'list' ? 'tabpanel' : undefined}
+        aria-labelledby={viewMode === 'list' ? filterTabId('runs-panel', status) : undefined}
         className="flex flex-col gap-4"
       >
+      {viewMode === 'board' ? (
+        <RunsBoard projectId={projectId || undefined} search={debouncedSearch || undefined} projectNames={new Map(projects.map((p) => [p.id, p.name]))} />
+      ) : viewMode === 'calendar' ? (
+        <RunsCalendar projectId={projectId || undefined} />
+      ) : (
+      <>
       <ResponsiveTable
         label="Test runs"
         prefs={columnPrefs}
@@ -311,6 +344,8 @@ export function TestRunsOverview() {
         pageSize={RUNS_PAGE_SIZE}
         onPageChange={(next) => setPaging({ key: filterKey, page: next })}
       />
+      </>
+      )}
       </div>
       <RowDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} config={RUN_DETAIL} />
     </div>

@@ -37,6 +37,7 @@ export function ListToolbar({
   saved,
   columns,
   quick,
+  view,
 }: {
   search?: ListSearch
   filters: ReactNode
@@ -51,6 +52,8 @@ export function ListToolbar({
   columns?: ReactNode
   /** A one-click control kept beside the Filters button (e.g. "All / Assigned to me"); on a phone it moves into the sheet. */
   quick?: ReactNode
+  /** ADR-124: the List / Board / Calendar switch (`ViewSwitcher`). Shown before the saved views; on a phone it gets its own row above the toolbar. */
+  view?: ReactNode
 }) {
   const isMobile = useIsMobile()
   const searchBox = search && (
@@ -78,10 +81,13 @@ export function ListToolbar({
   return (
     <div className="flex flex-col gap-2">
       {isMobile ? (
+        <>
+        {view}
         <FilterBar activeCount={activeCount} onClear={onClearFilters} primary={searchBox} saved={saved}>
           {quick}
           {filters}
         </FilterBar>
+        </>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           {searchBox}
@@ -89,8 +95,9 @@ export function ListToolbar({
           <FilterPopover activeCount={activeCount} onClear={onClearFilters}>
             {filters}
           </FilterPopover>
-          {(saved || columns) && (
+          {(saved || columns || view) && (
             <div className="ml-auto flex items-center gap-2">
+              {view}
               {saved}
               {columns}
             </div>

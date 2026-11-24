@@ -12,6 +12,7 @@ import {
   listDefectsPage,
   type Defect,
   type DefectListFilters,
+  type DefectStatus,
 } from '@/api/defects'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { listModules } from '@/api/modules'
@@ -56,7 +57,10 @@ import { useCanListUsers } from '@/lib/useCanListUsers'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { useIsMobile } from '@/lib/useMediaQuery'
 import { useUrlFilters } from '@/lib/useUrlFilters'
-import { AssignDialog, StatusChangeDialog,  type ActionDefect } from './DefectActionDialogs'
+import { AssignDialog, RetestDialog, StatusChangeDialog,  type ActionDefect } from './DefectActionDialogs'
+import { DefectsBoard } from './DefectsBoard'
+import { ViewSwitcher } from '@/components/list/ViewSwitcher'
+import { useViewMode, type ViewMode } from '@/lib/viewMode'
 import { useDefectPermissions } from '@/lib/useDefectPermissions'
 import { ImportWizard } from '@/components/import/ImportWizard'
 import { DefectStatusBadge } from './DefectStatusBadge'
@@ -66,6 +70,8 @@ import { severityTone } from './statusDisplay'
 
 const PAGE_SIZE = 50
 const DEFAULT_SORT = '-created_at'
+// ADR-124: a board of defects by status is offered next to the list.
+const DEFECT_MODES: readonly ViewMode[] = ['list', 'board']
 
 // ADR-096 / ADR-119: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
 const DEFECT_VIEW_KEYS = [
@@ -103,6 +109,7 @@ const filterDefaults = {
   fixVersion: '',
   environment: '',
   resolution: '',
+  view: '',
   sort: DEFAULT_SORT,
   page: '1',
 }
@@ -130,12 +137,17 @@ export function DefectsList() {
   const urlFilters = useUrlFilters(filterDefaults)
   const v = urlFilters.values
   const applyView = (view: ViewState) => {
+    // `view` (list / board) is not reset: a view saved before ADR-124 has none and leaves the mode alone.
     urlFilters.setFilters({ ...VIEW_RESET, ...view.filters, sort: view.sort ?? DEFAULT_SORT, page: '1' })
     // A saved view carries its column layout; older views (no columns) leave the layout as it is.
     if (view.columns && view.columns.length > 0) cols.applyKeys(view.columns)
   }
   useApplyDefaultView('defects', urlFilters.active.length > 0, applyView)
 
+  const { mode: viewMode, setMode: setViewMode } = useViewMode('defects', DEFECT_MODES, {
+    raw: v.view,
+    set: (value) => urlFilters.setFilters({ view: value }),
+  })
   const debouncedSearch = useDebouncedValue(v.search.trim(), 300)
   const sort = v.sort
   const page = Number(v.page) || 1
@@ -147,6 +159,9 @@ export function DefectsList() {
   const [detailRow, setDetailRow] = useState<Defect | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [statusTarget, setStatusTarget] = useState<ActionDefect | null>(null)
+  // Set when the board sends a card to a status that needs the dialog (resolution, verification).
+  const [statusInitial, setStatusInitial] = useState<DefectStatus | undefined>(undefined)
+  const [retestTarget, setRetestTarget] = useState<ActionDefect | null>(null)
   const [assignTarget, setAssignTarget] = useState<ActionDefect | null>(null)
 
   // The command palette's / dashboard's "Create Defect" quick action lands here with ?action=create.
@@ -484,15 +499,16 @@ export function DefectsList() {
           <ViewsMenu
             listKey="defects"
             current={{
-              filters: compactFilters(v, DEFECT_VIEW_KEYS),
+              filters: { ...compactFilters(v, DEFECT_VIEW_KEYS), view: viewMode },
               sort: v.sort === DEFAULT_SORT ? null : v.sort,
               columns: cols.keys,
             }}
             onApply={applyView}
           />
         }
+        view={<ViewSwitcher modes={DEFECT_MODES} value={viewMode} onChange={setViewMode} />}
         columns={
-          <ColumnModeMenu
+          viewMode === 'board' ? undefined : <ColumnModeMenu
             columns={pickerColumns(catalog)}
             keys={cols.keys}
             mode={cols.mode}
@@ -651,6 +667,20 @@ export function DefectsList() {
       />
 
       <div id="defects-panel" role="tabpanel" aria-labelledby={tabKey !== null ? filterTabId('defects-panel', tabKey) : undefined} className="flex flex-col gap-4">
+        {viewMode === 'board' ? (
+          <DefectsBoard
+            scope={scope}
+            statuses={statuses}
+            counts={counts}
+            catalog={catalog}
+            onNeedStatusDialog={(d, target) => {
+              setStatusInitial(target as DefectStatus)
+              setStatusTarget(d)
+            }}
+            onNeedRetest={setRetestTarget}
+          />
+        ) : (
+        <>
         <ResponsiveTable
           label="Defects"
           dense
@@ -713,6 +743,8 @@ export function DefectsList() {
           pageSize={PAGE_SIZE}
           onPageChange={(next) => urlFilters.setFilter('page', String(Math.max(1, next)))}
         />
+        </>
+        )}
       </div>
       {rowMenu.menu}
       <RowDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} config={detailConfig} />
@@ -725,7 +757,15 @@ export function DefectsList() {
         projects={projectsQuery.data?.items ?? []}
         viewHref={(id) => `/defects?projectId=${id}`}
       />
-      <StatusChangeDialog defect={statusTarget} onClose={() => setStatusTarget(null)} />
+      <StatusChangeDialog
+        defect={statusTarget}
+        initialTarget={statusInitial}
+        onClose={() => {
+          setStatusTarget(null)
+          setStatusInitial(undefined)
+        }}
+      />
+      <RetestDialog defect={retestTarget} onClose={() => setRetestTarget(null)} />
       <AssignDialog defect={assignTarget} onClose={() => setAssignTarget(null)} />
       {confirmDialog}
     </div>

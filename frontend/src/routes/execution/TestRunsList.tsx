@@ -35,8 +35,15 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/lib/toast'
 import { FormError } from '@/components/ui/form-field'
+import { ViewSwitcher } from '@/components/list/ViewSwitcher'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { useViewMode, type ViewMode } from '@/lib/viewMode'
+import { RunsBoard } from './RunsBoard'
+import { RunsCalendar } from './RunsCalendar'
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
+// ADR-124: this project's runs are also shown as a board by status and on a calendar.
+const RUN_MODES: readonly ViewMode[] = ['list', 'board', 'calendar']
 
 // One definition feeds the desktop table and the phone cards (ResponsiveTable).
 const RUN_COLUMN_DEFS: TableColumnDef[] = [
@@ -132,6 +139,8 @@ export function TestRunsList() {
   const [statusTab, setStatusTab] = useState<RunStatus | ''>('')
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<RunType | ''>('')
+  const { mode: viewMode, setMode: setViewMode } = useViewMode('test_runs', RUN_MODES)
+  const debouncedSearch = useDebouncedValue(search.trim(), 300)
   const [detailRow, setDetailRow] = useState<TestRunSummary | null>(null)
   const canExecute = hasPermission(user, 'executionstep.record')
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
@@ -228,13 +237,15 @@ export function TestRunsList() {
         actions={<Button onClick={() => setCreateOpen(true)}>New Test Run</Button>}
       />
 
-      <FilterTabs
-        label="Test run status"
-        items={statusTabs}
-        value={statusTab}
-        onChange={(key) => setStatusTab(key as RunStatus | '')}
-        panelId="project-runs-panel"
-      />
+      {viewMode === 'list' && (
+        <FilterTabs
+          label="Test run status"
+          items={statusTabs}
+          value={statusTab}
+          onChange={(key) => setStatusTab(key as RunStatus | '')}
+          panelId="project-runs-panel"
+        />
+      )}
 
       <ListToolbar
         search={{ id: 'project-runs-search', value: search, onChange: setSearch, placeholder: 'Search runs by name…' }}
@@ -242,8 +253,9 @@ export function TestRunsList() {
         onClearFilters={() => setTypeFilter('')}
         chips={chips}
         onRemoveChip={() => setTypeFilter('')}
+        view={<ViewSwitcher modes={RUN_MODES} value={viewMode} onChange={setViewMode} />}
         columns={
-          <ColumnVisibilityMenu
+          viewMode !== 'list' ? undefined : <ColumnVisibilityMenu
             columns={RUN_COLUMN_DEFS}
             isVisible={columnPrefs.isVisible}
             toggleVisible={columnPrefs.toggleVisible}
@@ -273,10 +285,16 @@ export function TestRunsList() {
 
       <div
         id="project-runs-panel"
-        role="tabpanel"
-        aria-labelledby={filterTabId('project-runs-panel', statusTab)}
+        role={viewMode === 'list' ? 'tabpanel' : undefined}
+        aria-labelledby={viewMode === 'list' ? filterTabId('project-runs-panel', statusTab) : undefined}
         className="flex flex-col gap-4"
       >
+      {viewMode === 'board' ? (
+        <RunsBoard projectId={projectId} search={debouncedSearch || undefined} runType={typeFilter || undefined} />
+      ) : viewMode === 'calendar' ? (
+        <RunsCalendar projectId={projectId} />
+      ) : (
+      <>
       <ResponsiveTable
         label="Test runs"
         prefs={columnPrefs}
@@ -327,6 +345,8 @@ export function TestRunsList() {
         <p aria-live="polite" className="text-xs text-[var(--muted-foreground)]">
           Showing 1-{rows.length} of {rows.length} run{rows.length === 1 ? '' : 's'}
         </p>
+      )}
+      </>
       )}
       </div>
       <RowDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} config={RUN_DETAIL} />

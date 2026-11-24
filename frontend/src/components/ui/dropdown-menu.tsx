@@ -36,6 +36,7 @@ export function DropdownMenu({
   label,
   align = 'end',
   className,
+  fixed = false,
 }: {
   trigger: (props: MenuTriggerProps) => ReactNode
   items: DropdownMenuItem[]
@@ -43,6 +44,12 @@ export function DropdownMenu({
   label: string
   align?: 'start' | 'end'
   className?: string
+  /**
+   * Position the menu with `position: fixed` from the trigger's box instead of under it, for a trigger
+   * inside a scroll container (a board column) that would clip an absolutely positioned menu. It opens
+   * upward near the bottom of the window and closes when the page scrolls or resizes.
+   */
+  fixed?: boolean
 }) {
   const uid = useId()
   const [open, setOpen] = useState(false)
@@ -50,6 +57,7 @@ export function DropdownMenu({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<'first' | 'last'>('first')
+  const [anchor, setAnchor] = useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null)
 
   const entries = (): HTMLElement[] =>
     Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])
@@ -62,17 +70,43 @@ export function DropdownMenu({
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
+    function onMove(e: Event) {
+      // Scrolling the menu itself (a long list) must not close it.
+      if (e.target instanceof Node && menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    if (fixed) {
+      window.addEventListener('scroll', onMove, true)
+      window.addEventListener('resize', onMove)
+    }
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      if (fixed) {
+        window.removeEventListener('scroll', onMove, true)
+        window.removeEventListener('resize', onMove)
+      }
+    }
+  }, [open, fixed])
 
   function close(refocus = true) {
     setOpen(false)
     if (refocus) triggerRef.current?.focus()
   }
 
+  function measure() {
+    const rect = rootRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const up = rect.bottom > window.innerHeight - 280
+    setAnchor({
+      ...(up ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+      ...(align === 'end' ? { right: Math.max(8, window.innerWidth - rect.right) } : { left: Math.max(8, rect.left) }),
+    })
+  }
+
   function onTriggerKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
+      if (fixed) measure()
       pendingFocus.current = e.key === 'ArrowUp' ? 'last' : 'first'
       setOpen(true)
     }
@@ -109,6 +143,7 @@ export function DropdownMenu({
         'aria-controls': open ? `${uid}-menu` : undefined,
         onClick: () => {
           pendingFocus.current = 'first'
+          if (fixed) measure()
           setOpen((o) => !o)
         },
         onKeyDown: onTriggerKeyDown,
@@ -121,9 +156,10 @@ export function DropdownMenu({
           aria-label={label}
           data-overlay-popup
           onKeyDown={onMenuKeyDown}
+          style={fixed && anchor ? anchor : undefined}
           className={cn(
-            'absolute top-full z-[var(--z-dropdown)] mt-1 min-w-48 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--tactile-surface-raised)] p-1 text-sm shadow-lg',
-            align === 'end' ? 'right-0' : 'left-0',
+            'z-[var(--z-dropdown)] min-w-48 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--tactile-surface-raised)] p-1 text-sm shadow-lg',
+            fixed ? 'fixed max-h-[70vh] overflow-y-auto' : cn('absolute top-full mt-1', align === 'end' ? 'right-0' : 'left-0'),
           )}
         >
           {items.map((item, i) =>
