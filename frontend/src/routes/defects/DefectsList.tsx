@@ -61,6 +61,7 @@ import { AssignDialog, RetestDialog, StatusChangeDialog,  type ActionDefect } fr
 import { DefectsBoard } from './DefectsBoard'
 import { ViewSwitcher } from '@/components/list/ViewSwitcher'
 import { useViewMode, type ViewMode } from '@/lib/viewMode'
+import { useListModes } from '@/lib/workspaceConfig'
 import { useDefectPermissions } from '@/lib/useDefectPermissions'
 import { ImportWizard } from '@/components/import/ImportWizard'
 import { DefectStatusBadge } from './DefectStatusBadge'
@@ -71,7 +72,7 @@ import { severityTone } from './statusDisplay'
 const PAGE_SIZE = 50
 const DEFAULT_SORT = '-created_at'
 // ADR-124: a board of defects by status is offered next to the list.
-const DEFECT_MODES: readonly ViewMode[] = ['list', 'board']
+const DEFECT_BUILT_IN_MODES: readonly ViewMode[] = ['list', 'board']
 
 // ADR-096 / ADR-119: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
 const DEFECT_VIEW_KEYS = [
@@ -144,6 +145,8 @@ export function DefectsList() {
   }
   useApplyDefaultView('defects', urlFilters.active.length > 0, applyView)
 
+  // ADR-125: the tenant may switch the board off; the list is always there.
+  const DEFECT_MODES = useListModes('defects', DEFECT_BUILT_IN_MODES)
   const { mode: viewMode, setMode: setViewMode } = useViewMode('defects', DEFECT_MODES, {
     raw: v.view,
     set: (value) => urlFilters.setFilters({ view: value }),

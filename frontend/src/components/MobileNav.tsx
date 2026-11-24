@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { type ComponentType, useEffect, useRef, useState } from 'react'
+import { type ComponentType, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { getDefectStatusCounts } from '@/api/defects'
@@ -23,8 +23,10 @@ import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { useOverlayBehavior } from '@/components/ui/useOverlayBehavior'
 import { useAuth } from '@/lib/auth'
+import { hiddenNavIds } from '@/lib/navRegistry'
 import { canAccessPath } from '@/lib/routeAccess'
 import { INITIAL_SCROLL_STATE, nextScrollState } from '@/lib/scrollDirection'
+import { useWorkspaceConfig } from '@/lib/workspaceConfig'
 import { cn } from '@/lib/utils'
 
 // Mobile redesign Phase 1: below `md` the desktop sidebar is replaced by a
@@ -52,13 +54,15 @@ export interface MobileNavSection {
 
 interface TabItem extends MobileNavItem {
   end?: boolean
+  /** The sidebar entry the tab belongs to; the workspace defaults (ADR-125) may hide it. */
+  navId?: string
 }
 
 const MOBILE_TABS: TabItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/test-repository', label: 'Test Cases', icon: FileStack },
-  { to: '/test-runs', label: 'Runs', icon: ClipboardList },
-  { to: '/defects', label: 'Defects', icon: Bug },
+  { to: '/test-repository', label: 'Test Cases', icon: FileStack, navId: 'test-management' },
+  { to: '/test-runs', label: 'Runs', icon: ClipboardList, navId: 'test-execution' },
+  { to: '/defects', label: 'Defects', icon: Bug, navId: 'defects' },
 ]
 
 const PRIMARY_PATHS = new Set(MOBILE_TABS.map((t) => t.to))
@@ -109,6 +113,13 @@ function TabBadge({ count }: { count: number }) {
 
 export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: () => void }) {
   const { user } = useAuth()
+  const { config: workspace } = useWorkspaceConfig()
+  // A tab whose sidebar entry the workspace hides is not offered here either; the bar re-flows.
+  const tabs = useMemo(() => {
+    const hiddenIds = hiddenNavIds(workspace.sidebar.hidden)
+    return MOBILE_TABS.filter((t) => !t.navId || !hiddenIds.has(t.navId))
+  }, [workspace.sidebar.hidden])
+  const columns = tabs.length + 1
   const location = useLocation()
   const [focusWithin, setFocusWithin] = useState(false)
   const canSeeDefects = !!user && canAccessPath(user, '/defects')
@@ -134,8 +145,8 @@ export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: 
   const hidden = scrollHidden && !exempt
 
   const activeIndex = moreOpen
-    ? MOBILE_TABS.length
-    : MOBILE_TABS.findIndex((t) => (t.end ? location.pathname === t.to : location.pathname.startsWith(t.to)))
+    ? tabs.length
+    : tabs.findIndex((t) => (t.end ? location.pathname === t.to : location.pathname.startsWith(t.to)))
 
   const itemClass = (active: boolean) =>
     cn(
@@ -161,19 +172,19 @@ export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: 
       }}
     >
       <div className="relative flex items-stretch gap-1 px-2 py-1.5">
-        {/* Sliding indicator: five equal columns, so a pure transform moves it. */}
+        {/* Sliding indicator: equal columns (five by default), so a pure transform moves it. */}
         <span
           aria-hidden="true"
           data-testid="tab-indicator"
           data-index={activeIndex}
           className="qth-pressed-sm pointer-events-none absolute inset-y-1.5 left-2 rounded-xl bg-[var(--tactile-surface)] transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none"
           style={{
-            width: 'calc((100% - 1rem - 1rem) / 5)',
+            width: `calc((100% - 1rem - ${(columns - 1) * 0.25}rem) / ${columns})`,
             transform: `translateX(calc(${Math.max(activeIndex, 0)} * (100% + 0.25rem)))`,
             opacity: activeIndex < 0 ? 0 : 1,
           }}
         />
-        {MOBILE_TABS.map((tab) => {
+        {tabs.map((tab) => {
           const badge = tab.to === '/defects' ? openDefects : 0
           return (
             <NavLink

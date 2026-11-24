@@ -7,12 +7,13 @@ import { listAllTestRuns } from '@/api/execution'
 import { listProjects } from '@/api/projects'
 import { search as searchApi, type SearchResultEntry, type SearchResultType } from '@/api/search'
 import { useAuth } from '@/lib/auth'
-import { PALETTE_EXTRA_ENTRIES, paletteEntries, resolveRegistry } from '@/lib/navRegistry'
+import { NAV_REGISTRY, PALETTE_EXTRA_ENTRIES, applyNavConfig, paletteEntries, resolveRegistry } from '@/lib/navRegistry'
 import { PIN_TYPE_LABEL } from '@/lib/pinnedItems'
 import { getQuickCreateActions, projectIdFromPath } from '@/lib/quickCreate'
 import { canAccessPath } from '@/lib/routeAccess'
 import { useFavourites } from '@/lib/useFavourites'
 import { useRecents } from '@/lib/useRecents'
+import { useWorkspaceConfig } from '@/lib/workspaceConfig'
 import { cn } from '@/lib/utils'
 
 const TYPE_ICON: Record<SearchResultType, typeof FileStack> = {
@@ -59,6 +60,7 @@ const EMPTY_QUERY_PINNED_LIMIT = 5
  */
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth()
+  const { config: workspace } = useWorkspaceConfig()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const favourites = useFavourites()
@@ -111,12 +113,15 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   }))
 
   const navEntries = useMemo(() => {
-    const out = paletteEntries(resolveRegistry(user))
+    const out = paletteEntries(resolveRegistry(user, applyNavConfig(NAV_REGISTRY, workspace.sidebar)))
+    // The report builder belongs to Reports: it follows that entry when the workspace hides it.
+    const reportsHidden = workspace.sidebar.hidden.includes('reports')
     for (const extra of PALETTE_EXTRA_ENTRIES) {
+      if (reportsHidden && extra.path === '/reporting/builder') continue
       if (canAccessPath(user, extra.path)) out.push(extra)
     }
     return out
-  }, [user])
+  }, [user, workspace.sidebar])
 
   const items: (PaletteItem & { onSelect: () => void })[] = useMemo(() => {
     const lower = trimmed.toLowerCase()

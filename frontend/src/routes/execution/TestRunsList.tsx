@@ -38,12 +38,13 @@ import { FormError } from '@/components/ui/form-field'
 import { ViewSwitcher } from '@/components/list/ViewSwitcher'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { useViewMode, type ViewMode } from '@/lib/viewMode'
+import { useListModes } from '@/lib/workspaceConfig'
 import { RunsBoard } from './RunsBoard'
 import { RunsCalendar } from './RunsCalendar'
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
 // ADR-124: this project's runs are also shown as a board by status and on a calendar.
-const RUN_MODES: readonly ViewMode[] = ['list', 'board', 'calendar']
+const RUN_BUILT_IN_MODES: readonly ViewMode[] = ['list', 'board', 'calendar']
 
 // One definition feeds the desktop table and the phone cards (ResponsiveTable).
 const RUN_COLUMN_DEFS: TableColumnDef[] = [
@@ -139,6 +140,8 @@ export function TestRunsList() {
   const [statusTab, setStatusTab] = useState<RunStatus | ''>('')
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<RunType | ''>('')
+  // ADR-125: the tenant may switch the board and calendar off; the list is always there.
+  const RUN_MODES = useListModes('test_runs', RUN_BUILT_IN_MODES)
   const { mode: viewMode, setMode: setViewMode } = useViewMode('test_runs', RUN_MODES)
   const debouncedSearch = useDebouncedValue(search.trim(), 300)
   const [detailRow, setDetailRow] = useState<TestRunSummary | null>(null)

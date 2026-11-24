@@ -162,8 +162,10 @@ export function switchTarget(
   currentKey: ProjectTabKey | null,
   target: { id: string; nav_config?: NavConfig | null },
   user: MeResponse | null,
+  tenantDefault?: NavConfig | null,
 ): string {
-  const tabs = resolveProjectTabs(target.id, target.nav_config, user)
+  // A project without its own configuration follows the tenant default (ADR-125).
+  const tabs = resolveProjectTabs(target.id, target.nav_config ?? tenantDefault, user)
   const match = currentKey ? tabs.find((t) => t.key === currentKey) : undefined
   return (match ?? tabs.find((t) => t.key === 'overview'))?.to ?? `/projects/${target.id}`
 }

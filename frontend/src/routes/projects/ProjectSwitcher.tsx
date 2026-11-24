@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { listProjects } from '@/api/projects'
 import { useAuth } from '@/lib/auth'
 import { type ProjectTabKey, switchTarget } from '@/lib/projectNav'
+import { useWorkspaceConfig } from '@/lib/workspaceConfig'
 import { useRecents } from '@/lib/useRecents'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +25,7 @@ export function ProjectSwitcher({
   tabKey: ProjectTabKey | null
 }) {
   const { user } = useAuth()
+  const { config: workspace } = useWorkspaceConfig()
   const navigate = useNavigate()
   const recents = useRecents()
   const uid = useId()
@@ -77,7 +79,7 @@ export function ProjectSwitcher({
     const option = options[index]
     if (!option) return
     close(false)
-    if (option.project.id !== projectId) navigate(switchTarget(tabKey, option.project, user))
+    if (option.project.id !== projectId) navigate(switchTarget(tabKey, option.project, user, workspace.project_tabs))
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {

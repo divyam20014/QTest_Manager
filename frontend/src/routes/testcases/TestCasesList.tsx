@@ -72,12 +72,13 @@ import { STATUS_DISPLAY } from './statusDisplay'
 import { levelTone } from '@/lib/statusTones'
 import { ViewSwitcher } from '@/components/list/ViewSwitcher'
 import { useViewMode, type ViewMode } from '@/lib/viewMode'
+import { useListModes } from '@/lib/workspaceConfig'
 import { TestCasesBoard } from './TestCasesBoard'
 
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
 const PAGE_SIZE = 25
 // ADR-124: a board of test cases by (derived) execution status is offered next to the list.
-const TC_MODES: readonly ViewMode[] = ['list', 'board']
+const TC_BUILT_IN_MODES: readonly ViewMode[] = ['list', 'board']
 
 // ADR-096 / ADR-117: the URL filters a saved view can hold, and the all-cleared state applying one starts from.
 const TC_VIEW_KEYS = [
@@ -153,6 +154,8 @@ export function TestCasesList() {
   }
   useApplyDefaultView('test_cases', urlFilters.active.length > 0, applyView)
   const v = urlFilters.values
+  // ADR-125: the tenant may switch the board off; the list is always there.
+  const TC_MODES = useListModes('test_cases', TC_BUILT_IN_MODES)
   const { mode: viewMode, setMode: setViewMode } = useViewMode('test_cases', TC_MODES, {
     raw: v.view,
     set: (value) => urlFilters.setFilters({ view: value }),

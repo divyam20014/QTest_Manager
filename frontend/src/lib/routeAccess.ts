@@ -31,6 +31,8 @@ export const ROUTE_ACCESS: ReadonlyArray<{ path: string } & AccessRule> = [
   // Managed by `access_rule.manage` (Admin only today; the API is authoritative).
   { path: '/admin/access-rules', permission: 'access_rule.manage' },
   { path: '/settings', level: 'admin' },
+  // ADR-125: workspace defaults; the API gates them by `tenant.settings.manage` (reading stays open).
+  { path: '/admin/workspace', permission: 'tenant.settings.manage' },
   // `/admin` redirects to `/admin/users`.
   { path: '/admin', level: 'admin' },
   // The compliance report data endpoints require `report.compliance_export`

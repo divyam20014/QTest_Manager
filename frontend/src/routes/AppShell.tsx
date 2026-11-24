@@ -12,7 +12,8 @@ import { AccessRuleBanner } from '@/components/AccessRuleBanner'
 import { PIN_ICON } from '@/components/pinIcons'
 import { SidebarLink, SidebarNav } from '@/components/SidebarNav'
 import { TopBar } from '@/components/TopBar'
-import { PROFILE_ITEM, USER_GUIDE_ITEM, resolveRegistry, sheetSections } from '@/lib/navRegistry'
+import { NAV_REGISTRY, PROFILE_ITEM, USER_GUIDE_ITEM, applyNavConfig, resolveRegistry, sheetSections } from '@/lib/navRegistry'
+import { useWorkspaceConfig } from '@/lib/workspaceConfig'
 import { canAccessPath } from '@/lib/routeAccess'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
@@ -86,7 +87,11 @@ export function AppShell() {
     },
   })
 
-  const entries = useMemo(() => resolveRegistry(user), [user])
+  const { config: workspace } = useWorkspaceConfig()
+  const entries = useMemo(
+    () => resolveRegistry(user, applyNavConfig(NAV_REGISTRY, workspace.sidebar)),
+    [user, workspace.sidebar],
+  )
   const { counts, ready } = useNavBadges()
   const announcement = useBadgeAnnouncement(counts, ready)
   const favourites = useFavourites()

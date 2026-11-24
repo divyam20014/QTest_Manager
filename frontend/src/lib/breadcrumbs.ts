@@ -22,6 +22,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   'access-rules': 'Access Rules',
   'audit-logs': 'Audit Logs',
   settings: 'Settings',
+  workspace: 'Workspace',
   account: 'My Account',
   'user-guide': 'User Guide',
   dashboards: 'Manage',

@@ -147,6 +147,64 @@ export const PALETTE_EXTRA_ENTRIES: { label: string; sublabel: string; path: str
   { label: 'Settings', sublabel: 'Administration', path: '/settings' },
 ]
 
+// ---- tenant defaults (ADR-125) --------------------------------------------------------
+
+/** The id an admin orders / hides: a link's id or a group's id. */
+export function navEntryId(entry: NavEntry): string {
+  return entry.kind === 'link' ? entry.item.id : entry.group.id
+}
+
+/** Entries every role needs to get around: reorderable, never hidden (the API enforces it too). */
+export const CORE_NAV_ENTRY_IDS: readonly string[] = ['home', 'projects', 'my-work', 'admin']
+
+export interface NavEntryMeta {
+  id: string
+  label: string
+  core: boolean
+}
+
+/** What the Workspace settings page lists, in the built-in order. */
+export const NAV_ENTRY_META: NavEntryMeta[] = NAV_REGISTRY.map((entry) => {
+  const id = navEntryId(entry)
+  return { id, label: entry.kind === 'link' ? entry.item.label : entry.group.label, core: CORE_NAV_ENTRY_IDS.includes(id) }
+})
+
+/** The saved order first (unknown ids dropped), then every entry it does not mention in built-in order. */
+export function fullNavOrder(saved: readonly string[] | undefined): string[] {
+  const known = new Set(NAV_ENTRY_META.map((m) => m.id))
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of saved ?? []) {
+    if (known.has(id) && !seen.has(id)) {
+      seen.add(id)
+      out.push(id)
+    }
+  }
+  for (const m of NAV_ENTRY_META) if (!seen.has(m.id)) out.push(m.id)
+  return out
+}
+
+/** Hidden ids restricted to entries that may actually be hidden. */
+export function hiddenNavIds(saved: readonly string[] | undefined): Set<string> {
+  const hideable = new Set(NAV_ENTRY_META.filter((m) => !m.core).map((m) => m.id))
+  return new Set((saved ?? []).filter((id) => hideable.has(id)))
+}
+
+/** Apply the tenant's saved order and hidden entries to the registry (before access filtering). */
+export function applyNavConfig(
+  registry: NavEntry[],
+  config: { order: readonly string[]; hidden: readonly string[] } | undefined,
+): NavEntry[] {
+  if (!config || (config.order.length === 0 && config.hidden.length === 0)) return registry
+  const rank = new Map(fullNavOrder(config.order).map((id, i) => [id, i]))
+  const hidden = hiddenNavIds(config.hidden)
+  return registry
+    .filter((e) => !hidden.has(navEntryId(e)))
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => (rank.get(navEntryId(a.e)) ?? 999) - (rank.get(navEntryId(b.e)) ?? 999) || a.i - b.i)
+    .map(({ e }) => e)
+}
+
 // ---- resolution (what this user sees) ----------------------------------------
 
 export type ResolvedEntry = { kind: 'link'; item: NavLeaf } | { kind: 'group'; group: NavGroup }

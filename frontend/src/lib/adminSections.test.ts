@@ -11,12 +11,13 @@ function user(role: string, permissions: string[] = []): MeResponse {
 const labels = (u: MeResponse | null) => visibleAdminSections(u).map((s) => s.label)
 
 describe('admin sections', () => {
-  it('admin sees all five sections in order', () => {
-    expect(labels(user('admin', ['access_rule.manage']))).toEqual([
+  it('admin sees all six sections in order', () => {
+    expect(labels(user('admin', ['access_rule.manage', 'tenant.settings.manage']))).toEqual([
       'Users & Roles',
       'Access Control',
       'Environments',
       'Settings',
+      'Workspace',
       'Audit Logs',
     ])
   })

@@ -1,4 +1,4 @@
-import { KeyRound, Layers, ScrollText, Settings as SettingsIcon, Users } from 'lucide-react'
+import { KeyRound, Layers, LayoutPanelLeft, ScrollText, Settings as SettingsIcon, Users } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 import type { MeResponse } from '@/api/auth'
@@ -31,6 +31,13 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   },
   { to: '/admin/environments', label: 'Environments', icon: Layers, paths: ['/admin/environments'], group: 'Workspace' },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, paths: ['/settings'], group: 'Workspace' },
+  {
+    to: '/admin/workspace',
+    label: 'Workspace',
+    icon: LayoutPanelLeft,
+    paths: ['/admin/workspace'],
+    group: 'Workspace',
+  },
   { to: '/admin/audit-logs', label: 'Audit Logs', icon: ScrollText, paths: ['/admin/audit-logs'], group: 'Compliance' },
 ]
 

@@ -15,6 +15,8 @@ export function ViewSwitcher({
   value: ViewMode
   onChange: (mode: ViewMode) => void
 }) {
+  // ADR-125: a workspace that offers only the list has nothing to switch between.
+  if (modes.length < 2) return null
   return (
     <SegmentedToggle
       label="View"

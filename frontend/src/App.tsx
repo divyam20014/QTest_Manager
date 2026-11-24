@@ -34,6 +34,7 @@ const AuditLogs = lazyRoute(() => import('@/routes/admin/AuditLogs'), 'AuditLogs
 const Environments = lazyRoute(() => import('@/routes/admin/Environments'), 'Environments')
 const RolesPermissions = lazyRoute(() => import('@/routes/admin/RolesPermissions'), 'RolesPermissions')
 const Settings = lazyRoute(() => import('@/routes/admin/Settings'), 'Settings')
+const WorkspaceSettings = lazyRoute(() => import('@/routes/admin/WorkspaceSettings'), 'WorkspaceSettings')
 const UsersRoles = lazyRoute(() => import('@/routes/admin/UsersRoles'), 'UsersRoles')
 const ProjectActivity = lazyRoute(() => import('@/routes/projects/ProjectActivity'), 'ProjectActivity')
 const ProjectPlanning = lazyRoute(() => import('@/routes/projects/ProjectPlanning'), 'ProjectPlanning')
@@ -149,6 +150,7 @@ export function App() {
             <Route path="/admin/environments" element={<Environments />} />
             <Route path="/admin/access-rules" element={<AccessRules />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/admin/workspace" element={<WorkspaceSettings />} />
           </Route>
           <Route path="/account" element={<MyAccount />} />
           <Route path="/user-guide" element={<UserGuide />} />

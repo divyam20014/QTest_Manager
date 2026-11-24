@@ -25,12 +25,13 @@ import { Pagination } from '@/components/ui/pagination'
 import { Select } from '@/components/ui/select'
 import { ViewSwitcher } from '@/components/list/ViewSwitcher'
 import { parseViewMode, useViewMode, type ViewMode } from '@/lib/viewMode'
+import { useListModes } from '@/lib/workspaceConfig'
 import { RunsBoard } from './RunsBoard'
 import { RunsCalendar } from './RunsCalendar'
 
 const RUNS_PAGE_SIZE = 50
 // ADR-124: runs are also shown as a board by status and on a calendar.
-const RUN_MODES: readonly ViewMode[] = ['list', 'board', 'calendar']
+const RUN_BUILT_IN_MODES: readonly ViewMode[] = ['list', 'board', 'calendar']
 
 type OverviewRow = { project: Project; run: TestRunSummary }
 
@@ -117,6 +118,8 @@ export function TestRunsOverview() {
   // page has only the one boolean toggle) so landing on that link
   // actually pre-filters.
   const [searchParams, setSearchParams] = useSearchParams()
+  // ADR-125: the tenant may switch the board and calendar off; the list is always there.
+  const RUN_MODES = useListModes('test_runs', RUN_BUILT_IN_MODES)
   const { mode: viewMode, setMode: setViewMode } = useViewMode('test_runs', RUN_MODES)
   // Bug #9: this previously defaulted to hiding finished runs, so a
   // tenant with only finished runs saw a dead-end "No test runs match"

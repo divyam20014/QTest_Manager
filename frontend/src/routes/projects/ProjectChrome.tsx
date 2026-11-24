@@ -6,6 +6,7 @@ import { getProject } from '@/api/projects'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth'
 import { isIdSegment } from '@/lib/breadcrumbs'
+import { useWorkspaceConfig, effectiveNavConfig } from '@/lib/workspaceConfig'
 import { activeTabKey, hiddenTabs, resolveProjectTabs, tabAllowed, tabDef } from '@/lib/projectNav'
 
 import { ProjectHeader } from './ProjectHeader'
@@ -22,6 +23,7 @@ import { ProjectNav } from './ProjectNav'
  */
 export function ProjectChrome({ projectId, children }: { projectId: string; children: ReactNode }) {
   const { user } = useAuth()
+  const { config: workspace } = useWorkspaceConfig()
   const location = useLocation()
   const projectQuery = useQuery({
     queryKey: ['projects', projectId],
@@ -41,8 +43,9 @@ export function ProjectChrome({ projectId, children }: { projectId: string; chil
   }
 
   const tabKey = activeTabKey(location.pathname, location.search)
-  const tabs = resolveProjectTabs(projectId, project?.nav_config, user)
-  const hiddenHere = tabKey !== null && tabAllowed(tabKey, user) && hiddenTabs(project?.nav_config).has(tabKey)
+  const navConfig = effectiveNavConfig(project?.nav_config, workspace)
+  const tabs = resolveProjectTabs(projectId, navConfig, user)
+  const hiddenHere = tabKey !== null && tabAllowed(tabKey, user) && hiddenTabs(navConfig).has(tabKey)
   const canEdit = tabAllowed('settings', user)
   const asHeading = tabKey === 'overview' && /^\/projects\/[^/]+\/?$/.test(location.pathname)
 

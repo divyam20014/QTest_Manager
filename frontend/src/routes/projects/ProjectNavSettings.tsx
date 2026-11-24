@@ -13,10 +13,10 @@ import {
   type ProjectTabKey,
   fullOrder,
   hiddenTabs,
-  isDefaultConfig,
   tabDef,
 } from '@/lib/projectNav'
 import { useToast } from '@/lib/toast'
+import { effectiveNavConfig, useWorkspaceConfig } from '@/lib/workspaceConfig'
 import { cn } from '@/lib/utils'
 
 const ARROW_CLASS =
@@ -32,12 +32,15 @@ export function ProjectNavSettings({ project }: { project: Project }) {
   const queryClient = useQueryClient()
   const { show: showToast } = useToast()
   const { ask, dialog: confirmDialog } = useConfirm()
+  // A project with no configuration of its own shows the workspace default (ADR-125).
+  const { config: workspace } = useWorkspaceConfig()
+  const effective = effectiveNavConfig(project.nav_config, workspace)
   // Keyed on the content, so a background refetch of an unchanged project keeps unsaved edits.
-  const configKey = JSON.stringify(project.nav_config)
+  const configKey = JSON.stringify(effective)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const savedOrder = useMemo(() => fullOrder(project.nav_config), [configKey])
+  const savedOrder = useMemo(() => fullOrder(effective), [configKey])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const savedHidden = useMemo(() => [...hiddenTabs(project.nav_config)], [configKey])
+  const savedHidden = useMemo(() => [...hiddenTabs(effective)], [configKey])
   const [order, setOrder] = useState<ProjectTabKey[]>(savedOrder)
   const [hidden, setHidden] = useState<Set<ProjectTabKey>>(new Set(savedHidden))
   const [announcement, setAnnouncement] = useState('')
@@ -65,7 +68,7 @@ export function ProjectNavSettings({ project }: { project: Project }) {
   const hiddenList = DEFAULT_TAB_ORDER.filter((k) => hidden.has(k))
   const sameHidden = hiddenList.length === savedHidden.length && hiddenList.every((k) => savedHidden.includes(k))
   const dirty = order.join('|') !== savedOrder.join('|') || !sameHidden
-  const atDefaults = project.nav_config === null && isDefaultConfig(order, hiddenList)
+  const atDefaults = project.nav_config === null && !dirty
 
   const saveMutation = useMutation({
     mutationFn: (config: { order: string[]; hidden: string[] } | null) =>
@@ -111,7 +114,7 @@ export function ProjectNavSettings({ project }: { project: Project }) {
         <CardTitle>Project navigation</CardTitle>
         <p className="text-xs text-[var(--muted-foreground)]">
           Choose which tabs this project shows and in what order. Hiding a tab only removes it from the tab bar; its page
-          still opens from a direct link, and nobody gains or loses access to any data.
+          still opens from a direct link, and nobody gains or loses access to any data. A project that is never customised follows the workspace default tabs.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
