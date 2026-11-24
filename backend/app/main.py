@@ -57,6 +57,7 @@ from app.api import (
     test_suites,
     user_guide,
     users,
+    workspace,
 )
 from app.api import (
     settings as settings_api,
@@ -259,6 +260,7 @@ app.include_router(user_guide.router, prefix="/api/v1")
 app.include_router(attachments.router, prefix="/api/v1")
 app.include_router(comments.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(settings_api.router, prefix="/api/v1")
 app.include_router(requirements.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, String, func
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -65,6 +65,10 @@ class Tenant(Base, UUIDPKMixin):
     brand_primary_color: Mapped[str | None] = mapped_column(String(7), nullable=True)
     brand_logo_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     brand_logo_mime_type: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # ADR-125: tenant workspace defaults (sidebar entries, project tabs, list view modes), one
+    # validated JSON document (schemas/workspace.py). NULL = built-in defaults.
+    workspace_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Tier 4 / ADR-054: tenant-configurable IP allowlist (PV-11.3). NULL/empty
     # means "no restriction" -- existing tenants are unaffected until they
