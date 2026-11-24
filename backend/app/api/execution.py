@@ -62,6 +62,7 @@ def list_test_runs_all_projects(
     project_id: UUID | None = Query(default=None),
     active_only: bool = Query(default=False),
     status: Literal["in_progress", "paused", "finished"] | None = Query(default=None),
+    run_type: Literal["Regression", "Sanity", "Smoke", "Retest"] | None = Query(default=None),
     search: str | None = Query(default=None, max_length=200),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(
@@ -81,6 +82,7 @@ def list_test_runs_all_projects(
         project_id=project_id,
         active_only=active_only,
         status=status,
+        run_type=run_type,
         search=search,
         page=page,
         page_size=page_size,

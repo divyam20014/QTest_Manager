@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-ListKey = Literal["test_cases", "defects", "test_runs"]
+ListKey = Literal["test_cases", "defects", "test_runs", "requirements", "projects"]
 
 MAX_FILTERS_BYTES = 2048
 MAX_VIEWS_PER_LIST = 25
@@ -47,6 +47,11 @@ def _is_bool(v: str) -> bool:
     return v in ("true", "false")
 
 
+def _is_view_mode(v: str) -> bool:
+    """ADR-124: the view mode a saved view opens in (a list page offers only some of them)."""
+    return v in ("list", "board", "calendar")
+
+
 # Per-list allowlist: filter key -> value check. Every value is a short string
 # (mirroring the URL query params those list pages already use). Anything not
 # listed here is rejected, so a view can never smuggle arbitrary JSON.
@@ -58,6 +63,7 @@ FILTER_ALLOWLIST: dict[str, dict[str, Callable[[str], bool]]] = {
         "assigneeId": _is_uuid,
         "moduleId": _is_uuid,
         "quarantined": _is_token,
+        "view": _is_view_mode,
         # ADR-116: filters added with the 22-field standard.
         "testType": _is_text,
         "severity": _is_text,
@@ -83,10 +89,24 @@ FILTER_ALLOWLIST: dict[str, dict[str, Callable[[str], bool]]] = {
         "environment": _is_text,
         "resolution": _is_token,
         "search": _is_text,
+        "view": _is_view_mode,
     },
     "test_runs": {
         "projectId": _is_uuid,
         "activeOnly": _is_bool,
+        # ADR-124: view mode and the calendar's "overdue only" toggle.
+        "view": _is_view_mode,
+        "overdue": _is_bool,
+    },
+    # ADR-124: the Requirements and Projects lists gained saved views (their own URL filters).
+    "requirements": {
+        "search": _is_text,
+        "view": _is_view_mode,
+    },
+    "projects": {
+        "search": _is_text,
+        "status": _is_token,
+        "view": _is_view_mode,
     },
 }
 
@@ -123,6 +143,8 @@ SORT_ALLOWLIST: dict[str, set[str]] = {
         )
     },
     "test_runs": set(),
+    "requirements": set(),
+    "projects": set(),
 }
 
 

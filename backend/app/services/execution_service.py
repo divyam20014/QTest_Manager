@@ -691,6 +691,7 @@ def list_test_runs_all_projects(
     active_only: bool = False,
     status: str | None = None,
     search: str | None = None,
+    run_type: str | None = None,
     page: int = 1,
     page_size: int = RUN_DEFAULT_PAGE_SIZE,
 ) -> tuple[list[TestRunSummaryOut], int]:
@@ -714,6 +715,8 @@ def list_test_runs_all_projects(
         query = query.where(or_(TestRun.project_id.in_(owned), TestRun.project_id.in_(member_of)))
     if active_only:
         query = query.where(TestRun.finished_at.is_(None))
+    if run_type:
+        query = query.where(TestRun.run_type == run_type)
     if search:
         # ILIKE with an escaped needle (not `icontains`, which renders lower(name) LIKE)
         # so the pg_trgm GIN index on test_runs.name can serve it (ADR-113).

@@ -19,6 +19,7 @@ from app.api import (
     attachments,
     audit,
     auth,
+    calendar,
     ci,
     comments,
     csv_import,
@@ -286,6 +287,7 @@ app.include_router(test_data_sets.router, prefix="/api/v1")
 app.include_router(test_suites.router, prefix="/api/v1")
 app.include_router(test_plans.router, prefix="/api/v1")
 app.include_router(my_work.router, prefix="/api/v1")
+app.include_router(calendar.router, prefix="/api/v1")
 app.include_router(marketing.public_router, prefix="/api/v1")
 app.include_router(marketing.admin_router, prefix="/api/v1")
 

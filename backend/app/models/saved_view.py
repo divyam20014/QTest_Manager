@@ -28,7 +28,8 @@ class SavedView(Base, TenantScopedMixin):
     __table_args__ = (
         UniqueConstraint("user_id", "list_key", "name", name="uq_saved_views_user_list_name"),
         CheckConstraint(
-            "list_key in ('test_cases','defects','test_runs')", name="ck_saved_views_list_key"
+            "list_key in ('test_cases','defects','test_runs','requirements','projects')",
+            name="ck_saved_views_list_key",
         ),
         CheckConstraint("char_length(name) between 1 and 60", name="ck_saved_views_name_len"),
         Index(
