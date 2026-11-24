@@ -12,10 +12,11 @@ const SECTIONS = [
   ['Access Control', /\/admin\/roles$/],
   ['Environments', /\/admin\/environments$/],
   ['Settings', /\/settings$/],
+  ['Workspace', /\/admin\/workspace$/],
   ['Audit Logs', /\/admin\/audit-logs$/],
 ] as const
 
-test('admin: five sections, left nav navigates, aria-current moves, breadcrumb says Admin', async ({
+test('admin: six sections, left nav navigates, aria-current moves, breadcrumb says Admin', async ({
   browser,
   request,
 }) => {
@@ -26,7 +27,7 @@ test('admin: five sections, left nav navigates, aria-current moves, breadcrumb s
     await loginViaUi(page, t.tenantId, t.adminEmail, t.adminPassword)
     await page.goto('/admin/users')
     const nav = page.getByRole('navigation', { name: 'Admin sections' })
-    await expect(nav.getByRole('link')).toHaveCount(5)
+    await expect(nav.getByRole('link')).toHaveCount(6)
     for (const [name, url] of SECTIONS) {
       await nav.getByRole('link', { name }).click()
       await expect(page).toHaveURL(url)
