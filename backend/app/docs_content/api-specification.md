@@ -167,7 +167,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 ## Test Execution (FR-EXEC)
 | Method | Path | Purpose | Role |
 |---|---|---|---|
-| GET | /test-runs | one page of runs across every project the caller may see, newest first, as `{items, total}` (`items` are the same lightweight summaries, each with its `project_id`). Filters `project_id`, `active_only`; `page`, `page_size` (default 50, max 100). Admin and Manager: every project in the tenant; anyone else: projects they own or belong to; a `project_id` they may not open is 403. Soft-deleted runs are excluded (ADR-078) | all (assigned projects) |
+| GET | /test-runs | one page of runs across every project the caller may see, newest first, as `{items, total}` (`items` are the same lightweight summaries, each with its `project_id`). Filters `project_id`, `active_only`, `status` (`in_progress`, `paused`, `finished`), `run_type` (ADR-124: Regression, Sanity, Smoke, Retest; a board column asks for one status and one page), `search`; `page`, `page_size` (default 50, max 100). Admin and Manager: every project in the tenant; anyone else: projects they own or belong to; a `project_id` they may not open is 403. Soft-deleted runs are excluded (ADR-078) | all (assigned projects) |
 | GET | /projects/{id}/test-runs | list runs for a project (lightweight summary, no per-case rollups) | all (assigned) |
 | POST | /projects/{id}/test-runs | create run, bundle cases (pins versions) | all (assigned) |
 | GET | /test-runs/{id} | run detail + case rollups | all (assigned) |
@@ -365,17 +365,25 @@ Read-only, scoped to the caller. Any signed-in user may call them (no permission
 | GET | /my-work/run-cases | `{items, total}` (at most 200 items): run cases assigned to the caller in an unfinished, undeleted run with status pending, in_progress, failed or blocked; each has `id, run_id, run_name, run_paused, project_id, project_name, test_case_id, test_case_display_id, title, status, blocked_reason, started_at, due_date, overdue` (ADR-123: `overdue` = `due_date` before today (UTC) and status pending or in_progress); optional `project_id` narrows both the items and the total to one project (the project Overview's "My pending activities"); ordered in progress, failed, blocked, pending |
 | GET | /my-work/reviews | `{items, total}` (at most 200): test cases in `ready_for_review` whose `reviewer_id` is the caller; `id, display_id, title, priority, project_id, project_name, created_at` |
 
-## Saved views (ADR-096)
+## Calendar (ADR-124)
 
-Private per-user filter sets for the Test Cases, Defects and Test Runs lists. Any signed-in user; only the owner's views are visible (another user's id is 404). Rate limited.
+Read-only; any signed-in user (no permission code). Shows what the run and release lists already show: Admin and Manager every project in the tenant, anyone else the projects they own or belong to, a Tester under the case scope (ADR-093) only the cases that scope allows in the due counts, soft-deleted runs excluded. Not cached.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /saved-views?list_key= | the caller's views, optionally for one list (`test_cases`, `defects`, `test_runs`) |
+| GET | /calendar?from=YYYY-MM-DD&to=YYYY-MM-DD&project_id= | `{from_date, to_date, runs, due, releases, truncated}` for a range of at most 62 days (422 if longer, reversed or malformed; `project_id` unknown 404, outside the caller's scope 403). `runs[{id, name, project_id, project_name, run_type, status (in_progress / paused / finished), start_date, end_date}]`: runs created or finished inside the range (UTC dates; a run has no planned dates). `due[{due_date, run_id, run_name, project_id, project_name, total_cases, open_cases, overdue}]`: run cases with a `due_date` in the range, grouped per (day, unfinished run); `open_cases` are pending / in progress, `overdue` = `open_cases > 0` and the date before today (UTC, as ADR-123). `releases[{id, name, project_id, project_name, release_date, status}]`. Each list is capped (300 / 500 / 300, ordered by date) and `truncated` is true when any cap was hit |
+
+## Saved views (ADR-096)
+
+Private per-user filter sets for the Test Cases, Defects, Test Runs, Requirements and Projects lists (the last two added in ADR-124). Any signed-in user; only the owner's views are visible (another user's id is 404). Rate limited.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /saved-views?list_key= | the caller's views, optionally for one list (`test_cases`, `defects`, `test_runs`, `requirements`, `projects`) |
 | POST | /saved-views | `{list_key, name (1-60), filters, sort?, columns?, is_default?}`. `columns` (ADR-117) is an ordered list of up to 40 column keys (lower-case letters, digits, underscore; de-duplicated; stored and returned as `columns`, null when not set). 422 for an unknown filter key, wrong value type, bad sort, a malformed `columns` list or filters over 2KB; 409 for a duplicate name or more than 25 views for that list |
 | PATCH | /saved-views/{id} | rename, change filters, sort or `columns` (send `null` to clear them), set or clear `is_default` (setting it clears the previous default for that list) |
 | DELETE | /saved-views/{id} | delete |
 
-Allowed filter keys (string values): test_cases `search, priority, status, assigneeId, moduleId` (+ `sort` such as `title` or `-priority`); defects `projectId, status, severity, priority, labels` (comma-separated lists), `reportedBy, assigneeId, moduleId, testCaseId, createdFrom, createdTo, fixVersion, environment, resolution, search` (+ `sort`: `display_id`, `title`, `severity`, `priority`, `status`, `assignee`, `date_reported`, `created_at`, `fix_version`, optionally `-` prefixed; `columns` as for test cases); test_runs `projectId, activeOnly` (`true`/`false`).
+Allowed filter keys (string values): test_cases `search, priority, status, assigneeId, moduleId` (+ `sort` such as `title` or `-priority`); defects `projectId, status, severity, priority, labels` (comma-separated lists), `reportedBy, assigneeId, moduleId, testCaseId, createdFrom, createdTo, fixVersion, environment, resolution, search` (+ `sort`: `display_id`, `title`, `severity`, `priority`, `status`, `assignee`, `date_reported`, `created_at`, `fix_version`, optionally `-` prefixed; `columns` as for test cases); test_runs `projectId, activeOnly, overdue` (`true`/`false`); requirements `search`; projects `search, status`. ADR-124: every list also allows `view` (`list`, `board` or `calendar`: the layout the view opens in; a view saved without it leaves the current layout alone; the Phase 4 filters `moduleId` and `executedBy` were already allowed for test cases, `moduleId` for defects).
 
 Additions in ADR-097: the test case list endpoints take `quarantined=any|only|exclude` and every case payload carries `quarantined`, `quarantine_reason`, `quarantined_at`; run creation (`/projects/{id}/test-runs`, `/test-suites/{id}/create-run`, `/test-runs/{id}/cases`) takes `exclude_quarantined` (default false); `/reports/release-readiness` returns `quarantined_count`; `/reports/flaky-tests` rows return `quarantined`. Saved views for test_cases also accept the filter key `quarantined`.

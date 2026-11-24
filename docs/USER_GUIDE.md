@@ -287,6 +287,49 @@ What is limited: Testers execute runs; creating, finishing, reopening and
 deleting runs, and **Rerun failed**, are for people who can create runs
 (normally Managers). A finished run is locked.
 
+### Views: List, Board and Calendar
+
+Defects, test cases and test runs can be shown in more than one way. The
+**View** switch in the toolbar (List, Board, Calendar) changes only the layout:
+the records, your filters and your permissions stay the same. The choice is in
+the address (`?view=board`), so you can share it, and your browser remembers it
+for each list.
+
+**Board.** Defects are grouped by status, test runs by In progress, Paused and
+Finished, and test cases by their latest execution result. Each column shows its
+total and the first 20 cards; **Load more** adds 20 more, so a big project never
+loads at once. A card shows the ID, title, severity or priority, assignee and
+due date where there is one, and opens the record when you click the title.
+
+- **Moving a defect.** Drag its card to another column, or use the **Move to...**
+  button on the card (keyboard, touch and screen readers use this; the result is
+  announced). Only statuses the workflow allows from the current one are offered,
+  and Closed and Reopened need permission to close defects. Moves that need more
+  information open the same dialog as **Change status** (a resolution, the
+  confirmation that it was verified) or **Start retest**. If the server refuses
+  the move you see why and the card stays where it was.
+- **Moving a run.** In progress, Paused and Finished map to the run's own
+  Pause, Resume, Finish and Reopen actions, available to the people who can use
+  them on the run page.
+- **Test cases are read-only on a board.** A case's execution status (Pass,
+  Fail, Blocked, Skipped, Not Run) comes from its latest result, so it changes
+  when you run the case, not by dragging. The review status stays a filter.
+- If you cannot change statuses, cards have no drag handle and no Move to menu.
+
+**Calendar (test runs).** A month view of runs (the day each started and the day
+it finished), run cases by **due date** (one entry per day and run; red when
+overdue) and releases by release date. Click an entry to open the run or the
+project's releases. With the keyboard use the arrow keys to move between days,
+PageUp and PageDown to change month, and Tab to reach the day's entries;
+**Today** returns to the current month and **Overdue only** keeps just the late
+run cases. On a phone the month is a list of the days that have something
+scheduled. Test runs have no planned dates of their own, so runs appear on the
+dates they actually started and finished.
+
+**Saved views** remember the view you were in (List, Board or Calendar) along
+with the filters; views saved before this keep working and leave your current
+view alone.
+
 ### Defects
 
 **Defects** lists the issues found in testing, for every project or, from a

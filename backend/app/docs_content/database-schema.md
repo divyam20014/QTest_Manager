@@ -359,7 +359,7 @@ Index `ix_access_rules_tenant_enabled (tenant_id, enabled)`. The migration also 
 | id | UUID PK | |
 | tenant_id | UUID NOT NULL FK tenants | RLS |
 | user_id | UUID NOT NULL FK users | owner; views are private |
-| list_key | TEXT NOT NULL CHECK IN ('test_cases','defects','test_runs') | |
+| list_key | TEXT NOT NULL CHECK IN ('test_cases','defects','test_runs','requirements','projects') | ADR-124 (migration `f5b7d9a1c3e5`) widened the check; the view mode (`view` = list / board / calendar) is one more allowlisted key inside `filters`, no new column |
 | name | VARCHAR(60) NOT NULL | UNIQUE (user_id, list_key, name) |
 | filters | JSONB NOT NULL DEFAULT '{}' | allowlisted keys with string values, max 2KB (validated in the API) |
 | sort | VARCHAR(50) NULL | |
