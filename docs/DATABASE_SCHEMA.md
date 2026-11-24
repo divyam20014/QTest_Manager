@@ -13,6 +13,7 @@ PostgreSQL. All PKs are `UUID DEFAULT gen_random_uuid()` (pgcrypto/`uuid-ossp`).
 | default_currency_code | CHAR(3) NOT NULL DEFAULT 'USD' | ADR-013 |
 | default_timezone | TEXT NOT NULL DEFAULT 'UTC' | ADR-013 |
 | primary_domain | TEXT NULL CHECK IN ('Motor','Health','Travel','Life','Property','Other') | BRD gap Phase 4, ADR-073 (migration `c9d0e1f2a3b4`). Optional primary insurance domain chosen at signup / in Settings; only pre-selects a new project's Domain, never restricts it. NULL = not set |
+| workspace_config | JSONB NULL | ADR-125 (migration `a6c8e0b2d4f7`): the tenant's workspace defaults `{sidebar: {order, hidden}, project_tabs: {order, hidden}, view_modes: {list_key: [modes]}}` (sidebar entries, default project tabs, list views). NULL = built-in defaults; validated by the API (`schemas/workspace.py`). Covered by the existing tenants RLS |
 | created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | |
 
 ### `platform_admins`

@@ -707,6 +707,32 @@ maintain this list.
   from Testers), AI features, your subscription and seat usage, data export and
   scheduled reports.
 
+### Workspace
+
+**Workspace** (Admin > Workspace, needs the Settings permission) sets the defaults
+for how everyone in your organization sees the application. It has three parts
+and one **Save changes** button. Hiding only removes something from a menu: the
+page still opens from a direct link, and nobody gains or loses access to any
+data. People who may not open an area never see it, whatever you choose here.
+
+- **Sidebar**: the entries of the left sidebar, the phone menu and the command
+  palette. Untick **Show** to hide an entry (Test Management, Test Execution,
+  Defects, Reports & Analytics) and use the up and down buttons to put them in
+  order. Dashboard, Projects, My Work and Admin are always shown. Each person
+  keeps their own favourites and recent items.
+- **Project tabs**: the default tabs of a project (Planning, Releases, Team and
+  Activity can be hidden; Overview, Requirements, Test Cases, Test Runs, Defects,
+  Reports and Settings are always there), and their order. A project that was
+  given its own tabs in Project settings keeps them; every other project follows
+  this default.
+- **List views**: whether the Board (Defects, Test cases, Test runs) and the
+  Calendar (Test runs) are offered. The list view is always available; a list
+  with only the list view shows no view switch.
+
+**Reset to defaults** brings back every entry, tab and view in the original
+order (projects with their own tabs keep them). Every change is recorded in the
+Audit Logs.
+
 ### Audit Logs
 
 **Audit Logs** records who changed what and when across the organization. Filter
