@@ -275,6 +275,7 @@ One row per test case bundled into a run; pins the version (ADR-003).
 | test_case_version_id | UUID NOT NULL FK test_case_versions | pinned at creation |
 | status | TEXT NOT NULL DEFAULT 'pending' CHECK IN ('pending','in_progress','passed','failed','blocked','ignored') | ADR-001 |
 | assigned_to | UUID NULL FK users | |
+| due_date | DATE NULL | ADR-123 (migration `e3a5c7d9f1b4`): the assignment-level due date; a run case is overdue when it is past due and still `pending` / `in_progress` in an open run. Partial index `ix_test_run_cases_tenant_due (tenant_id, due_date) WHERE due_date IS NOT NULL` |
 | blocked_reason | TEXT NULL | required explanation while status = 'blocked'; cleared on unblock (ADR-070) |
 | started_at | TIMESTAMPTZ NULL | |
 | completed_at | TIMESTAMPTZ NULL | |
@@ -383,6 +384,7 @@ Index `ix_access_rules_tenant_enabled (tenant_id, enabled)`. The migration also 
 | id | UUID PK | |
 | tenant_id | UUID NOT NULL FK tenants | RLS |
 | owner_user_id | UUID FK users | NULL only for the team default (CHECK ties it to `is_team_default`) |
+| project_id | UUID NULL FK projects ON DELETE CASCADE | ADR-123 (migration `e3a5c7d9f1b4`): set on a **project dashboard layout**: either one user's own layout of that project (owner set) or the project default (owner NULL, `is_team_default` false). The owner/default CHECK allows that third shape; partial UNIQUE indexes `uq_dashboards_project_user (project_id, owner_user_id)` and `uq_dashboards_project_default (project_id) WHERE owner_user_id IS NULL` allow one layout per user and one default per project. Org dashboards keep `project_id` NULL and never list or open project layouts |
 | name | VARCHAR(60) NOT NULL | 1-60 characters |
 | is_team_default | BOOLEAN NOT NULL DEFAULT false | partial UNIQUE index on (tenant_id) WHERE is_team_default: one per tenant |
 | created_at, updated_at | TIMESTAMPTZ NOT NULL | |
@@ -419,6 +421,7 @@ DB grants: application role has `INSERT, SELECT` only on `audit_logs`; `UPDATE`/
 ## Indexing summary (beyond PK/UNIQUE above)
 - All `tenant_id` columns: btree index (RLS predicate performance).
 - `test_cases(project_id, status)`, `test_run_cases(test_run_id, status)`, `execution_steps(test_run_case_id)`, `defects(project_id, status, severity)`, `audit_logs(tenant_id, created_at DESC)` for dashboard/reporting query paths (FR-DASH, FR-REP).
+- ADR-123 (migration `e3a5c7d9f1b4`, built CONCURRENTLY): `ix_test_run_cases_tenant_due (tenant_id, due_date) WHERE due_date IS NOT NULL` for the overdue and upcoming-milestone queries and `ix_releases_tenant_project_date (tenant_id, project_id, release_date) WHERE release_date IS NOT NULL` for upcoming releases. The project aggregates (`/reports/project-test-status`, `module-coverage`, `tester-performance`) reuse `ix_test_run_cases_tenant_case`, `ix_test_runs_tenant_project` and `ix_test_cases_tenant_project_created` (ADR-113).
 
 ## Row-Level Security policy shape (applies to every tenant-owned table except `sessions` and `mfa_challenges`, see ADR-015)
 ```sql

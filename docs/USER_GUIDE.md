@@ -424,6 +424,12 @@ becomes a real test case.
    and ignored cases are left out and the original run is unchanged. If a
    release freeze is active the button shows the reason instead of creating the
    run.
+5. Give a run case a **due date**: set one for the whole run when you create
+   it (**Due date (optional)**), or change it per case in the **Due** column of
+   the run page (changing the date leaves the assignee alone; clear the field to
+   remove it). A case that is still Pending or In Progress after its date is
+   **overdue**: it shows an Overdue badge, in **My Work** and the Execution
+   Console, and in the project Overview's **Overdue test cases** widget.
 
 ### Test case management
 
@@ -547,6 +553,46 @@ create, rename and delete them.
    whole layout at once; **Cancel** discards your edits.
 
 Dashboards are private to you. Only an Admin can mark one **Team default**.
+
+### Project Overview dashboard
+
+Every project opens on its own **Overview**. It shows **this project only**; the
+Dashboard at the top of the sidebar is the separate page for **all projects**
+(use **See all projects** on the Overview to go there).
+
+The row of **Key numbers** shows Total test cases, Executed, Passed, Failed,
+Blocked, Not run, Open defects and Critical defects. Each tile opens the list it
+counts (for example **Failed** opens the project's test cases filtered to a
+failed latest result), and the number on the tile equals the total shown there.
+A tile shows a change against 30 days ago only for the figures that have real
+history (total test cases and open defects). A test case counts by its **latest
+executed result**; a case that has never been executed is Not run, and deleted
+test cases are not counted. The progress bar in the project header shows the
+same executed share and pass rate.
+
+Below it are the widgets: Pass / fail distribution, Test execution trend, Defect
+severity, Module-wise coverage, Requirement traceability, Tester performance,
+Tester workload, Upcoming milestones, Release readiness, My pending activities,
+Overdue test cases, Recent activity and Recently reported defects. Each has a
+**View** link to the records behind it, a table view and a CSV download on the
+charts, and its own Retry if it cannot load. A widget your role may not see (for
+example the Tester comparisons when Reports are hidden from Testers) says so
+instead of showing numbers. If you are a Tester whose workspace limits you to
+your assigned test cases, every figure counts only those cases.
+
+**Customise** (top right of the Overview) lets you choose which widgets show and
+their order: tick or untick a widget and use the arrow buttons to move it (sizes
+are fixed). **Save** keeps the layout for you only, in this project;
+**Reset to default** returns to the project default, or to the built-in layout
+when there is none. People who can edit the project (an Admin, or a Manager
+assigned to it) also see **Save as project default** and **Remove project
+default**: the default is what everyone sees until they save their own layout.
+Hiding every widget is allowed.
+
+**Upcoming milestones** lists dated releases that are Planned, In Progress or
+have no status yet, and the next due date of each open run. **Overdue test
+cases** lists run cases past their due date and not yet executed; **View** opens
+the Execution Console narrowed to this project and to overdue cases.
 
 ### Release freezes (view)
 
