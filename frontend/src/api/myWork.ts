@@ -19,6 +19,9 @@ export interface MyRunCase {
   status: MyRunCaseStatus
   blocked_reason: string | null
   started_at: string | null
+  /** ADR-123: assignment due date (YYYY-MM-DD); `overdue` = past due and not yet executed. */
+  due_date: string | null
+  overdue: boolean
 }
 
 export interface MyReview {
@@ -44,8 +47,8 @@ export function getMyWorkSummary(): Promise<MyWorkSummary> {
   return apiFetch<MyWorkSummary>('/my-work/summary')
 }
 
-export function listMyRunCases(): Promise<{ items: MyRunCase[]; total: number }> {
-  return apiFetch('/my-work/run-cases')
+export function listMyRunCases(projectId?: string): Promise<{ items: MyRunCase[]; total: number }> {
+  return apiFetch(`/my-work/run-cases${projectId ? `?project_id=${projectId}` : ''}`)
 }
 
 export function listMyReviews(): Promise<{ items: MyReview[]; total: number }> {

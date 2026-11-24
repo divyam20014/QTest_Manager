@@ -41,6 +41,7 @@ import { useAuth } from '@/lib/auth'
 import { hasPermission, isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
+import { dueRelative, isOverdue } from '@/lib/dueDate'
 import { FormError } from '@/components/ui/form-field'
 
 
@@ -156,6 +157,17 @@ export function TestRunDetail() {
     onError: () => showToast('error', 'Could not update the assignee'),
   })
 
+  // ADR-123: the due date is changed on its own; the assignee is left as it is.
+  const dueMutation = useMutation({
+    mutationFn: ({ runCaseId, due }: { runCaseId: string; due: string | null }) =>
+      assignRunCase(runCaseId, undefined, due),
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Due date updated')
+    },
+    onError: () => showToast('error', 'Could not update the due date'),
+  })
+
   const run = runQuery.data
   if (runQuery.isLoading) return <DetailSkeleton />
   if (runQuery.isError) return <ErrorState message="Could not load this test run." error={runQuery.error} onRetry={() => runQuery.refetch()} />
@@ -227,6 +239,37 @@ export function TestRunDetail() {
         ) : (
           (rc.assigned_to && usersById.get(rc.assigned_to)) || '—'
         ),
+    },
+    {
+      key: 'due',
+      header: 'Due',
+      cell: (rc) => {
+        const overdue = isOverdue(rc.due_date, rc.status)
+        return canManage && !run.finished_at ? (
+          <Input
+            type="date"
+            aria-label={`Due date for ${rc.title}`}
+            defaultValue={rc.due_date ?? ''}
+            key={`${rc.id}-${rc.due_date ?? ''}`}
+            onChange={(e) => {
+              const next = e.target.value || null
+              if (next !== (rc.due_date ?? null)) dueMutation.mutate({ runCaseId: rc.id, due: next })
+            }}
+            className="w-40 max-md:w-full"
+          />
+        ) : rc.due_date ? (
+          <span className="flex flex-col items-start gap-1 text-xs">
+            <span>{rc.due_date}</span>
+            {overdue ? (
+              <StatusBadge tone="critical">Overdue</StatusBadge>
+            ) : (
+              <span className="text-[var(--muted-foreground)]">{dueRelative(rc.due_date)}</span>
+            )}
+          </span>
+        ) : (
+          '—'
+        )
+      },
     },
   ]
 

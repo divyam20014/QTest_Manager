@@ -114,6 +114,8 @@ export function TestRunsList() {
     }
   }, [searchParams, setSearchParams])
   const [name, setName] = useState('')
+  // ADR-123: optional due date given to every case of the new run.
+  const [dueDate, setDueDate] = useState('')
   const { user } = useAuth()
   // ADR-106: remember the last chosen run type per user.
   const typeKey = `qth:last-run-type:${user?.user_id ?? 'anon'}`
@@ -182,6 +184,7 @@ export function TestRunsList() {
       run_type: runType,
       test_case_ids: selectedCaseIds,
       exclude_quarantined: skipQuarantined && quarantinedCount > 0,
+      ...(dueDate ? { due_date: dueDate } : {}),
     })
   }
 
@@ -343,6 +346,13 @@ export function TestRunsList() {
                 </option>
               ))}
             </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="run-due">Due date (optional)</Label>
+            <Input id="run-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Cases not executed by this date show as overdue. You can change it per case on the run.
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Approved Test Cases</Label>

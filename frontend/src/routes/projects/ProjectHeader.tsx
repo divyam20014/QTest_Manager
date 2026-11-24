@@ -1,6 +1,7 @@
 import { Settings } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+import { fetchProjectTestStatus } from '@/api/projectDashboard'
 import type { Project } from '@/api/projects'
 import { RecordPin } from '@/components/RecordPin'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -8,7 +9,61 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { type ProjectTabKey, approvedProgress } from '@/lib/projectNav'
 
 import { ProjectSwitcher } from './ProjectSwitcher'
+import { useOverviewQuery } from './overview/shared'
 import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
+
+/**
+ * Progress in the header: how much of the project's test cases have been executed and the pass
+ * rate (the same aggregate the Overview's key numbers use, one shared request). Until it is
+ * available, or if the viewer may not read it, it falls back to the approved share of the counts
+ * the project already carries.
+ */
+function ProjectProgress({ project }: { project: Project }) {
+  const status = useOverviewQuery(project.id, ['test-status'], () => fetchProjectTestStatus(project.id))
+  const s = status.data
+  if (s && s.total > 0) {
+    const percent = Math.round(s.execution_percentage ?? 0)
+    return (
+      <>
+        <span
+          role="progressbar"
+          aria-label="Test execution progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          aria-valuetext={`${s.executed} of ${s.total} test cases executed`}
+          className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--muted)]"
+        >
+          <span className="block h-full bg-[var(--primary)]" style={{ width: `${percent}%` }} />
+        </span>
+        <span className="tabular-nums">
+          {percent}% executed ({s.executed}/{s.total})
+          {s.pass_rate != null && <> · {Math.round(s.pass_rate)}% pass rate</>}
+        </span>
+      </>
+    )
+  }
+  const progress = approvedProgress(project)
+  if (progress === null) return <span>0 test cases</span>
+  return (
+    <>
+      <span
+        role="progressbar"
+        aria-label="Approved test cases"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+        aria-valuetext={`${project.approved_test_case_count} of ${project.test_case_count} test cases approved`}
+        className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--muted)]"
+      >
+        <span className="block h-full bg-[var(--primary)]" style={{ width: `${progress}%` }} />
+      </span>
+      <span className="tabular-nums">
+        {progress}% approved ({project.approved_test_case_count}/{project.test_case_count})
+      </span>
+    </>
+  )
+}
 
 /**
  * Header of the project workspace (ADR-122): name, status, owner, progress, favourite star, the
@@ -35,7 +90,6 @@ export function ProjectHeader({
       </div>
     )
   }
-  const progress = approvedProgress(project)
   const Name = asHeading ? 'h1' : 'p'
   return (
     <div data-testid="project-header" className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -51,26 +105,7 @@ export function ProjectHeader({
           Owner: <span className="text-[var(--foreground)]">{project.manager_name}</span>
         </span>
         <span data-testid="project-progress" className="flex items-center gap-2">
-          {progress === null ? (
-            <span>0 test cases</span>
-          ) : (
-            <>
-              <span
-                role="progressbar"
-                aria-label="Approved test cases"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={progress}
-                aria-valuetext={`${project.approved_test_case_count} of ${project.test_case_count} test cases approved`}
-                className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--muted)]"
-              >
-                <span className="block h-full bg-[var(--primary)]" style={{ width: `${progress}%` }} />
-              </span>
-              <span className="tabular-nums">
-                {progress}% approved ({project.approved_test_case_count}/{project.test_case_count})
-              </span>
-            </>
-          )}
+          <ProjectProgress project={project} />
         </span>
         {canOpenSettings && (
           <Link

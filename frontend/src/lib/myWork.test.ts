@@ -18,6 +18,8 @@ const rc = (id: string, status: MyRunCase['status']): MyRunCase => ({
   status,
   blocked_reason: null,
   started_at: null,
+  due_date: null,
+  overdue: false,
 })
 const defect = (id: string, created_at: string) => ({ id, created_at }) as unknown as Defect
 

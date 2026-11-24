@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/lib/auth'
 import { useCockpitMode } from '@/lib/cockpitMode'
+import { isOverdue } from '@/lib/dueDate'
 import { describeClock, formatClock, formatDurationMs } from '@/lib/duration'
 import { humanizeKey } from '@/lib/labels'
 import { levelTone, RUN_CASE_STATUS_TONE, VERDICT_TONE } from '@/lib/statusTones'
@@ -600,6 +601,12 @@ export function ExecutionConsole() {
                 </div>
                 <InfoRow label="Version" value={`v${context.version_number}`} />
                 <InfoRow label="Assignee" value={context.assignee_name ?? 'Unassigned'} />
+                {context.due_date && (
+                  <InfoRow
+                    label="Due"
+                    value={`${context.due_date}${isOverdue(context.due_date, context.status) ? ' (overdue)' : ''}`}
+                  />
+                )}
                 {context.data_row_id && (
                   <div className="rounded-md border border-[var(--border)] bg-[var(--muted)] p-2">
                     <p className="mb-1 font-medium text-[var(--foreground)]">

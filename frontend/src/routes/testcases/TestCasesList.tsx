@@ -642,6 +642,7 @@ export function TestCasesList() {
                 onChange={(e) => setFilter('executionStatus', e.target.value)}
               >
                 <option value="">Any execution status</option>
+                <option value="Executed">Executed (any result)</option>
                 {EXECUTION_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {s}

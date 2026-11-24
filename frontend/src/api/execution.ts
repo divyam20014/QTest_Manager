@@ -24,6 +24,8 @@ export interface TestRunCase {
   status: RunCaseStatus
   blocked_reason: string | null
   assigned_to: string | null
+  /** ADR-123: assignment due date (YYYY-MM-DD) or null. */
+  due_date?: string | null
   started_at: string | null
   completed_at: string | null
   step_count: number
@@ -71,6 +73,7 @@ export interface RunCaseContext {
   version_number: number
   assignee_id: string | null
   assignee_name: string | null
+  due_date?: string | null
   status: RunCaseStatus
   blocked_reason: string | null
   data_row_id: string | null
@@ -84,6 +87,8 @@ export interface TestRunCreateRequest {
   test_case_ids: string[]
   /** ADR-097: skip cases flagged as quarantined (default false). */
   exclude_quarantined?: boolean
+  /** ADR-123: due date (YYYY-MM-DD) applied to every case bundled. */
+  due_date?: string | null
 }
 
 export interface TestRunUpdateRequest {
@@ -125,13 +130,18 @@ export function removeTestRunCase(runId: string, testRunCaseId: string): Promise
   return apiFetch<TestRun>(`/test-runs/${runId}/cases/${testRunCaseId}`, { method: 'DELETE' })
 }
 
+/** ADR-123: assignee and due date are independent. Pass `undefined` to leave one alone, `null` to clear it. */
 export function assignRunCase(
   testRunCaseId: string,
-  assignedTo: string | null,
-): Promise<{ id: string; assigned_to: string | null }> {
+  assignedTo: string | null | undefined,
+  dueDate?: string | null,
+): Promise<{ id: string; assigned_to: string | null; due_date: string | null }> {
+  const body: Record<string, string | null> = {}
+  if (assignedTo !== undefined) body.assigned_to = assignedTo
+  if (dueDate !== undefined) body.due_date = dueDate
   return apiFetch(`/test-run-cases/${testRunCaseId}/assign`, {
     method: 'PATCH',
-    body: JSON.stringify({ assigned_to: assignedTo }),
+    body: JSON.stringify(body),
   })
 }
 

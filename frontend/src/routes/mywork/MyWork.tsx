@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Tabs } from '@/components/ui/tabs'
 import { useAuth } from '@/lib/auth'
 import { DEFECT_STATUSES } from '@/lib/defectWorkflow'
+import { dueRelative } from '@/lib/dueDate'
 import { formatWhen } from '@/lib/formatWhen'
 import { MY_DEFECT_REASON_LABEL, type MyDefect, groupRunCases, mergeMyDefects } from '@/lib/myWork'
 import { levelTone, RUN_CASE_STATUS_TONE } from '@/lib/statusTones'
@@ -54,9 +55,17 @@ function RunCaseRow({ item }: { item: MyRunCase }) {
             {item.project_name} · {item.run_name}
             {item.run_paused && ' · run paused'}
             {item.status === 'blocked' && item.blocked_reason && ` · ${item.blocked_reason}`}
+            {item.due_date && !item.overdue && ` · ${dueRelative(item.due_date)}`}
           </span>
         </span>
-        <StatusBadge tone={RUN_CASE_STATUS_TONE[item.status]}>{humanizeKey(item.status)}</StatusBadge>
+        <span className="flex shrink-0 items-center gap-2">
+          {item.overdue && item.due_date && (
+            <StatusBadge tone="critical" title={`Due ${item.due_date}`}>
+              {dueRelative(item.due_date)}
+            </StatusBadge>
+          )}
+          <StatusBadge tone={RUN_CASE_STATUS_TONE[item.status]}>{humanizeKey(item.status)}</StatusBadge>
+        </span>
       </Link>
     </li>
   )
@@ -184,7 +193,7 @@ function ReviewsPanel({ query }: { query: ReturnType<typeof useReviewsQuery> }) 
 
 function useRunCasesQuery(enabled: boolean) {
   const { user } = useAuth()
-  return useQuery({ queryKey: ['my-work', 'run-cases', user?.user_id], queryFn: listMyRunCases, enabled })
+  return useQuery({ queryKey: ['my-work', 'run-cases', user?.user_id], queryFn: () => listMyRunCases(), enabled })
 }
 
 function useReviewsQuery(enabled: boolean) {
