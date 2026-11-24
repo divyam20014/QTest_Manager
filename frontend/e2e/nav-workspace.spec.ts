@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
 
-import { axeFindings, formatFindings } from './a11y'
+import { axeFindings, formatFindings, settle } from './a11y'
 import { API_BASE_URL, loginViaUi, seedCaseBody } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
@@ -465,6 +465,9 @@ test('top bar: Appearance from the account menu still switches themes; light and
     await dialog.getByRole('radio', { name: before === 'dark' ? /^light/i : /^dark/i }).click()
     await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).not.toBe(before)
     await shot(page, 'topbar-1280-dark')
+    // Colours transition on a theme switch: measure contrast only once they have settled.
+    await settle(page)
+    await page.waitForTimeout(300)
     expect(formatFindings('top bar after switch', await axeFindings(page, {}, '[role="dialog"]'))).toEqual([])
     await dialog.getByRole('button', { name: 'Done' }).click()
     await expect(dialog).toBeHidden()

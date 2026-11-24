@@ -1,6 +1,6 @@
 import { expect, test, type Browser } from '@playwright/test'
 
-import { axeFindings, formatFindings } from './a11y'
+import { axeFindings, formatFindings, settle, smallTargets } from './a11y'
 import { loginViaUi } from './fixtures'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
@@ -28,6 +28,18 @@ function routes(t: RoleTenant): string[] {
     `/test-cases/${t.caseId}`,
     `/test-runs/${t.runId}`,
     `/test-run-cases/${t.runCaseId}?runId=${t.runId}`,
+    // ADR-126: the workspace redesign (My Work, the moved project tabs, board and calendar views).
+    '/my-work',
+    `/projects/${p}/test-plans`,
+    `/projects/${p}/releases`,
+    `/projects/${p}/team`,
+    `/projects/${p}/activity`,
+    `/projects/${p}/settings`,
+    `/defects?projectId=${p}&view=board`,
+    `/projects/${p}/test-cases?view=board`,
+    `/projects/${p}/test-runs?view=board`,
+    `/projects/${p}/test-runs?view=calendar`,
+    '/admin/workspace',
     '/test-repository',
     '/test-runs',
     '/execution',
@@ -68,8 +80,9 @@ async function scanRoutes(
     await page.goto(route)
     await page.locator('main').first().waitFor()
     await page.waitForLoadState('networkidle')
-    // Let chart animations and lazy chunks settle.
-    await page.waitForTimeout(700)
+    // Let chart animations, lazy chunks and any fading overlay settle.
+    await settle(page)
+    await page.waitForTimeout(400)
     const label = `${who.label} ${route.replace(/[0-9a-f-]{36}/g, ':id')} @${viewport.width} ${theme}`
     problems.push(...formatFindings(label, await axeFindings(page, ALLOW)))
   }
@@ -118,5 +131,81 @@ test('public pages have no accessibility findings at any impact level, light and
     }
     await ctx.close()
   }
+  expect(problems, problems.join('\n')).toEqual([])
+})
+
+// ADR-126 (phase 7): the new workspace pages at every breakpoint and in both themes, as every role.
+// axe at every impact level, no sideways scroll, no interactive target under 24 px (WCAG 2.5.8) and,
+// on a phone, a report of anything under 44 px. A Tester and a Manager get the No access screen on
+// /admin/workspace; that screen is scanned too.
+const NEW_PAGES = (p: string) => [
+  '/my-work',
+  `/projects/${p}`,
+  `/projects/${p}/test-plans`,
+  `/projects/${p}/team`,
+  `/projects/${p}/settings`,
+  `/defects?projectId=${p}&view=board`,
+  `/projects/${p}/test-cases?view=board`,
+  `/projects/${p}/test-runs?view=board`,
+  `/projects/${p}/test-runs?view=calendar`,
+  '/admin/workspace',
+]
+const BREAKPOINTS = [
+  { width: 1440, height: 900, theme: 'light' },
+  { width: 1280, height: 800, theme: 'dark' },
+  { width: 768, height: 1024, theme: 'light' },
+  { width: 375, height: 812, theme: 'dark' },
+  { width: 375, height: 812, theme: 'light' },
+] as const
+
+test('workspace pages: axe and overflow (tap targets reported) at 1440 / 1280 / 768 / 375, light and dark, every role', async ({
+  browser,
+  request,
+}, testInfo) => {
+  test.setTimeout(2_400_000)
+  const t = await seedRoleTenant(request, 'WsA11y', { withData: true })
+  const problems: string[] = []
+  const phoneSmall: string[] = []
+  const small24: string[] = []
+  const people = [
+    { label: 'admin', email: t.adminEmail, password: t.adminPassword },
+    { label: 'manager', email: t.manager.email, password: t.manager.password },
+    { label: 'tester', email: t.tester.email, password: t.tester.password },
+  ]
+  for (const who of people) {
+    for (const bp of BREAKPOINTS) {
+      const ctx = await browser.newContext({ viewport: { width: bp.width, height: bp.height }, colorScheme: bp.theme })
+      await ctx.addInitScript((value) => {
+        try {
+          localStorage.setItem('qtesthub:theme', value)
+        } catch {
+          /* storage unavailable */
+        }
+      }, bp.theme)
+      const page = await ctx.newPage()
+      await loginViaUi(page, t.tenantId, who.email, who.password)
+      for (const route of NEW_PAGES(t.projectId!)) {
+        await page.goto(route)
+        await page.locator('main').first().waitFor()
+        await page.waitForLoadState('networkidle')
+        await settle(page)
+        await page.waitForTimeout(400)
+        const label = `${who.label} ${route.replace(/[0-9a-f-]{36}/g, ':id')} @${bp.width} ${bp.theme}`
+        problems.push(...formatFindings(label, await axeFindings(page)))
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+        if (overflow > 0) problems.push(`${label}: horizontal overflow ${overflow}px`)
+        for (const s of await smallTargets(page, 24)) small24.push(`${route.replace(/[0-9a-f-]{36}/g, ':id')} @${bp.width}: ${s.label} ${s.width}x${s.height}`)
+        if (bp.width <= 375 && bp.theme === 'light') {
+          for (const s of await smallTargets(page, 44)) phoneSmall.push(`${label}: ${s.label} ${s.width}x${s.height}`)
+        }
+      }
+      await ctx.close()
+    }
+  }
+  await testInfo.attach('phone-targets-under-44', { body: [...new Set(phoneSmall)].join('\n'), contentType: 'text/plain' })
+  // WCAG 2.2 target size (2.5.8) is beyond the WCAG 2.1 AA gate this suite enforces: reported, not failed.
+  await testInfo.attach('targets-under-24', { body: [...new Set(small24)].join('\n'), contentType: 'text/plain' })
+  console.log(`TARGETS UNDER 24PX (${small24.length}):\n${[...new Set(small24)].join('\n')}`)
+  console.log(`PHONE TARGETS UNDER 44PX (${phoneSmall.length}):\n${[...new Set(phoneSmall)].join('\n')}`)
   expect(problems, problems.join('\n')).toEqual([])
 })

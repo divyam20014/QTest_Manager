@@ -49,7 +49,7 @@ test('phone: the recent lists wrap long titles, fit the screen and keep 44px tar
   await page.setViewportSize({ width: 390, height: 844 })
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
   const projectId = await seed(page)
-  await page.goto(`/projects/${projectId}/details`)
+  await page.goto(`/projects/${projectId}/activity`)
 
   const defects = page.getByRole('list', { name: 'Five most recently reported defects' })
   const cases = page.getByRole('list', { name: 'Five most recently created test cases' })
@@ -80,7 +80,7 @@ test('desktop keeps the tables', async ({ page, request }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
   const projectId = await seed(page)
-  await page.goto(`/projects/${projectId}/details`)
+  await page.goto(`/projects/${projectId}/activity`)
 
   await expect(page.getByRole('table', { name: 'Five most recently reported defects' })).toBeVisible()
   await expect(page.getByRole('table', { name: 'Five most recently created test cases' })).toBeVisible()

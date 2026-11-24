@@ -147,7 +147,7 @@ test('header and tab strip: name, status, owner, progress, favourite, real tabs,
   }
 })
 
-test('every moved tab has a real page and the old /details URL still works', async ({ browser }) => {
+test('every moved tab has a real page and the old /details URL redirects to the Overview', async ({ browser }) => {
   const { ctx, page } = await newPage(browser, { width: 1440, height: 900 })
   try {
     await signIn(page, 'admin')
@@ -168,10 +168,8 @@ test('every moved tab has a real page and the old /details URL still works', asy
     await expect(page.getByRole('textbox', { name: 'New suite name' })).toBeVisible()
     await expect(page.getByRole('textbox', { name: 'New plan name' })).toBeVisible()
     await page.goto(`/projects/${t.projectId}/details`)
-    await expect(page.getByRole('heading', { name: 'Team Members' })).toBeVisible()
-    await expect(page.getByRole('textbox', { name: 'New build name' })).toBeVisible()
-    await expect(page.getByRole('textbox', { name: 'New suite name' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Delete Project' })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`/projects/${t.projectId}$`))
+    await expect(page.getByTestId('project-header')).toBeVisible()
     // An unknown sub-route is a normal not-found page.
     await page.goto(`/projects/${t.projectId}/nonsense`)
     await expect(page.getByText(/not found/i).first()).toBeVisible()
@@ -449,7 +447,6 @@ for (const theme of ['light', 'dark'] as const) {
         ['team', `/projects/${pid}/team`],
         ['activity', `/projects/${pid}/activity`],
         ['settings', `/projects/${pid}/settings`],
-        ['details', `/projects/${pid}/details`],
       ] as const) {
         await page.goto(path)
         await expect(page.getByTestId('project-header')).toBeVisible()

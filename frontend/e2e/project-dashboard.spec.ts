@@ -104,11 +104,9 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   await expect(page).toHaveURL(new RegExp(`/projects/${a}/team$`))
   await expect(page.getByRole('heading', { name: 'Team Members' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Team')
-  // The old /details URL still works and shows the same cards together.
+  // ADR-126: the old /details URL redirects to the Overview.
   await page.goto(`/projects/${a}/details`)
-  await expect(page.getByRole('heading', { name: 'Team Members' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Test run status' })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Details')
+  await expect(page).toHaveURL(new RegExp(`/projects/${a}$`))
 
   // No horizontal overflow at 390.
   await page.setViewportSize({ width: 390, height: 844 })

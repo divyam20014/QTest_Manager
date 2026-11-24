@@ -150,7 +150,8 @@ test('Delete a test run and a defect: confirmation, then gone from lists and cou
   await page.getByRole('menuitem', { name: 'Delete defect' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Delete defect' }).click()
   await expect(page).toHaveURL(/\/defects$/)
-  await expect(page.getByText('Premium rounds the wrong way')).toHaveCount(0)
+  // The page, not the sidebar: Recent (ADR-121) keeps a link to a record until its x is pressed.
+  await expect(page.getByRole('main').getByText('Premium rounds the wrong way')).toHaveCount(0)
   expect((await page.request.get(`${API_BASE_URL}/defects/${defect.id}`)).status()).toBe(404)
 
   // --- Test run --------------------------------------------------------------
@@ -160,7 +161,7 @@ test('Delete a test run and a defect: confirmation, then gone from lists and cou
   await expect(dialog.getByText(/disappears from the test runs list/)).toBeVisible()
   await dialog.getByRole('button', { name: 'Delete run' }).click()
   await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/test-runs$`))
-  await expect(page.getByText('Doomed Run')).toHaveCount(0)
+  await expect(page.getByRole('main').getByText('Doomed Run')).toHaveCount(0)
   expect((await page.request.get(`${API_BASE_URL}/test-runs/${run.id}`)).status()).toBe(404)
 })
 

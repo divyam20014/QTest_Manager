@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody } from './fixtures'
+import { smallTargets } from './a11y'
+import { API_BASE_URL, bootstrapTenant, loginViaUi, seedCaseBody, seedDefectBody } from './fixtures'
 
 // Mobile redesign Phase 3: the remaining list pages as card lists, the
 // Execution Console's pinned verdict bar, the one-column Dashboard, the
@@ -169,6 +170,34 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
   await details.click()
   await expect(entries.getByText('Record Hash').first()).toBeVisible()
   await noHorizontalOverflow(page)
+
+  // --- ADR-126: My Work, the project tabs, boards, the calendar agenda and Workspace settings --
+  await page.request.post(`${API_BASE_URL}/defects`, {
+    data: seedDefectBody(project.id, { title: 'Settlement rounds down' }),
+  })
+  for (const route of [
+    '/my-work',
+    `/projects/${project.id}`,
+    `/projects/${project.id}/test-plans`,
+    `/projects/${project.id}/team`,
+    `/projects/${project.id}/settings`,
+    `/defects?projectId=${project.id}&view=board`,
+    `/projects/${project.id}/test-cases?view=board`,
+    `/projects/${project.id}/test-runs?view=board`,
+    `/projects/${project.id}/test-runs?view=calendar`,
+    '/admin/workspace',
+  ]) {
+    await page.goto(route)
+    await expect(page.locator('main')).toBeVisible()
+    await page.waitForLoadState('networkidle')
+    await noHorizontalOverflow(page)
+    expect(await smallTargets(page, 24), `${route} targets under 24px`).toEqual([])
+  }
+  // The calendar is an agenda list on a phone, not a seven-column grid.
+  await expect(page.getByRole('region', { name: 'Test run calendar' }).getByRole('grid')).toHaveCount(0)
+  // Workspace settings keep 44px controls on a phone.
+  const upButton = page.getByRole('button', { name: /^Move .* up$/ }).first()
+  expect((await upButton.boundingBox())!.height).toBeGreaterThanOrEqual(43)
 
   // --- Detail pages stack and never scroll sideways ----------------------------
   await page.goto(`/projects/${project.id}`)
