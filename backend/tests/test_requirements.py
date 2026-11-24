@@ -182,6 +182,41 @@ def test_linking_and_unlinking_a_test_case_updates_coverage(
     assert coverage_final["covered_requirements"] == 0
 
 
+def test_coverage_summary_matches_the_full_report_without_the_rows(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _, project_id = _setup_admin_and_project(client, platform_admin)
+    reqs = [
+        client.post(
+            f"/api/v1/projects/{project_id}/requirements",
+            json={"title": f"System shall support behaviour number {n}", "description": ""},
+        ).json()["data"]
+        for n in range(3)
+    ]
+    case = _create_test_case(client, project_id, "Verify behaviour")
+    other = _create_test_case(client, project_id, "Verify behaviour again")
+    for case_id in (case["id"], other["id"]):
+        # Two cases on one requirement must still count that requirement once.
+        client.post(f"/api/v1/requirements/{reqs[0]['id']}/test-cases", json={"test_case_id": case_id})
+    client.post(f"/api/v1/requirements/{reqs[1]['id']}/test-cases", json={"test_case_id": case["id"]})
+
+    base = f"/api/v1/projects/{project_id}/requirements/coverage"
+    full = client.get(base).json()["data"]
+    summary = client.get(base, params={"summary": "true"}).json()["data"]
+    assert len(full["requirements"]) == 3
+    assert summary["requirements"] == []
+    for key in ("total_requirements", "covered_requirements", "coverage_percentage"):
+        assert summary[key] == full[key]
+    assert (summary["total_requirements"], summary["covered_requirements"]) == (3, 2)
+
+    # Soft-deleting a linked case drops the requirement it alone covered, in both forms.
+    client.delete(f"/api/v1/test-cases/{case['id']}")
+    client.delete(f"/api/v1/test-cases/{other['id']}")
+    full = client.get(base).json()["data"]
+    summary = client.get(base, params={"summary": "true"}).json()["data"]
+    assert summary["covered_requirements"] == full["covered_requirements"]
+
+
 def test_linking_a_test_case_from_a_different_project_is_rejected(
     client: TestClient, platform_admin: dict
 ) -> None:
