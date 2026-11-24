@@ -53,11 +53,12 @@ def create_requirement(
 @router.get("/projects/{project_id}/requirements/coverage")
 def coverage_report(
     project_id: UUID,
+    summary: bool = Query(False, description="Totals only: `requirements` is left empty."),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     report = requirement_service.get_coverage_report(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, summary=summary
     )
     return envelope(report.model_dump(mode="json"))
 

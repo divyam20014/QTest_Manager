@@ -494,10 +494,43 @@ def unlink_test_case(
 
 
 def get_coverage_report(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID,
+    summary: bool = False,
 ) -> RequirementCoverageReport:
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, user_id)
+
+    if summary:
+        # ADR-126: the project dashboard widget only needs the three totals. Two COUNTs instead of
+        # one entry per requirement (about 368 KB for a project with thousands of them).
+        total = (
+            db.scalar(
+                select(func.count(Requirement.id)).where(
+                    Requirement.tenant_id == tenant_id, Requirement.project_id == project_id
+                )
+            )
+            or 0
+        )
+        covered = (
+            db.scalar(
+                select(func.count(func.distinct(RequirementTestCaseLink.requirement_id)))
+                .join(TestCase, TestCase.id == RequirementTestCaseLink.test_case_id)
+                .join(Requirement, Requirement.id == RequirementTestCaseLink.requirement_id)
+                .where(Requirement.tenant_id == tenant_id, Requirement.project_id == project_id)
+            )
+            or 0
+        )
+        return RequirementCoverageReport(
+            project_id=project_id,
+            total_requirements=total,
+            covered_requirements=covered,
+            coverage_percentage=round((covered / total) * 100, 1) if total else 0.0,
+            requirements=[],
+        )
 
     requirements = (
         db.execute(
