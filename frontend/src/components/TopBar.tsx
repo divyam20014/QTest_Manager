@@ -58,7 +58,7 @@ export function TopBar({
         >
           <Search className="size-4 shrink-0" aria-hidden="true" />
           <span className="truncate">Search cases, defects, projects, runs…</span>
-          <kbd className="ml-auto shrink-0 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--muted-foreground)]">
+          <kbd className="ml-auto shrink-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--muted-foreground)]">
             {shortcutHint()}
           </kbd>
         </button>

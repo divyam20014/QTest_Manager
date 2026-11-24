@@ -28,8 +28,8 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 
-// ADR-122: the Releases tab. BuildsReleasesCard moved here from ProjectDetail (still shown on the
-// legacy /details page); releases can now be edited (PATCH /releases/{id}).
+// ADR-122: the Releases tab. BuildsReleasesCard moved here from the former Details page;
+// releases can now be edited (PATCH /releases/{id}).
 export function ProjectReleases() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const { user } = useAuth()

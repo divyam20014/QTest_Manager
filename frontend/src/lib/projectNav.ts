@@ -124,7 +124,7 @@ export function resolveProjectTabs(
     })
 }
 
-/** Which tab a location belongs to, or null (for example the legacy /details page). */
+/** Which tab a location belongs to, or null (for example a project sub-page that is not a tab). */
 export function activeTabKey(pathname: string, search: string): ProjectTabKey | null {
   const clean = pathname.replace(/\/+$/, '') || '/'
   const params = new URLSearchParams(search)
@@ -156,7 +156,7 @@ export function activeTabKey(pathname: string, search: string): ProjectTabKey | 
 /**
  * Where the project switcher goes: the same tab in the target project when that tab is
  * available there (allowed for this user and not hidden by the target's own config), else the
- * target's Overview. Tabs without a tab key (the legacy /details page) land on Overview too.
+ * target's Overview. Tabs without a tab key land on Overview too.
  */
 export function switchTarget(
   currentKey: ProjectTabKey | null,

@@ -26,7 +26,6 @@ export const SEGMENT_LABELS: Record<string, string> = {
   account: 'My Account',
   'user-guide': 'User Guide',
   dashboards: 'Manage',
-  details: 'Details',
   'test-plans': 'Planning',
   releases: 'Releases',
   team: 'Team',

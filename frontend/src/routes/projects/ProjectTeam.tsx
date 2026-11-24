@@ -22,8 +22,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 
-// ADR-122: the Team tab. TeamMembersCard moved here from ProjectDetail (still shown on the legacy
-// /details page); the mutations, queries and permission gates are the same.
+// ADR-122: the Team tab. TeamMembersCard moved here from the former Details page; the mutations, queries and permission gates are the same.
 export function ProjectTeam() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const projectQuery = useQuery({ queryKey: ['projects', projectId], queryFn: () => getProject(projectId) })

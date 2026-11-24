@@ -245,7 +245,7 @@ export function CalendarView({
                           type="button"
                           tabIndex={-1}
                           onClick={() => setActive(d)}
-                          className="self-start rounded px-1 text-xs font-medium text-[var(--foreground)] underline underline-offset-2"
+                          className="self-start rounded-md px-1 text-xs font-medium text-[var(--foreground)] underline underline-offset-2"
                         >
                           +{items.length - 2} more
                         </button>

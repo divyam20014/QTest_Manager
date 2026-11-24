@@ -26,8 +26,8 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 
-// ADR-122: the Planning tab. TestSuitesCard and TestPlansCard moved here unchanged from
-// ProjectDetail (which still shows them on the legacy /details page).
+// ADR-122: the Planning tab. TestSuitesCard and TestPlansCard moved here unchanged from the
+// former Details page (its URL now redirects to the Overview, ADR-126).
 export function ProjectPlanning() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const { user } = useAuth()

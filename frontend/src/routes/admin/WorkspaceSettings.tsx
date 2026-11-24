@@ -31,7 +31,7 @@ const NAV_DESCRIPTIONS: Record<string, string> = {
   home: 'The organisation dashboard.',
   projects: 'Every project you can open.',
   'my-work': 'What is assigned to the signed-in person.',
-  'test-management': 'The test case repository.',
+  'test-management': 'The test case repository. It shows in the sidebar as the Test Cases link until it has a second page.',
   'test-execution': 'Test runs and the execution console.',
   defects: 'Defects across projects.',
   reports: 'Reports, analytics and compliance reports.',

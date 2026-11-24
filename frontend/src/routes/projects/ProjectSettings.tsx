@@ -20,7 +20,7 @@ import { ProjectNavSettings } from './ProjectNavSettings'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
 
 // ADR-122: the Settings tab (project.edit). The Details card and the Delete button moved here from
-// ProjectDetail unchanged (the legacy /details page still shows both); the navigation card is new.
+// the former Details page unchanged; the navigation card is new.
 export function ProjectSettings() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const { user } = useAuth()
@@ -33,7 +33,8 @@ export function ProjectSettings() {
   const project = projectQuery.data
   if (!project)
     return <EmptyState title="Project not found" description="It may have been deleted, or you may not have access to it." />
-  if (!hasPermission(user, 'project.edit')) return <NoAccess variant="inline" />
+  // The page variant carries the <h1> this tab needs (only Overview has the project name as <h1>).
+  if (!hasPermission(user, 'project.edit')) return <NoAccess />
   return (
     <div className="flex flex-col gap-6">
       <PageHeader

@@ -298,7 +298,7 @@ function ModuleCoverageWidget({ projectId }: WidgetProps) {
 // --- Requirement traceability ----------------------------------------------------------------
 
 function RequirementTraceabilityWidget({ projectId }: WidgetProps) {
-  const q = useOverviewQuery(projectId, ['coverage'], () => getCoverageReport(projectId))
+  const q = useOverviewQuery(projectId, ['coverage'], () => getCoverageReport(projectId, true))
   const title = 'Requirement traceability'
   return (
     <WidgetFrame testId="widget-requirement_traceability" title={title} view={{ to: `/projects/${projectId}/traceability-matrix` }}>

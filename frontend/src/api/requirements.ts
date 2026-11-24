@@ -124,6 +124,9 @@ export function unlinkTestCase(
   })
 }
 
-export function getCoverageReport(projectId: string): Promise<RequirementCoverageReport> {
-  return apiFetch<RequirementCoverageReport>(`/projects/${projectId}/requirements/coverage`)
+/** `summary` asks for the totals only (`requirements` comes back empty): the dashboard widget needs no rows. */
+export function getCoverageReport(projectId: string, summary = false): Promise<RequirementCoverageReport> {
+  return apiFetch<RequirementCoverageReport>(
+    `/projects/${projectId}/requirements/coverage${summary ? '?summary=true' : ''}`,
+  )
 }

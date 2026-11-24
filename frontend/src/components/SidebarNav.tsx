@@ -423,7 +423,7 @@ function PinnedRow({
         aria-label={noun === 'favourites' ? 'Unpin favourite' : 'Clear from recent'}
         aria-describedby={titleId}
         onClick={onRemove}
-        className="absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-[var(--sidebar-foreground-muted)] opacity-0 hover:bg-[var(--sidebar-bg)] hover:text-white focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--sidebar-accent)] group-focus-within/pin:opacity-100 group-hover/pin:opacity-100 pointer-coarse:opacity-100"
+        className="absolute right-1 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--sidebar-foreground-muted)] opacity-0 hover:bg-[var(--sidebar-bg)] hover:text-white focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--sidebar-accent)] group-focus-within/pin:opacity-100 group-hover/pin:opacity-100 pointer-coarse:opacity-100"
       >
         <X className="size-3.5" aria-hidden="true" />
       </button>

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 
 import { RouteBoundary } from '@/components/RouteBoundary'
 import { lazyRoute } from '@/lib/lazyRoute'
@@ -41,7 +41,6 @@ const ProjectPlanning = lazyRoute(() => import('@/routes/projects/ProjectPlannin
 const ProjectReleases = lazyRoute(() => import('@/routes/projects/ProjectReleases'), 'ProjectReleases')
 const ProjectSettings = lazyRoute(() => import('@/routes/projects/ProjectSettings'), 'ProjectSettings')
 const ProjectTeam = lazyRoute(() => import('@/routes/projects/ProjectTeam'), 'ProjectTeam')
-const ProjectDetail = lazyRoute(() => import('@/routes/projects/ProjectDetail'), 'ProjectDetail')
 const ProjectDashboard = lazyRoute(() => import('@/routes/projects/ProjectDashboard'), 'ProjectDashboard')
 const ProjectsList = lazyRoute(() => import('@/routes/projects/ProjectsList'), 'ProjectsList')
 const RequirementDetail = lazyRoute(() => import('@/routes/requirements/RequirementDetail'), 'RequirementDetail')
@@ -63,6 +62,16 @@ const PlatformDocs = lazyRoute(() => import('@/routes/platformAdmin/PlatformDocs
 // Design-system catalogue: dev server only. import.meta.env.DEV is replaced by
 // a literal false in production builds, so this chunk is never emitted there.
 const DesignCatalogue = import.meta.env.DEV ? lazy(() => import('@/routes/_DesignPreview')) : null
+
+/**
+ * ADR-126: the pre-ADR-122 "Details" page is gone; its sections live in the Overview, Team,
+ * Planning, Releases, Activity and Settings tabs. Old links and bookmarks land on the Overview,
+ * which every project member can open.
+ */
+function LegacyProjectDetailsRedirect() {
+  const { projectId = '' } = useParams<{ projectId: string }>()
+  return <Navigate to={`/projects/${projectId}`} replace />
+}
 
 export function App() {
   usePageTitleFromRoute()
@@ -101,7 +110,7 @@ export function App() {
           {/* ADR-122: every project page sits in ProjectLayout (header + tab strip). */}
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route index element={<ProjectDashboard />} />
-            <Route path="details" element={<ProjectDetail />} />
+            <Route path="details" element={<LegacyProjectDetailsRedirect />} />
             <Route path="requirements" element={<RequirementsList />} />
             <Route path="traceability-matrix" element={<TraceabilityMatrix />} />
             <Route path="test-cases" element={<TestCasesList />} />
