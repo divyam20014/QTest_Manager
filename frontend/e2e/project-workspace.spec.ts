@@ -95,10 +95,11 @@ test('header and tab strip: name, status, owner, progress, favourite, real tabs,
     const header = page.getByTestId('project-header')
     await expect(header.getByText('On Track')).toBeVisible()
     await expect(page.getByTestId('project-owner')).toContainText('Jane Manager')
-    // Progress is the approved share of the real counts: the seeded project has one approved case.
-    const bar = header.getByRole('progressbar', { name: 'Approved test cases' })
+    // ADR-123: progress is the executed share from the project-test-status aggregate (the seeded
+    // project has one case, executed once with a failed step: 100% executed, 0% pass rate).
+    const bar = header.getByRole('progressbar', { name: 'Test execution progress' })
     await expect(bar).toHaveAttribute('aria-valuenow', '100')
-    await expect(page.getByTestId('project-progress')).toContainText('100% approved (1/1)')
+    await expect(page.getByTestId('project-progress')).toContainText('100% executed (1/1) · 0% pass rate')
 
     const star = header.getByRole('button', { name: 'Add to favourites' })
     await star.click()

@@ -64,13 +64,14 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   })
   await page.goto(`/projects/${a}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Alpha Project' })).toBeVisible()
-  for (const h of ['Health', 'Trends', 'Risk & activity']) {
+  // ADR-123: the Overview is the configurable dashboard (key numbers plus widgets).
+  for (const h of ['Pass / fail distribution', 'Test execution trend (30 days)', 'Overdue test cases']) {
     await expect(page.getByRole('heading', { level: 2, name: h })).toBeVisible()
   }
   await expect(
     page.getByRole('navigation', { name: 'Project sections' }).getByRole('link', { name: 'Overview', exact: true }),
   ).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByText('3 of 3')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('[data-testid="kpi-total"] a')).toHaveAttribute('data-value', '3', { timeout: 20_000 })
   expect(scoped.length).toBeGreaterThan(0)
   expect(scoped.filter((u) => !u.includes(`project_id=${a}`) && !u.includes(`projectId=${a}`))).toEqual([])
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Alpha Project')
@@ -83,8 +84,7 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   // Project B shows different numbers.
   await page.goto(`/projects/${b}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Beta Project' })).toBeVisible()
-  await expect(page.getByText('1 of 1')).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText('3 of 3')).toHaveCount(0)
+  await expect(page.locator('[data-testid="kpi-total"] a')).toHaveAttribute('data-value', '1', { timeout: 20_000 })
 
   // Tab strip links.
   await page.goto(`/projects/${a}`)
@@ -113,7 +113,7 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   // No horizontal overflow at 390.
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(`/projects/${a}`)
-  await expect(page.getByText('3 of 3')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('[data-testid="kpi-total"] a')).toHaveAttribute('data-value', '3', { timeout: 20_000 })
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 
