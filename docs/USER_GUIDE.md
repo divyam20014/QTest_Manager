@@ -48,8 +48,9 @@ A quick map of where things live:
 - **One project's numbers, plans, people and settings?** Projects, then the
   project. Its header has a **project switcher** (search by name; your recent
   projects come first and you stay on the same tab where the other project has
-  it), and its tabs hold the Overview dashboard, Requirements, Test Cases, Test
-  Runs, Planning, Releases, Defects, Reports, Team, Activity and Settings.
+  it), and its tabs hold the Overview dashboard, Tasks (with the requirements),
+  Test Cases, Test Runs, Planning, Releases, Defects, Reports, Team, Activity and
+  Settings.
 - **The same records as a board or a calendar?** The **List / Board / Calendar**
   switch above Defects, Test Cases and Test Runs (see "Views" below).
 - **Something I use often?** Star it (Favourites) or find it under Recent.
@@ -169,8 +170,8 @@ is the **project switcher**: type to search, recent projects come first, and
 choosing one keeps you on the same tab when the other project has it, otherwise
 it opens that project's Overview.
 
-The tabs are **Overview**, **Requirements**, **Test Cases**, **Test Runs**,
-**Defects**, **Reports**, **Planning** (test suites and test plans),
+The tabs are **Overview**, **Tasks** (tasks, sub-tasks and the requirements in
+them), **Test Cases**, **Test Runs**, **Defects**, **Reports**, **Planning** (test suites and test plans),
 **Releases** (releases and builds; managers can edit a release's name, target
 date, status and notes), **Team** (members and project roles), **Activity**
 (what changed recently, plus the newest test cases and defects) and **Settings**
@@ -450,11 +451,12 @@ its sub-tasks is still open; the message says how many.
 
 ### Requirements (view)
 
-Each project has a **Requirements** tab listing what the product must do and
-which test cases cover it. As a Tester you read requirements and see their
-linked test cases and coverage; use it to understand why a case exists. Creating
-or versioning requirements and the Requirements Traceability Matrix gap view are
-Manager tasks.
+Requirements, what the product must do, live inside the **tasks** they belong to:
+open a task and choose its **Requirements** tab, or open a test case and follow its
+**Linked Requirements** card. As a Tester you read requirements and see their linked
+test cases and coverage; use it to understand why a case exists. Creating or
+versioning requirements is a Manager task. The **Traceability Matrix** (a button on
+the Tasks tab, also under Reports) shows coverage per requirement.
 
 ### What a Tester sees when visibility is limited
 
@@ -498,9 +500,9 @@ sub-task's due date cannot be later than its parent's.
   under one of its own sub-tasks.
 - **Deleting** a task that has sub-tasks asks you to confirm that they go too.
   Requirements and defects that were in a deleted task are kept, without a task.
-- **Putting things in a task**: choose the **Task** when you create or edit a
-  requirement or a defect, or on the requirement page (changing only the task does
-  not create a new version). Link test cases on the task's **Test Cases** tab; the
+- **Putting things in a task**: add a requirement on the task's **Requirements**
+  tab (it can be moved to another task from the requirement page, which does not
+  create a new version), and choose the **Task** when you create or edit a defect. Link test cases on the task's **Test Cases** tab; the
   test cases of its requirements count too.
 - The **task page** shows progress (sub-tasks done), requirement coverage, pass
   rate, open defects and test runs for the task and its sub-tasks (clear
@@ -518,7 +520,7 @@ The project **Overview** has a **Task progress** widget (add it under Customise 
 your layout predates it): tasks done, a bar per status, and overdue, due-in-7-days
 and unassigned counts. The **Requirements Traceability Matrix** can be narrowed to
 one task, with or without its sub-tasks, and its CSV and Excel downloads follow;
-the Requirements list's coverage figure follows the task filter. The **Report
+its coverage figure follows the task filter. The **Report
 builder** has a **Tasks** source (status, kind of status, level, parent, assignee,
 release, dates, overdue, and counts of sub-tasks, requirements, test cases and
 defects) and a **Task** field on defects. Search (and the command palette) finds
@@ -526,12 +528,24 @@ tasks by title or by their TASK_ id.
 
 ### Requirements and coverage
 
-On a project's **Requirements** tab create requirements and new versions, link
-them to the test cases that cover them, and open the Requirements Traceability
-Matrix (RTM) to see coverage gaps: requirements with no linked test case yet. If
-AI features are enabled you can generate draft test cases from a requirement's
-text. The result is always a draft: a person reviews and accepts it before it
-becomes a real test case.
+Requirements live in tasks. Open a task, choose its **Requirements** tab and
+**New requirement** to add one; it is created in that task. You can also use
+**+ New** in the top bar and choose **Requirement**, or **New Requirement** on the
+Tasks tab: pick the task, or leave it empty to file the requirement under the
+project's **Unassigned requirements** task (see below). Open a requirement to edit it
+(each edit is a new version, the earlier wording is kept), move it to another task,
+and link the test cases that cover it. The **Traceability Matrix** (the button on the
+Tasks tab) shows coverage gaps: requirements with no linked test case yet. If AI
+features are enabled you can generate draft test cases from a requirement's text.
+The result is always a draft: a person reviews and accepts it before it becomes a
+real test case.
+
+**Unassigned requirements.** Every requirement belongs to a task. A requirement
+created without one, or whose task is deleted, goes to the project's **Unassigned
+requirements** task, marked *Default for requirements* in the Tasks list. It is a
+holding place: open each requirement in it and move it to the task it belongs to. That
+task cannot be deleted or moved and takes no sub-tasks; you can still give it an
+assignee and dates.
 
 ### Planning and assigning runs
 

@@ -92,7 +92,7 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | /projects/{id}/requirements | list, paginated | assigned/all per role |
-| POST | /projects/{id}/requirements | create (version 1) | admin, manager (`requirement.manage`) |
+| POST | /projects/{id}/requirements | create (version 1) in `task_id`, or, without one, in the project's "Unassigned requirements" task (created on first need, ADR-128) | admin, manager (`requirement.manage`) |
 | GET | /projects/{id}/requirements/coverage | RTM/coverage report: total/covered requirement counts + percentage; `?summary=true` returns the totals only (`requirements` empty, ADR-126) | assigned/all per role |
 | GET | /requirements/{id} | detail incl. linked test cases | assigned/all per role |
 | GET | /requirements/{id}/versions | immutable version history, newest first | assigned/all per role |
@@ -426,3 +426,16 @@ Private per-user filter sets for the Test Cases, Defects, Test Runs, Requirement
 Allowed filter keys (string values): test_cases `search, priority, status, assigneeId, moduleId` (+ `sort` such as `title` or `-priority`); defects `projectId, status, severity, priority, labels` (comma-separated lists), `reportedBy, assigneeId, moduleId, testCaseId, createdFrom, createdTo, fixVersion, environment, resolution, search` (+ `sort`: `display_id`, `title`, `severity`, `priority`, `status`, `assignee`, `date_reported`, `created_at`, `fix_version`, optionally `-` prefixed; `columns` as for test cases); test_runs `projectId, activeOnly, overdue` (`true`/`false`); requirements `search`; projects `search, status`. ADR-124: every list also allows `view` (`list`, `board` or `calendar`: the layout the view opens in; a view saved without it leaves the current layout alone; the Phase 4 filters `moduleId` and `executedBy` were already allowed for test cases, `moduleId` for defects).
 
 Additions in ADR-097: the test case list endpoints take `quarantined=any|only|exclude` and every case payload carries `quarantined`, `quarantine_reason`, `quarantined_at`; run creation (`/projects/{id}/test-runs`, `/test-suites/{id}/create-run`, `/test-runs/{id}/cases`) takes `exclude_quarantined` (default false); `/reports/release-readiness` returns `quarantined_count`; `/reports/flaky-tests` rows return `quarantined`. Saved views for test_cases also accept the filter key `quarantined`.
+
+## Requirements live in tasks (ADR-128)
+
+- `requirements.task_id` is never empty. `POST /projects/{id}/requirements` without `task_id` files the
+  requirement under the project's default task, `PATCH /requirements/{id}` with `task_id: null` moves it
+  there, and deleting a task moves its requirements there. Responses carry `task_id`, `task_display_id` and
+  `task_title`.
+- A task has `is_requirements_home` (true for that default task). It is created on first need, one per
+  project; it cannot be deleted (409), moved (409) or given sub-tasks (422 on `parent_task_id`), but can be
+  edited otherwise.
+- The project tab key `requirements` no longer exists. A `nav_config` (project or tenant default) that still
+  names it is accepted and the key is dropped. `GET /projects/{id}/requirements` (the paged list) and every
+  other requirement endpoint are unchanged; the web app no longer has a Requirements list page.

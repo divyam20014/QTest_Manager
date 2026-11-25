@@ -450,7 +450,8 @@ Indexes: `ix_tasks_project_parent (project_id, parent_task_id) WHERE deleted_at 
 | linked_by / linked_at | UUID FK users / TIMESTAMPTZ | |
 
 ### Columns and constraints added elsewhere
-- `requirements.task_id`, `defects.task_id` UUID NULL with composite FK `(task_id, project_id) -> tasks (id, project_id)` (a record can only point at a task of its own project) and a partial index WHERE task_id IS NOT NULL.
+- `requirements.task_id`, `defects.task_id` UUID with composite FK `(task_id, project_id) -> tasks (id, project_id)` (a record can only point at a task of its own project) and a partial index WHERE task_id IS NOT NULL. `defects.task_id` is nullable. `requirements.task_id` is NOT NULL since ADR-128 (migration `e2f5b7c9d1a3`, which filed every requirement that had no task under a new per-project task first).
+- `tasks.is_requirements_home` BOOLEAN NOT NULL DEFAULT false (ADR-128): the project's "Unassigned requirements" task; partial UNIQUE index `uq_tasks_requirements_home (project_id) WHERE is_requirements_home AND deleted_at IS NULL`.
 - `comments.owner_type` and `attachments.owner_type` accept `'task'`; `entity_counters.kind` accepts `'task'`; `field_options.field_key` accepts `'task_priority'`.
 - Permissions `task.manage`, `task.transition`, `task_status.manage` (see ADR-127 for the role grants).
 

@@ -1918,3 +1918,18 @@ Every figure but the tree is under 350 ms. The tree is the slowest because it se
 **Deliberately not built.** Task dependencies, Gantt and timeline, task templates, time tracking, and a tenant-level task list across projects.
 
 **Consequences.** A new project-level entity has to be added in five places that are easy to miss: the project delete check, the tenant export, the report-cache table list, the owner-type constraints if it takes comments or attachments, and `lib/entityRoutes.ts` if it has a page. Open items, by value: the Task column in the defect and test case import/export; a lighter payload for the tree; moving the last top-level record links to `entityRoutes`.
+
+## ADR-128: Requirements live in tasks (no separate Requirements section)
+
+**Context.** After ADR-127 a task can hold requirements, test cases, defects and documents, so the project-level Requirements tab and list duplicated what the task page already shows. Removing the requirement *entity* would have lost its immutable versions, the requirement-to-test-case traceability, the compliance coverage figures and the AI requirement features, and would have merged two different things: a task is a unit of work, a requirement is a statement of what the product must do, and one task usually has several.
+
+**Decision.**
+
+1. **The section goes; the entity stays.** The Requirements tab, its list page and its "New requirement" dialog are removed. Requirements are created, listed and managed on their task (the task page's Requirements tab), and a requirement page is part of the Tasks tab. Versions, links to test cases, the Traceability Matrix, compliance coverage, the AI features, search, saved report counts and the tenant export are unchanged. `/projects/:id/requirements` redirects to the Tasks tab; requirement pages stay at `/projects/:id/requirements/:rid`.
+2. **Every requirement has a task.** `requirements.task_id` is NOT NULL. A requirement created without one, detached (`task_id: null`), or whose task is deleted moves to the project's **Unassigned requirements** task (`tasks.is_requirements_home`), created on first need under an advisory lock, at most one per project (partial unique index). The migration files every existing task-less requirement there first, numbering the new tasks from the tenant's `TASK_` counter.
+3. **That task is protected.** It cannot be deleted, moved or given sub-tasks (service rules; the picker leaves it out as a parent), and it is marked in the Tasks list and on its page. It can be edited like any task, so assignee, dates and status work.
+4. **Navigation.** `requirements` is removed from the project tab keys; a saved project or tenant layout that still names it is accepted and the key dropped, so nothing needs re-saving. The Tasks list gets *Traceability matrix* and *New Requirement* buttons; the top bar's "New requirement" opens that dialog (`?action=new-requirement`); the matrix page belongs to Reports; a requirement's breadcrumb points at Tasks.
+
+**Not done, and why.** A project-wide list of every requirement was not kept: the task tree, the matrix, search and the report builder cover it. Removing the entity (option C in the plan) was rejected for the loss described above. The downgrade makes the column nullable again and drops the flag but leaves the default tasks, which are ordinary tasks.
+
+**Consequences.** A project that had loose requirements shows one extra task and counts it in task totals and roll-ups. Anything that creates a requirement must go through `requirement_service.create_requirement` (it is the only creator); any new code that deletes tasks must move their requirements to the default task as `delete_task` does.
