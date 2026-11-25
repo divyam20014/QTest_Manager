@@ -28,6 +28,7 @@ from app.core.logging import logger
 from app.models.defect import Defect
 from app.models.execution import TestRun
 from app.models.identity import Session as SessionModel
+from app.models.task import Task
 from app.models.tenant import Tenant
 from app.models.test_case import TestCase
 
@@ -138,6 +139,7 @@ _RESOURCE_MODELS: dict[str, type[Any]] = {
     "test_case": TestCase,
     "defect": Defect,
     "test_run": TestRun,
+    "task": Task,
 }
 
 

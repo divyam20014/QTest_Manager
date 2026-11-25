@@ -10,6 +10,7 @@ FieldKey = Literal[
     "defect_priority",
     "test_type",
     "test_case_severity",
+    "task_priority",
 ]
 StatusEntityType = Literal["test_case", "defect"]
 CustomFieldEntityType = Literal["test_case", "defect", "requirement"]

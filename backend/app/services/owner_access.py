@@ -3,12 +3,19 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.errors import ValidationAppError
-from app.services import defect_service, execution_service, requirement_service, test_case_service
+from app.services import (
+    defect_service,
+    execution_service,
+    requirement_service,
+    task_service,
+    test_case_service,
+)
 
 OWNER_TYPE_TEST_CASE = "test_case"
 OWNER_TYPE_DEFECT = "defect"
 OWNER_TYPE_EXECUTION_STEP = "execution_step"
 OWNER_TYPE_REQUIREMENT = "requirement"
+OWNER_TYPE_TASK = "task"
 
 
 def authorize_owner_access(
@@ -27,5 +34,7 @@ def authorize_owner_access(
         execution_service.get_execution_step(db, tenant_id, role_code, user_id, owner_id)
     elif owner_type == OWNER_TYPE_REQUIREMENT:
         requirement_service.get_requirement(db, tenant_id, role_code, user_id, owner_id)
+    elif owner_type == OWNER_TYPE_TASK:
+        task_service.get_task(db, tenant_id, role_code, user_id, owner_id)
     else:
         raise ValidationAppError(f"Unsupported owner type: {owner_type}")

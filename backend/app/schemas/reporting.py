@@ -257,6 +257,9 @@ class TraceabilityMatrixEntry(BaseModel):
 
     requirement_id: UUID
     requirement_title: str
+    # ADR-127: the task the requirement belongs to, if any.
+    task_id: UUID | None = None
+    task_display_id: str | None = None
     linked_test_case_count: int
     passed_count: int
     failed_count: int

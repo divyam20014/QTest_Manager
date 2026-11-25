@@ -16,11 +16,15 @@ class RequirementHistoryEntryOut(BaseModel):
 class RequirementCreateRequest(BaseModel):
     title: str = Field(min_length=5)
     description: str = ""
+    # ADR-127: the task this requirement belongs to (same project).
+    task_id: UUID | None = None
 
 
 class RequirementUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=5)
     description: str | None = None
+    # Send null to detach from the task; leave out to keep it. Changing it adds no version.
+    task_id: UUID | None = None
 
 
 class RequirementOut(BaseModel):
@@ -32,6 +36,9 @@ class RequirementOut(BaseModel):
     created_by: UUID
     created_at: datetime
     linked_test_case_count: int
+    task_id: UUID | None = None
+    task_display_id: str | None = None
+    task_title: str | None = None
     custom_fields: dict[str, object] = {}
 
 

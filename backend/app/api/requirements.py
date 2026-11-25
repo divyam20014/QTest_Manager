@@ -27,11 +27,14 @@ def list_requirements(
     project_id: UUID,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=requirement_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
+    task_id: UUID | None = Query(default=None, description="Only this task's requirements."),
+    include_sub_tasks: bool = Query(default=False, description="With task_id: its sub-tasks too."),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     items, total = requirement_service.list_requirements(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, page, page_size
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, page, page_size,
+        task_id=task_id, include_sub_tasks=include_sub_tasks,
     )
     out = requirement_service.to_out_many(db, items)
     return envelope(RequirementListResponse(items=out, total=total).model_dump(mode="json"))
@@ -54,11 +57,20 @@ def create_requirement(
 def coverage_report(
     project_id: UUID,
     summary: bool = Query(False, description="Totals only: `requirements` is left empty."),
+    task_id: UUID | None = Query(default=None, description="Only this task requirements."),
+    include_sub_tasks: bool = Query(default=False, description="With task_id: its sub-tasks too."),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     report = requirement_service.get_coverage_report(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, summary=summary
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        summary=summary,
+        task_id=task_id,
+        include_sub_tasks=include_sub_tasks,
     )
     return envelope(report.model_dump(mode="json"))
 

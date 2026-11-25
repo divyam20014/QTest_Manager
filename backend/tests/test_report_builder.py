@@ -8,6 +8,7 @@ from sqlalchemy import event, text
 
 from app.schemas.report_builder import (
     MAX_EXPORT_ROWS,
+    MAX_FIELDS,
     MAX_PAGE_SIZE,
     SOURCES,
     STATEMENT_TIMEOUT_MS,
@@ -153,16 +154,19 @@ def test_operators_and_group_by_count(client: TestClient, env: dict) -> None:
 
 def test_response_contains_only_allowlisted_keys(client: TestClient, env: dict) -> None:
     for source, specs in SOURCES.items():
-        fields = list(specs)
-        r = _preview(client, _def(source, fields=fields))
-        assert r.status_code == 200, (source, r.text)
-        data = r.json()["data"]
-        assert set(data) == {"columns", "rows", "total", "page", "page_size"}
-        assert [c["key"] for c in data["columns"]] == fields
-        for row in data["rows"]:
-            assert set(row) == set(fields)
-        blob = json.dumps(data).lower()
-        assert "password" not in blob and "@" not in blob.replace("@example", "")
+        every = list(specs)
+        # A report holds at most MAX_FIELDS columns, so a source with more is read in chunks.
+        for start in range(0, len(every), MAX_FIELDS):
+            fields = every[start : start + MAX_FIELDS]
+            r = _preview(client, _def(source, fields=fields))
+            assert r.status_code == 200, (source, r.text)
+            data = r.json()["data"]
+            assert set(data) == {"columns", "rows", "total", "page", "page_size"}
+            assert [c["key"] for c in data["columns"]] == fields
+            for row in data["rows"]:
+                assert set(row) == set(fields)
+            blob = json.dumps(data).lower()
+            assert "password" not in blob and "@" not in blob.replace("@example", "")
 
 
 def test_project_visibility_for_tester_and_manager(client: TestClient, env: dict) -> None:

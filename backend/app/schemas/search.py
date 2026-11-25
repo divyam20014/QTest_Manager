@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-SearchResultType = Literal["test_case", "defect", "requirement"]
+SearchResultType = Literal["test_case", "defect", "requirement", "task"]
 
 
 class SearchResultEntry(BaseModel):

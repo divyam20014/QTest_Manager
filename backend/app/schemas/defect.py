@@ -169,6 +169,8 @@ class DefectCreateRequest(BaseModel):
     module_id: UUID | None = None
     # Restricted at the service layer to active users assigned to this defect's project.
     assigned_to: UUID | None = None
+    # ADR-127: the task this defect belongs to (same project).
+    task_id: UUID | None = None
     # Copy the failing step's evidence (attachment references) onto the new defect.
     copy_evidence: bool = True
 
@@ -222,6 +224,8 @@ class DefectUpdateRequest(BaseModel):
     labels: list[str] | None = None
     assigned_to: UUID | None = None
     module_id: UUID | None = None
+    # ADR-127: the task this defect belongs to (same project); null detaches it.
+    task_id: UUID | None = None
 
     @field_validator("labels", mode="after")
     @classmethod
@@ -473,6 +477,9 @@ class DefectOut(BaseModel):
     environment: str | None
     environment_id: UUID | None
     environment_name: str | None
+    task_id: UUID | None = None
+    task_display_id: str | None = None
+    task_title: str | None = None
     found_in_build_id: UUID | None
     found_in_build_name: str | None
     fixed_in_release_id: UUID | None

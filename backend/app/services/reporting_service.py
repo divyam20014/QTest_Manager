@@ -23,6 +23,7 @@ from app.models.identity import User
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement, RequirementTestCaseLink
 from app.models.shared_step import SharedStep
+from app.models.task import Task
 from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import TestCase
@@ -80,7 +81,7 @@ from app.schemas.reporting import (
     WorkloadEntry,
     WorkloadSummary,
 )
-from app.services import requirement_service, tester_visibility
+from app.services import requirement_service, task_service, tester_visibility
 from app.services.defect_service import SLA_DAYS_ALL, SLA_DAYS_BY_SEVERITY
 
 COMPLETED_RUN_CASE_STATUSES = ("passed", "failed", "blocked", "ignored")
@@ -1224,7 +1225,13 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 @cached_report("traceability_matrix")
 def get_traceability_matrix(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    project_id: UUID,
+    task_id: UUID | None = None,
+    include_sub_tasks: bool = False,
 ) -> TraceabilityMatrixReport:
     """Phase 3 RTM: per-requirement pass/fail/blocked/not-executed breakdown,
     not just the linked-test-case COUNT that RequirementCoverageReport gives.
@@ -1238,16 +1245,37 @@ def get_traceability_matrix(
         raise ForbiddenError("Project not accessible")
     _get_project_or_404(db, tenant_id, project_id)
 
+    scope: list[Any] = [Requirement.tenant_id == tenant_id, Requirement.project_id == project_id]
+    if task_id is not None:  # ADR-127: one task requirements, optionally with its sub-tasks
+        task_ids = (
+            task_service.subtree_task_ids(db, tenant_id, task_id)
+            if include_sub_tasks
+            else [task_id]
+        )
+        scope.append(Requirement.task_id.in_(task_ids))
     requirements = list(
-        db.execute(
-            select(Requirement)
-            .where(Requirement.tenant_id == tenant_id, Requirement.project_id == project_id)
-            .order_by(Requirement.created_at)
-        ).scalars()
+        db.execute(select(Requirement).where(*scope).order_by(Requirement.created_at)).scalars()
+    )
+    owner_ids = {r.task_id for r in requirements if r.task_id is not None}
+    task_labels = (
+        {
+            t_id: display_id
+            for t_id, display_id in db.execute(
+                select(Task.id, Task.display_id).where(Task.id.in_(owner_ids))
+            )
+        }
+        if owner_ids
+        else {}
     )
 
     overall_coverage = requirement_service.get_coverage_report(
-        db, tenant_id, role_code, user_id, project_id
+        db,
+        tenant_id,
+        role_code,
+        user_id,
+        project_id,
+        task_id=task_id,
+        include_sub_tasks=include_sub_tasks,
     )
 
     if not requirements:
@@ -1311,6 +1339,8 @@ def get_traceability_matrix(
             TraceabilityMatrixEntry(
                 requirement_id=req.id,
                 requirement_title=req.title,
+                task_id=req.task_id,
+                task_display_id=task_labels.get(req.task_id),
                 linked_test_case_count=total,
                 passed_count=passed,
                 failed_count=failed,
@@ -1334,6 +1364,7 @@ def traceability_matrix_to_csv(report: TraceabilityMatrixReport) -> str:
     writer.writerow(
         [
             "Requirement",
+            "Task",
             "Linked Test Cases",
             "Passed",
             "Failed",
@@ -1346,6 +1377,7 @@ def traceability_matrix_to_csv(report: TraceabilityMatrixReport) -> str:
         writer.writerow(
             [
                 e.requirement_title,
+                e.task_display_id or "",
                 e.linked_test_case_count,
                 e.passed_count,
                 e.failed_count,
@@ -1802,6 +1834,7 @@ def traceability_matrix_to_xlsx(report: TraceabilityMatrixReport) -> bytes:
                 "Traceability",
                 [
                     "Requirement",
+                    "Task",
                     "Linked Test Cases",
                     "Passed",
                     "Failed",
@@ -1812,6 +1845,7 @@ def traceability_matrix_to_xlsx(report: TraceabilityMatrixReport) -> bytes:
                 [
                     (
                         e.requirement_title,
+                        e.task_display_id or "",
                         e.linked_test_case_count,
                         e.passed_count,
                         e.failed_count,

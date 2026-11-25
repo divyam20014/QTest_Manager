@@ -249,11 +249,19 @@ def flaky_tests(
 @router.get("/reports/traceability-matrix", dependencies=[Depends(require_reports_not_hidden)])
 def traceability_matrix(
     project_id: UUID = Query(),
+    task_id: UUID | None = Query(default=None),
+    include_sub_tasks: bool = Query(default=False),
     ctx: SessionContext = Depends(require_permission("report.view")),
     db: Session = Depends(get_db),
 ) -> dict:
     report = reporting_service.get_traceability_matrix(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        task_id=task_id,
+        include_sub_tasks=include_sub_tasks,
     )
     return envelope(report.model_dump(mode="json"))
 
@@ -263,11 +271,19 @@ def traceability_matrix(
 )
 def traceability_matrix_export(
     project_id: UUID = Query(),
+    task_id: UUID | None = Query(default=None),
+    include_sub_tasks: bool = Query(default=False),
     ctx: SessionContext = Depends(require_permission("report.view")),
     db: Session = Depends(get_db),
 ) -> PlainTextResponse:
     report = reporting_service.get_traceability_matrix(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        task_id=task_id,
+        include_sub_tasks=include_sub_tasks,
     )
     csv_text = reporting_service.traceability_matrix_to_csv(report)
     return PlainTextResponse(
@@ -429,11 +445,19 @@ def aggregate_export_xlsx(
 )
 def traceability_matrix_export_xlsx(
     project_id: UUID = Query(),
+    task_id: UUID | None = Query(default=None),
+    include_sub_tasks: bool = Query(default=False),
     ctx: SessionContext = Depends(require_permission("report.view")),
     db: Session = Depends(get_db),
 ) -> Response:
     report = reporting_service.get_traceability_matrix(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        task_id=task_id,
+        include_sub_tasks=include_sub_tasks,
     )
     return _xlsx_response(
         reporting_service.traceability_matrix_to_xlsx(report), "traceability_matrix.xlsx"

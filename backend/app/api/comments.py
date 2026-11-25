@@ -11,6 +11,7 @@ from app.services import comment_service
 from app.services.owner_access import (
     OWNER_TYPE_DEFECT,
     OWNER_TYPE_EXECUTION_STEP,
+    OWNER_TYPE_TASK,
     OWNER_TYPE_TEST_CASE,
 )
 
@@ -89,6 +90,31 @@ def create_execution_step_comment(
     comment = comment_service.create_comment(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_EXECUTION_STEP,
         execution_step_id, req,
+    )
+    return envelope(comment.model_dump(mode="json"))
+
+
+@router.get("/tasks/{task_id}/comments")
+def list_task_comments(
+    task_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    comments = comment_service.list_comments(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TASK, task_id
+    )
+    return envelope([c.model_dump(mode="json") for c in comments])
+
+
+@router.post("/tasks/{task_id}/comments")
+def create_task_comment(
+    task_id: UUID,
+    req: CommentCreateRequest,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    comment = comment_service.create_comment(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TASK, task_id, req
     )
     return envelope(comment.model_dump(mode="json"))
 

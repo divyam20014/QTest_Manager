@@ -14,7 +14,8 @@ ProjectStatus = Literal["On Track", "At Risk", "Delayed", "Completed"]
 # (reorderable, never hidden); optional tabs may be hidden, except Settings, which stays reachable
 # for whoever may edit the project. The frontend keeps the same lists in lib/projectNav.ts.
 CORE_NAV_KEYS = ("overview", "requirements", "test-cases", "test-runs", "defects", "reports")
-OPTIONAL_NAV_KEYS = ("test-plans", "releases", "team", "activity", "settings")
+# ADR-127: "tasks" is optional so a tenant that does not use tasks can hide the tab.
+OPTIONAL_NAV_KEYS = ("tasks", "test-plans", "releases", "team", "activity", "settings")
 ALL_NAV_KEYS = CORE_NAV_KEYS + OPTIONAL_NAV_KEYS
 HIDEABLE_NAV_KEYS = tuple(k for k in OPTIONAL_NAV_KEYS if k != "settings")
 

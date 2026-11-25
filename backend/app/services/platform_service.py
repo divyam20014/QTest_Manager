@@ -14,7 +14,7 @@ from app.models.identity import Session as SessionModel
 from app.models.subscription import Plan, Subscription
 from app.models.tenant import Tenant
 from app.schemas.platform import PlatformAdminCreateRequest, TenantCreateRequest
-from app.services import field_option_service, platform_auth_service
+from app.services import field_option_service, platform_auth_service, task_status_service
 from app.services.platform_audit_service import record_platform_event
 
 # Tier 1 / ADR-053: every tenant starts on this plan -- seeded by migration
@@ -74,6 +74,7 @@ def create_tenant_with_admin(
     # the subscription above -- seeds the four severity/priority defaults
     # that used to be hardcoded, so nothing changes unless an admin acts.
     field_option_service.seed_defaults_for_tenant(db, tenant.id)
+    task_status_service.seed_defaults_for_tenant(db, tenant.id)
 
     record_audit_event(
         db,

@@ -1,12 +1,13 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
 from app.core.errors import ConflictError, NotFoundError
 from app.models.project import Project
+from app.models.task import Task
 from app.models.test_asset import Build, Environment, Release
 from app.schemas.test_asset import (
     BuildBulkCreateRequest,
@@ -355,6 +356,12 @@ def delete_release(db: Session, tenant_id: UUID, actor_user_id: UUID, release_id
     ).scalar_one_or_none()
     if release is None:
         raise NotFoundError("Release not found")
+    # ADR-127: tasks planned for the release stay, without a release.
+    db.execute(
+        update(Task)
+        .where(Task.tenant_id == tenant_id, Task.release_id == release_id)
+        .values(release_id=None)
+    )
     db.delete(release)
     record_audit_event(
         db,

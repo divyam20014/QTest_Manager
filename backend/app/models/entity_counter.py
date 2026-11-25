@@ -12,7 +12,7 @@ class EntityCounter(Base, TenantScopedMixin):
 
     __tablename__ = "entity_counters"
     __table_args__ = (
-        CheckConstraint("kind in ('test_case','defect')", name="ck_entity_counters_kind"),
+        CheckConstraint("kind in ('test_case','defect','task')", name="ck_entity_counters_kind"),
         CheckConstraint("next_value >= 1", name="ck_entity_counters_next_value"),
         UniqueConstraint("tenant_id", "kind", name="uq_entity_counters_tenant_kind"),
     )

@@ -40,6 +40,7 @@ from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.task import Task, TaskStatus, TaskTestCaseLink
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import Attachment, TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
@@ -73,6 +74,10 @@ _EXPORT_MODELS: list[tuple[str, type[DeclarativeBase]]] = [
     ("environments", Environment),
     ("builds", Build),
     ("releases", Release),
+    # ADR-127: tasks, their tenant statuses and the task <-> test case links.
+    ("task_statuses", TaskStatus),
+    ("tasks", Task),
+    ("task_test_case_links", TaskTestCaseLink),
 ]
 
 

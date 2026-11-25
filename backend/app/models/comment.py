@@ -20,7 +20,7 @@ class Comment(Base, TenantScopedMixin):
     __tablename__ = "comments"
     __table_args__ = (
         CheckConstraint(
-            "owner_type in ('test_case','defect','execution_step')",
+            "owner_type in ('test_case','defect','execution_step','task')",
             name="ck_comments_owner_type",
         ),
         CheckConstraint("char_length(body) >= 1", name="ck_comments_body_len"),

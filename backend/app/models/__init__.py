@@ -39,6 +39,7 @@ from app.models.service_token import ServiceToken
 from app.models.shared_step import SharedStep
 from app.models.sso_config import SsoConfig
 from app.models.subscription import Plan, Subscription
+from app.models.task import Task, TaskStatus, TaskTestCaseLink
 from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import (
@@ -117,6 +118,9 @@ __all__ = [
     "TestSuiteCase",
     "TestPlan",
     "TestPlanRun",
+    "Task",
+    "TaskStatus",
+    "TaskTestCaseLink",
 ]
 
 # ADR-070: registers the soft-delete SELECT filter (side-effect import).

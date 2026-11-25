@@ -47,6 +47,7 @@ from app.api import (
     service_tokens,
     shared_steps,
     sso,
+    tasks,
     templates,
     test_assets,
     test_cases,
@@ -263,6 +264,7 @@ app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(workspace.router, prefix="/api/v1")
 app.include_router(settings_api.router, prefix="/api/v1")
 app.include_router(requirements.router, prefix="/api/v1")
+app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
 app.include_router(test_assets.router, prefix="/api/v1")
 app.include_router(test_modules.router, prefix="/api/v1")

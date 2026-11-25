@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.defect import Defect
 from app.models.project import Project
 from app.models.requirement import Requirement
+from app.models.task import Task
 from app.models.test_case import TestCase
 from app.schemas.search import SearchResponse, SearchResultEntry
 from app.services import tester_visibility
@@ -80,6 +81,29 @@ def search(
             type="requirement", id=rid, title=title, project_id=pid, project_name=pname
         )
         for rid, title, pid, pname in req_rows
+    ]
+
+    # ADR-127: tasks match by title or by their TASK_ id; the result carries both.
+    task_rows = db.execute(
+        select(Task.id, Task.display_id, Task.title, Task.project_id, Project.name)
+        .join(Project, Project.id == Task.project_id)
+        .where(
+            Task.tenant_id == tenant_id,
+            or_(Task.title.ilike(pattern), Task.display_id.ilike(pattern)),
+            _project_filter(Task.project_id),
+        )
+        .order_by(Task.display_seq)
+        .limit(MAX_RESULTS_PER_TYPE)
+    ).all()
+    results += [
+        SearchResultEntry(
+            type="task",
+            id=tid,
+            title=f"{display_id} \u00b7 {title}" if display_id else title,
+            project_id=pid,
+            project_name=pname,
+        )
+        for tid, display_id, title, pid, pname in task_rows
     ]
 
     return SearchResponse(query=query, results=results)

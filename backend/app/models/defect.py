@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +23,11 @@ class Defect(Base, TenantScopedMixin):
     __tablename__ = "defects"
     __table_args__ = (
         CheckConstraint("char_length(title) >= 5", name="ck_defects_title_len"),
+        ForeignKeyConstraint(
+            ["task_id", "project_id"],
+            ["tasks.id", "tasks.project_id"],
+            name="fk_defects_task_same_project",
+        ),
         CheckConstraint(
             "severity in ('Low','Medium','High','Critical')", name="ck_defects_severity"
         ),
@@ -40,6 +55,8 @@ class Defect(Base, TenantScopedMixin):
     test_case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("test_cases.id"), nullable=True
     )
+    # ADR-127: optional owning task (same project, composite FK); NULL = unassigned.
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     test_case_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("test_case_versions.id"), nullable=True
     )

@@ -42,6 +42,7 @@ from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project
+from app.models.task import Task
 from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import Attachment, TestCase, TestCaseVersion, TestCaseVersionStep
@@ -75,6 +76,7 @@ from app.services import (
     lookups,
     notification_service,
     status_label_service,
+    task_service,
     test_case_service,
     tester_visibility,
 )
@@ -461,6 +463,7 @@ _TRACKED = (
     "root_cause_notes",
     "assigned_to",
     "module_id",
+    "task_id",
     "labels",
     "fix_version",
     "fixed_in_release_id",
@@ -756,6 +759,7 @@ def create_defect(
     _check_option(db, tenant_id, "defect_priority", priority, "priority", errors)
     _check_assignee(db, project, req.assigned_to, errors)
     _check_module(db, tenant_id, project_id, module_id, errors)
+    task_service.check_task_for_project(db, tenant_id, project_id, req.task_id, errors)
     _check_asset(
         db, tenant_id, Build, req.found_in_build_id, project_id, "found_in_build_id", errors
     )
@@ -808,6 +812,7 @@ def create_defect(
         root_cause_notes=_md(req.root_cause_notes),
         labels=req.labels or [],
         module_id=module_id,
+        task_id=req.task_id,
         assigned_to=req.assigned_to,
         reported_by=actor_user_id,
     )
@@ -997,6 +1002,10 @@ def update_defect(
         _check_module(db, tenant_id, project.id, req.module_id, errors)
         if "module_id" not in errors:
             defect.module_id = req.module_id
+    if "task_id" in changes:
+        task_service.check_task_for_project(db, tenant_id, project.id, req.task_id, errors)
+        if "task_id" not in errors:
+            defect.task_id = req.task_id
     if "resolution" in changes:
         message = resolution_error(defect.status, req.resolution)
         if message is not None:
@@ -1116,6 +1125,8 @@ class DefectFilters:
     module_id: UUID | None = None
     labels: list[str] = field(default_factory=list)
     test_case_id: UUID | None = None
+    task_id: UUID | None = None
+    include_sub_tasks: bool = False
     test_run_id: UUID | None = None
     created_from: datetime | None = None
     created_to: datetime | None = None
@@ -1172,6 +1183,13 @@ def _defects_query(
         query = query.where(Defect.assigned_to == f.assignee_id)
     if f.module_id is not None:
         query = query.where(Defect.module_id == f.module_id)
+    if f.task_id is not None:
+        task_ids = (
+            task_service.subtree_task_ids(db, tenant_id, f.task_id)
+            if f.include_sub_tasks
+            else [f.task_id]
+        )
+        query = query.where(Defect.task_id.in_(task_ids))
     if f.labels:
         query = query.where(Defect.labels.contains([label.lower() for label in f.labels]))
     if f.fix_version:
@@ -2409,6 +2427,14 @@ def to_out_many(db: Session, defects: list[Defect]) -> list[DefectOut]:
     module_names = lookups.value_map(
         db, TestModule.id, TestModule.name, (d.module_id for d in defects)
     )
+    task_refs = {
+        t_id: (display_id, title)
+        for t_id, display_id, title in db.execute(
+            select(Task.id, Task.display_id, Task.title).where(
+                Task.id.in_({d.task_id for d in defects if d.task_id is not None})
+            )
+        )
+    }
     defect_ids = [d.id for d in defects]
     links_by_defect: dict[UUID, list[DefectLink]] = {did: [] for did in defect_ids}
     for link_ in db.execute(
@@ -2441,6 +2467,7 @@ def to_out_many(db: Session, defects: list[Defect]) -> list[DefectOut]:
             fixed_in_release_name=release_names.get(defect.fixed_in_release_id),
             module_name=module_names.get(defect.module_id),
             assigned_to_name=user_names.get(defect.assigned_to),
+            task_ref=task_refs.get(defect.task_id),
             evidence=evidences.get(defect.id),
             links=links_by_defect[defect.id],
             status_labels=status_labels,
@@ -2466,6 +2493,7 @@ def _defect_out(
     fixed_in_release_name: str | None,
     module_name: str | None,
     assigned_to_name: str | None,
+    task_ref: tuple[str | None, str] | None,
     evidence: ExecutionEvidenceOut | None,
     links: list[DefectLink],
     status_labels: dict[str, str],
@@ -2502,6 +2530,9 @@ def _defect_out(
         environment=defect.environment,
         environment_id=defect.environment_id,
         environment_name=environment_name,
+        task_id=defect.task_id,
+        task_display_id=task_ref[0] if task_ref else None,
+        task_title=task_ref[1] if task_ref else None,
         found_in_build_id=defect.found_in_build_id,
         found_in_build_name=found_in_build_name,
         fixed_in_release_id=defect.fixed_in_release_id,

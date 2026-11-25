@@ -26,7 +26,9 @@ from app.models.defect import Defect
 from app.models.execution import TestRun, TestRunCase
 from app.models.identity import User
 from app.models.project import Project
+from app.models.requirement import Requirement
 from app.models.saved_report import SavedReport
+from app.models.task import Task, TaskStatus, TaskTestCaseLink
 from app.models.test_asset import Release
 from app.models.test_case import TestCase
 from app.models.test_module import TestModule
@@ -108,6 +110,55 @@ def _build_source(source: str) -> tuple[Any, Select, dict[str, Any], Any, Any]:
             .where(TestRun.deleted_at.is_(None))
         )
         return TestRun, base, exprs, TestRun.project_id, TestRun.tenant_id
+    if source == "tasks":
+        assignee = aliased(User)
+        parent = aliased(Task)
+        child = aliased(Task)
+
+        def _task_count(model: Any, *extra: Any) -> Any:
+            return select(func.count()).select_from(model).where(*extra).scalar_subquery()
+
+        exprs = {
+            "id": cast(Task.id, String()),
+            "display_id": Task.display_id,
+            "title": Task.title,
+            "status": TaskStatus.label,
+            "category": TaskStatus.category,
+            "priority": Task.priority,
+            "level": Task.depth + 1,
+            "parent": parent.display_id,
+            "assignee": _person(assignee),
+            "release": Release.name,
+            "start_date": Task.start_date,
+            "due_date": Task.due_date,
+            "completed_at": Task.completed_at,
+            "overdue": case(
+                (
+                    (Task.due_date < func.current_date()) & (TaskStatus.category != "done"),
+                    True,
+                ),
+                else_=False,
+            ),
+            "created_at": Task.created_at,
+            "project": Project.name,
+            "sub_tasks": _task_count(
+                child, child.parent_task_id == Task.id, child.deleted_at.is_(None)
+            ),
+            "requirements": _task_count(Requirement, Requirement.task_id == Task.id),
+            "test_cases": _task_count(TaskTestCaseLink, TaskTestCaseLink.task_id == Task.id),
+            "defects": _task_count(Defect, Defect.task_id == Task.id, Defect.deleted_at.is_(None)),
+        }
+        base = (
+            select(Task.id)
+            .select_from(Task)
+            .join(Project, Project.id == Task.project_id)
+            .join(TaskStatus, TaskStatus.id == Task.status_id)
+            .outerjoin(parent, parent.id == Task.parent_task_id)
+            .outerjoin(assignee, assignee.id == Task.assignee_id)
+            .outerjoin(Release, Release.id == Task.release_id)
+            .where(Task.deleted_at.is_(None))
+        )
+        return Task, base, exprs, Task.project_id, Task.tenant_id
     reporter = aliased(User)
     assignee = aliased(User)
     exprs = {
@@ -122,6 +173,7 @@ def _build_source(source: str) -> tuple[Any, Select, dict[str, Any], Any, Any]:
         "created_at": Defect.created_at,
         "project": Project.name,
         "release": Release.name,
+        "task": Task.display_id,
     }
     base = (
         select(Defect.id)
@@ -130,6 +182,7 @@ def _build_source(source: str) -> tuple[Any, Select, dict[str, Any], Any, Any]:
         .outerjoin(reporter, reporter.id == Defect.reported_by)
         .outerjoin(assignee, assignee.id == Defect.assigned_to)
         .outerjoin(Release, Release.id == Defect.fixed_in_release_id)
+        .outerjoin(Task, Task.id == Defect.task_id)
         .where(Defect.deleted_at.is_(None))
     )
     return Defect, base, exprs, Defect.project_id, Defect.tenant_id

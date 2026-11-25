@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.models.audit import AuditLog
 from app.models.identity import User
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.task import Task
 from app.models.test_case import TestCase
 from app.schemas.requirement import (
     LinkedTestCaseOut,
@@ -23,7 +24,7 @@ from app.schemas.requirement import (
     RequirementUpdateRequest,
     RequirementVersionOut,
 )
-from app.services import custom_field_service, tester_visibility
+from app.services import custom_field_service, task_service, tester_visibility
 from app.services.project_service import is_assigned
 
 DEFAULT_PAGE_SIZE = 20
@@ -120,6 +121,14 @@ def to_out_many(db: Session, reqs: list[Requirement]) -> list[RequirementOut]:
         ).scalars()
     }
     counts = _linked_test_case_counts(db, [r.id for r in reqs])
+    task_refs = {
+        t_id: (display_id, title)
+        for t_id, display_id, title in db.execute(
+            select(Task.id, Task.display_id, Task.title).where(
+                Task.id.in_({r.task_id for r in reqs if r.task_id is not None})
+            )
+        )
+    }
     custom_fields = custom_field_service.get_values_for_owners(
         db, tenant_id, "requirement", [r.id for r in reqs]
     )
@@ -136,6 +145,9 @@ def to_out_many(db: Session, reqs: list[Requirement]) -> list[RequirementOut]:
                 created_by=req.created_by,
                 created_at=req.created_at,
                 linked_test_case_count=counts.get(req.id, 0),
+                task_id=req.task_id,
+                task_display_id=task_refs[req.task_id][0] if req.task_id in task_refs else None,
+                task_title=task_refs[req.task_id][1] if req.task_id in task_refs else None,
                 custom_fields=custom_fields[req.id],
             )
         )
@@ -180,6 +192,8 @@ def list_requirements(
     project_id: UUID,
     page: int,
     page_size: int,
+    task_id: UUID | None = None,
+    include_sub_tasks: bool = False,
 ) -> tuple[list[Requirement], int]:
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, user_id)
@@ -187,6 +201,13 @@ def list_requirements(
     base_query = select(Requirement).where(
         Requirement.tenant_id == tenant_id, Requirement.project_id == project_id
     )
+    if task_id is not None:
+        task_ids = (
+            task_service.subtree_task_ids(db, tenant_id, task_id)
+            if include_sub_tasks
+            else [task_id]
+        )
+        base_query = base_query.where(Requirement.task_id.in_(task_ids))
     total = db.execute(select(func.count()).select_from(base_query.subquery())).scalar_one()
     rows = db.execute(
         base_query.order_by(Requirement.created_at.desc())
@@ -268,9 +289,15 @@ def create_requirement(
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, actor_user_id)
 
+    errors: dict[str, str] = {}
+    task_service.check_task_for_project(db, tenant_id, project_id, req.task_id, errors)
+    if errors:
+        raise ValidationAppError("Invalid fields: " + ", ".join(errors), fields=errors)
+
     requirement = Requirement(
         tenant_id=tenant_id,
         project_id=project_id,
+        task_id=req.task_id,
         title=req.title,
         created_by=actor_user_id,
     )
@@ -296,7 +323,11 @@ def create_requirement(
         action="requirement.created",
         entity_type="requirement",
         entity_id=requirement.id,
-        metadata={"title": requirement.title, "project_id": str(project_id)},
+        metadata={
+            "title": requirement.title,
+            "project_id": str(project_id),
+            "task_id": str(req.task_id) if req.task_id else None,
+        },
     )
     db.commit()
     return requirement
@@ -312,6 +343,35 @@ def update_requirement(
 ) -> Requirement:
     requirement = _get_requirement_or_404(db, tenant_id, requirement_id)
     _authorize_requirement_access(db, tenant_id, role_code, actor_user_id, requirement)
+
+    task_changed = (
+        "task_id" in req.model_fields_set and req.task_id != requirement.task_id
+    )
+    if task_changed:
+        errors: dict[str, str] = {}
+        task_service.check_task_for_project(
+            db, tenant_id, requirement.project_id, req.task_id, errors
+        )
+        if errors:
+            raise ValidationAppError("Invalid fields: " + ", ".join(errors), fields=errors)
+        previous_task_id = requirement.task_id
+        requirement.task_id = req.task_id
+        record_audit_event(
+            db,
+            tenant_id=tenant_id,
+            user_id=actor_user_id,
+            action="requirement.task_changed",
+            entity_type="requirement",
+            entity_id=requirement.id,
+            metadata={
+                "from": str(previous_task_id) if previous_task_id else None,
+                "to": str(req.task_id) if req.task_id else None,
+            },
+        )
+    if req.title is None and req.description is None:
+        # A task-only change is not an edit of the wording: no new version (ADR-001).
+        db.commit()
+        return requirement
 
     current_version = _get_current_version(db, requirement)
     new_title = req.title if req.title is not None else current_version.title
@@ -500,18 +560,28 @@ def get_coverage_report(
     user_id: UUID,
     project_id: UUID,
     summary: bool = False,
+    task_id: UUID | None = None,
+    include_sub_tasks: bool = False,
 ) -> RequirementCoverageReport:
+    """Coverage of a project requirements, or (ADR-127) of one task requirements -- with its
+    sub-tasks too when `include_sub_tasks` -- through `task_id`."""
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_project_access(db, project, role_code, user_id)
+    scope: list[Any] = [Requirement.tenant_id == tenant_id, Requirement.project_id == project_id]
+    if task_id is not None:
+        task_ids = (
+            task_service.subtree_task_ids(db, tenant_id, task_id)
+            if include_sub_tasks
+            else [task_id]
+        )
+        scope.append(Requirement.task_id.in_(task_ids))
 
     if summary:
         # ADR-126: the project dashboard widget only needs the three totals. Two COUNTs instead of
         # one entry per requirement (about 368 KB for a project with thousands of them).
         total = (
             db.scalar(
-                select(func.count(Requirement.id)).where(
-                    Requirement.tenant_id == tenant_id, Requirement.project_id == project_id
-                )
+                select(func.count(Requirement.id)).where(*scope)
             )
             or 0
         )
@@ -520,7 +590,7 @@ def get_coverage_report(
                 select(func.count(func.distinct(RequirementTestCaseLink.requirement_id)))
                 .join(TestCase, TestCase.id == RequirementTestCaseLink.test_case_id)
                 .join(Requirement, Requirement.id == RequirementTestCaseLink.requirement_id)
-                .where(Requirement.tenant_id == tenant_id, Requirement.project_id == project_id)
+                .where(*scope)
             )
             or 0
         )
@@ -534,9 +604,7 @@ def get_coverage_report(
 
     requirements = (
         db.execute(
-            select(Requirement)
-            .where(Requirement.tenant_id == tenant_id, Requirement.project_id == project_id)
-            .order_by(Requirement.created_at)
+            select(Requirement).where(*scope).order_by(Requirement.created_at)
         )
         .scalars()
         .all()

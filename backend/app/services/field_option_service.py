@@ -8,6 +8,7 @@ from app.core.audit import record_audit_event
 from app.core.errors import ConflictError, NotFoundError, ValidationAppError
 from app.core.field_standards import (
     DEFECT_SEVERITY_ADDITIONS,
+    TASK_PRIORITY_DEFAULTS,
     TEST_CASE_SEVERITY_DEFAULTS,
     TEST_TYPE_DEFAULTS,
 )
@@ -53,6 +54,7 @@ def seed_defaults_for_tenant(db: Session, tenant_id: UUID) -> None:
         "defect_priority": list(_DEFAULTS),
         "test_case_severity": list(TEST_CASE_SEVERITY_DEFAULTS),
         "test_type": list(TEST_TYPE_DEFAULTS),
+        "task_priority": list(TASK_PRIORITY_DEFAULTS),
     }
     for field_key, codes in option_sets.items():
         for order, code in enumerate(codes):

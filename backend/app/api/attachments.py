@@ -13,6 +13,7 @@ from app.services.owner_access import (
     OWNER_TYPE_DEFECT,
     OWNER_TYPE_EXECUTION_STEP,
     OWNER_TYPE_REQUIREMENT,
+    OWNER_TYPE_TASK,
     OWNER_TYPE_TEST_CASE,
 )
 
@@ -135,6 +136,35 @@ def upload_requirement_attachment(
     attachment = attachment_service.upload_attachment(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_REQUIREMENT,
         requirement_id, file,
+    )
+    return envelope(attachment.model_dump(mode="json"))
+
+
+@router.get("/tasks/{task_id}/attachments")
+def list_task_attachments(
+    task_id: UUID,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    attachments = attachment_service.list_attachments(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TASK, task_id
+    )
+    return envelope([a.model_dump(mode="json") for a in attachments])
+
+
+@router.post("/tasks/{task_id}/attachments")
+@limiter.limit("30/minute")
+def upload_task_attachment(
+    request: Request,
+    task_id: UUID,
+    file: UploadFile = File(...),
+    # Like changing a status: anyone who may work the task (assignee or manager); the service
+    # still requires access to the task's project.
+    ctx: SessionContext = Depends(require_permission("task.transition")),
+    db: Session = Depends(get_db),
+) -> dict:
+    attachment = attachment_service.upload_attachment(
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TASK, task_id, file
     )
     return envelope(attachment.model_dump(mode="json"))
 

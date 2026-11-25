@@ -5,6 +5,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     UniqueConstraint,
@@ -25,11 +26,18 @@ class Requirement(Base, TenantScopedMixin):
     __tablename__ = "requirements"
     __table_args__ = (
         CheckConstraint("char_length(title) >= 5", name="ck_requirements_title_len"),
+        ForeignKeyConstraint(
+            ["task_id", "project_id"],
+            ["tasks.id", "tasks.project_id"],
+            name="fk_requirements_task_same_project",
+        ),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False
     )
+    # ADR-127: optional owning task (same project, composite FK); NULL = unassigned.
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

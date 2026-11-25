@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.field_standards import DEFECT_STATUSES
 
-Source = Literal["test_cases", "test_runs", "defects"]
+Source = Literal["test_cases", "test_runs", "defects", "tasks"]
 FieldType = Literal["text", "enum", "id", "number", "date", "bool"]
 Operator = Literal["eq", "neq", "in", "contains", "gt", "gte", "lt", "lte", "is_null"]
 
@@ -109,6 +109,34 @@ SOURCES: dict[str, dict[str, FieldSpec]] = {
         "created_at": FieldSpec("Created", "date"),
         "project": FieldSpec("Project", "text", groupable=True),
         "release": FieldSpec("Fixed in release", "text", groupable=True),
+        # ADR-127: the task the defect belongs to (its TASK_ id).
+        "task": FieldSpec("Task", "text", groupable=True),
+    },
+    # ADR-127: tasks and sub-tasks. Status and priority are tenant-configurable, so they are text;
+    # `category` is the fixed meaning of the status.
+    "tasks": {
+        "id": FieldSpec("ID", "id", sortable=False),
+        "display_id": FieldSpec("Task ID", "text"),
+        "title": FieldSpec("Title", "text"),
+        "status": FieldSpec("Status", "text", groupable=True),
+        "category": FieldSpec(
+            "Status category", "enum", groupable=True, options=("todo", "in_progress", "done")
+        ),
+        "priority": FieldSpec("Priority", "text", groupable=True),
+        "level": FieldSpec("Level (1 = top)", "number", groupable=True),
+        "parent": FieldSpec("Parent task", "text", groupable=True),
+        "assignee": FieldSpec("Assignee", "text", groupable=True),
+        "release": FieldSpec("Release", "text", groupable=True),
+        "start_date": FieldSpec("Start", "date"),
+        "due_date": FieldSpec("Due", "date"),
+        "completed_at": FieldSpec("Completed", "date"),
+        "overdue": FieldSpec("Overdue", "bool", groupable=True),
+        "created_at": FieldSpec("Created", "date"),
+        "project": FieldSpec("Project", "text", groupable=True),
+        "sub_tasks": FieldSpec("Sub-tasks", "number"),
+        "requirements": FieldSpec("Requirements", "number"),
+        "test_cases": FieldSpec("Linked test cases", "number"),
+        "defects": FieldSpec("Defects", "number"),
     },
 }
 

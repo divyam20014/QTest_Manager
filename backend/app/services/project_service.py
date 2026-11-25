@@ -12,6 +12,8 @@ from app.models.defect import Defect
 from app.models.execution import TestRun
 from app.models.identity import Role, User
 from app.models.project import Project, ProjectMember
+from app.models.requirement import Requirement
+from app.models.task import Task
 from app.models.tenant import Tenant
 from app.models.test_case import TestCase
 from app.schemas.project import (
@@ -393,9 +395,20 @@ def delete_project(
     has_defects = db.execute(
         select(Defect.id).where(Defect.project_id == project.id).limit(1)
     ).first()
-    if has_test_cases or has_test_runs or has_defects:
+    # ADR-127: tasks and requirements also FK to the project (soft-deleted tasks included).
+    has_tasks = db.execute(
+        select(Task.id)
+        .where(Task.project_id == project.id)
+        .limit(1)
+        .execution_options(include_deleted=True)
+    ).first()
+    has_requirements = db.execute(
+        select(Requirement.id).where(Requirement.project_id == project.id).limit(1)
+    ).first()
+    if has_test_cases or has_test_runs or has_defects or has_tasks or has_requirements:
         raise ConflictError(
-            "Cannot delete a project with existing test cases, test runs, or defects"
+            "Cannot delete a project with existing test cases, test runs, defects, "
+            "requirements, or tasks"
         )
 
     db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))

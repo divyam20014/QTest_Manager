@@ -165,7 +165,7 @@ class Attachment(Base, TenantScopedMixin):
     __table_args__ = (
         CheckConstraint(
             "owner_type in "
-            "('test_case','test_case_version','defect','execution_step','requirement')",
+            "('test_case','test_case_version','defect','execution_step','requirement','task')",
             name="ck_attachments_owner_type",
         ),
     )

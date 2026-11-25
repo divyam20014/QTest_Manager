@@ -476,6 +476,7 @@ DEFAULT_ORDER = [
     "defect_severity",
     "module_coverage",
     "requirement_traceability",
+    "task_progress",
     "tester_performance",
     "tester_workload",
     "upcoming_milestones",
