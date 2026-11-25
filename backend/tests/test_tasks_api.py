@@ -295,7 +295,10 @@ def test_delete_needs_cascade_for_sub_tasks_and_detaches_requirements_and_defect
     assert client.get(f"/api/v1/tasks/{child['id']}").status_code == 404
 
     req_after = client.get(f"/api/v1/requirements/{requirement.json()['data']['id']}").json()
-    assert req_after["data"]["task_id"] is None
+    # ADR-128: a requirement always has a task, so it moves to the project's default one.
+    home = client.get(f"/api/v1/tasks/{req_after['data']['task_id']}").json()["data"]
+    assert home["is_requirements_home"] is True
+    assert home["title"] == "Unassigned requirements"
     defect_after = client.get(f"/api/v1/defects/{defect.json()['data']['id']}").json()
     assert defect_after["data"]["task_id"] is None
 
@@ -324,10 +327,12 @@ def test_requirement_and_defect_task_links_are_validated_and_reported(env: dict)
     assert requirement["task_id"] == task["id"]
     assert requirement["task_display_id"] == task["display_id"]
 
-    # Re-pointing it, or detaching it, is not an edit of the wording: no new version.
+    # Re-pointing it, or detaching it, is not an edit of the wording: no new version. Detaching
+    # files it under the project's "Unassigned requirements" task (ADR-128).
     detached = client.patch(f"/api/v1/requirements/{requirement['id']}", json={"task_id": None})
     assert detached.status_code == 200
-    assert detached.json()["data"]["task_id"] is None
+    assert detached.json()["data"]["task_id"] not in (None, task["id"])
+    assert detached.json()["data"]["task_title"] == "Unassigned requirements"
     assert detached.json()["data"]["version_number"] == 1
     reattached = client.patch(
         f"/api/v1/requirements/{requirement['id']}", json={"task_id": task["id"]}
@@ -567,7 +572,7 @@ def test_tasks_is_a_hideable_project_tab(env: dict) -> None:
     core = client.patch(
         f"/api/v1/projects/{project['id']}",
         json={
-            "nav_config": {"order": [], "hidden": ["requirements"]},
+            "nav_config": {"order": [], "hidden": ["reports"]},  # a core tab
             "expected_version": saved.json()["data"]["version"],
         },
     )

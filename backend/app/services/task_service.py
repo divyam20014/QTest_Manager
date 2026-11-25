@@ -269,7 +269,70 @@ def _check_parent(
     if parent is None or parent.project_id != project_id:
         errors["parent_task_id"] = "parent task was not found in this project"
         return None
+    if parent.is_requirements_home:
+        errors["parent_task_id"] = "The default task for requirements cannot have sub-tasks"
+        return None
     return parent
+
+
+REQUIREMENTS_HOME_TITLE = "Unassigned requirements"
+REQUIREMENTS_HOME_DESCRIPTION = (
+    "Requirements that are not part of a task yet. Open each one and move it to the task it "
+    "belongs to."
+)
+
+
+def get_or_create_requirements_home(
+    db: Session, tenant_id: UUID, project_id: UUID, actor_user_id: UUID
+) -> Task:
+    """The project's "Unassigned requirements" task (ADR-128), created on first need. A requirement
+    always belongs to a task; this is where it goes when it is created without one or its task is
+    deleted. Does not commit: the caller's transaction owns it."""
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"requirements-home:{project_id}"},
+    )
+    home = db.execute(
+        select(Task).where(
+            Task.tenant_id == tenant_id,
+            Task.project_id == project_id,
+            Task.is_requirements_home,
+        )
+    ).scalar_one_or_none()
+    if home is not None:
+        return home
+    status = task_status_service.get_default_status(db, tenant_id)
+    display_seq, display_id = display_id_service.next_display_id(db, tenant_id, "task")
+    home = Task(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        depth=0,
+        display_seq=display_seq,
+        display_id=display_id,
+        title=REQUIREMENTS_HOME_TITLE,
+        description=REQUIREMENTS_HOME_DESCRIPTION,
+        status_id=status.id,
+        priority=DEFAULT_TASK_PRIORITY,
+        created_by=actor_user_id,
+        is_requirements_home=True,
+    )
+    db.add(home)
+    db.flush()
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="task.created",
+        entity_type="task",
+        entity_id=home.id,
+        metadata={
+            "title": home.title,
+            "display_id": home.display_id,
+            "project_id": str(project_id),
+            "requirements_home": True,
+        },
+    )
+    return home
 
 
 def _category_of(db: Session, status_id: UUID) -> str:
@@ -366,6 +429,7 @@ def to_out_many(db: Session, tasks: list[Task]) -> list[TaskOut]:
                     and status.category != "done"
                 ),
                 created_by=task.created_by,
+                is_requirements_home=task.is_requirements_home,
                 created_at=task.created_at,
                 updated_at=task.updated_at,
                 sub_task_count=total,
@@ -731,6 +795,8 @@ def update_task(
 
     new_parent: Task | None = None
     moving = "parent_task_id" in changes and req.parent_task_id != task.parent_task_id
+    if moving and task.is_requirements_home:
+        raise ConflictError("The default task for requirements cannot be moved")
     if moving and req.parent_task_id is not None:
         new_parent = _check_parent(db, tenant_id, task.project_id, req.parent_task_id, errors)
         if (
@@ -864,6 +930,11 @@ def delete_task(
 ) -> int:
     """Soft-delete a task. Returns how many tasks were removed (the task plus its subtree)."""
     task = get_task(db, tenant_id, role_code, actor_user_id, task_id)
+    if task.is_requirements_home:
+        raise ConflictError(
+            "This is the default task for requirements and cannot be deleted; "
+            "move its requirements to another task instead"
+        )
     live_children = [
         (d_id, depth)
         for d_id, depth, deleted_at in _descendants(db, tenant_id, task.id)
@@ -875,8 +946,16 @@ def delete_task(
         )
     removed_ids = [task.id, *[d_id for d_id, _ in live_children]]
     now = datetime.now(UTC)
-    # Requirements and defects stay, they just lose the link to a task that no longer exists.
-    db.execute(update(Requirement).where(Requirement.task_id.in_(removed_ids)).values(task_id=None))
+    # Requirements and defects stay. A defect just loses its task; a requirement always has one,
+    # so it moves to the project's "Unassigned requirements" task.
+    holds_requirements = db.execute(
+        select(func.count(Requirement.id)).where(Requirement.task_id.in_(removed_ids))
+    ).scalar_one()
+    if holds_requirements:
+        home = get_or_create_requirements_home(db, tenant_id, task.project_id, actor_user_id)
+        db.execute(
+            update(Requirement).where(Requirement.task_id.in_(removed_ids)).values(task_id=home.id)
+        )
     db.execute(update(Defect).where(Defect.task_id.in_(removed_ids)).values(task_id=None))
     db.query(TaskTestCaseLink).filter(TaskTestCaseLink.task_id.in_(removed_ids)).delete(
         synchronize_session=False

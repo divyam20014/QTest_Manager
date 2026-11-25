@@ -136,12 +136,39 @@ def test_task_migrations_up_down_up_with_data() -> None:
                 "task.transition": ["admin", "manager", "tester"],
                 "task_status.manage": ["admin"],
             }
-            # Old rows are untouched and unassigned.
+            # ADR-128: the requirement that had no task is filed under a per-project default
+            # task; the defect (tasks are optional for defects) stays unassigned.
+            home_id = _one(
+                cur, "SELECT task_id FROM requirements WHERE id = %s", (ids["requirement"],)
+            )
+            cur.execute(
+                "SELECT title, is_requirements_home, display_id, depth, project_id "
+                "FROM tasks WHERE id = %s",
+                (home_id,),
+            )
+            assert cur.fetchone() == (
+                "Unassigned requirements",
+                True,
+                "TASK_000001",
+                0,
+                ids["project"],
+            )
             assert (
-                _one(cur, "SELECT task_id FROM requirements WHERE id = %s", (ids["requirement"],))
-                is None
+                _one(
+                    cur,
+                    "SELECT next_value FROM entity_counters WHERE kind = 'task' AND tenant_id = %s",
+                    (ids["tenant"],),
+                )
+                == 2
             )
             assert _one(cur, "SELECT task_id FROM defects WHERE id = %s", (ids["defect"],)) is None
+            with pytest.raises(psycopg.errors.NotNullViolation):
+                cur.execute(
+                    "INSERT INTO requirements (tenant_id, project_id, title, created_by) "
+                    "VALUES (%s, %s, 'No task at all', %s)",
+                    (ids["tenant"], ids["project"], ids["user"]),
+                )
+            c.rollback()
 
             # Tasks, a sub-task, links, a task comment and a task counter all fit.
             todo = _one(
@@ -170,7 +197,8 @@ def test_task_migrations_up_down_up_with_data() -> None:
                 (ids["tenant"], parent, ids["user"]),
             )
             cur.execute(
-                "INSERT INTO entity_counters (tenant_id, kind, next_value) VALUES (%s, 'task', 3)",
+                "INSERT INTO entity_counters (tenant_id, kind, next_value) VALUES (%s, 'task', 3) "
+                "ON CONFLICT (tenant_id, kind) DO UPDATE SET next_value = 3",
                 (ids["tenant"],),
             )
             c.commit()
@@ -211,7 +239,9 @@ def test_task_migrations_up_down_up_with_data() -> None:
                 )
                 == 3
             )
-            assert _one(cur, "SELECT count(*) FROM tasks") == 0
+            # The requirement is filed under a new default task again; nothing else came back.
+            assert _one(cur, "SELECT count(*) FROM tasks") == 1
+            assert _one(cur, "SELECT count(*) FROM requirements WHERE task_id IS NULL") == 0
             assert _one(cur, "SELECT count(*) FROM permissions WHERE code LIKE 'task%%'") == 3
             assert "task_id" in _columns(cur, "requirements")
     finally:

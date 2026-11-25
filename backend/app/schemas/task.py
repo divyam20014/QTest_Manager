@@ -116,6 +116,8 @@ class TaskOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     # Direct children / direct links (no recursion).
+    # True for the project's "Unassigned requirements" task (ADR-128).
+    is_requirements_home: bool = False
     sub_task_count: int = 0
     sub_tasks_done: int = 0
     requirement_count: int = 0

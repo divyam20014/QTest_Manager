@@ -293,11 +293,18 @@ def create_requirement(
     task_service.check_task_for_project(db, tenant_id, project_id, req.task_id, errors)
     if errors:
         raise ValidationAppError("Invalid fields: " + ", ".join(errors), fields=errors)
+    # ADR-128: a requirement always belongs to a task; without one it is filed under the project's
+    # "Unassigned requirements" task.
+    task_id = req.task_id
+    if task_id is None:
+        task_id = task_service.get_or_create_requirements_home(
+            db, tenant_id, project_id, actor_user_id
+        ).id
 
     requirement = Requirement(
         tenant_id=tenant_id,
         project_id=project_id,
-        task_id=req.task_id,
+        task_id=task_id,
         title=req.title,
         created_by=actor_user_id,
     )
@@ -326,7 +333,7 @@ def create_requirement(
         metadata={
             "title": requirement.title,
             "project_id": str(project_id),
-            "task_id": str(req.task_id) if req.task_id else None,
+            "task_id": str(task_id),
         },
     )
     db.commit()
@@ -344,18 +351,25 @@ def update_requirement(
     requirement = _get_requirement_or_404(db, tenant_id, requirement_id)
     _authorize_requirement_access(db, tenant_id, role_code, actor_user_id, requirement)
 
-    task_changed = (
-        "task_id" in req.model_fields_set and req.task_id != requirement.task_id
-    )
+    # `task_id: null` files the requirement under the project's "Unassigned requirements" task.
+    target_task_id: UUID = requirement.task_id
+    if "task_id" in req.model_fields_set:
+        if req.task_id is not None:
+            target_task_id = req.task_id
+        else:
+            target_task_id = task_service.get_or_create_requirements_home(
+                db, tenant_id, requirement.project_id, actor_user_id
+            ).id
+    task_changed = target_task_id != requirement.task_id
     if task_changed:
         errors: dict[str, str] = {}
         task_service.check_task_for_project(
-            db, tenant_id, requirement.project_id, req.task_id, errors
+            db, tenant_id, requirement.project_id, target_task_id, errors
         )
         if errors:
             raise ValidationAppError("Invalid fields: " + ", ".join(errors), fields=errors)
         previous_task_id = requirement.task_id
-        requirement.task_id = req.task_id
+        requirement.task_id = target_task_id
         record_audit_event(
             db,
             tenant_id=tenant_id,
@@ -365,7 +379,7 @@ def update_requirement(
             entity_id=requirement.id,
             metadata={
                 "from": str(previous_task_id) if previous_task_id else None,
-                "to": str(req.task_id) if req.task_id else None,
+                "to": str(target_task_id),
             },
         )
     if req.title is None and req.description is None:
@@ -579,12 +593,7 @@ def get_coverage_report(
     if summary:
         # ADR-126: the project dashboard widget only needs the three totals. Two COUNTs instead of
         # one entry per requirement (about 368 KB for a project with thousands of them).
-        total = (
-            db.scalar(
-                select(func.count(Requirement.id)).where(*scope)
-            )
-            or 0
-        )
+        total = db.scalar(select(func.count(Requirement.id)).where(*scope)) or 0
         covered = (
             db.scalar(
                 select(func.count(func.distinct(RequirementTestCaseLink.requirement_id)))
@@ -603,9 +612,7 @@ def get_coverage_report(
         )
 
     requirements = (
-        db.execute(
-            select(Requirement).where(*scope).order_by(Requirement.created_at)
-        )
+        db.execute(select(Requirement).where(*scope).order_by(Requirement.created_at))
         .scalars()
         .all()
     )

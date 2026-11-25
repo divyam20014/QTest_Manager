@@ -113,6 +113,12 @@ class Task(Base, TenantScopedMixin):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ADR-128: the project's "Unassigned requirements" task, where a requirement lands when it is
+    # created without a task or loses its task. At most one per project; it cannot be deleted or
+    # moved and takes no sub-tasks.
+    is_requirements_home: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class TaskTestCaseLink(Base, TenantScopedMixin):

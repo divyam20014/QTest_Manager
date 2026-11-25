@@ -36,8 +36,9 @@ class Requirement(Base, TenantScopedMixin):
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False
     )
-    # ADR-127: optional owning task (same project, composite FK); NULL = unassigned.
-    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # ADR-127/128: the owning task (same project, composite FK). Never empty: a requirement
+    # created without one is filed under the project's "Unassigned requirements" task.
+    task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

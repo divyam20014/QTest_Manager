@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -13,7 +13,10 @@ ProjectStatus = Literal["On Track", "At Risk", "Delayed", "Completed"]
 # ADR-122: the project workspace tabs a nav_config may order or hide. Core tabs are always shown
 # (reorderable, never hidden); optional tabs may be hidden, except Settings, which stays reachable
 # for whoever may edit the project. The frontend keeps the same lists in lib/projectNav.ts.
-CORE_NAV_KEYS = ("overview", "requirements", "test-cases", "test-runs", "defects", "reports")
+# ADR-128: "requirements" is no longer a tab (requirements live in tasks); a saved configuration
+# that still names it is accepted and the key is dropped.
+REMOVED_NAV_KEYS = ("requirements",)
+CORE_NAV_KEYS = ("overview", "test-cases", "test-runs", "defects", "reports")
 # ADR-127: "tasks" is optional so a tenant that does not use tasks can hide the tab.
 OPTIONAL_NAV_KEYS = ("tasks", "test-plans", "releases", "team", "activity", "settings")
 ALL_NAV_KEYS = CORE_NAV_KEYS + OPTIONAL_NAV_KEYS
@@ -21,8 +24,18 @@ HIDEABLE_NAV_KEYS = tuple(k for k in OPTIONAL_NAV_KEYS if k != "settings")
 
 
 class NavConfig(BaseModel):
-    order: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS))
-    hidden: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS))
+    order: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS) + 1)
+    hidden: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS) + 1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_removed_keys(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            for field in ("order", "hidden"):
+                if isinstance(data.get(field), list):
+                    data[field] = [k for k in data[field] if k not in REMOVED_NAV_KEYS]
+        return data
 
     @model_validator(mode="after")
     def _validate_keys(self) -> "NavConfig":

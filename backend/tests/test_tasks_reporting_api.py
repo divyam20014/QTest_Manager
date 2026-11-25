@@ -88,7 +88,8 @@ def test_coverage_and_traceability_can_be_scoped_to_a_task(env: dict) -> None:  
     assert full["total_requirements"] == 3
     by_title = {e["requirement_title"]: e for e in full["entries"]}
     assert by_title["Parent requirement"]["task_display_id"] == parent["display_id"]
-    assert by_title["Nobody requirement"]["task_display_id"] is None
+    # A requirement created without a task is filed under the project's default task (ADR-128).
+    assert by_title["Nobody requirement"]["task_display_id"] not in (None, parent["display_id"])
 
     scoped = client.get(
         matrix,
