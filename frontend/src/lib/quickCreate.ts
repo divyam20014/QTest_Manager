@@ -1,4 +1,5 @@
 import { hasPermission, isManagerOrAbove, type MeResponse } from '@/api/auth'
+import { defectNewPath } from '@/lib/entityRoutes'
 
 export type QuickCreateKind = 'test-case' | 'test-run' | 'defect' | 'project' | 'requirement'
 
@@ -48,7 +49,7 @@ export function getQuickCreateActions(user: MeResponse | null, projectId?: strin
     kind: 'defect',
     label: 'New defect',
     paletteLabel: 'Create Defect',
-    path: projectId ? `/defects/new?projectId=${projectId}` : '/defects/new',
+    path: projectId ? defectNewPath(projectId) : '/defects/new',
   })
   if (isManagerOrAbove(user)) {
     out.push({ kind: 'project', label: 'New project', paletteLabel: 'Create Project', path: '/projects?action=create' })

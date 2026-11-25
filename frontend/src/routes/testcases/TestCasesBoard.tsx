@@ -7,6 +7,7 @@ import { useBoardColumns, type BoardColumnState } from '@/lib/board'
 import { formatWhen } from '@/lib/formatWhen'
 import { levelTone } from '@/lib/statusTones'
 import { STATUS_DISPLAY } from './statusDisplay'
+import { testCasePath } from '@/lib/entityRoutes'
 
 const PAGE_SIZE = 20
 
@@ -58,7 +59,7 @@ export function TestCasesBoard({
         id: tc.id,
         displayId: tc.display_id,
         title: tc.title,
-        href: `/test-cases/${tc.id}`,
+        href: testCasePath(tc.project_id, tc.id),
         levels: [{ label: `${tc.priority} priority`, tone: levelTone(tc.priority) }],
         badges: [{ label: STATUS_DISPLAY[tc.status].label, tone: STATUS_DISPLAY[tc.status].tone }],
         assignee: tc.assignee_id ? (usersById.get(tc.assignee_id) ?? 'Unknown') : null,

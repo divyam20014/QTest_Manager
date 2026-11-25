@@ -37,6 +37,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/select'
+import { TaskPicker } from '@/components/TaskPicker'
 import { DetailSkeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { TagInput } from '@/components/ui/tag-input'
@@ -70,6 +71,7 @@ import { useCanListUsers } from '@/lib/useCanListUsers'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import { TestCaseChips, TestCasePicker } from './pickers'
 import { ROOT_CAUSE_LABEL, ROOT_CAUSES } from './statusDisplay'
+import { defectPath } from '@/lib/entityRoutes'
 
 /** Values handed over by "Report defect" on a test case (router state). */
 export interface DefectFormPrefill {
@@ -114,7 +116,9 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
 
   // The baseline is what "unchanged" means: the saved defect (refreshed after a partly applied save) or a blank form.
   const [baseline, setBaseline] = useState<DefectFormValues | null>(() => (defect ? valuesFromDefect(defect) : null))
-  const queryProject = searchParams.get('projectId') ?? ''
+  // Inside a project (/projects/:id/defects/new) the URL names it; the old /defects/new?projectId= still works.
+  const routeProject = useParams<{ projectId: string }>().projectId
+  const queryProject = routeProject ?? searchParams.get('projectId') ?? ''
   const [priorityDefault, setPriorityDefault] = useState('')
   const blank = useMemo(
     () => emptyFormValues({ project_id: queryProject, priority: priorityDefault, ...(router?.prefill ?? {}) }),
@@ -254,7 +258,7 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
       queryClient.invalidateQueries({ queryKey: ['test-cases'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       showToast('success', mode === 'create' ? `Defect ${savedDefect.display_id ?? ''} created` : 'Defect updated')
-      navigate(`/defects/${savedDefect.id}`)
+      navigate(defectPath(savedDefect.project_id, savedDefect.id))
     },
     onError: (err) => {
       // Data stays in the form; the API's per-field messages go onto the fields.
@@ -298,7 +302,7 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
     saveMutation.mutate()
   }
 
-  const backTo = mode === 'edit' ? `/defects/${defect!.id}` : projectId ? `/defects?projectId=${projectId}` : '/defects'
+  const backTo = mode === 'edit' ? defectPath(defect!.project_id, defect!.id) : projectId ? `/defects?projectId=${projectId}` : '/defects'
   const pending = saveMutation.isPending
   const errorCountBySection = useMemo(() => {
     const counts: Record<number, number> = {}
@@ -424,7 +428,7 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
                     value={values.project_id}
                     onChange={(e) => {
                       // Module, linked test cases and releases belong to one project.
-                      setValues((v) => ({ ...v, project_id: e.target.value, module_id: '', test_case_ids: [] }))
+                      setValues((v) => ({ ...v, project_id: e.target.value, module_id: '', task_id: '', test_case_ids: [] }))
                       blur('project_id')
                     }}
                   >
@@ -474,6 +478,18 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
                   </option>
                 ))}
               </Select>
+            )}
+          </FormField>
+
+          <FormField id="df-task" label="Task" helper="Optional. The task this defect belongs to." error={errors.task_id}>
+            {(f) => (
+              <TaskPicker
+                id={f.id}
+                projectId={projectId}
+                value={values.task_id}
+                onChange={(id) => set('task_id', id)}
+                error={!!errors.task_id}
+              />
             )}
           </FormField>
         </FormSection>

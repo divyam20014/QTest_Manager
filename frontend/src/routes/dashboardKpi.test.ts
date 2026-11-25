@@ -5,9 +5,9 @@ import type { TestRunSummary } from '@/api/execution'
 import { buildNeedsAttention, capCategories, countTrend, kpiAriaLabel, rateTrend } from '@/routes/dashboardKpi'
 
 const defect = (id: string, severity: string, status: string, created_at: string): Defect =>
-  ({ id, title: `D-${id}`, severity, status, created_at }) as unknown as Defect
+  ({ id, project_id: 'p1', title: `D-${id}`, severity, status, created_at }) as unknown as Defect
 const run = (id: string, paused_at: string | null, finished_at: string | null, created_at: string): TestRunSummary =>
-  ({ id, name: `R-${id}`, paused_at, finished_at, created_at }) as unknown as TestRunSummary
+  ({ id, project_id: 'p1', name: `R-${id}`, paused_at, finished_at, created_at }) as unknown as TestRunSummary
 
 describe('countTrend', () => {
   it('has no trend without a usable baseline instead of inventing one', () => {
@@ -62,8 +62,9 @@ describe('buildNeedsAttention', () => {
       ],
     )
     expect(items.map((i) => i.id)).toEqual(['c', 'b', 'a', '4', '1'])
-    expect(items[0].href).toBe('/defects/c')
-    expect(items[3]).toMatchObject({ kind: 'run', badge: 'Paused', href: '/test-runs/4' })
+    // Records open inside their project (ADR-127).
+    expect(items[0].href).toBe('/projects/p1/defects/c')
+    expect(items[3]).toMatchObject({ kind: 'run', badge: 'Paused', href: '/projects/p1/test-runs/4' })
   })
   it('is empty when nothing qualifies', () => {
     expect(buildNeedsAttention([], [])).toEqual([])

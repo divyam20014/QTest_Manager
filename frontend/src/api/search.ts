@@ -1,6 +1,6 @@
 import { apiFetch } from '@/api/client'
 
-export type SearchResultType = 'test_case' | 'defect' | 'requirement'
+export type SearchResultType = 'test_case' | 'defect' | 'requirement' | 'task'
 
 export interface SearchResultEntry {
   type: SearchResultType

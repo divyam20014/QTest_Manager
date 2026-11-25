@@ -20,6 +20,7 @@ import { levelTone, RUN_CASE_STATUS_TONE } from '@/lib/statusTones'
 import { humanizeKey } from '@/lib/labels'
 import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
 import { severityTone } from '@/routes/defects/statusDisplay'
+import { defectPath } from '@/lib/entityRoutes'
 
 // "Open" for the person: everything not Closed or Rejected (ADR-118's definition, the same
 // one the Defects badge uses).
@@ -111,7 +112,7 @@ function DefectRow({ item }: { item: MyDefect }) {
   const d = item.defect
   return (
     <li>
-      <Link to={`/defects/${d.id}`} className={ROW}>
+      <Link to={defectPath(d.project_id, d.id)} className={ROW}>
         <span className="flex min-w-0 flex-col">
           <span className="truncate font-medium">
             {d.display_id && <span className="mr-2 font-mono text-xs text-[var(--muted-foreground)]">{d.display_id}</span>}

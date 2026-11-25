@@ -9,6 +9,7 @@ import { formatDay } from '@/lib/formatWhen'
 import { levelTone } from '@/lib/statusTones'
 import { DefectStatusBadge } from './DefectStatusBadge'
 import { ROOT_CAUSE_LABEL } from './statusDisplay'
+import { defectPath, testCasePath } from '@/lib/entityRoutes'
 
 const dash = <span className="text-[var(--muted-foreground)]">—</span>
 
@@ -36,7 +37,7 @@ export function buildDefectColumn(key: string, label: string, ctx: DefectCellCon
         ...base,
         card: 'meta',
         cell: (d) => (
-          <Link to={`/defects/${d.id}`} className="whitespace-nowrap font-mono text-xs underline-offset-2 hover:underline">
+          <Link to={defectPath(d.project_id, d.id)} className="whitespace-nowrap font-mono text-xs underline-offset-2 hover:underline">
             {d.display_id ?? d.id.slice(0, 8)}
           </Link>
         ),
@@ -47,13 +48,13 @@ export function buildDefectColumn(key: string, label: string, ctx: DefectCellCon
         card: 'title',
         tdClassName: 'min-w-[5.5rem] max-w-[18rem]',
         cell: (d) => (
-          <Link to={`/defects/${d.id}`} className="line-clamp-2 break-words font-medium underline-offset-2 hover:underline">
+          <Link to={defectPath(d.project_id, d.id)} className="line-clamp-2 break-words font-medium underline-offset-2 hover:underline">
             {d.title}
           </Link>
         ),
         cardCell: (d) => (
           <>
-            <Link to={`/defects/${d.id}`} className={CARD_LINK_CLASS}>
+            <Link to={defectPath(d.project_id, d.id)} className={CARD_LINK_CLASS}>
               {d.title}
             </Link>
             {d.step_number !== null && <span className="text-xs text-[var(--muted-foreground)]">Found at step {d.step_number}</span>}
@@ -132,7 +133,7 @@ export function buildDefectColumn(key: string, label: string, ctx: DefectCellCon
             <span className="inline-flex max-w-[16rem] flex-wrap gap-x-1 text-xs">
               {d.linked_test_cases.map((t, i) => (
                 <span key={t.id}>
-                  <Link to={`/test-cases/${t.id}`} className="underline underline-offset-2">
+                  <Link to={testCasePath(d.project_id, t.id)} className="underline underline-offset-2">
                     {t.display_id ?? t.title}
                   </Link>
                   {i < d.linked_test_cases.length - 1 ? ',' : ''}

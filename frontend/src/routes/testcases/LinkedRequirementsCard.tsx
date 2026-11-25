@@ -6,6 +6,7 @@ import { listLinkedRequirements } from '@/api/testCases'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { FormError } from '@/components/ui/form-field'
 import { MultiCombobox } from '@/components/ui/multi-combobox'
+import { requirementPath } from '@/lib/entityRoutes'
 
 /** Requirements covered by this case; managers can link/unlink via a typeahead (ADR-106). */
 export function LinkedRequirementsCard({
@@ -49,7 +50,7 @@ export function LinkedRequirementsCard({
           <MultiCombobox
             label="Requirements"
             options={(optionsQuery.data?.items ?? []).map((r) => ({ id: r.id, label: r.title }))}
-            selected={linked.map((r) => ({ id: r.id, label: r.title, href: `/requirements/${r.id}` }))}
+            selected={linked.map((r) => ({ id: r.id, label: r.title, href: requirementPath(projectId, r.id) }))}
             onAdd={(id) => link.mutate(id)}
             onRemove={(id) => unlink.mutate(id)}
             removeLabel={(r) => `Remove requirement ${r.label}`}

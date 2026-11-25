@@ -51,6 +51,12 @@ export const WIDGET_META: Record<ProjectWidgetType, WidgetMeta> = {
     group: 'Analytics',
     needsReports: false,
   },
+  task_progress: {
+    label: 'Task progress',
+    description: 'Tasks by status, what is overdue or due soon and what nobody owns.',
+    group: 'Summary',
+    needsReports: false,
+  },
   tester_performance: {
     label: 'Tester performance',
     description: 'Per tester: executed, pass rate and defects raised.',
@@ -111,6 +117,7 @@ export const DEFAULT_LAYOUT: ProjectLayoutWidget[] = [
   { widget_type: 'defect_severity', size: 'S' },
   { widget_type: 'module_coverage', size: 'M' },
   { widget_type: 'requirement_traceability', size: 'S' },
+  { widget_type: 'task_progress', size: 'M' },
   { widget_type: 'tester_performance', size: 'M' },
   { widget_type: 'tester_workload', size: 'M' },
   { widget_type: 'upcoming_milestones', size: 'S' },

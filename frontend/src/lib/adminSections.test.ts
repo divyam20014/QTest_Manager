@@ -11,11 +11,12 @@ function user(role: string, permissions: string[] = []): MeResponse {
 const labels = (u: MeResponse | null) => visibleAdminSections(u).map((s) => s.label)
 
 describe('admin sections', () => {
-  it('admin sees all six sections in order', () => {
-    expect(labels(user('admin', ['access_rule.manage', 'tenant.settings.manage']))).toEqual([
+  it('admin sees all seven sections in order', () => {
+    expect(labels(user('admin', ['access_rule.manage', 'tenant.settings.manage', 'task_status.manage']))).toEqual([
       'Users & Roles',
       'Access Control',
       'Environments',
+      'Task Statuses',
       'Settings',
       'Workspace',
       'Audit Logs',
@@ -38,6 +39,12 @@ describe('admin sections', () => {
     expect(section?.target).toBe('/admin/access-rules')
     const admin = visibleAdminSections(user('admin')).find((s) => s.label === 'Access Control')
     expect(admin?.target).toBe('/admin/roles')
+  })
+
+  it('offers Task Statuses only with task_status.manage', () => {
+    expect(labels(user('manager', ['task.manage']))).not.toContain('Task Statuses')
+    expect(labels(user('Custom', ['task_status.manage']))).toEqual(['Task Statuses'])
+    expect(activeAdminSection('/admin/task-statuses')?.label).toBe('Task Statuses')
   })
 
   it('maps routes to the active section, covering both Access Control tabs and Settings', () => {

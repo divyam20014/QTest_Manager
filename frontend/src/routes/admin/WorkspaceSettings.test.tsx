@@ -53,7 +53,7 @@ describe('WorkspaceSettings', () => {
     expect(await screen.findByRole('list', { name: 'Sidebar entry order' })).toBeInTheDocument()
     expect(rows('Sidebar entry order')[0]).toBe('nav-row-home')
     expect(rows('Sidebar entry order')).toHaveLength(8)
-    expect(rows('Project tab order')).toHaveLength(11)
+    expect(rows('Project tab order')).toHaveLength(12)
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled()
   })

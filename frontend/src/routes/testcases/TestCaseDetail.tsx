@@ -62,6 +62,8 @@ import { LinkedRequirementsCard } from './LinkedRequirementsCard'
 import { ExecutionStatusBadge } from './ExecutionStatusBadge'
 import { formatWhen } from '@/lib/formatWhen'
 import { STATUS_DISPLAY } from './statusDisplay'
+import { defectPath, testCaseEditPath, testCasePath, testRunPath } from '@/lib/entityRoutes'
+import { defectNewPath } from '@/lib/entityRoutes'
 
 export function TestCaseDetail() {
   const { testCaseId } = useParams<{ testCaseId: string }>()
@@ -111,7 +113,7 @@ export function TestCaseDetail() {
     onSuccess: (copy) => {
       queryClient.invalidateQueries({ queryKey: ['test-cases'] })
       showToast('success', `Duplicated as ${copy.display_id ?? 'a new draft'}`)
-      navigate(`/test-cases/${copy.id}`)
+      navigate(testCasePath(copy.project_id, copy.id))
     },
     onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not duplicate the test case'),
   })
@@ -196,7 +198,7 @@ export function TestCaseDetail() {
         title={testCase.title}
         meta={
           <>
-            <RecordPin type="test_case" id={testCase.id} title={testCase.title} url={`/test-cases/${testCase.id}`} />
+            <RecordPin type="test_case" id={testCase.id} title={testCase.title} url={testCasePath(testCase.project_id, testCase.id)} />
             {testCase.display_id && (
               <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 font-mono text-xs">{testCase.display_id}</span>
             )}
@@ -217,7 +219,7 @@ export function TestCaseDetail() {
           size="sm"
           disabled={!canEdit}
           title={canEdit ? undefined : 'You need the Edit test case permission'}
-          onClick={() => navigate(`/test-cases/${testCase.id}/edit`)}
+          onClick={() => navigate(testCaseEditPath(testCase.project_id, testCase.id))}
         >
           Edit
         </Button>
@@ -666,7 +668,7 @@ function DefectsTab({ testCase }: { testCase: TestCase }) {
             <Button
               variant="outline"
               onClick={() =>
-                navigate(`/defects/new?projectId=${testCase.project_id}`, {
+                navigate(defectNewPath(testCase.project_id), {
                   state: {
                     prefill: { project_id: testCase.project_id, test_case_ids: [testCase.id], module_id: testCase.module_id ?? '' },
                     caseInfo: [{ id: testCase.id, display_id: testCase.display_id, title: testCase.title }],
@@ -698,7 +700,7 @@ function DefectsTab({ testCase }: { testCase: TestCase }) {
                 {defects.map((d) => (
                   <tr key={d.id} className="border-t border-[var(--border)] align-top">
                     <td className="whitespace-nowrap px-3 py-2">
-                      <Link to={`/defects/${d.id}`} className="font-mono text-xs underline-offset-2 hover:underline">
+                      <Link to={defectPath(testCase.project_id, d.id)} className="font-mono text-xs underline-offset-2 hover:underline">
                         {d.display_id ?? d.id.slice(0, 8)}
                       </Link>
                     </td>
@@ -768,7 +770,7 @@ function buildTabs({ testCase, versions, usersById, history, executions, executi
       key: 'executions',
       label: 'Executions',
       count: executions?.total,
-      content: <ExecutionsTab loading={executionsLoading} data={executions} testCaseId={testCase.id} />,
+      content: <ExecutionsTab loading={executionsLoading} data={executions} testCaseId={testCase.id} projectId={testCase.project_id} />,
     },
     { key: 'defects', label: 'Defects', count: testCase.linked_defect_count, content: <DefectsTab testCase={testCase} /> },
     {
@@ -900,10 +902,12 @@ function ExecutionsTab({
   loading,
   data,
   testCaseId,
+  projectId,
 }: {
   loading: boolean
   data: { items: import('@/api/testCases').TestCaseExecution[]; total: number } | undefined
   testCaseId: string
+  projectId: string
 }) {
   void testCaseId
   return (
@@ -936,7 +940,7 @@ function ExecutionsTab({
                 {data.items.map((e) => (
                   <tr key={e.test_run_case_id} className="border-t border-[var(--border)] align-top">
                     <td className="px-3 py-2">
-                      <Link to={`/test-runs/${e.test_run_id}`} className="underline-offset-2 hover:underline">
+                      <Link to={testRunPath(projectId, e.test_run_id)} className="underline-offset-2 hover:underline">
                         {e.run_name}
                       </Link>
                     </td>
@@ -955,7 +959,7 @@ function ExecutionsTab({
                       ) : (
                         <span className="flex flex-wrap gap-x-2">
                           {e.defects.map((d) => (
-                            <Link key={d.id} to={`/defects/${d.id}`} className="underline underline-offset-2">
+                            <Link key={d.id} to={defectPath(projectId, d.id)} className="underline underline-offset-2">
                               {d.display_id ?? d.title}
                             </Link>
                           ))}

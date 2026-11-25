@@ -17,6 +17,7 @@ import { categoricalColor } from '@/routes/reporting/palette'
 import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
 import { severityTone } from '@/routes/defects/statusDisplay'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
+import { defectPath, testCasePath } from '@/lib/entityRoutes'
 
 const ProjectRunStatusChart = lazy(() =>
   import('./ProjectRunStatusChart').then((m) => ({ default: m.ProjectRunStatusChart })),
@@ -193,7 +194,7 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
                 label="Five most recently created test cases"
                 rows={recentCases}
                 rowKey={(tc) => tc.id}
-                href={(tc) => `/test-cases/${tc.id}`}
+                href={(tc) => testCasePath(tc.project_id, tc.id)}
                 title={(tc) => tc.title}
                 badges={(tc) => (
                   <>
@@ -220,7 +221,7 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
                       <tr key={tc.id} className="border-t border-[var(--border)]">
                         <th scope="row" className="max-w-0 px-2 py-1.5 font-normal">
                           <Link
-                            to={`/test-cases/${tc.id}`}
+                            to={testCasePath(tc.project_id, tc.id)}
                             className="line-clamp-2 break-words text-[var(--link)] hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
                           >
                             {tc.title}
@@ -265,7 +266,7 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
                 label="Five most recently reported defects"
                 rows={recentDefects}
                 rowKey={(d) => d.id}
-                href={(d) => `/defects/${d.id}`}
+                href={(d) => defectPath(d.project_id, d.id)}
                 title={(d) => d.title}
                 badges={(d) => (
                   <>
@@ -294,7 +295,7 @@ export function ProjectDrilldown({ projectId }: { projectId: string }) {
                       <tr key={d.id} className="border-t border-[var(--border)]">
                         <th scope="row" className="max-w-0 px-2 py-1.5 font-normal">
                           <Link
-                            to={`/defects/${d.id}`}
+                            to={defectPath(d.project_id, d.id)}
                             className="line-clamp-2 break-words text-[var(--link)] hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
                           >
                             {d.title}

@@ -19,6 +19,7 @@ import {
   fetchWorkloadSummary,
 } from '@/api/reporting'
 import { getCoverageReport } from '@/api/requirements'
+import { getProjectTaskSummary } from '@/api/tasks'
 import { listReleases } from '@/api/testAssets'
 import { ChartLegend, ChartPanel } from '@/components/ui/ChartPanel'
 import { ChartSkeleton } from '@/components/ui/skeleton'
@@ -43,6 +44,7 @@ import { categoricalColor } from '@/routes/reporting/palette'
 
 import { KpiStrip } from './KpiStrip'
 import { Async, BarRows, Note, Tile, ViewLink, WidgetFrame, useOverviewQuery } from './shared'
+import { defectPath, testRunPath } from '@/lib/entityRoutes'
 
 const TrendLineChart = lazy(() => import('@/routes/dashboardCharts').then((m) => ({ default: m.TrendLineChart })))
 
@@ -335,6 +337,61 @@ function RequirementTraceabilityWidget({ projectId }: WidgetProps) {
   )
 }
 
+// --- Task progress ---------------------------------------------------------------------------
+
+function TaskProgressWidget({ projectId }: WidgetProps) {
+  const q = useOverviewQuery(projectId, ['task-summary'], () => getProjectTaskSummary(projectId))
+  const title = 'Task progress'
+  const tasksTo = tabTo('tasks', projectId)
+  return (
+    <WidgetFrame testId="widget-task_progress" title={title} view={{ to: tasksTo }}>
+      <Async q={q} title={title}>
+        {(s) =>
+          s.total === 0 ? (
+            <Note>No tasks yet.</Note>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-2xl font-semibold tabular-nums">
+                {s.done}
+                <span className="text-base font-normal text-[var(--muted-foreground)]"> of {s.total} done</span>
+              </p>
+              <span
+                role="progressbar"
+                aria-label="Tasks done"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={s.progress_percent}
+                className="h-2 overflow-hidden rounded-full bg-[var(--muted)]"
+              >
+                <span className="block h-full bg-[var(--primary)]" style={{ width: `${s.progress_percent}%` }} />
+              </span>
+              <BarRows
+                unit="Tasks by status"
+                max={Math.max(1, s.total)}
+                rows={s.by_status.map((st) => ({
+                  label: st.label,
+                  value: st.count,
+                  color: st.color ?? 'var(--primary)',
+                  to: `${tasksTo}?status=${st.status_id}`,
+                }))}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <Tile label="Overdue" value={String(s.overdue)} />
+                <Tile label="Due in 7 days" value={String(s.due_next_7_days)} />
+                <Tile label="Unassigned" value={String(s.unassigned_open)} />
+              </div>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {s.top_level} top-level task{s.top_level === 1 ? '' : 's'} and {s.sub_tasks} sub-task
+                {s.sub_tasks === 1 ? '' : 's'}; {s.completed_last_7_days} finished in the last 7 days.
+              </p>
+            </div>
+          )
+        }
+      </Async>
+    </WidgetFrame>
+  )
+}
+
 // --- Tester performance ----------------------------------------------------------------------
 
 const TH = 'px-2 py-1 text-left text-xs font-medium text-[var(--muted-foreground)]'
@@ -562,7 +619,7 @@ function UpcomingMilestonesWidget({ projectId }: WidgetProps) {
               {r.items.slice(0, 5).map((m) => (
                 <li key={`${m.kind}-${m.id}`}>
                   <Link
-                    to={m.kind === 'release' ? tabTo('releases', projectId) : `/test-runs/${m.id}`}
+                    to={m.kind === 'release' ? tabTo('releases', projectId) : testRunPath(projectId, m.id)}
                     className="flex flex-col rounded-md px-1 py-0.5 text-sm hover:bg-[var(--muted)] focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
                   >
                     <span className="truncate font-medium">{m.name}</span>
@@ -651,7 +708,7 @@ function RecentDefectsWidget({ projectId }: WidgetProps) {
               {r.items.map((d) => (
                 <li key={d.id}>
                   <Link
-                    to={`/defects/${d.id}`}
+                    to={defectPath(projectId, d.id)}
                     className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md px-1 py-1 text-sm hover:bg-[var(--muted)] focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
                   >
                     <span className="flex min-w-0 flex-col">
@@ -766,6 +823,7 @@ export const PROJECT_WIDGETS: Record<ProjectWidgetType, (p: WidgetProps) => Reac
   defect_severity: (p) => <DefectSeverityWidget {...p} />,
   module_coverage: (p) => <ModuleCoverageWidget {...p} />,
   requirement_traceability: (p) => <RequirementTraceabilityWidget {...p} />,
+  task_progress: (p) => <TaskProgressWidget {...p} />,
   tester_performance: (p) => <TesterPerformanceWidget {...p} />,
   tester_workload: (p) => <TesterWorkloadWidget {...p} />,
   release_readiness: (p) => <ReleaseReadinessWidget {...p} />,

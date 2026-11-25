@@ -106,3 +106,11 @@ describe('links land on lists that read these filters', () => {
     expect(percentLabel(66.66)).toBe('66.7%')
   })
 })
+
+describe('Task progress widget (ADR-127)', () => {
+  it('is in the built-in layout right after requirement traceability, and described', () => {
+    const order = DEFAULT_LAYOUT.map((w) => w.widget_type)
+    expect(order.indexOf('task_progress')).toBe(order.indexOf('requirement_traceability') + 1)
+    expect(WIDGET_META.task_progress).toMatchObject({ label: 'Task progress', needsReports: false })
+  })
+})

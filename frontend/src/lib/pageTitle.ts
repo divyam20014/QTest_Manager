@@ -21,6 +21,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/admin/roles': 'Admin › Access Control',
   '/admin/audit-logs': 'Admin › Audit Logs',
   '/admin/environments': 'Admin › Environments',
+  '/admin/task-statuses': 'Admin › Task Statuses',
   '/admin/access-rules': 'Admin › Access Control',
   '/settings': 'Admin › Settings',
   '/account': 'My Account',
@@ -33,9 +34,11 @@ const SEGMENT_TITLES: Record<string, string> = {
   'test-runs': 'Test Run',
   'test-run-cases': 'Execution Console',
   defects: 'Defect',
+  tasks: 'Task',
 }
 
 const PROJECT_TAB_TITLES: Record<string, string> = {
+  tasks: 'Tasks',
   'test-plans': 'Planning',
   releases: 'Releases',
   team: 'Team',
@@ -52,10 +55,14 @@ export function getPageTitle(pathname: string): string {
   if (pathname === '/user-guide') return 'User Guide'
   if (EXACT_TITLES[pathname]) return EXACT_TITLES[pathname]
   if (/^\/defects\/[^/]+\/edit$/.test(pathname)) return 'Edit Defect'
+  if (/^\/projects\/[^/]+\/defects\/new$/.test(pathname)) return 'New Defect'
+  if (/^\/projects\/[^/]+\/defects\/[^/]+\/edit$/.test(pathname)) return 'Edit Defect'
+  if (/^\/projects\/[^/]+\/test-cases\/[^/]+\/edit$/.test(pathname)) return 'Edit Test Case'
+  if (/^\/projects\/[^/]+\/test-cases\/new$/.test(pathname)) return 'New Test Case'
   if (pathname.startsWith('/dashboards/')) return 'Dashboard'
   if (/^\/projects\/[^/]+$/.test(pathname)) return 'Project Overview'
   // ADR-122: project workspace tabs.
-  const projectTab = /^\/projects\/[^/]+\/(test-plans|releases|team|activity|settings)$/.exec(pathname)
+  const projectTab = /^\/projects\/[^/]+\/(tasks|test-plans|releases|team|activity|settings)$/.exec(pathname)
   if (projectTab) return `Project ${PROJECT_TAB_TITLES[projectTab[1]]}`
 
   const segments = pathname.split('/').filter(Boolean)

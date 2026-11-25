@@ -16,6 +16,8 @@ import {
 } from '@/api/defects'
 import { listFieldOptions } from '@/api/fieldCustomization'
 import { listModules } from '@/api/modules'
+import { getTask } from '@/api/tasks'
+import { TaskPicker } from '@/components/TaskPicker'
 import { listProjects } from '@/api/projects'
 import { getTestCase } from '@/api/testCases'
 import { listUsers } from '@/api/users'
@@ -68,6 +70,7 @@ import { DefectStatusBadge } from './DefectStatusBadge'
 import { buildDefectColumn } from './defectCells'
 import { TestCasePicker } from './pickers'
 import { severityTone } from './statusDisplay'
+import { defectEditPath, defectPath } from '@/lib/entityRoutes'
 
 const PAGE_SIZE = 50
 const DEFAULT_SORT = '-created_at'
@@ -84,6 +87,7 @@ const DEFECT_VIEW_KEYS = [
   'assigneeId',
   'reportedBy',
   'moduleId',
+  'taskId',
   'labels',
   'testCaseId',
   'createdFrom',
@@ -103,6 +107,7 @@ const filterDefaults = {
   assigneeId: '',
   reportedBy: '',
   moduleId: '',
+  taskId: '',
   labels: '',
   testCaseId: '',
   createdFrom: '',
@@ -185,6 +190,11 @@ export function DefectsList() {
     queryFn: () => listModules(v.projectId),
     enabled: !!v.projectId,
   })
+  const taskFilterQuery = useQuery({
+    queryKey: ['tasks', 'detail', v.taskId],
+    queryFn: () => getTask(v.taskId),
+    enabled: !!v.taskId,
+  })
   const linkedCaseQuery = useQuery({
     queryKey: ['test-cases', 'detail', v.testCaseId],
     queryFn: () => getTestCase(v.testCaseId),
@@ -201,6 +211,7 @@ export function DefectsList() {
     assignee_id: v.assigneeId || undefined,
     reported_by: v.reportedBy || undefined,
     module_id: v.moduleId || undefined,
+    task_id: v.taskId || undefined,
     test_case_id: v.testCaseId || undefined,
     created_from: toDay(v.createdFrom, false),
     created_to: toDay(v.createdTo, true),
@@ -259,6 +270,7 @@ export function DefectsList() {
     ...(v.assigneeId ? [{ key: 'assigneeId', label: 'Assignee', value: userName(v.assigneeId) }] : []),
     ...(v.reportedBy ? [{ key: 'reportedBy', label: 'Reporter', value: userName(v.reportedBy) }] : []),
     ...(v.moduleId ? [{ key: 'moduleId', label: 'Module', value: modulesQuery.data?.find((m) => m.id === v.moduleId)?.name ?? v.moduleId }] : []),
+    ...(v.taskId ? [{ key: 'taskId', label: 'Task', value: taskFilterQuery.data?.display_id ?? taskFilterQuery.data?.title ?? v.taskId }] : []),
     ...(v.labels ? [{ key: 'labels', label: 'Labels', value: v.labels }] : []),
     ...(v.testCaseId ? [{ key: 'testCaseId', label: 'Test case', value: linkedCaseQuery.data?.display_id ?? linkedCaseQuery.data?.title ?? v.testCaseId }] : []),
     ...(v.createdFrom ? [{ key: 'createdFrom', label: 'From', value: v.createdFrom }] : []),
@@ -372,8 +384,8 @@ export function DefectsList() {
       <DropdownMenu
         label={`Actions for ${d.display_id ?? d.title}`}
         items={[
-          { label: 'Open', onSelect: () => navigate(`/defects/${d.id}`) },
-          ...(perms.canEdit ? [{ label: 'Edit', onSelect: () => navigate(`/defects/${d.id}/edit`) }] : []),
+          { label: 'Open', onSelect: () => navigate(defectPath(d.project_id, d.id)) },
+          ...(perms.canEdit ? [{ label: 'Edit', onSelect: () => navigate(defectEditPath(d.project_id, d.id)) }] : []),
           ...(perms.canAssign && canListUsers ? [{ label: 'Assign', onSelect: () => setAssignTarget(asAction(d)) }] : []),
           ...(perms.canChangeStatus || perms.canClose ? [{ label: 'Change status', onSelect: () => setStatusTarget(asAction(d)) }] : []),
           ...(perms.canDelete
@@ -453,7 +465,7 @@ export function DefectsList() {
       { label: 'Age', value: d.sla_breached ? 'SLA breached' : `${d.age_days}d` },
     ],
     description: (d) => d.description,
-    href: (d) => `/defects/${d.id}`,
+    href: (d) => defectPath(d.project_id, d.id),
   }
 
   const hasFilters = filterCount > 0 || !!v.search || statuses.length > 0
@@ -543,7 +555,7 @@ export function DefectsList() {
         filters={
           <>
             <ListFilterField label="Project">
-              <Select id="defect-filter-project" aria-label="Filter by project" value={v.projectId} onChange={(e) => urlFilters.setFilters({ projectId: e.target.value, moduleId: '', testCaseId: '', page: '1' })}>
+              <Select id="defect-filter-project" aria-label="Filter by project" value={v.projectId} onChange={(e) => urlFilters.setFilters({ projectId: e.target.value, moduleId: '', taskId: '', testCaseId: '', page: '1' })}>
                 <option value="">All projects</option>
                 {projectsQuery.data?.items.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -609,6 +621,16 @@ export function DefectsList() {
                   </option>
                 ))}
               </Select>
+            </ListFilterField>
+            <ListFilterField label="Task">
+              <TaskPicker
+                id="defect-filter-task"
+                aria-label="Filter by task"
+                projectId={v.projectId}
+                value={v.taskId}
+                placeholder={v.projectId ? 'All tasks' : 'Choose a project first'}
+                onChange={(id) => setFilter('taskId', id)}
+              />
             </ListFilterField>
             <ListFilterField label="Labels (all of, comma separated)">
               <CommitTextFilter key={`l-${v.labels}`} id="defect-filter-labels" label="Labels" placeholder="e.g. regression, checkout" value={v.labels} onCommit={(value) => setFilter('labels', value)} />
@@ -698,7 +720,7 @@ export function DefectsList() {
           stateCellClassName="px-4"
           onRowContextMenu={(e, d) =>
             rowMenu.openAt(e, [
-              { label: 'Open', onSelect: () => navigate(`/defects/${d.id}`) },
+              { label: 'Open', onSelect: () => navigate(defectPath(d.project_id, d.id)) },
               {
                 label: 'Copy Bug ID',
                 onSelect: () => {

@@ -1,6 +1,6 @@
 import { apiFetch } from '@/api/client'
 
-export type CommentOwnerType = 'test_case' | 'defect' | 'execution_step'
+export type CommentOwnerType = 'test_case' | 'defect' | 'execution_step' | 'task'
 
 export interface MentionedUser {
   id: string
@@ -22,6 +22,7 @@ const OWNER_PATH_SEGMENT: Record<CommentOwnerType, string> = {
   test_case: 'test-cases',
   defect: 'defects',
   execution_step: 'execution-steps',
+  task: 'tasks',
 }
 
 export function listComments(ownerType: CommentOwnerType, ownerId: string): Promise<Comment[]> {

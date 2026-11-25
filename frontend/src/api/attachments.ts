@@ -1,6 +1,6 @@
 import { API_BASE_URL, ApiError, apiFetch } from '@/api/client'
 
-export type AttachmentOwnerType = 'test_case' | 'defect' | 'execution_step' | 'requirement'
+export type AttachmentOwnerType = 'test_case' | 'defect' | 'execution_step' | 'requirement' | 'task'
 
 export interface Attachment {
   id: string
@@ -17,6 +17,7 @@ const OWNER_PATH_SEGMENT: Record<AttachmentOwnerType, string> = {
   defect: 'defects',
   execution_step: 'execution-steps',
   requirement: 'requirements',
+  task: 'tasks',
 }
 
 // Mirrors attachment_service.ALLOWED_ATTACHMENT_EXTENSIONS /

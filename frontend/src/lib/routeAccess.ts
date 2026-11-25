@@ -30,6 +30,8 @@ export const ROUTE_ACCESS: ReadonlyArray<{ path: string } & AccessRule> = [
   { path: '/admin/environments', level: 'manager-or-above' },
   // Managed by `access_rule.manage` (Admin only today; the API is authoritative).
   { path: '/admin/access-rules', permission: 'access_rule.manage' },
+  // ADR-127: tenant task statuses; the API gates the changes by `task_status.manage` (reading stays open).
+  { path: '/admin/task-statuses', permission: 'task_status.manage' },
   { path: '/settings', level: 'admin' },
   // ADR-125: workspace defaults; the API gates them by `tenant.settings.manage` (reading stays open).
   { path: '/admin/workspace', permission: 'tenant.settings.manage' },

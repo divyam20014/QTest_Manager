@@ -22,6 +22,7 @@ import { useDefectPermissions } from '@/lib/useDefectPermissions'
 import { allowedNextStatuses, planTransition, resolutionExplanation, transitionMenu } from '@/lib/defectWorkflow'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
+import { defectPath } from '@/lib/entityRoutes'
 
 /** What the dialogs need to know about a defect. */
 export type ActionDefect = Pick<Defect, 'id' | 'status' | 'title' | 'display_id' | 'resolution' | 'assigned_to' | 'reported_by' | 'project_id'>
@@ -288,7 +289,7 @@ function RetestForm({ defect, onClose }: { defect: ActionDefect; onClose: () => 
       refresh()
       show('success', `Retest run "${started.test_run_name}" created`)
       onClose()
-      navigate(`/defects/${defect.id}?tab=retests`)
+      navigate(`${defectPath(defect.project_id, defect.id)}?tab=retests`)
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not start the retest. Try again.'),
   })

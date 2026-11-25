@@ -76,3 +76,38 @@ describe('buildCrumbs', () => {
     ])
   })
 })
+
+describe('record pages inside a project (ADR-127)', () => {
+  const ID = '9a8b7c6d-1111-4222-8333-444455556666'
+
+  it('keeps the project and the list in the trail of a requirement, test case or run', () => {
+    for (const [segment, list, record] of [
+      ['requirements', 'Requirements', 'Requirement'],
+      ['test-cases', 'Test Cases', 'Test Case'],
+      ['test-runs', 'Test Runs', 'Test Run'],
+    ] as const) {
+      const crumbs = buildCrumbs(`/projects/${PID}/${segment}/${ID}`, { project: 'Apollo' })
+      expect(crumbs.map((c) => c.label)).toEqual(['Dashboard', 'Projects', 'Apollo', list, record])
+      // The list crumb is a real link to the project's list page.
+      expect(crumbs[3]).toMatchObject({ path: `/projects/${PID}/${segment}`, link: true })
+      expect(crumbs[4]).toMatchObject({ link: false, current: true })
+    }
+  })
+
+  it('sends the Defects crumb to the project-filtered list, which is where that tab lives', () => {
+    const crumbs = buildCrumbs(`/projects/${PID}/defects/${ID}`, { project: 'Apollo' })
+    expect(crumbs.map((c) => c.label)).toEqual(['Dashboard', 'Projects', 'Apollo', 'Defects', 'Defect'])
+    expect(crumbs[3]).toMatchObject({ path: `/defects?projectId=${PID}`, link: true })
+    expect(buildCrumbs(`/projects/${PID}/defects/${ID}/edit`).map((c) => c.label).slice(-2)).toEqual(['Defect', 'Edit'])
+  })
+
+  it('labels a task page', () => {
+    expect(buildCrumbs(`/projects/${PID}/tasks/${ID}`, { project: 'Apollo' }).map((c) => c.label)).toEqual([
+      'Dashboard',
+      'Projects',
+      'Apollo',
+      'Tasks',
+      'Task',
+    ])
+  })
+})

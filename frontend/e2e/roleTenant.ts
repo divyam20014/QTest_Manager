@@ -23,6 +23,10 @@ export interface RoleTenant extends SeededTenant {
   runId?: string
   runCaseId?: string
   defectId?: string
+  requirementId?: string
+  /** ADR-127: a top-level task with a sub-task, a requirement and the defect below. */
+  taskId?: string
+  subTaskId?: string
 }
 
 export async function seedRoleTenant(
@@ -104,6 +108,28 @@ export async function seedRoleTenant(
     await post(`/execution-steps/${steps[0].id}/verdict`, { verdict: 'fail', actual_result: 'Settlement was not posted' })
     const defect = await post('/defects', seedDefectBody(undefined, { execution_step_id: steps[0].id }))
     out.defectId = defect.id
+    // ADR-127: a task with a sub-task; the requirement, the test case and the defect belong to it.
+    const task = await post(`/projects/${project.id}/tasks`, {
+      title: 'Settlement engine',
+      description: 'Everything about settling a claim',
+      assignee_id: out.tester.id,
+      due_date: '2026-12-01',
+    })
+    const sub = await post(`/projects/${project.id}/tasks`, {
+      title: 'Rounding rules',
+      parent_task_id: task.id,
+      due_date: '2026-11-15',
+    })
+    const requirement = await post(`/projects/${project.id}/requirements`, {
+      title: 'Settlement is rounded to the cent',
+      description: 'Per the claims handbook',
+      task_id: task.id,
+    })
+    await post(`/requirements/${requirement.id}/test-cases`, { test_case_id: tc.id })
+    await request.patch(`${API_BASE_URL}/defects/${defect.id}`, { data: { task_id: sub.id } })
+    out.taskId = task.id
+    out.subTaskId = sub.id
+    out.requirementId = requirement.id
   }
   await request.post(`${API_BASE_URL}/auth/logout`)
   return out

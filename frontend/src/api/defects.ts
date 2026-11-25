@@ -113,6 +113,10 @@ export interface Defect {
   root_cause: RootCause | null
   module_id: string | null
   module_name: string | null
+  /** ADR-127: the task this defect belongs to, if any. */
+  task_id?: string | null
+  task_display_id?: string | null
+  task_title?: string | null
   assigned_to: string | null
   assigned_to_name: string | null
   reported_by: string
@@ -184,6 +188,7 @@ export interface DefectCreateRequest {
   root_cause_notes?: string | null
   labels?: string[]
   module_id?: string | null
+  task_id?: string | null
   assigned_to?: string | null
   copy_evidence?: boolean
 }
@@ -206,6 +211,7 @@ export interface DefectUpdateRequest {
   labels?: string[]
   assigned_to?: string | null
   module_id?: string | null
+  task_id?: string | null
 }
 
 export interface DefectLinkCreateRequest {
@@ -237,6 +243,9 @@ export interface DefectListFilters {
   assignee_id?: string
   reported_by?: string
   module_id?: string
+  task_id?: string
+  /** With task_id: the task's sub-tasks too. */
+  include_sub_tasks?: boolean
   test_case_id?: string
   created_from?: string
   created_to?: string
@@ -373,6 +382,7 @@ export function defectFilterQuery(filters: DefectListFilters): URLSearchParams {
     'assignee_id',
     'reported_by',
     'module_id',
+    'task_id',
     'test_case_id',
     'created_from',
     'created_to',
@@ -384,6 +394,7 @@ export function defectFilterQuery(filters: DefectListFilters): URLSearchParams {
     const value = filters[key]
     if (typeof value === 'string' && value !== '') query.set(key, value)
   }
+  if (filters.task_id && filters.include_sub_tasks) query.set('include_sub_tasks', 'true')
   for (const key of ['status', 'severity', 'priority', 'labels'] as const) {
     const values = filters[key]
     if (values && values.length > 0) query.set(key, values.join(','))

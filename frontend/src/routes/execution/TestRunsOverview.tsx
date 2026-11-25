@@ -28,6 +28,7 @@ import { parseViewMode, useViewMode, type ViewMode } from '@/lib/viewMode'
 import { useListModes } from '@/lib/workspaceConfig'
 import { RunsBoard } from './RunsBoard'
 import { RunsCalendar } from './RunsCalendar'
+import { testRunPath } from '@/lib/entityRoutes'
 
 const RUNS_PAGE_SIZE = 50
 // ADR-124: runs are also shown as a board by status and on a calendar.
@@ -58,7 +59,7 @@ const RUN_DETAIL: RowDetailConfig<OverviewRow> = {
     { label: 'Created', value: new Date(run.created_at).toLocaleDateString() },
     { label: 'Finished', value: run.finished_at ? new Date(run.finished_at).toLocaleDateString() : '—' },
   ],
-  href: ({ run }) => `/test-runs/${run.id}`,
+  href: ({ run }) => testRunPath(run.project_id, run.id),
 }
 
 const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
@@ -67,12 +68,12 @@ const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
     header: 'Run',
     card: 'title',
     cell: ({ run }) => (
-      <Link to={`/test-runs/${run.id}`} className="font-medium underline-offset-2 hover:underline">
+      <Link to={testRunPath(run.project_id, run.id)} className="font-medium underline-offset-2 hover:underline">
         {run.name}
       </Link>
     ),
     cardCell: ({ run }) => (
-      <Link to={`/test-runs/${run.id}`} className={CARD_LINK_CLASS}>
+      <Link to={testRunPath(run.project_id, run.id)} className={CARD_LINK_CLASS}>
         {run.name}
       </Link>
     ),

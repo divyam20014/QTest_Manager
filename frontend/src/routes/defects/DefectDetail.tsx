@@ -53,6 +53,7 @@ import { useDefectPermissions } from '@/lib/useDefectPermissions'
 import { DefectStatusBadge } from './DefectStatusBadge'
 import { TestCasePicker } from './pickers'
 import { ROOT_CAUSE_LABEL, severityTone } from './statusDisplay'
+import { defectEditPath, defectPath, testCasePath, testRunPath } from '@/lib/entityRoutes'
 
 const HISTORY_ACTION_LABEL: Record<string, string> = {
   'defect.created': 'Defect created',
@@ -282,7 +283,7 @@ export function DefectDetail() {
         title={defect.title}
         meta={
           <>
-            <RecordPin type="defect" id={defect.id} title={defect.title} url={`/defects/${defect.id}`} />
+            <RecordPin type="defect" id={defect.id} title={defect.title} url={defectPath(defect.project_id, defect.id)} />
             {defect.display_id && <Badge className="font-mono">{defect.display_id}</Badge>}
             <DefectStatusBadge status={defect.status} label={defect.status_label} />
             <LevelBadge tone={severityTone(defect.severity)}>{defect.severity} severity</LevelBadge>
@@ -350,7 +351,7 @@ export function DefectDetail() {
               />
             )}
             {perms.canEdit && !locked && (
-              <Link to={`/defects/${defect.id}/edit`} className={buttonVariants({ variant: 'default' })}>
+              <Link to={defectEditPath(defect.project_id, defect.id)} className={buttonVariants({ variant: 'default' })}>
                 Edit
               </Link>
             )}
@@ -384,7 +385,7 @@ export function DefectDetail() {
           <ul className="mt-2 flex flex-col gap-1">
             {duplicatesQuery.data?.map((d) => (
               <li key={d.defect_id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
-                <Link to={`/defects/${d.defect_id}`} className="underline-offset-2 hover:underline">
+                <Link to={defectPath(defect.project_id, d.defect_id)} className="underline-offset-2 hover:underline">
                   {d.title}
                 </Link>
                 <span className="text-xs text-[var(--muted-foreground)]">
@@ -427,6 +428,15 @@ function DetailsCard({ defect }: { defect: Defect }) {
         <Field label="Bug ID">{defect.display_id ? <span className="font-mono">{defect.display_id}</span> : dash}</Field>
         <Field label="Project">{defect.project_name}</Field>
         <Field label="Component / Module">{defect.module_name ?? dash}</Field>
+        <Field label="Task">
+          {defect.task_id ? (
+            <Link to={`/projects/${defect.project_id}/tasks/${defect.task_id}`} className="underline-offset-2 hover:underline">
+              {defect.task_display_id ? `${defect.task_display_id} · ${defect.task_title}` : defect.task_title}
+            </Link>
+          ) : (
+            dash
+          )}
+        </Field>
         <Field label="Status">
           <DefectStatusBadge status={defect.status} label={defect.status_label} />
         </Field>
@@ -580,7 +590,7 @@ function LinkedCasesTab({
                 {cases.map((c) => (
                   <tr key={c.id} className="border-t border-[var(--border)] align-top">
                     <td className="whitespace-nowrap px-3 py-2">
-                      <Link to={`/test-cases/${c.id}`} className="font-mono text-xs underline-offset-2 hover:underline">
+                      <Link to={testCasePath(defect.project_id, c.id)} className="font-mono text-xs underline-offset-2 hover:underline">
                         {c.display_id ?? c.id.slice(0, 8)}
                       </Link>
                     </td>
@@ -593,7 +603,7 @@ function LinkedCasesTab({
                     <td className="px-3 py-2">{c.latest_executed_by_name ?? dash}</td>
                     <td className="px-3 py-2">
                       {c.test_run_id ? (
-                        <Link to={`/test-runs/${c.test_run_id}`} className="underline underline-offset-2">
+                        <Link to={testRunPath(defect.project_id, c.test_run_id)} className="underline underline-offset-2">
                           {c.test_run_name ?? 'Run'}
                         </Link>
                       ) : (
@@ -715,7 +725,7 @@ function RetestsTab({
               .map((r) => (
                 <li key={r.test_run_case_id} className="flex flex-col gap-1 rounded-lg border border-[var(--border)] p-3 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link to={`/test-runs/${r.test_run_id}`} className="font-medium underline-offset-2 hover:underline">
+                    <Link to={testRunPath(defect.project_id, r.test_run_id)} className="font-medium underline-offset-2 hover:underline">
                       {r.test_run_name}
                     </Link>
                     <span className="font-mono text-xs">{r.test_case_display_id ?? ''}</span>
@@ -765,10 +775,10 @@ function TraceabilityCard({ defect, executionConsoleUrl }: { defect: Defect; exe
             label="Test Case"
             value={defect.test_case_title}
             sub={defect.test_case_version_number !== null ? `v${defect.test_case_version_number}` : undefined}
-            to={defect.test_case_id ? `/test-cases/${defect.test_case_id}` : null}
+            to={defect.test_case_id ? testCasePath(defect.project_id, defect.test_case_id) : null}
           />
           <TraceArrow />
-          <TraceNode icon={PlayCircle} label="Test Run" value={defect.test_run_name} to={defect.test_run_id ? `/test-runs/${defect.test_run_id}` : null} />
+          <TraceNode icon={PlayCircle} label="Test Run" value={defect.test_run_name} to={defect.test_run_id ? testRunPath(defect.project_id, defect.test_run_id) : null} />
           <TraceArrow />
           <TraceNode
             icon={ListChecks}

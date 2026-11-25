@@ -1,6 +1,7 @@
 import type { Defect, Severity } from '@/api/defects'
 import { isClosedStatus } from '@/lib/defectWorkflow'
 import type { TestRunSummary } from '@/api/execution'
+import { defectPath, testRunPath } from '@/lib/entityRoutes'
 
 // Pure helpers for the Overview dashboard's KPI row and "Needs attention" list
 // (ADR-110). Kept out of the component so the trend maths and ordering are
@@ -88,11 +89,11 @@ export function buildNeedsAttention(defects: Defect[], runs: TestRunSummary[]): 
         (SEVERITY_RANK[a.severity] ?? 99) - (SEVERITY_RANK[b.severity] ?? 99) ||
         b.created_at.localeCompare(a.created_at),
     )
-    .map<AttentionItem>((d) => ({ kind: 'defect', id: d.id, title: d.title, badge: d.severity, href: `/defects/${d.id}` }))
+    .map<AttentionItem>((d) => ({ kind: 'defect', id: d.id, title: d.title, badge: d.severity, href: defectPath(d.project_id, d.id) }))
   const runItems = runs
     .filter((r) => r.finished_at === null && r.paused_at !== null)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .map<AttentionItem>((r) => ({ kind: 'run', id: r.id, title: r.name, badge: 'Paused', href: `/test-runs/${r.id}` }))
+    .map<AttentionItem>((r) => ({ kind: 'run', id: r.id, title: r.name, badge: 'Paused', href: testRunPath(r.project_id, r.id) }))
   return [...defectItems, ...runItems]
 }
 

@@ -6,6 +6,7 @@ export type FieldKey =
   | 'defect_priority'
   | 'test_type'
   | 'test_case_severity'
+  | 'task_priority'
 export type StatusEntityType = 'test_case' | 'defect'
 export type CustomFieldEntityType = 'test_case' | 'defect' | 'requirement'
 export type CustomFieldType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multi_select'

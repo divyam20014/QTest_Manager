@@ -68,7 +68,7 @@ describe('CustomisePanel', () => {
     expect(screen.getByRole('button', { name: 'Move Key numbers up' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Move Recently reported defects down' })).toBeDisabled()
     expect(screen.queryByTestId('customise-default')).toBeNull()
-    expect(order()).toHaveLength(14)
+    expect(order()).toHaveLength(15)
   })
 
   it('moves a widget, keeps focus on the pressed button, announces it and saves the visible order', async () => {
@@ -81,13 +81,13 @@ describe('CustomisePanel', () => {
       'customise-row-test_status',
     ])
     expect(screen.getByRole('button', { name: 'Move Test execution trend up' })).toHaveFocus()
-    expect(screen.getByText('Test execution trend moved up to position 2 of 14')).toBeInTheDocument()
+    expect(screen.getByText('Test execution trend moved up to position 2 of 15')).toBeInTheDocument()
     await user.click(screen.getByRole('checkbox', { name: /Tester performance/ }))
     await user.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
     const [id, widgets] = save.mock.calls[0]
     expect(id).toBe('p1')
-    expect(widgets).toHaveLength(13)
+    expect(widgets).toHaveLength(14)
     expect(widgets[1].widget_type).toBe('execution_trend')
     expect(widgets.some((w: { widget_type: string }) => w.widget_type === 'tester_performance')).toBe(false)
   })
@@ -105,7 +105,7 @@ describe('CustomisePanel', () => {
     await user.click(screen.getByRole('checkbox', { name: /Recent activity/ }))
     await user.click(screen.getByRole('button', { name: 'Save as project default' }))
     await waitFor(() => expect(saveDefault).toHaveBeenCalledTimes(1))
-    expect(saveDefault.mock.calls[0][1]).toHaveLength(13)
+    expect(saveDefault.mock.calls[0][1]).toHaveLength(14)
   })
 
   it('removes a project default', async () => {

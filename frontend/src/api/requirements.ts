@@ -10,6 +10,10 @@ export interface Requirement {
   created_by: string
   created_at: string
   linked_test_case_count: number
+  /** ADR-127: the task this requirement belongs to, if any. */
+  task_id: string | null
+  task_display_id: string | null
+  task_title: string | null
 }
 
 export interface LinkedTestCase {
@@ -40,8 +44,10 @@ export interface RequirementVersion {
 export interface RequirementCreateRequest {
   title: string
   description?: string
+  task_id?: string | null
 }
 
+/** `task_id: null` detaches the requirement from its task; changing only the task adds no version. */
 export type RequirementUpdateRequest = Partial<RequirementCreateRequest>
 
 export interface RequirementCoverageEntry {
@@ -61,9 +67,11 @@ export interface RequirementCoverageReport {
 
 export function listRequirements(
   projectId: string,
-  params: { page?: number; page_size?: number } = {},
+  params: { page?: number; page_size?: number; task_id?: string; include_sub_tasks?: boolean } = {},
 ): Promise<RequirementListResponse> {
   const query = new URLSearchParams()
+  if (params.task_id) query.set('task_id', params.task_id)
+  if (params.task_id && params.include_sub_tasks) query.set('include_sub_tasks', 'true')
   if (params.page) query.set('page', String(params.page))
   if (params.page_size) query.set('page_size', String(params.page_size))
   const qs = query.toString()
@@ -125,8 +133,18 @@ export function unlinkTestCase(
 }
 
 /** `summary` asks for the totals only (`requirements` comes back empty): the dashboard widget needs no rows. */
-export function getCoverageReport(projectId: string, summary = false): Promise<RequirementCoverageReport> {
-  return apiFetch<RequirementCoverageReport>(
-    `/projects/${projectId}/requirements/coverage${summary ? '?summary=true' : ''}`,
-  )
+/** Optionally for one task (`task_id`), with its sub-tasks (`include_sub_tasks`). */
+export function getCoverageReport(
+  projectId: string,
+  summary = false,
+  scope: { task_id?: string; include_sub_tasks?: boolean } = {},
+): Promise<RequirementCoverageReport> {
+  const query = new URLSearchParams()
+  if (summary) query.set('summary', 'true')
+  if (scope.task_id) {
+    query.set('task_id', scope.task_id)
+    if (scope.include_sub_tasks) query.set('include_sub_tasks', 'true')
+  }
+  const qs = query.toString()
+  return apiFetch<RequirementCoverageReport>(`/projects/${projectId}/requirements/coverage${qs ? `?${qs}` : ''}`)
 }

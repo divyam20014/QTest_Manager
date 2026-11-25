@@ -8,6 +8,7 @@ import { usePageTitleFromRoute } from '@/lib/usePageTitle'
 import { AdminLayout } from '@/routes/admin/AdminLayout'
 import { ProjectLayout, ProjectScoped } from '@/routes/projects/ProjectChrome'
 import { NotFound } from '@/routes/NotFound'
+import { EntityProjectGuard, LegacyDefectNew, LegacyEntityRedirect } from '@/routes/LegacyEntityRedirect'
 import { HomeGate } from '@/routes/HomeGate'
 import { MarketingRoute } from '@/routes/MarketingRoute'
 import { MARKETING_PATHS } from '@/routes/marketingPaths'
@@ -34,6 +35,9 @@ const AuditLogs = lazyRoute(() => import('@/routes/admin/AuditLogs'), 'AuditLogs
 const Environments = lazyRoute(() => import('@/routes/admin/Environments'), 'Environments')
 const RolesPermissions = lazyRoute(() => import('@/routes/admin/RolesPermissions'), 'RolesPermissions')
 const Settings = lazyRoute(() => import('@/routes/admin/Settings'), 'Settings')
+const TaskStatuses = lazyRoute(() => import('@/routes/admin/TaskStatuses'), 'TaskStatuses')
+const TasksList = lazyRoute(() => import('@/routes/tasks/TasksList'), 'TasksList')
+const TaskDetail = lazyRoute(() => import('@/routes/tasks/TaskDetail'), 'TaskDetail')
 const WorkspaceSettings = lazyRoute(() => import('@/routes/admin/WorkspaceSettings'), 'WorkspaceSettings')
 const UsersRoles = lazyRoute(() => import('@/routes/admin/UsersRoles'), 'UsersRoles')
 const ProjectActivity = lazyRoute(() => import('@/routes/projects/ProjectActivity'), 'ProjectActivity')
@@ -71,6 +75,12 @@ const DesignCatalogue = import.meta.env.DEV ? lazy(() => import('@/routes/_Desig
 function LegacyProjectDetailsRedirect() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   return <Navigate to={`/projects/${projectId}`} replace />
+}
+
+/** `/projects/:id/defects` is the Defects tab, whose page is the project-filtered list. */
+function LegacyProjectDefectsRedirect() {
+  const { projectId = '' } = useParams<{ projectId: string }>()
+  return <Navigate to={`/defects?projectId=${projectId}`} replace />
 }
 
 export function App() {
@@ -111,11 +121,64 @@ export function App() {
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route index element={<ProjectDashboard />} />
             <Route path="details" element={<LegacyProjectDetailsRedirect />} />
+            <Route path="tasks" element={<TasksList />} />
+            <Route path="tasks/:taskId" element={<TaskDetail />} />
             <Route path="requirements" element={<RequirementsList />} />
+            <Route
+              path="requirements/:requirementId"
+              element={
+                <EntityProjectGuard kind="requirement">
+                  <RequirementDetail />
+                </EntityProjectGuard>
+              }
+            />
             <Route path="traceability-matrix" element={<TraceabilityMatrix />} />
             <Route path="test-cases" element={<TestCasesList />} />
             <Route path="test-cases/new" element={<TestCaseCreatePage />} />
+            <Route
+              path="test-cases/:testCaseId"
+              element={
+                <EntityProjectGuard kind="test-case">
+                  <TestCaseDetail />
+                </EntityProjectGuard>
+              }
+            />
+            <Route
+              path="test-cases/:testCaseId/edit"
+              element={
+                <EntityProjectGuard kind="test-case">
+                  <TestCaseEditPage />
+                </EntityProjectGuard>
+              }
+            />
             <Route path="test-runs" element={<TestRunsList />} />
+            <Route
+              path="test-runs/:runId"
+              element={
+                <EntityProjectGuard kind="test-run">
+                  <TestRunDetail />
+                </EntityProjectGuard>
+              }
+            />
+            {/* The Defects tab is the project-filtered cross-project list; its records open here. */}
+            <Route path="defects" element={<LegacyProjectDefectsRedirect />} />
+            <Route path="defects/new" element={<DefectCreatePage />} />
+            <Route
+              path="defects/:defectId"
+              element={
+                <EntityProjectGuard kind="defect">
+                  <DefectDetail />
+                </EntityProjectGuard>
+              }
+            />
+            <Route
+              path="defects/:defectId/edit"
+              element={
+                <EntityProjectGuard kind="defect">
+                  <DefectEditPage />
+                </EntityProjectGuard>
+              }
+            />
             <Route path="test-plans" element={<ProjectPlanning />} />
             <Route path="releases" element={<ProjectReleases />} />
             <Route path="team" element={<ProjectTeam />} />
@@ -123,10 +186,11 @@ export function App() {
             <Route path="settings" element={<ProjectSettings />} />
             <Route path="*" element={<NotFound />} />
           </Route>
-          <Route path="/requirements/:requirementId" element={<RequirementDetail />} />
-          <Route path="/test-cases/:testCaseId" element={<TestCaseDetail />} />
-          <Route path="/test-cases/:testCaseId/edit" element={<TestCaseEditPage />} />
-          <Route path="/test-runs/:runId" element={<TestRunDetail />} />
+          {/* ADR-127: records open inside their project; the old top-level URLs redirect there. */}
+          <Route path="/requirements/:requirementId" element={<LegacyEntityRedirect kind="requirement" />} />
+          <Route path="/test-cases/:testCaseId" element={<LegacyEntityRedirect kind="test-case" />} />
+          <Route path="/test-cases/:testCaseId/edit" element={<LegacyEntityRedirect kind="test-case" suffix="/edit" />} />
+          <Route path="/test-runs/:runId" element={<LegacyEntityRedirect kind="test-run" />} />
           <Route path="/test-run-cases/:runCaseId" element={<ExecutionConsole />} />
           <Route path="/test-repository" element={<TestRepository />} />
           <Route path="/test-runs" element={<TestRunsOverview />} />
@@ -139,9 +203,16 @@ export function App() {
               </ProjectScoped>
             }
           />
-          <Route path="/defects/new" element={<DefectCreatePage />} />
-          <Route path="/defects/:defectId" element={<DefectDetail />} />
-          <Route path="/defects/:defectId/edit" element={<DefectEditPage />} />
+          <Route
+            path="/defects/new"
+            element={
+              <LegacyDefectNew>
+                <DefectCreatePage />
+              </LegacyDefectNew>
+            }
+          />
+          <Route path="/defects/:defectId" element={<LegacyEntityRedirect kind="defect" />} />
+          <Route path="/defects/:defectId/edit" element={<LegacyEntityRedirect kind="defect" suffix="/edit" />} />
           <Route
             path="/reporting"
             element={
@@ -157,6 +228,7 @@ export function App() {
             <Route path="/admin/roles" element={<RolesPermissions />} />
             <Route path="/admin/audit-logs" element={<AuditLogs />} />
             <Route path="/admin/environments" element={<Environments />} />
+            <Route path="/admin/task-statuses" element={<TaskStatuses />} />
             <Route path="/admin/access-rules" element={<AccessRules />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin/workspace" element={<WorkspaceSettings />} />

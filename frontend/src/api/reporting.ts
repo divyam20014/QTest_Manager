@@ -294,6 +294,9 @@ export function fetchFlakyTests(projectId: string, limit?: number): Promise<Flak
 export interface TraceabilityMatrixEntry {
   requirement_id: string
   requirement_title: string
+  /** ADR-127: the task the requirement belongs to, if any. */
+  task_id: string | null
+  task_display_id: string | null
   linked_test_case_count: number
   passed_count: number
   failed_count: number
@@ -309,12 +312,27 @@ export interface TraceabilityMatrixReport {
   entries: TraceabilityMatrixEntry[]
 }
 
-export function fetchTraceabilityMatrix(projectId: string): Promise<TraceabilityMatrixReport> {
-  return apiFetch<TraceabilityMatrixReport>(`/reports/traceability-matrix?project_id=${projectId}`)
+/** ADR-127: the matrix of one task's requirements (and its sub-tasks') instead of the whole project's. */
+export interface MatrixScope {
+  task_id?: string
+  include_sub_tasks?: boolean
 }
 
-export function traceabilityMatrixExportUrl(projectId: string): string {
-  return `${API_BASE_URL}/reports/traceability-matrix/export?project_id=${projectId}`
+function matrixQuery(projectId: string, scope: MatrixScope): string {
+  const query = new URLSearchParams({ project_id: projectId })
+  if (scope.task_id) {
+    query.set('task_id', scope.task_id)
+    if (scope.include_sub_tasks) query.set('include_sub_tasks', 'true')
+  }
+  return query.toString()
+}
+
+export function fetchTraceabilityMatrix(projectId: string, scope: MatrixScope = {}): Promise<TraceabilityMatrixReport> {
+  return apiFetch<TraceabilityMatrixReport>(`/reports/traceability-matrix?${matrixQuery(projectId, scope)}`)
+}
+
+export function traceabilityMatrixExportUrl(projectId: string, scope: MatrixScope = {}): string {
+  return `${API_BASE_URL}/reports/traceability-matrix/export?${matrixQuery(projectId, scope)}`
 }
 
 export function fetchComplianceDetail(period: CompliancePeriod = {}): Promise<ComplianceReport> {
@@ -371,8 +389,8 @@ export function complianceExportPdfPath(period: CompliancePeriod = {}): string {
   return complianceExportPdfUrl(period).slice(API_BASE_URL.length)
 }
 
-export function traceabilityMatrixExportXlsxPath(projectId: string): string {
-  return `/reports/traceability-matrix/export.xlsx?project_id=${projectId}`
+export function traceabilityMatrixExportXlsxPath(projectId: string, scope: MatrixScope = {}): string {
+  return `/reports/traceability-matrix/export.xlsx?${matrixQuery(projectId, scope)}`
 }
 
 export type QualityRunType = 'Regression' | 'Sanity' | 'Smoke' | 'all'

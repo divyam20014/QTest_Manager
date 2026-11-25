@@ -41,6 +41,7 @@ import { useViewMode, type ViewMode } from '@/lib/viewMode'
 import { useListModes } from '@/lib/workspaceConfig'
 import { RunsBoard } from './RunsBoard'
 import { RunsCalendar } from './RunsCalendar'
+import { testRunPath } from '@/lib/entityRoutes'
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
 // ADR-124: this project's runs are also shown as a board by status and on a calendar.
@@ -61,12 +62,12 @@ const RUN_COLUMNS: ResponsiveColumn<TestRunSummary>[] = [
     header: 'Name',
     card: 'title',
     cell: (run) => (
-      <Link to={`/test-runs/${run.id}`} className="font-medium underline-offset-2 hover:underline">
+      <Link to={testRunPath(run.project_id, run.id)} className="font-medium underline-offset-2 hover:underline">
         {run.name}
       </Link>
     ),
     cardCell: (run) => (
-      <Link to={`/test-runs/${run.id}`} className={CARD_LINK_CLASS}>
+      <Link to={testRunPath(run.project_id, run.id)} className={CARD_LINK_CLASS}>
         {run.name}
       </Link>
     ),
@@ -97,7 +98,7 @@ const RUN_DETAIL: RowDetailConfig<TestRunSummary> = {
     { label: 'Created', value: new Date(run.created_at).toLocaleDateString() },
     { label: 'Finished', value: run.finished_at ? new Date(run.finished_at).toLocaleDateString() : '—' },
   ],
-  href: (run) => `/test-runs/${run.id}`,
+  href: (run) => testRunPath(run.project_id, run.id),
 }
 
 export function TestRunsList() {
@@ -174,7 +175,7 @@ export function TestRunsList() {
       queryClient.invalidateQueries({ queryKey: ['test-runs', projectId] })
       const first = run.cases[0]
       // "Create and start": straight into the Execution Console on the first case.
-      navigate(startAfter && first ? `/test-run-cases/${first.id}?runId=${run.id}` : `/test-runs/${run.id}`)
+      navigate(startAfter && first ? `/test-run-cases/${first.id}?runId=${run.id}` : testRunPath(run.project_id, run.id))
       showToast('success', 'Test run created')
     },
     // No onError toast -- `createError` below already renders this inline.

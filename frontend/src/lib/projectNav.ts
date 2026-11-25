@@ -10,6 +10,7 @@ import { canAccessPath } from '@/lib/routeAccess'
  */
 export type ProjectTabKey =
   | 'overview'
+  | 'tasks'
   | 'requirements'
   | 'test-cases'
   | 'test-runs'
@@ -36,6 +37,7 @@ export interface ProjectTabDef {
 
 export const PROJECT_TABS: readonly ProjectTabDef[] = [
   { key: 'overview', label: 'Overview', core: true, hideable: false, description: 'Health, trends and risk at a glance.', to: (id) => `/projects/${id}` },
+  { key: 'tasks', label: 'Tasks', core: false, hideable: true, description: 'Tasks and sub-tasks that group requirements, test cases and defects.', to: (id) => `/projects/${id}/tasks` },
   { key: 'requirements', label: 'Requirements', core: true, hideable: false, description: 'Requirements and the traceability matrix.', to: (id) => `/projects/${id}/requirements` },
   { key: 'test-cases', label: 'Test Cases', core: true, hideable: false, description: 'The project test repository.', to: (id) => `/projects/${id}/test-cases` },
   { key: 'test-runs', label: 'Test Runs', core: true, hideable: false, description: 'Test execution cycles and results.', to: (id) => `/projects/${id}/test-runs` },
@@ -142,6 +144,9 @@ export function activeTabKey(pathname: string, search: string): ProjectTabKey | 
       return 'test-cases'
     case 'test-runs':
       return 'test-runs'
+    case 'defects':
+      return 'defects'
+    case 'tasks':
     case 'test-plans':
     case 'releases':
     case 'team':

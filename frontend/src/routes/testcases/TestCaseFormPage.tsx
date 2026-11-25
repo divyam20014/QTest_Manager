@@ -64,6 +64,7 @@ import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { useUnsavedGuard } from '@/lib/useUnsavedGuard'
 import { ExecutionStatusBadge } from './ExecutionStatusBadge'
+import { defectPath, testCasePath } from '@/lib/entityRoutes'
 
 /** Values handed over by Quick add's "More options" (router state). */
 export interface FormPrefill {
@@ -202,7 +203,7 @@ function TestCaseFormPage({
             : `Test case ${saved.display_id ?? ''} saved as a draft`
           : 'Test case updated',
       )
-      navigate(`/test-cases/${saved.id}`)
+      navigate(testCasePath(saved.project_id, saved.id))
     },
     onError: (err) => {
       // Data stays in the form; the API's per-field messages go onto the fields.
@@ -243,7 +244,7 @@ function TestCaseFormPage({
   }
 
   const modules: ModuleNode[] = modulesQuery.data ?? []
-  const backTo = mode === 'edit' ? `/test-cases/${testCase!.id}` : `/projects/${projectId}/test-cases`
+  const backTo = mode === 'edit' ? testCasePath(testCase!.project_id, testCase!.id) : `/projects/${projectId}/test-cases`
   const pending = saveMutation.isPending
   const errorCountBySection = useMemo(() => {
     const counts: Record<number, number> = {}
@@ -842,7 +843,7 @@ function ExecutionDetails({ testCase }: { testCase?: TestCase }) {
                 : testCase.linked_defects.map((d, i) => (
                     <span key={d.id}>
                       {i > 0 && ', '}
-                      <Link to={`/defects/${d.id}`} className="underline underline-offset-2">
+                      <Link to={defectPath(testCase.project_id, d.id)} className="underline underline-offset-2">
                         {d.display_id ?? d.title}
                       </Link>
                     </span>
@@ -856,7 +857,7 @@ function ExecutionDetails({ testCase }: { testCase?: TestCase }) {
         </dl>
       )}
       {testCase && (
-        <Link to={`/test-cases/${testCase.id}?tab=executions`} className="w-fit text-sm text-[var(--link)] underline underline-offset-2">
+        <Link to={`${testCasePath(testCase.project_id, testCase.id)}?tab=executions`} className="w-fit text-sm text-[var(--link)] underline underline-offset-2">
           View execution history
         </Link>
       )}

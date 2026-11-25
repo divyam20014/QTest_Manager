@@ -10,6 +10,7 @@ import { levelTone } from '@/lib/statusTones'
 import { useDefectPermissions } from '@/lib/useDefectPermissions'
 import { severityTone } from './statusDisplay'
 import type { ActionDefect } from './DefectActionDialogs'
+import { defectPath } from '@/lib/entityRoutes'
 
 const PAGE_SIZE = 20
 /** The workflow's own statuses; Open and Verified (legacy) get a column only when a defect is in them. */
@@ -139,7 +140,7 @@ function toCard(
     id: d.id,
     displayId: d.display_id,
     title: d.title,
-    href: `/defects/${d.id}`,
+    href: defectPath(d.project_id, d.id),
     levels: [
       { label: `${d.severity} severity`, tone: severityTone(d.severity) },
       { label: `${d.priority} priority`, tone: levelTone(d.priority) },

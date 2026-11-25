@@ -11,6 +11,7 @@ import {
   type Requirement,
   type RequirementCreateRequest,
 } from '@/api/requirements'
+import { TaskPicker } from '@/components/TaskPicker'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
@@ -28,6 +29,7 @@ import { useUrlFilters } from '@/lib/useUrlFilters'
 import { FormError, FormField } from '@/components/ui/form-field'
 import { ReportDirty } from '@/components/ui/dirtyForm'
 import { useNavigate } from 'react-router-dom'
+import { requirementPath } from '@/lib/entityRoutes'
 
 const PAGE_SIZE = 20
 
@@ -38,17 +40,29 @@ const columns: ResponsiveColumn<Requirement>[] = [
     card: 'title',
     tdClassName: 'font-medium',
     cell: (r) => (
-      <Link to={`/requirements/${r.id}`} className="underline-offset-2 hover:underline">
+      <Link to={requirementPath(r.project_id, r.id)} className="underline-offset-2 hover:underline">
         {r.title}
       </Link>
     ),
     cardCell: (r) => (
-      <Link to={`/requirements/${r.id}`} className={CARD_LINK_CLASS}>
+      <Link to={requirementPath(r.project_id, r.id)} className={CARD_LINK_CLASS}>
         {r.title}
       </Link>
     ),
   },
   { key: 'version', header: 'Version', cell: (r) => `v${r.version_number}` },
+  {
+    key: 'task',
+    header: 'Task',
+    cell: (r) =>
+      r.task_id ? (
+        <Link to={`/projects/${r.project_id}/tasks/${r.task_id}`} className="underline-offset-2 hover:underline">
+          {r.task_display_id ?? r.task_title}
+        </Link>
+      ) : (
+        '—'
+      ),
+  },
   {
     key: 'linked',
     header: 'Linked Test Cases',
@@ -65,6 +79,7 @@ const columns: ResponsiveColumn<Requirement>[] = [
 const REQ_COLUMNS: TableColumnDef[] = [
   { key: 'title', label: 'Title', alwaysVisible: true },
   { key: 'version', label: 'Version' },
+  { key: 'task', label: 'Task' },
   { key: 'linked', label: 'Linked test cases' },
 ]
 
@@ -92,7 +107,8 @@ export function RequirementsList() {
       )
     }
   }, [searchParams, setSearchParams, canManage])
-  const urlFilters = useUrlFilters({ page: '1' })
+  const urlFilters = useUrlFilters({ page: '1', task: '' })
+  const taskFilter = urlFilters.values.task
   const page = Number(urlFilters.values.page) || 1
   const setPage = (updater: (p: number) => number) =>
     urlFilters.setFilter('page', String(Math.max(1, updater(page))))
@@ -104,13 +120,14 @@ export function RequirementsList() {
     enabled: !!projectId,
   })
   const requirementsQuery = useQuery({
-    queryKey: ['requirements', projectId, page],
-    queryFn: () => listRequirements(projectId!, { page, page_size: PAGE_SIZE }),
+    queryKey: ['requirements', projectId, page, taskFilter],
+    queryFn: () =>
+      listRequirements(projectId!, { page, page_size: PAGE_SIZE, task_id: taskFilter || undefined }),
     enabled: !!projectId,
   })
   const coverageQuery = useQuery({
-    queryKey: ['requirements-coverage', projectId],
-    queryFn: () => getCoverageReport(projectId!),
+    queryKey: ['requirements-coverage', projectId, taskFilter],
+    queryFn: () => getCoverageReport(projectId!, false, taskFilter ? { task_id: taskFilter } : {}),
     enabled: !!projectId,
   })
 
@@ -161,7 +178,20 @@ export function RequirementsList() {
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex min-w-56 flex-col gap-1.5">
+          <label htmlFor="requirement-filter-task" className="text-xs font-medium text-[var(--muted-foreground)]">
+            Task
+          </label>
+          <TaskPicker
+            id="requirement-filter-task"
+            projectId={projectId ?? ''}
+            value={taskFilter}
+            placeholder="All tasks"
+            aria-label="Filter by task"
+            onChange={(id) => urlFilters.setFilters({ task: id, page: '1' })}
+          />
+        </div>
         <ColumnVisibilityMenu
           columns={REQ_COLUMNS}
           isVisible={columnPrefs.isVisible}
@@ -182,7 +212,7 @@ export function RequirementsList() {
         rowProps={(r) => ({
           tabIndex: 0,
           onKeyDown: (e) => {
-            if (e.key === 'Enter') navigate(`/requirements/${r.id}`)
+            if (e.key === 'Enter') navigate(requirementPath(r.project_id, r.id))
           },
           className:
             'cursor-pointer outline-none focus-visible:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
@@ -220,6 +250,7 @@ export function RequirementsList() {
 
       <NewRequirementDialog
         open={createOpen}
+        projectId={projectId ?? ''}
         onClose={() => setCreateOpen(false)}
         onSubmit={(req) => createMutation.mutate(req)}
         isPending={createMutation.isPending}
@@ -231,12 +262,14 @@ export function RequirementsList() {
 
 function NewRequirementDialog({
   open,
+  projectId,
   onClose,
   onSubmit,
   isPending,
   error,
 }: {
   open: boolean
+  projectId: string
   onClose: () => void
   onSubmit: (req: RequirementCreateRequest) => void
   isPending: boolean
@@ -244,17 +277,19 @@ function NewRequirementDialog({
 }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [taskId, setTaskId] = useState('')
 
   function handleSubmit() {
-    onSubmit({ title, description })
+    onSubmit({ title, description, ...(taskId ? { task_id: taskId } : {}) })
     setTitle('')
     setDescription('')
+    setTaskId('')
   }
 
   return (
     <Dialog open={open} onClose={onClose} title="New Requirement">
       <div className="flex flex-col gap-3 text-sm">
-        <ReportDirty dirty={title !== '' || description !== ''} />
+        <ReportDirty dirty={title !== '' || description !== '' || taskId !== ''} />
         <FormField id="requirement-title" label="Title" required helper="At least 5 characters.">
           {(field) => <Input {...field} value={title} onChange={(e) => setTitle(e.target.value)} />}
         </FormField>
@@ -262,6 +297,9 @@ function NewRequirementDialog({
           {(field) => (
             <Textarea {...field} value={description} onChange={(e) => setDescription(e.target.value)} />
           )}
+        </FormField>
+        <FormField id="requirement-task" label="Task" helper="Optional. Group this requirement under a task.">
+          {(field) => <TaskPicker id={field.id} projectId={projectId} value={taskId} onChange={setTaskId} />}
         </FormField>
         <FormError>{error}</FormError>
         <DialogFooter>

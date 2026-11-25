@@ -37,6 +37,8 @@ export interface DefectFormValues {
   title: string
   description: string
   module_id: string
+  /** ADR-127: the task this defect belongs to ('' = none). */
+  task_id: string
   preconditions: string
   steps: BuilderStep[]
   expected_result: string
@@ -65,6 +67,7 @@ export const SECTION_OF: Record<FormFieldKey, number> = {
   title: 1,
   description: 1,
   module_id: 1,
+  task_id: 1,
   preconditions: 2,
   steps: 2,
   expected_result: 2,
@@ -98,6 +101,7 @@ export function emptyFormValues(over: Partial<DefectFormValues> = {}): DefectFor
     title: '',
     description: '',
     module_id: '',
+    task_id: '',
     preconditions: '',
     steps: stepsFromApi(undefined),
     expected_result: '',
@@ -131,6 +135,7 @@ export function valuesFromDefect(d: Defect): DefectFormValues {
     title: d.title,
     description: d.description ?? '',
     module_id: d.module_id ?? '',
+    task_id: d.task_id ?? '',
     preconditions: d.preconditions ?? '',
     steps: stepsFromDefect(d.repro_steps),
     expected_result: d.expected_result ?? '',
@@ -390,6 +395,7 @@ export function toCreateRequest(values: DefectFormValues, extra: Partial<DefectC
   const fix = nullable(values.fix_version)
   if (fix) req.fix_version = fix
   if (values.module_id) req.module_id = values.module_id
+  if (values.task_id) req.task_id = values.task_id
   if (values.assigned_to) req.assigned_to = values.assigned_to
   if (values.root_cause) req.root_cause = values.root_cause
   const notes = nullable(values.root_cause_notes)
@@ -426,6 +432,7 @@ export function toUpdateRequest(values: DefectFormValues, initial: DefectFormVal
   if (values.severity !== initial.severity) out.severity = values.severity
   if (values.priority !== initial.priority) out.priority = values.priority
   if (values.module_id !== initial.module_id) out.module_id = values.module_id || null
+  if (values.task_id !== initial.task_id) out.task_id = values.task_id || null
   if (values.assigned_to !== initial.assigned_to) out.assigned_to = values.assigned_to || null
   if (values.root_cause !== initial.root_cause) out.root_cause = values.root_cause || null
   if (!sameList(values.labels, initial.labels)) out.labels = values.labels

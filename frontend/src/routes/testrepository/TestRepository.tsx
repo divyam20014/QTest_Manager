@@ -55,6 +55,7 @@ import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { cn } from '@/lib/utils'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
 import { BulkMetadataDialog, type BulkMetadataKind } from './BulkMetadataDialog'
+import { testCasePath } from '@/lib/entityRoutes'
 
 const REPO_COLUMNS: TableColumnDef[] = [
   { key: 'title', label: 'Title', alwaysVisible: true, defaultWidth: 280 },
@@ -100,7 +101,7 @@ const REPO_DETAIL: RowDetailConfig<RepoRow> = {
     { label: 'Execution status', value: tc.execution_status },
   ],
   description: ({ case: tc }) => tc.description,
-  href: ({ case: tc }) => `/test-cases/${tc.id}`,
+  href: ({ case: tc }) => testCasePath(tc.project_id, tc.id),
 }
 
 // The one inline next-action each status has (BRD: "inline actions" --
@@ -671,12 +672,12 @@ export function TestRepository() {
       limitWidth: true,
       card: 'title',
       cell: ({ case: tc }) => (
-        <Link to={`/test-cases/${tc.id}`} className="block truncate font-medium underline-offset-2 hover:underline">
+        <Link to={testCasePath(tc.project_id, tc.id)} className="block truncate font-medium underline-offset-2 hover:underline">
           {tc.title}
         </Link>
       ),
       cardCell: ({ case: tc }) => (
-        <Link to={`/test-cases/${tc.id}`} className={CARD_LINK_CLASS}>
+        <Link to={testCasePath(tc.project_id, tc.id)} className={CARD_LINK_CLASS}>
           {tc.title}
         </Link>
       ),
@@ -686,7 +687,7 @@ export function TestRepository() {
       header: 'Test Case ID',
       card: 'meta',
       cell: ({ case: tc }) => (
-        <Link to={`/test-cases/${tc.id}`} className="font-mono text-xs underline-offset-2 hover:underline">
+        <Link to={testCasePath(tc.project_id, tc.id)} className="font-mono text-xs underline-offset-2 hover:underline">
           {tc.display_id ?? tc.id.slice(0, 8)}
         </Link>
       ),
@@ -815,7 +816,7 @@ export function TestRepository() {
         onRowContextMenu={(e, { case: tc }) => {
           const nextAction = NEXT_ACTION[tc.status]
           const contextItems: RowContextMenuItem[] = [
-            { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
+            { label: 'Open', onSelect: () => navigate(testCasePath(tc.project_id, tc.id)) },
             ...(nextAction
               ? [{ label: nextAction.label, onSelect: () => advance(tc) }]
               : []),

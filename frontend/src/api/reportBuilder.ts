@@ -1,6 +1,6 @@
 import { apiFetch } from '@/api/client'
 
-export type SourceKey = 'test_cases' | 'test_runs' | 'defects'
+export type SourceKey = 'test_cases' | 'test_runs' | 'defects' | 'tasks'
 export type FieldType = 'text' | 'enum' | 'id' | 'number' | 'date' | 'bool'
 export type Operator = 'eq' | 'neq' | 'in' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte' | 'is_null'
 

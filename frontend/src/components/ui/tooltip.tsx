@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils'
  * reliably announced). Shows on hover and on keyboard focus-within, and wires
  * aria-describedby to the trigger wrapper.
  *
+ * The bubble is `display: none` until hover or focus (not just invisible), so a trigger near the
+ * right edge of a phone cannot widen the page with a bubble nobody can see.
+ *
  * Put it around a single focusable element (button/link). Tooltips supplement
  * a visible text or aria-label name; they never replace one.
  */
@@ -35,7 +38,7 @@ export function Tooltip({
         id={id}
         role="tooltip"
         className={cn(
-          'pointer-events-none absolute z-[var(--z-dropdown)] whitespace-nowrap rounded-[var(--radius-control)] bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] invisible opacity-0 shadow-md transition-[opacity,visibility] duration-[var(--motion-base)] group-hover/tooltip:visible group-hover/tooltip:opacity-100 group-focus-within/tooltip:visible group-focus-within/tooltip:opacity-100 motion-reduce:transition-none',
+          'pointer-events-none absolute z-[var(--z-dropdown)] whitespace-nowrap rounded-[var(--radius-control)] bg-[var(--foreground)] px-2 py-1 text-xs text-[var(--background)] hidden shadow-md group-hover/tooltip:block group-focus-within/tooltip:block',
           align === 'end' ? 'right-0' : 'left-1/2 -translate-x-1/2',
           side === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
         )}

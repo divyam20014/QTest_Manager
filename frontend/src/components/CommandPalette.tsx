@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bug, Building2, ClipboardList, FileStack, History, PlayCircle, Search, Star } from 'lucide-react'
+import { Bug, Building2, ClipboardList, FileStack, History, ListTodo, PlayCircle, Search, Star } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -15,25 +15,30 @@ import { useFavourites } from '@/lib/useFavourites'
 import { useRecents } from '@/lib/useRecents'
 import { useWorkspaceConfig } from '@/lib/workspaceConfig'
 import { cn } from '@/lib/utils'
+import { defectPath, requirementPath, taskPath, testCasePath, testRunPath } from '@/lib/entityRoutes'
 
 const TYPE_ICON: Record<SearchResultType, typeof FileStack> = {
   test_case: FileStack,
   defect: Bug,
   requirement: ClipboardList,
+  task: ListTodo,
 }
 const TYPE_LABEL: Record<SearchResultType, string> = {
   test_case: 'Test Case',
   defect: 'Defect',
   requirement: 'Requirement',
+  task: 'Task',
 }
 function pathFor(entry: SearchResultEntry): string {
   switch (entry.type) {
     case 'test_case':
-      return `/test-cases/${entry.id}`
+      return testCasePath(entry.project_id, entry.id)
     case 'defect':
-      return `/defects/${entry.id}`
+      return defectPath(entry.project_id, entry.id)
     case 'requirement':
-      return `/requirements/${entry.id}`
+      return requirementPath(entry.project_id, entry.id)
+    case 'task':
+      return taskPath(entry.project_id, entry.id)
   }
 }
 
@@ -154,7 +159,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           sublabel: 'Test run',
           group: 'Search results' as const,
           icon: PlayCircle,
-          onSelect: () => go(`/test-runs/${r.id}`),
+          onSelect: () => go(testRunPath(r.project_id, r.id)),
         }))
       : []
 

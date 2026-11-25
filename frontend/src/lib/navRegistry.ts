@@ -144,6 +144,7 @@ export const PALETTE_EXTRA_ENTRIES: { label: string; sublabel: string; path: str
   { label: 'Access Rules', sublabel: 'Administration', path: '/admin/access-rules' },
   { label: 'Audit Logs', sublabel: 'Administration', path: '/admin/audit-logs' },
   { label: 'Environments', sublabel: 'Administration', path: '/admin/environments' },
+  { label: 'Task Statuses', sublabel: 'Administration', path: '/admin/task-statuses' },
   { label: 'Settings', sublabel: 'Administration', path: '/settings' },
 ]
 

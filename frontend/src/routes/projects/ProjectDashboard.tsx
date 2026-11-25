@@ -14,6 +14,7 @@ import { DEFAULT_LAYOUT } from '@/lib/projectDashboard'
 
 import { CustomisePanel } from './overview/CustomisePanel'
 import { PROJECT_WIDGETS } from './overview/widgets'
+import { defectNewPath } from '@/lib/entityRoutes'
 
 // ADR-102 / ADR-122 / ADR-123: the Overview tab is this project's configurable dashboard. It shows
 // only this project's data (the project id comes from the URL and goes on every request; the API
@@ -72,7 +73,7 @@ export function ProjectDashboard() {
         </p>
         <div className="flex flex-wrap items-center justify-end gap-2 max-md:w-full">
           {hasPermission(user, 'defect.create') && (
-            <Link to={`/defects/new?projectId=${project.id}`} className={buttonVariants({ variant: 'outline' })}>
+            <Link to={defectNewPath(project.id)} className={buttonVariants({ variant: 'outline' })}>
               Report defect
             </Link>
           )}

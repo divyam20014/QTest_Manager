@@ -8,6 +8,7 @@ import { BoardView, type BoardCardData, type BoardTarget, type MoveOutcome } fro
 import { useAuth } from '@/lib/auth'
 import { useBoardColumns, type BoardColumnState } from '@/lib/board'
 import { RUN_STATUSES, RUN_STATUS_LABEL, runStatusOf, type RunStatus } from './runStatus'
+import { testRunPath } from '@/lib/entityRoutes'
 
 const PAGE_SIZE = 20
 
@@ -73,7 +74,7 @@ export function RunsBoard({
         return {
           id: r.id,
           title: r.name,
-          href: `/test-runs/${r.id}`,
+          href: testRunPath(r.project_id, r.id),
           badges: [{ label: r.run_type }, { label: `${r.case_count} case${r.case_count === 1 ? '' : 's'}` }],
           meta: [projectNames?.get(r.project_id), r.finished_at ? `Finished ${new Date(r.finished_at).toLocaleDateString()}` : `Started ${new Date(r.created_at).toLocaleDateString()}`]
             .filter(Boolean)

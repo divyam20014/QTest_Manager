@@ -74,6 +74,7 @@ import { ViewSwitcher } from '@/components/list/ViewSwitcher'
 import { useViewMode, type ViewMode } from '@/lib/viewMode'
 import { useListModes } from '@/lib/workspaceConfig'
 import { TestCasesBoard } from './TestCasesBoard'
+import { testCaseEditPath, testCasePath } from '@/lib/entityRoutes'
 
 const STATUSES: TestCaseStatus[] = ['draft', 'ready_for_review', 'approved', 'deprecated']
 const PAGE_SIZE = 25
@@ -230,7 +231,7 @@ export function TestCasesList() {
     onSuccess: (copy) => {
       queryClient.invalidateQueries({ queryKey: ['test-cases', projectId] })
       showToast('success', `Duplicated as ${copy.display_id ?? 'a new draft'}`)
-      navigate(`/test-cases/${copy.id}`)
+      navigate(testCasePath(copy.project_id, copy.id))
     },
     onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not duplicate the test case'),
   })
@@ -359,7 +360,7 @@ export function TestCasesList() {
       { label: 'Created', value: new Date(tc.created_at).toLocaleDateString() },
     ],
     description: (tc) => tc.description,
-    href: (tc) => `/test-cases/${tc.id}`,
+    href: (tc) => testCasePath(tc.project_id, tc.id),
   }
 
   const allItems = testCasesQuery.data?.items ?? []
@@ -443,8 +444,8 @@ export function TestCasesList() {
       <DropdownMenu
         label={`Actions for ${tc.display_id ?? tc.title}`}
         items={[
-          { label: 'Open', onSelect: () => navigate(`/test-cases/${tc.id}`) },
-          ...(canEdit ? [{ label: 'Edit', onSelect: () => navigate(`/test-cases/${tc.id}/edit`) }] : []),
+          { label: 'Open', onSelect: () => navigate(testCasePath(tc.project_id, tc.id)) },
+          ...(canEdit ? [{ label: 'Edit', onSelect: () => navigate(testCaseEditPath(tc.project_id, tc.id)) }] : []),
           ...(canCreate ? [{ label: 'Duplicate', onSelect: () => duplicateMutation.mutate(tc.id) }] : []),
           ...(canDelete
             ? [

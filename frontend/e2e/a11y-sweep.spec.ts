@@ -25,9 +25,19 @@ function routes(t: RoleTenant): string[] {
     `/projects/${p}/test-runs`,
     `/projects/${p}/requirements`,
     `/projects/${p}/traceability-matrix`,
-    `/test-cases/${t.caseId}`,
-    `/test-runs/${t.runId}`,
+    // ADR-127: records open inside their project.
+    `/projects/${p}/test-cases/${t.caseId}`,
+    `/projects/${p}/test-runs/${t.runId}`,
+    `/projects/${p}/requirements/${t.requirementId}`,
     `/test-run-cases/${t.runCaseId}?runId=${t.runId}`,
+    // ADR-127: tasks, sub-tasks and their screens.
+    `/projects/${p}/tasks`,
+    `/projects/${p}/tasks?view=board`,
+    `/projects/${p}/tasks?view=flat`,
+    `/projects/${p}/tasks/${t.taskId}`,
+    `/projects/${p}/tasks/${t.subTaskId}`,
+    `/projects/${p}/traceability-matrix?task=${t.taskId}&sub=1`,
+    '/admin/task-statuses',
     // ADR-126: the workspace redesign (My Work, the moved project tabs, board and calendar views).
     '/my-work',
     `/projects/${p}/test-plans`,
@@ -44,7 +54,7 @@ function routes(t: RoleTenant): string[] {
     '/test-runs',
     '/execution',
     '/defects',
-    `/defects/${t.defectId}`,
+    `/projects/${p}/defects/${t.defectId}`,
     '/reporting',
     '/reporting/print',
     '/admin/users',
@@ -149,6 +159,10 @@ const NEW_PAGES = (p: string) => [
   `/projects/${p}/test-runs?view=board`,
   `/projects/${p}/test-runs?view=calendar`,
   '/admin/workspace',
+  // ADR-127: the task screens.
+  `/projects/${p}/tasks`,
+  `/projects/${p}/tasks?view=board`,
+  '/admin/task-statuses',
 ]
 const BREAKPOINTS = [
   { width: 1440, height: 900, theme: 'light' },
@@ -184,7 +198,7 @@ test('workspace pages: axe and overflow (tap targets reported) at 1440 / 1280 / 
       }, bp.theme)
       const page = await ctx.newPage()
       await loginViaUi(page, t.tenantId, who.email, who.password)
-      for (const route of NEW_PAGES(t.projectId!)) {
+      for (const route of [...NEW_PAGES(t.projectId!), `/projects/${t.projectId}/tasks/${t.taskId}`]) {
         await page.goto(route)
         await page.locator('main').first().waitFor()
         await page.waitForLoadState('networkidle')

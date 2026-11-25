@@ -7,6 +7,8 @@ export const SEGMENT_LABELS: Record<string, string> = {
   projects: 'Projects',
   'my-work': 'My Work',
   requirements: 'Requirements',
+  tasks: 'Tasks',
+  'task-statuses': 'Task Statuses',
   'test-cases': 'Test Cases',
   'test-repository': 'Test Cases',
   'test-runs': 'Test Runs',
@@ -41,6 +43,7 @@ const ID_LABELS: Record<string, string> = {
   'test-runs': 'Test Run',
   'test-run-cases': 'Test Case',
   defects: 'Defect',
+  tasks: 'Task',
 }
 
 // Top-level segments that only exist as a prefix for a detail route
@@ -112,6 +115,10 @@ export function buildCrumbs(pathname: string, names: CrumbNames = {}): Crumb[] {
         (onDash && index === 1 ? names.dashboardName : undefined) ??
         (isIdSegment(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
       const hasPage = !(index === 0 && NO_LIST_PAGE.has(segments[0]))
+      // The project's Defects tab is the project-filtered list at /defects.
+      if (projectId && index === 2 && segment === 'defects') {
+        return { path: `/defects?projectId=${projectId}`, label, link: true, current: false }
+      }
       return { path, label, link: hasPage, current: false }
     })
     .filter((_, index) => !(onDash && index === 0))

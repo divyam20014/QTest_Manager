@@ -175,6 +175,13 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
   await page.request.post(`${API_BASE_URL}/defects`, {
     data: seedDefectBody(project.id, { title: 'Settlement rounds down' }),
   })
+  const task = await page.request.post(`${API_BASE_URL}/projects/${project.id}/tasks`, {
+    data: { title: 'Settlement engine', due_date: '2026-12-01' },
+  })
+  const taskId = (await task.json()).data.id as string
+  await page.request.post(`${API_BASE_URL}/projects/${project.id}/tasks`, {
+    data: { title: 'Rounding rules', parent_task_id: taskId },
+  })
   for (const route of [
     '/my-work',
     `/projects/${project.id}`,
@@ -185,6 +192,12 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
     `/projects/${project.id}/test-cases?view=board`,
     `/projects/${project.id}/test-runs?view=board`,
     `/projects/${project.id}/test-runs?view=calendar`,
+    // ADR-127: tasks, the board and the task page.
+    `/projects/${project.id}/tasks`,
+    `/projects/${project.id}/tasks?view=board`,
+    `/projects/${project.id}/tasks/${taskId}`,
+    '/admin/task-statuses',
+    // Last: the checks right after the loop use the Workspace settings page.
     '/admin/workspace',
   ]) {
     await page.goto(route)

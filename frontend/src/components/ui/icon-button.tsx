@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> {
   /** Required: names the button for screen readers and is shown as its tooltip. */
   'aria-label': string
+  /** The tooltip text when it should be shorter than the accessible name (which may say what it acts on). */
+  tooltip?: string
   size?: 'sm' | 'md'
   variant?: 'ghost' | 'secondary'
   /** Where the tooltip bubble sits; `end` for buttons at the right edge of a table row. */
@@ -16,8 +18,8 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
 
 /** Icon-only button: 32px minimum hit area (44px on phones), built-in tooltip. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ 'aria-label': label, size = 'md', variant = 'ghost', tooltipAlign, tooltipSide, className, type = 'button', children, ...props }, ref) => (
-    <Tooltip content={label} align={tooltipAlign} side={tooltipSide}>
+  ({ 'aria-label': label, tooltip, size = 'md', variant = 'ghost', tooltipAlign, tooltipSide, className, type = 'button', children, ...props }, ref) => (
+    <Tooltip content={tooltip ?? label} align={tooltipAlign} side={tooltipSide}>
       <button
         ref={ref}
         type={type}

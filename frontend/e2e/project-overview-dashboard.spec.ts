@@ -373,7 +373,7 @@ test('customise: show, hide and order widgets, reset, per-user layouts and the p
   await expect(kpi(page, 'total')).toBeVisible({ timeout: 30_000 })
   const builtin = await widgetOrder(page)
   expect(builtin[0]).toBe('kpi_strip')
-  expect(builtin).toHaveLength(14)
+  expect(builtin).toHaveLength(15)
 
   await page.getByTestId('project-quick-actions').getByRole('button', { name: 'Customise' }).click()
   const panel = page.getByRole('dialog', { name: 'Customise dashboard' })
@@ -388,7 +388,7 @@ test('customise: show, hide and order widgets, reset, per-user layouts and the p
   const mine = await widgetOrder(page)
   expect(mine.slice(0, 3)).toEqual(['kpi_strip', 'execution_trend', 'test_status'])
   expect(mine).not.toContain('tester_performance')
-  expect(mine).toHaveLength(13)
+  expect(mine).toHaveLength(14)
   // It persists across a reload, and the stored layout is the visible widgets in order.
   await page.reload()
   await expect(kpi(page, 'total')).toBeVisible({ timeout: 30_000 })

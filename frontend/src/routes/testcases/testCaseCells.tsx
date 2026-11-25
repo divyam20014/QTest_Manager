@@ -11,6 +11,7 @@ import { ExecutionStatusBadge } from './ExecutionStatusBadge'
 import { STATUS_DISPLAY } from './statusDisplay'
 
 import { formatWhen } from '@/lib/formatWhen'
+import { defectPath, testCasePath } from '@/lib/entityRoutes'
 
 function clamp(text: string | null | undefined): ReactNode {
   if (!text || !text.trim()) return <span className="text-[var(--muted-foreground)]">—</span>
@@ -40,7 +41,7 @@ export function buildTestCaseColumn(key: string, label: string, ctx: CellContext
         ...base,
         card: 'meta',
         cell: (tc) => (
-          <Link to={`/test-cases/${tc.id}`} className="font-mono text-xs underline-offset-2 hover:underline">
+          <Link to={testCasePath(tc.project_id, tc.id)} className="font-mono text-xs underline-offset-2 hover:underline">
             {tc.display_id ?? tc.id.slice(0, 8)}
           </Link>
         ),
@@ -52,14 +53,14 @@ export function buildTestCaseColumn(key: string, label: string, ctx: CellContext
         tdClassName: 'min-w-[11rem] max-w-[22rem]',
         cell: (tc) => (
           <span className="inline-flex flex-wrap items-center gap-1">
-            <Link to={`/test-cases/${tc.id}`} className="font-medium underline-offset-2 hover:underline">
+            <Link to={testCasePath(tc.project_id, tc.id)} className="font-medium underline-offset-2 hover:underline">
               {tc.title}
             </Link>
             {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
           </span>
         ),
         cardCell: (tc) => (
-          <Link to={`/test-cases/${tc.id}`} className={CARD_LINK_CLASS}>
+          <Link to={testCasePath(tc.project_id, tc.id)} className={CARD_LINK_CLASS}>
             {tc.title}
           </Link>
         ),
@@ -128,7 +129,7 @@ export function buildTestCaseColumn(key: string, label: string, ctx: CellContext
             <span className="inline-flex max-w-[16rem] flex-wrap gap-x-1 text-xs">
               {tc.linked_defects.map((d, i) => (
                 <span key={d.id}>
-                  <Link to={`/defects/${d.id}`} className="underline underline-offset-2">
+                  <Link to={defectPath(tc.project_id, d.id)} className="underline underline-offset-2">
                     {d.display_id ?? d.title}
                   </Link>
                   {i < tc.linked_defects.length - 1 ? ',' : ''}

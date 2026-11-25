@@ -23,7 +23,7 @@ const tester = user('tester', ['report.view'])
 const keys = (tabs: { key: string }[]) => tabs.map((t) => t.key)
 
 describe('project tabs', () => {
-  it('has the six core tabs, five optional ones and no tab without a real page', () => {
+  it('has the six core tabs, six optional ones and no tab without a real page', () => {
     expect(PROJECT_TABS.filter((t) => t.core).map((t) => t.key)).toEqual([
       'overview',
       'requirements',
@@ -117,5 +117,36 @@ describe('switchTarget', () => {
     expect(switchTarget('team', target, admin)).toBe('/projects/p2')
     expect(switchTarget('settings', { id: 'p2' }, tester)).toBe('/projects/p2')
     expect(switchTarget(null, { id: 'p2' }, admin)).toBe('/projects/p2')
+  })
+})
+
+describe('Tasks tab (ADR-127)', () => {
+  it('is an optional tab right after Overview that every member can open', () => {
+    const tasks = PROJECT_TABS.find((t) => t.key === 'tasks')
+    expect(tasks).toMatchObject({ label: 'Tasks', core: false, hideable: true })
+    expect(tasks?.to('p1')).toBe('/projects/p1/tasks')
+    expect(DEFAULT_TAB_ORDER.slice(0, 3)).toEqual(['overview', 'tasks', 'requirements'])
+    expect(keys(resolveProjectTabs('p1', null, tester))).toContain('tasks')
+  })
+
+  it('can be hidden, and a saved order without it still shows it at the end', () => {
+    expect(keys(resolveProjectTabs('p1', { order: [], hidden: ['tasks'] }, admin))).not.toContain('tasks')
+    const legacy = { order: ['overview', 'requirements', 'test-cases'], hidden: [] }
+    expect(fullOrder(legacy)).toContain('tasks')
+  })
+
+  it('maps its URL to the tab', () => {
+    expect(activeTabKey('/projects/p1/tasks', '')).toBe('tasks')
+  })
+})
+
+describe('record pages keep their tab (ADR-127)', () => {
+  it('maps requirement, test case, run and defect pages to their tabs', () => {
+    expect(activeTabKey('/projects/p1/requirements/r1', '')).toBe('requirements')
+    expect(activeTabKey('/projects/p1/test-cases/c1/edit', '')).toBe('test-cases')
+    expect(activeTabKey('/projects/p1/test-runs/u1', '')).toBe('test-runs')
+    expect(activeTabKey('/projects/p1/defects/d1', '')).toBe('defects')
+    expect(activeTabKey('/projects/p1/defects/new', '')).toBe('defects')
+    expect(activeTabKey('/projects/p1/tasks/t1', '')).toBe('tasks')
   })
 })

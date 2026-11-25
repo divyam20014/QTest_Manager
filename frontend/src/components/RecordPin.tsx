@@ -25,7 +25,10 @@ export function RecordPin({ type, id, title, url }: { type: PinType; id: string;
 
   return (
     <IconButton
-      aria-label={pinned ? 'Remove from favourites' : 'Add to favourites'}
+      // The record is named: a record page also shows its project's star, and two buttons called
+      // just "Add to favourites" cannot be told apart by a screen reader.
+      aria-label={`${pinned ? 'Remove from favourites' : 'Add to favourites'}: ${title}`}
+      tooltip={pinned ? 'Remove from favourites' : 'Add to favourites'}
       aria-pressed={pinned}
       size="sm"
       onClick={() => favourites.toggle({ type, id, title, url })}

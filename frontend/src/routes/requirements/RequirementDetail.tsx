@@ -12,11 +12,13 @@ import {
   listRequirementVersions,
   unlinkTestCase,
   updateRequirement,
+  type RequirementDetail as RequirementDetailData,
 } from '@/api/requirements'
 import { listTestCases } from '@/api/testCases'
 import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CustomFieldsCard } from '@/components/CustomFieldsCard'
+import { TaskPicker } from '@/components/TaskPicker'
 import { Badge } from '@/components/ui/badge'
 import { RecordPin } from '@/components/RecordPin'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -34,6 +36,7 @@ import { useAuth } from '@/lib/auth'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { FormError } from '@/components/ui/form-field'
+import { requirementPath, testCasePath } from '@/lib/entityRoutes'
 
 const REQUIREMENT_HISTORY_ACTION_LABEL: Record<string, string> = {
   'requirement.created': 'Requirement created',
@@ -109,7 +112,7 @@ export function RequirementDetail() {
         title={req.title}
         meta={
           <>
-            <RecordPin type="requirement" id={req.id} title={req.title} url={`/requirements/${req.id}`} />
+            <RecordPin type="requirement" id={req.id} title={req.title} url={requirementPath(req.project_id, req.id)} />
             <Badge tone="neutral">v{req.version_number}</Badge>
           </>
         }
@@ -149,6 +152,8 @@ export function RequirementDetail() {
 
       {confirmDialog}
 
+      <RequirementTaskCard req={req} canManage={canManage} onChanged={invalidate} />
+
       <Card>
         <CardHeader>
           <CardTitle>Description</CardTitle>
@@ -184,7 +189,7 @@ export function RequirementDetail() {
                   <tr key={lt.test_case_id} className="border-t border-[var(--border)]">
                     <td className="py-2">
                       <Link
-                        to={`/test-cases/${lt.test_case_id}`}
+                        to={testCasePath(req.project_id, lt.test_case_id)}
                         className="underline-offset-2 hover:underline"
                       >
                         {lt.test_case_title}
@@ -407,6 +412,65 @@ function GenerateWithAIDialog({
         </DialogFooter>
       </div>
     </Dialog>
+  )
+}
+
+/** The task this requirement belongs to (ADR-127). Re-pointing it is not an edit of the wording, so it
+ * saves at once and adds no version. */
+function RequirementTaskCard({
+  req,
+  canManage,
+  onChanged,
+}: {
+  req: RequirementDetailData
+  canManage: boolean
+  onChanged: () => void
+}) {
+  const { show: showToast } = useToast()
+  const mutation = useMutation({
+    mutationFn: (taskId: string) => updateRequirement(req.id, { task_id: taskId || null }),
+    onSuccess: () => {
+      onChanged()
+      showToast('success', 'Task updated')
+    },
+    onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not change the task'),
+  })
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Task</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-sm">
+        {req.task_id ? (
+          <p>
+            <Link
+              to={`/projects/${req.project_id}/tasks/${req.task_id}`}
+              className="underline-offset-2 hover:underline"
+            >
+              {req.task_display_id ? `${req.task_display_id} · ${req.task_title}` : req.task_title}
+            </Link>
+          </p>
+        ) : (
+          <p className="text-[var(--muted-foreground)]">Not part of a task.</p>
+        )}
+        {canManage && (
+          <div className="max-w-md">
+            <Label htmlFor="requirement-detail-task" className="sr-only">
+              Change task
+            </Label>
+            <TaskPicker
+              id="requirement-detail-task"
+              projectId={req.project_id}
+              value={req.task_id ?? ''}
+              placeholder="Choose a task"
+              aria-label="Change task"
+              disabled={mutation.isPending}
+              onChange={(id) => mutation.mutate(id)}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

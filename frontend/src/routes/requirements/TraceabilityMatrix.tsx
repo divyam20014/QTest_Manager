@@ -14,6 +14,8 @@ import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
+import { TaskPicker } from '@/components/TaskPicker'
+import { useUrlFilters } from '@/lib/useUrlFilters'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
@@ -26,6 +28,7 @@ import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePre
 // behavior is introduced here.
 const MATRIX_COLUMNS: TableColumnDef[] = [
   { key: 'requirement', label: 'Requirement', alwaysVisible: true, defaultWidth: 320 },
+  { key: 'task', label: 'Task', defaultWidth: 110 },
   { key: 'linked', label: 'Test Cases', defaultWidth: 110 },
   { key: 'passed', label: 'Passed', defaultWidth: 90 },
   { key: 'failed', label: 'Failed', defaultWidth: 90 },
@@ -34,6 +37,7 @@ const MATRIX_COLUMNS: TableColumnDef[] = [
   { key: 'coverage', label: 'Coverage', defaultWidth: 110 },
 ]
 
+// Links are relative to this route (/projects/:projectId/traceability-matrix): `..` is the project.
 const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
   {
     key: 'requirement',
@@ -42,7 +46,7 @@ const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
     tdClassName: 'font-medium',
     cell: (e) => (
       <>
-        <Link to={`/requirements/${e.requirement_id}`} className="underline-offset-2 hover:underline">
+        <Link to={`../requirements/${e.requirement_id}`} className="underline-offset-2 hover:underline">
           {e.requirement_title}
         </Link>
         {e.linked_test_case_count === 0 && (
@@ -53,16 +57,23 @@ const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
       </>
     ),
     cardCell: (e) => (
-      <Link to={`/requirements/${e.requirement_id}`} className={CARD_LINK_CLASS}>
+      <Link to={`../requirements/${e.requirement_id}`} className={CARD_LINK_CLASS}>
         {e.requirement_title}
       </Link>
     ),
   },
   {
+    key: 'task',
+    header: 'Task',
+    card: 'meta',
+    tdClassName: 'font-mono text-xs',
+    cell: (e) => e.task_display_id ?? '—',
+  },
+  {
     key: 'linked',
     header: 'Test Cases',
     cell: (e) => (
-      <Link to={`/requirements/${e.requirement_id}`} className="relative z-10 underline-offset-2 hover:underline max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center">
+      <Link to={`../requirements/${e.requirement_id}`} className="relative z-10 underline-offset-2 hover:underline max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center">
         {e.linked_test_case_count}
       </Link>
     ),
@@ -107,6 +118,11 @@ const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
 
 export function TraceabilityMatrix() {
   const { projectId } = useParams<{ projectId: string }>()
+  // ADR-127: narrow the matrix to one task (and, optionally, its sub-tasks); the URL carries it.
+  const urlFilters = useUrlFilters({ task: '', sub: '' })
+  const taskId = urlFilters.values.task
+  const includeSubTasks = urlFilters.values.sub === '1'
+  const scope = taskId ? { task_id: taskId, include_sub_tasks: includeSubTasks } : {}
   const columnPrefs = useColumnPrefs('traceability-matrix', MATRIX_COLUMNS)
 
   const projectQuery = useQuery({
@@ -115,8 +131,8 @@ export function TraceabilityMatrix() {
     enabled: !!projectId,
   })
   const matrixQuery = useQuery({
-    queryKey: ['traceability-matrix', projectId],
-    queryFn: () => fetchTraceabilityMatrix(projectId!),
+    queryKey: ['traceability-matrix', projectId, taskId, includeSubTasks],
+    queryFn: () => fetchTraceabilityMatrix(projectId!, scope),
     enabled: !!projectId,
   })
 
@@ -138,7 +154,7 @@ export function TraceabilityMatrix() {
           report && (
             <>
               <a
-                href={traceabilityMatrixExportUrl(projectId!)}
+                href={traceabilityMatrixExportUrl(projectId!, scope)}
                 download
                 className={buttonVariants({ variant: 'outline' })}
               >
@@ -146,7 +162,7 @@ export function TraceabilityMatrix() {
               </a>
               <ExportButton
                 label="Download Excel"
-                path={traceabilityMatrixExportXlsxPath(projectId!)}
+                path={traceabilityMatrixExportXlsxPath(projectId!, scope)}
                 fallbackName="traceability_matrix.xlsx"
               />
             </>
@@ -170,7 +186,33 @@ export function TraceabilityMatrix() {
         </Card>
       )}
 
-      <div className="flex items-center justify-end max-md:hidden">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-56 flex-col gap-1.5">
+            <label htmlFor="matrix-filter-task" className="text-xs font-medium text-[var(--muted-foreground)]">
+              Task
+            </label>
+            <TaskPicker
+              id="matrix-filter-task"
+              projectId={projectId ?? ''}
+              value={taskId}
+              placeholder="All requirements"
+              aria-label="Show only one task"
+              onChange={(id) => urlFilters.setFilters({ task: id, sub: id ? urlFilters.values.sub : '' })}
+            />
+          </div>
+          {taskId && (
+            <label className="flex min-h-10 items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includeSubTasks}
+                onChange={(e) => urlFilters.setFilter('sub', e.target.checked ? '1' : '')}
+              />
+              Include sub-tasks
+            </label>
+          )}
+        </div>
+        <div className="max-md:hidden">
         <ColumnVisibilityMenu
           columns={MATRIX_COLUMNS}
           isVisible={columnPrefs.isVisible}
@@ -179,6 +221,7 @@ export function TraceabilityMatrix() {
           density={columnPrefs.density}
           setDensity={columnPrefs.setDensity}
         />
+        </div>
       </div>
 
       {/* Desktop: the wide matrix. Phone: one card per requirement with its

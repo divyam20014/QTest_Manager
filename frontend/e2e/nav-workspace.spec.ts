@@ -201,11 +201,13 @@ test('favourites and recent: star on detail pages, sidebar areas, order, persist
     // Star a defect.
     await page.goto(`/defects/${t.defectId}`)
     await expect(page.getByRole('heading', { level: 1, name: 'Seeded defect' })).toBeVisible()
-    const star = page.getByRole('button', { name: 'Add to favourites' })
+    // The project's own star is on the page too (ADR-127: records open inside their project), so
+    // each star is named after what it pins.
+    const star = page.getByRole('button', { name: 'Add to favourites: Seeded defect' })
     await star.click()
-    await expect(page.getByRole('button', { name: 'Remove from favourites' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: 'Remove from favourites: Seeded defect' })).toHaveAttribute('aria-pressed', 'true')
     const favourites = side.getByRole('region', { name: 'Favourites' })
-    await expect(favourites.getByRole('link', { name: 'Seeded defect' })).toHaveAttribute('href', `/defects/${t.defectId}`)
+    await expect(favourites.getByRole('link', { name: 'Seeded defect' })).toHaveAttribute('href', `/projects/${t.projectId}/defects/${t.defectId}`)
 
     // Visits are recorded newest first (test case, run, project).
     await page.goto(`/test-cases/${t.caseId}`)
@@ -308,7 +310,7 @@ test('My Work: a tester sees their run cases and defects, a manager their review
 
     await tp.getByRole('tab', { name: /^Defects/ }).click()
     const defectLink = tp.getByRole('link', { name: /Seeded defect/ })
-    await expect(defectLink).toHaveAttribute('href', `/defects/${t.defectId}`)
+    await expect(defectLink).toHaveAttribute('href', `/projects/${t.projectId}/defects/${t.defectId}`)
     await expect(defectLink).toContainText('Assigned to me')
     await tp.getByRole('tab', { name: /^Reviews/ }).click()
     await expect(tp.getByText('Nothing waiting for your review')).toBeVisible()

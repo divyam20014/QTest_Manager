@@ -43,6 +43,7 @@ import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
 import { dueRelative, isOverdue } from '@/lib/dueDate'
 import { FormError } from '@/components/ui/form-field'
+import { defectPath, testRunPath } from '@/lib/entityRoutes'
 
 
 const RUN_TYPES: RunType[] = ['Regression', 'Sanity', 'Smoke']
@@ -105,7 +106,7 @@ export function TestRunDetail() {
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['test-runs'] })
       showToast('success', 'Rerun created with the failed and blocked cases')
-      navigate(`/test-runs/${created.id}`)
+      navigate(testRunPath(created.project_id, created.id))
     },
   })
 
@@ -287,7 +288,7 @@ export function TestRunDetail() {
         title={run.name}
         meta={
           <>
-            <RecordPin type="test_run" id={run.id} title={run.name} url={`/test-runs/${run.id}`} />
+            <RecordPin type="test_run" id={run.id} title={run.name} url={testRunPath(run.project_id, run.id)} />
             <Badge tone="neutral">{run.run_type}</Badge>
             <Badge tone={run.finished_at ? 'neutral' : 'positive'}>{run.finished_at ? 'Finished' : 'Active'}</Badge>
             {run.paused_at && <Badge tone="warning">Paused</Badge>}
@@ -594,7 +595,7 @@ function LinkedDefectsCard({ runId }: { runId: string }) {
           {defects.map((d) => (
             <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-2 max-md:min-h-11">
               <Link
-                to={`/defects/${d.id}`}
+                to={defectPath(d.project_id, d.id)}
                 className="min-w-0 break-words underline-offset-2 hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
               >
                 {d.title}
