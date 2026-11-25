@@ -29,6 +29,7 @@ Matches the 12 modules named in the brief; each owns its slice of the schema in 
 | Tenant Management | tenants, platform_admins | — |
 | User Management | users, roles, permissions, role_permissions | Tenant Mgmt |
 | Project Management | projects, project_members | User Mgmt |
+| Task Management (ADR-127) | task_statuses, tasks, task_test_case_links | Project Mgmt, User Mgmt; requirements and defects carry a nullable `task_id`, test cases link many-to-many |
 | Test Case Management | test_cases | Project Mgmt, User Mgmt |
 | Test Case Versioning | test_case_versions, test_case_version_steps | Test Case Mgmt |
 | CSV Import/Export | (writes through Test Case Mgmt + Versioning services) | Test Case Mgmt, Project Mgmt, User Mgmt |

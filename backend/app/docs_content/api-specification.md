@@ -344,6 +344,43 @@ Any signed-in user. A dashboard of another user is 404. The team default is read
 | PUT | /dashboards/{id}/widgets | `{widgets[{widget_type, size, settings}]}` replaces the whole ordered list atomically; 422 on a bad type, size, setting, unknown key, invisible project or unknown saved report |
 | POST | /dashboards/{id}/team-default | Admin only. `{enabled: true}` publishes a copy of the dashboard as the single team default (replacing any previous one); `{enabled: false}` on the team default removes it; audit `dashboard.team_default_set` |
 
+## Tasks and sub-tasks (ADR-127)
+
+Permissions: `task.manage` (Admin, Manager), `task.transition` (Admin, Manager, Tester: a person without `task.manage` may change only tasks assigned to them), `task_status.manage` (Admin). Every read needs access to the task's project (a Tester must be assigned); a task id from another tenant or project they cannot see is 403/404 like every other record. A freeze window can block `task` actions (ADR-092).
+
+Errors: a hierarchy or status rule that is broken is `409` (completing a task with open sub-tasks, moving a task under itself or one of its own sub-tasks, deleting a task with sub-tasks without `cascade`, reopening a sub-task of a done task, nesting past the depth limit); a bad field is `422` with `error.fields` (`parent_task_id`, `due_date`, `assignee_id`, `release_id`, `priority`, `title`).
+
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| GET | /projects/{id}/tasks | list, paginated; filters `status_id`, `category` (todo / in_progress / done), `assignee_id`, `parent_task_id`, `root_only`, `release_id`, `overdue`, `q` (title or `TASK_` id) | project members |
+| GET | /projects/{id}/tasks/tree | every task of the project, parents before children (at most 2,000; `total` is the real count) | project members |
+| GET | /projects/{id}/tasks/summary | counts for the Overview widget: total, top-level, sub-tasks, per category, progress %, overdue, due in 7 days, unassigned open, finished in 7 days, `by_status[]` | project members |
+| POST | /projects/{id}/tasks | create a task, or a sub-task with `parent_task_id` (same project, depth limit); defaults to the tenant default status and priority Medium; `TASK_000001` display id | `task.manage` |
+| GET | /tasks/{id} | detail: ancestors, direct sub-tasks, linked test cases, direct counts | project members |
+| PATCH | /tasks/{id} | edit; `parent_task_id` moves the task with its subtree (`null` = top level); sub-task due date cannot exceed the parent's | `task.manage` |
+| POST | /tasks/{id}/status | `{status_id}`; `done` needs every sub-task done; reopening a sub-task of a done task is refused | `task.transition` |
+| DELETE | /tasks/{id}?cascade= | soft delete; 409 with sub-tasks unless `cascade=true`; requirements and defects pointing at removed tasks lose the link | `task.manage` |
+| POST | /tasks/{id}/test-cases | link a test case of the same project (idempotent) | `task.manage` |
+| DELETE | /tasks/{id}/test-cases/{testCaseId} | unlink | `task.manage` |
+| GET | /tasks/{id}/rollup?include_sub_tasks= | `{sub_tasks_total/todo/in_progress/done/overdue, progress_percent, requirements_total/covered, test_cases_total/passed/failed/blocked/not_run, pass_rate, test_runs_total, defects_total/open/critical_open}` over the task and (default) its sub-tasks | project members |
+| GET | /tasks/{id}/test-cases?include_sub_tasks= | effective test cases: linked directly or through a requirement, with the latest result | project members |
+| GET | /tasks/{id}/test-runs?include_sub_tasks= | live runs containing one of those cases, with this task's passed / failed / blocked counts | project members |
+| GET | /tasks/{id}/history | activity timeline (`task.created`, `.updated`, `.moved`, `.status_changed`, `.deleted`, `.test_case_linked`, comments) | project members |
+| GET / POST | /tasks/{id}/comments | comments (owner type `task`) | project members |
+| GET / POST | /tasks/{id}/attachments | attachments (upload needs `task.transition`) | project members / `task.transition` |
+| GET | /task-statuses | the tenant's statuses: `{id, code, label, category, color, sort_order, is_default, task_count}` | any signed-in user |
+| POST | /task-statuses | add one (`code` lowercase slug, unique) | `task_status.manage` |
+| PATCH | /task-statuses/{id} | label, colour, order, default; `category` only while no task uses it; the default must be `todo` | `task_status.manage` |
+| DELETE | /task-statuses/{id} | refused (409) for the default, a status in use, or the last `todo` / `done` | `task_status.manage` |
+
+Other endpoints that gained task parameters:
+
+- `POST` / `PATCH` of requirements and defects accept `task_id` (same project, else 422; `null` detaches; changing only the task adds no requirement version); their responses carry `task_id`, `task_display_id`, `task_title`.
+- `GET /projects/{id}/requirements` and `GET /defects` accept `task_id` and `include_sub_tasks`.
+- `GET /projects/{id}/requirements/coverage` and `GET /reports/traceability-matrix` (and its `/export` and `/export.xlsx`) accept `task_id` and `include_sub_tasks`; matrix entries and exports carry the task.
+- `GET /search` returns `type: "task"` results (title prefixed by the `TASK_` id).
+- The report builder has a `tasks` source and a `task` field on `defects`; the project dashboard catalogue has `task_progress`.
+
 ## Project dashboards (ADR-123)
 
 The layout of one project's Overview. Only the layout is stored; each widget reads its numbers from the report endpoints above and the existing list endpoints with the viewer's own session and the page's project id. Any signed-in user who can see the project may read and keep their own layout (a project outside their scope is a 404); the project default needs `project.edit` (project-role override aware) plus the ADR-018 assignment rule. Layouts are rows of `dashboards` / `dashboard_widgets` with `project_id` set and are never returned by the `/dashboards` endpoints above.

@@ -401,6 +401,59 @@ Index `ix_access_rules_tenant_enabled (tenant_id, enabled)`. The migration also 
 | position | INTEGER NOT NULL | order within the dashboard |
 | settings | JSONB NOT NULL DEFAULT '{}' | at most 1 KB, validated per widget type (unknown keys rejected) |
 
+## Tasks (ADR-127, migrations `b7d1f3a5c9e2`, `c8e2a4b6d0f1`, `d1f4a6c8e0b3`)
+
+### `task_statuses`
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID NOT NULL FK tenants | RLS |
+| code | VARCHAR NOT NULL | UNIQUE (tenant_id, code); lowercase slug, never changes |
+| label | VARCHAR NOT NULL | tenant-editable display name |
+| category | VARCHAR NOT NULL CHECK IN ('todo','in_progress','done') | the fixed meaning the code relies on |
+| color | VARCHAR NULL | `#rrggbb` |
+| sort_order | INTEGER NOT NULL DEFAULT 0 | |
+| is_default | BOOLEAN NOT NULL DEFAULT false | partial UNIQUE index on (tenant_id) WHERE is_default |
+
+Seeded with To Do (default), In Progress, Done for every existing tenant and at tenant creation.
+
+### `tasks`
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | UNIQUE (id, project_id) so children can reference it |
+| tenant_id | UUID NOT NULL FK tenants | RLS |
+| project_id | UUID NOT NULL FK projects | |
+| parent_task_id | UUID NULL | composite FK (parent_task_id, project_id) -> tasks (id, project_id): a sub-task is in its parent's project |
+| depth | INTEGER NOT NULL DEFAULT 0 | CHECK 0..4; CHECK (parent is null and depth = 0) or (parent not null and depth > 0); trigger `trg_tasks_depth`: depth = parent.depth + 1, and a task cannot be moved under itself or its own descendants |
+| display_seq / display_id | INTEGER / TEXT NULL | `TASK_000001`; UNIQUE (tenant_id, display_id); immutable (trigger `trg_tasks_display_id_immutable`); counter kind `task` in `entity_counters` |
+| title | VARCHAR NOT NULL | CHECK 3..255 characters |
+| description | TEXT NULL | |
+| status_id | UUID NOT NULL FK task_statuses | |
+| priority | VARCHAR NOT NULL DEFAULT 'Medium' | `field_options` key `task_priority`, validated in the service |
+| assignee_id | UUID NULL FK users | a member of the project |
+| release_id | UUID NULL FK releases | same project; set NULL when the release is deleted |
+| start_date / due_date | DATE NULL | CHECK start <= due; a sub-task's due date cannot exceed its parent's (service) |
+| completed_at | TIMESTAMPTZ NULL | set while the status category is `done` |
+| created_by | UUID NOT NULL FK users | |
+| created_at / updated_at | TIMESTAMPTZ NOT NULL | |
+| deleted_at | TIMESTAMPTZ NULL | soft delete: every ORM select excludes it (`models/soft_delete.py`) |
+
+Indexes: `ix_tasks_project_parent (project_id, parent_task_id) WHERE deleted_at IS NULL`, `ix_tasks_status`, `ix_tasks_assignee WHERE deleted_at IS NULL`.
+
+### `task_test_case_links`
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| tenant_id | UUID NOT NULL FK tenants | RLS |
+| task_id | UUID NOT NULL FK tasks | |
+| test_case_id | UUID NOT NULL FK test_cases | same project (service); UNIQUE (task_id, test_case_id); index on test_case_id |
+| linked_by / linked_at | UUID FK users / TIMESTAMPTZ | |
+
+### Columns and constraints added elsewhere
+- `requirements.task_id`, `defects.task_id` UUID NULL with composite FK `(task_id, project_id) -> tasks (id, project_id)` (a record can only point at a task of its own project) and a partial index WHERE task_id IS NOT NULL.
+- `comments.owner_type` and `attachments.owner_type` accept `'task'`; `entity_counters.kind` accepts `'task'`; `field_options.field_key` accepts `'task_priority'`.
+- Permissions `task.manage`, `task.transition`, `task_status.manage` (see ADR-127 for the role grants).
+
 ## Audit (FR-ADM-002) — insert-only, hash-chained (ADR-006)
 
 ### `audit_logs`

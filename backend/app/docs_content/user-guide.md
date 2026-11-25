@@ -69,6 +69,15 @@ Ctrl/Cmd+K) opens the command palette: type to find test cases, defects,
 requirements, projects and test runs, to start something new, or to jump to any
 screen you can open.
 
+### Where records open
+
+A requirement, test case, test run or defect opens **inside its project**: the
+project name and tab strip stay above it, and the tab it belongs to is marked as
+the current one. Links you saved or were sent before (a bookmark, a favourite, a
+notification) still work; they take you to the same record in its project. The
+Execution Console and the lists that span every project (Defects, Test Runs, Test
+Cases in the sidebar) are unchanged.
+
 ### My Work
 
 **My Work** is one page of what is waiting on you, with a tab each for **Run
@@ -428,6 +437,17 @@ the **Retests** tab, and the earlier failure stays in the history.
 
 Severity, priority and status names are your organization's own sets.
 
+### Tasks (view and update)
+
+A project's **Tasks** tab lists the pieces of work the requirements, test cases and
+defects belong to. A task can have sub-tasks; the list shows them indented under
+their parent, and you can switch to a flat list or a board. Open a task to see
+what is in it and how it is going: progress, requirement coverage, pass rate,
+open defects and test runs, then a tab for each. You can change the **status** of
+a task assigned to you, from the task page or by moving its card on the board;
+you cannot create, edit or delete tasks. A task cannot be completed while one of
+its sub-tasks is still open; the message says how many.
+
 ### Requirements (view)
 
 Each project has a **Requirements** tab listing what the product must do and
@@ -460,6 +480,49 @@ domain, priority, budget and timeline. In a project you manage members on the
 **Planning**, and the project's own details, visible tabs and deletion on
 **Settings**. Keep the builds and environments current so runs can target them
 (environments are maintained under Admin, see "For Admins").
+
+### Tasks and sub-tasks
+
+Use a project's **Tasks** tab to group the work. **New Task** creates a task;
+open a task and choose **Add sub-task** to break it down (up to five levels).
+Give a task an assignee, a priority, a release and start and due dates. A
+sub-task's due date cannot be later than its parent's.
+
+- **Statuses** are your organisation's own (an Admin sets them up, see Task
+  Statuses). A task is complete when it is in a status of the "Done" kind, which
+  needs every sub-task done first. A finished parent cannot take a new open
+  sub-task, and a sub-task of a finished parent cannot be reopened: reopen the
+  parent first.
+- **Moving** a task: edit it and choose another **Parent task** (or none, for the
+  top level). Its sub-tasks move with it. A task cannot be moved under itself or
+  under one of its own sub-tasks.
+- **Deleting** a task that has sub-tasks asks you to confirm that they go too.
+  Requirements and defects that were in a deleted task are kept, without a task.
+- **Putting things in a task**: choose the **Task** when you create or edit a
+  requirement or a defect, or on the requirement page (changing only the task does
+  not create a new version). Link test cases on the task's **Test Cases** tab; the
+  test cases of its requirements count too.
+- The **task page** shows progress (sub-tasks done), requirement coverage, pass
+  rate, open defects and test runs for the task and its sub-tasks (clear
+  "Include sub-tasks" to see the task alone), with a tab for requirements, test
+  cases, defects, runs, discussion and activity. A badge says how it is going:
+  *At risk* when a critical defect is open or a linked test case last failed,
+  *Needs attention* for overdue work, open defects, blocked cases or requirements
+  without a test case, otherwise *On track*.
+- The **board** has a column per status. Drag a card, or use its **Move to** menu;
+  if a rule stops the move, the reason is shown and the card stays.
+
+### Task reports
+
+The project **Overview** has a **Task progress** widget (add it under Customise if
+your layout predates it): tasks done, a bar per status, and overdue, due-in-7-days
+and unassigned counts. The **Requirements Traceability Matrix** can be narrowed to
+one task, with or without its sub-tasks, and its CSV and Excel downloads follow;
+the Requirements list's coverage figure follows the task filter. The **Report
+builder** has a **Tasks** source (status, kind of status, level, parent, assignee,
+release, dates, overdue, and counts of sub-tasks, requirements, test cases and
+defects) and a **Task** field on defects. Search (and the command palette) finds
+tasks by title or by their TASK_ id.
 
 ### Requirements and coverage
 
@@ -704,6 +767,24 @@ status (Active, Deactivated) and sort. From here you can:
 **Environments** lists the environments test runs can target. Choose **Add
 Environment** to add one, and edit or retire existing ones. Managers can also
 maintain this list.
+
+### Task Statuses
+
+**Task Statuses** (under Admin) lists the statuses tasks and sub-tasks move
+through. Rename a status, give it a colour, or add your own with **New Status**.
+Every status belongs to one of three kinds that the product relies on: *To do*,
+*In progress* or *Done*. A task counts as finished only in a *Done* status, which
+is also what progress and "overdue" are measured against. Rules:
+
+- exactly one status is the **default** for new tasks, and it is a *To do* status;
+- there is always at least one *To do* and one *Done* status;
+- a status that tasks use (even deleted ones) cannot be deleted and keeps its
+  kind; move the tasks to another status first.
+
+The people who may create and edit tasks, change a task's status, and edit these
+statuses are set under **Roles & Permissions** (Tasks: manage, change status,
+manage statuses). A release freeze can include task changes: choose the action
+`task` when you create the freeze.
 
 ### Settings
 

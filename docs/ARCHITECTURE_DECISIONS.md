@@ -1863,3 +1863,58 @@ A first pass on freshly loaded tables (before `ANALYZE`) was slower on the repor
 **Deliberately not built.** Gantt and timeline (no task dependencies exist), project templates, the Calendar, Documents and Test Automation modules (no backing data; no placeholder pages), an organisation-level Team page, and tenant default dashboard widgets (the default project dashboard is stored per project; a tenant tier needs a second storage path or a new fallback in `project_dashboard_service`). Overdue and upcoming items exist only because run cases carry a due date (ADR-123); test cases and defects still have none.
 
 **Consequences.** The audit leaves no open product defect. Open items, by value: a cached grouped-count endpoint for the test-case board; sort handling in `useApplyDefaultView`; larger targets for widget "View" links and breadcrumbs if WCAG 2.2 AA becomes the gate; pruning Recent when a record is deleted; the import timing decision above.
+
+## ADR-127: Project > Task > Sub-task hierarchy, and moving records inside their project
+
+**Context.** Everything a project owns (requirements, test cases, runs, defects) hung directly off the project, joined only by the requirement <-> test case link. There was no way to say "these requirements, test cases and defects belong to one piece of work", no unit of planning below a release, and no way to ask how that piece of work was going. Records also opened at top-level URLs (`/defects/:id`) outside the project they belong to.
+
+**Decision.**
+
+1. **A `Task` sits between Project and its records, and is optional.** A project has many tasks; a task can have sub-tasks (up to five levels, `MAX_TASK_DEPTH = 4`); a requirement and a defect carry a nullable `task_id`; a test case is linked to tasks many-to-many (`task_test_case_links`) because one case verifies several tasks. Nothing existing was changed or backfilled: a record with no task is simply unassigned, so a tenant adopts tasks task by task.
+2. **Hierarchy rules, enforced by PostgreSQL where they can be and by the service where they need context.** Database: a sub-task is in its parent's project (composite foreign key `(parent_task_id, project_id) -> tasks(id, project_id)`); `depth` is 0 for a top-level task and exactly parent + 1 below it (CHECK plus a trigger); a task is not its own parent; the trigger also walks the new parent's ancestors, so a task can never be moved under itself or one of its own sub-tasks (the depth check alone is not enough: making a root the child of its own child satisfies `depth = parent + 1` row by row); a requirement or defect can only point at a task of its own project (composite foreign keys); `TASK_000001` display ids are immutable. Service: a task cannot be completed while a sub-task is open; a done task cannot take an open sub-task and a sub-task of a done task cannot be reopened (reopen the parent first); a sub-task's due date cannot be later than its parent's, nor a parent's earlier than a child's; moving a task moves its subtree and rewrites every descendant's depth parent-first (the row trigger validates each row against its parent); a parent with sub-tasks is deleted only with `cascade=true`, deletion is soft, and requirements and defects that pointed at the deleted tasks lose the link but are kept.
+3. **Statuses are configurable per tenant, with a fixed meaning.** `task_statuses` holds the tenant's code, label, colour and order; each belongs to a fixed `category` (`todo`, `in_progress`, `done`) that the code relies on for completion, overdue and roll-ups. One default per tenant and it is a `todo`; at least one `todo` and one `done` always exist; a status that tasks use (soft-deleted included) cannot be deleted or change category. Priority reuses the existing configurable field options (`task_priority`).
+4. **Three permissions.** `task.manage` (Admin, Manager): create, edit, move, delete, link test cases. `task.transition` (Admin, Manager, Tester): change a status; a person without `task.manage` may change only the status of a task assigned to them. `task_status.manage` (Admin): the statuses. Reading follows project access (a Tester must be assigned to the project). Freeze windows can block them: `task` is a valid blocked action prefix (derived from the permission codes; `task_status` is a separate action).
+5. **The task page and roll-ups.** `/projects/:pid/tasks/:tid` shows the task, its path, five roll-up numbers (progress, requirement coverage, pass rate, open defects, test runs) and a tab each for requirements, test cases, defects, runs, discussion (comments and attachments, new owner type `task`) and activity. The numbers cover the task and, unless switched off, every sub-task. A task's test cases are those linked to it directly plus those linked to its requirements; a result is a case's latest executed run case in a live run. Health ("At risk", "Needs attention", "On track") is derived from those numbers only. The Tasks tab also has a Hierarchy, a Flat list and a Board (one column per status; a move calls the status endpoint and shows its refusal).
+6. **Records open inside their project.** Requirements, test cases, test runs and defects (detail, edit, new) now live under `/projects/:projectId/...`, so the project header and tab strip stay around them. The old top-level URLs remain as redirects that look the record up and replace the URL, so bookmarks, pins, recents and notification links keep working; a record opened under the wrong project moves to its own. The execution console and the cross-project lists (`/defects`, `/test-runs`, `/test-repository`, `/execution`) did not move. `lib/entityRoutes.ts` is the one place that builds the URLs.
+7. **Reporting.** A "Task progress" widget on the project Overview (`GET /projects/{id}/tasks/summary`); requirement coverage and the traceability matrix (JSON, CSV, Excel) take `task_id` and `include_sub_tasks` and gain a Task column; tasks are found by title or `TASK_` id in search and the command palette; the report builder has a Tasks source and defects a Task field; requirement and defect lists filter by task.
+
+**Phases.** 1 data model (migration `b7d1f3a5c9e2`), 2 backend (`c8e2a4b6d0f1` permissions), 3 project integration and status admin, 4 task workspace (`d1f4a6c8e0b3` comments and attachments), 5 routing, 6 reporting, 7 this audit.
+
+**Audit result and fixes.** The data model, API, permissions, UI and routes were walked against the running behaviour and the seams a new project-level entity touches. Four defects were found and fixed in this phase, each with a test (`tests/test_tasks_audit_api.py`):
+
+- **Deleting a project that has tasks (or requirements) was an unhandled foreign-key error.** `delete_project` checked test cases, runs and defects only. It now answers 409 for tasks (soft-deleted ones too: they still reference the project) and for requirements (a gap that predates tasks).
+- **Deleting a release that tasks reference was the same error.** Tasks planned for the release now lose it (`release_id` set to NULL); the tasks stay.
+- **The tenant data export left the tasks out.** `task_statuses`, `tasks` and `task_test_case_links` are in the export, soft-deleted tasks included.
+- **The task tree capped at 2,000 tasks without saying so.** `total` is now the real number, and the Tasks tab and the task picker say when the list is partial.
+
+Also done: the report-cache table list now includes the three task tables; the migrations were exercised up, down and up again on a database with data (`tests/test_task_migration.py`: seeded statuses, priorities and permissions; old requirement and defect rows survive the downgrade; task comments, counters and permissions are removed by it and the old constraints return); the role matrix is tested for Admin, Manager, a Tester (own tasks only) and a custom role holding only `task.manage`.
+
+**Measured** (`tests/test_tasks_performance.py`, in-process, one project of 13,100 tasks in four levels, 3,000 requirements, 2,000 defects and 2,000 linked test cases; best of three, milliseconds, a slow shared machine):
+
+| endpoint | ms |
+|---|---|
+| tree, capped at 2,000 tasks | 1,430 |
+| list page of 25 / search / category / overdue | 130 / 165 / 120 / 85 |
+| project summary (widget) | 90 |
+| roll-up of a 131-task subtree | 150 |
+| effective test cases of that subtree | 120 |
+| requirements, defects, coverage, matrix for a task and its sub-tasks | 100 to 150 |
+| report builder over all 13,100 tasks | 125 |
+| move a 131-task subtree under another task | 300 |
+
+Every figure but the tree is under 350 ms. The tree is the slowest because it serialises 2,000 tasks with their direct counts; it feeds the hierarchy view and the pickers, which is why the cap exists.
+
+**Known limits.**
+
+- A project with more than 2,000 tasks shows the first 2,000 in the hierarchy and the picker (it says so); search and the filtered list reach the rest.
+- Roll-up counts of a task's own row are direct only (sub-tasks, requirements, defects, test cases); the task page's numbers include the subtree.
+- Deleting a task is soft, so a project that ever had a task cannot be deleted (history is kept).
+- A task's test runs are the runs that contain one of its cases; there is no direct task <-> run link.
+- Defect and test case CSV import/export did not gain a Task column: both are defined by the 22-field standard (ADR-115), and widening it touches templates, validators and the field catalogue. The report builder exports tasks and the defect-to-task link instead.
+- The execution console, My Work and a few dialogs still build old top-level record URLs; they work through the redirect with one extra request.
+- The sidebar highlights Projects, not Test Cases or Test Runs, on record pages, because they now live in a project.
+- Not run in a browser in this phase: the Playwright specs `record-routes.spec.ts` and `task-reports.spec.ts` are written and typed but were not executed.
+
+**Deliberately not built.** Task dependencies, Gantt and timeline, task templates, time tracking, and a tenant-level task list across projects.
+
+**Consequences.** A new project-level entity has to be added in five places that are easy to miss: the project delete check, the tenant export, the report-cache table list, the owner-type constraints if it takes comments or attachments, and `lib/entityRoutes.ts` if it has a page. Open items, by value: the Task column in the defect and test case import/export; a lighter payload for the tree; moving the last top-level record links to `entityRoutes`.
