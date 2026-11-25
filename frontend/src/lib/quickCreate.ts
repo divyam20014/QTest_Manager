@@ -58,7 +58,7 @@ export function getQuickCreateActions(user: MeResponse | null, projectId?: strin
         kind: 'requirement',
         label: 'New requirement',
         paletteLabel: 'Create Requirement',
-        path: `/projects/${projectId}/requirements?action=create`,
+        path: `/projects/${projectId}/tasks?action=new-requirement`,
       })
     }
   }

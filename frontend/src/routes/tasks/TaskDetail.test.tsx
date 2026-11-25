@@ -74,6 +74,7 @@ function task(over: Partial<Task> = {}): Task {
     requirement_count: 0,
     defect_count: 0,
     test_case_count: 0,
+    is_requirements_home: false,
     ...over,
   }
 }
@@ -221,5 +222,37 @@ describe('TaskDetail', () => {
     getTask.mockResolvedValue(detail({ project_id: 'other' }))
     setup()
     expect(await screen.findByText('Task not found')).toBeInTheDocument()
+  })
+
+  it('lets a manager add a requirement to the task from its Requirements tab', async () => {
+    const userEv = userEvent.setup()
+    me = user(['task.manage', 'requirement.manage'])
+    setup()
+    await screen.findByRole('list', { name: /Task numbers/ })
+    await userEv.click(screen.getByRole('tab', { name: /Requirements/ }))
+    expect(await screen.findByText('No requirements in this task')).toBeInTheDocument()
+    await userEv.click(screen.getByRole('button', { name: 'New requirement' }))
+    const dialog = await screen.findByRole('dialog', { name: 'New Requirement' })
+    // Created in this task, so the task is not asked for again.
+    expect(within(dialog).queryByLabelText('Task')).toBeNull()
+  })
+
+  it('does not offer New requirement without requirement.manage', async () => {
+    const userEv = userEvent.setup()
+    me = user(['task.manage'])
+    setup()
+    await screen.findByRole('list', { name: /Task numbers/ })
+    await userEv.click(screen.getByRole('tab', { name: /Requirements/ }))
+    await screen.findByText('No requirements in this task')
+    expect(screen.queryByRole('button', { name: 'New requirement' })).toBeNull()
+  })
+
+  it('keeps the default task for requirements free of sub-tasks', async () => {
+    getTask.mockResolvedValue(detail({ is_requirements_home: true, parent_task_id: null, depth: 0, ancestors: [] }))
+    setup()
+    await screen.findByRole('heading', { name: 'Payment form' })
+    expect(screen.getByText('Default for requirements')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add sub-task' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
   })
 })

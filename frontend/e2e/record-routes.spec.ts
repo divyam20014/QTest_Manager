@@ -50,7 +50,7 @@ test('records open inside their project and the old URLs redirect there', async 
   const tabs = page.getByRole('navigation', { name: 'Project sections' })
 
   const cases: [string, string, string, string][] = [
-    [`/requirements/${ids.requirementId}`, `/projects/${ids.projectId}/requirements/${ids.requirementId}`, 'Requirements', 'Routing requirement'],
+    [`/requirements/${ids.requirementId}`, `/projects/${ids.projectId}/requirements/${ids.requirementId}`, 'Tasks', 'Routing requirement'],
     [`/test-cases/${ids.testCaseId}`, `/projects/${ids.projectId}/test-cases/${ids.testCaseId}`, 'Test Cases', 'Routing test case'],
     [`/defects/${ids.defectId}`, `/projects/${ids.projectId}/defects/${ids.defectId}`, 'Defects', 'Routing defect'],
   ]
@@ -92,7 +92,13 @@ test('lists link to the in-project URLs and creating a defect stays in the proje
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
   const ids = await seed(page)
 
+  // ADR-128: there is no Requirements list; the old URL lands on the Tasks tab, and the requirement is
+  // listed in its task (here the project's default one) with the in-project link.
   await page.goto(`/projects/${ids.projectId}/requirements`)
+  await expect(page).toHaveURL(new RegExp(`/projects/${ids.projectId}/tasks$`))
+  const requirement = (await (await page.request.get(`${API_BASE_URL}/requirements/${ids.requirementId}`)).json()).data
+  await page.goto(`/projects/${ids.projectId}/tasks/${requirement.task_id}`)
+  await page.getByRole('tab', { name: /Requirements/ }).click()
   await expect(page.getByRole('link', { name: 'Routing requirement' }).first()).toHaveAttribute(
     'href',
     `/projects/${ids.projectId}/requirements/${ids.requirementId}`,

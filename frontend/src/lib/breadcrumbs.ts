@@ -115,6 +115,10 @@ export function buildCrumbs(pathname: string, names: CrumbNames = {}): Crumb[] {
         (onDash && index === 1 ? names.dashboardName : undefined) ??
         (isIdSegment(segment) ? (ID_LABELS[segments[index - 1]] ?? 'Detail') : (SEGMENT_LABELS[segment] ?? segment))
       const hasPage = !(index === 0 && NO_LIST_PAGE.has(segments[0]))
+      // ADR-128: requirements live in tasks; there is no Requirements list to link to.
+      if (projectId && index === 2 && segment === 'requirements') {
+        return { path: `/projects/${projectId}/tasks`, label: 'Tasks', link: true, current: false }
+      }
       // The project's Defects tab is the project-filtered list at /defects.
       if (projectId && index === 2 && segment === 'defects') {
         return { path: `/defects?projectId=${projectId}`, label, link: true, current: false }

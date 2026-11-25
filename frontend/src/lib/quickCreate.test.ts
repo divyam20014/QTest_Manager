@@ -35,6 +35,8 @@ describe('quick-create actions', () => {
   it('targets existing pages with ?action=create', () => {
     const paths = Object.fromEntries(getQuickCreateActions(manager, PID).map((a) => [a.kind, a.path]))
     expect(paths['test-run']).toBe(`/projects/${PID}/test-runs?action=create`)
+    // ADR-128: a requirement is created from the Tasks tab, where it is put in a task.
+    expect(paths['requirement']).toBe(`/projects/${PID}/tasks?action=new-requirement`)
     expect(paths['project']).toBe('/projects?action=create')
     expect(getQuickCreateActions(manager)[0].path).toBe('/test-repository?action=create')
   })

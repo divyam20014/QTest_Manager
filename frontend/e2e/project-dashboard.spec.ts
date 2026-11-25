@@ -92,8 +92,10 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   await tabs.getByRole('link', { name: 'Test Cases' }).click()
   await expect(page).toHaveURL(new RegExp(`/projects/${a}/test-cases$`))
   await page.goto(`/projects/${a}`)
-  await tabs.getByRole('link', { name: 'Requirements' }).click()
-  await expect(page).toHaveURL(new RegExp(`/projects/${a}/requirements$`))
+  // ADR-128: requirements live in tasks, so the Requirements tab is gone and the Tasks tab is next.
+  await expect(tabs.getByRole('link', { name: 'Requirements' })).toHaveCount(0)
+  await tabs.getByRole('link', { name: 'Tasks' }).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${a}/tasks$`))
   await page.goto(`/projects/${a}`)
   await tabs.getByRole('link', { name: 'Defects' }).click()
   await expect(page).toHaveURL(new RegExp(`/defects[?]projectId=${a}`))

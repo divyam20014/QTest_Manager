@@ -110,7 +110,9 @@ test('header and tab strip: name, status, owner, progress, favourite, real tabs,
     const names = await tabs(page).getByRole('link').allInnerTexts()
     const labels = names.map((n) => n.replace(/\s*\d+$/, '').trim())
     // Tasks (ADR-127) is an optional tab that sits right after Overview.
-    expect(labels.slice(0, 7)).toEqual(['Overview', 'Tasks', 'Requirements', 'Test Cases', 'Test Runs', 'Defects', 'Reports'])
+    // ADR-128: no Requirements tab; requirements are created and managed in tasks.
+    expect(labels.slice(0, 6)).toEqual(['Overview', 'Tasks', 'Test Cases', 'Test Runs', 'Defects', 'Reports'])
+    expect(labels).not.toContain('Requirements')
     await expect(tabs(page).locator('[aria-current="page"]')).toHaveCount(1)
     await expect(tabs(page).getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page')
     // No tab without a real page.
@@ -250,7 +252,7 @@ test('settings: reorder with buttons and keyboard, hide optional tabs, save, rel
     const rows = page.getByRole('list', { name: 'Project tab order' }).getByRole('listitem')
     await expect(rows).toHaveCount(12)
     // Core tabs and Settings cannot be hidden: no checkbox for them.
-    for (const fixed of ['Overview', 'Requirements', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
+    for (const fixed of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
       await expect(page.getByRole('checkbox', { name: `Show ${fixed} tab` })).toHaveCount(0)
     }
     await expect(page.getByRole('button', { name: 'Move Overview up' })).toBeDisabled()
@@ -273,14 +275,14 @@ test('settings: reorder with buttons and keyboard, hide optional tabs, save, rel
     // Persisted: the saved config comes back from the API and the strip follows it after a reload.
     const saved = (await (await api(page, 'get', `/projects/${betaId}`)).json()).data.nav_config
     expect(saved.hidden.sort()).toEqual(['activity', 'releases'])
-    expect(saved.order.slice(0, 7)).toEqual(['overview', 'tasks', 'requirements', 'test-cases', 'defects', 'reports', 'test-runs'])
+    expect(saved.order.slice(0, 6)).toEqual(['overview', 'tasks', 'test-cases', 'defects', 'reports', 'test-runs'])
     await page.reload()
     await expect(page.getByRole('heading', { level: 2, name: 'Project navigation' })).toBeVisible()
     await expect(tabs(page).getByRole('link', { name: 'Releases', exact: true })).toHaveCount(0)
     await expect(tabs(page).getByRole('link', { name: 'Activity', exact: true })).toHaveCount(0)
     await expect(tabs(page).getByRole('link', { name: 'Planning', exact: true })).toBeVisible()
     const labels = (await tabs(page).getByRole('link').allInnerTexts()).map((n) => n.replace(/\s*\d+$/, '').trim())
-    expect(labels.slice(0, 7)).toEqual(['Overview', 'Tasks', 'Requirements', 'Test Cases', 'Defects', 'Reports', 'Test Runs'])
+    expect(labels.slice(0, 6)).toEqual(['Overview', 'Tasks', 'Test Cases', 'Defects', 'Reports', 'Test Runs'])
     await expect(page.getByRole('checkbox', { name: 'Show Releases tab' })).not.toBeChecked()
 
     // Hidden is not blocked: the direct link opens with a notice that offers the way back.

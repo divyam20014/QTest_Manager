@@ -48,7 +48,6 @@ const ProjectTeam = lazyRoute(() => import('@/routes/projects/ProjectTeam'), 'Pr
 const ProjectDashboard = lazyRoute(() => import('@/routes/projects/ProjectDashboard'), 'ProjectDashboard')
 const ProjectsList = lazyRoute(() => import('@/routes/projects/ProjectsList'), 'ProjectsList')
 const RequirementDetail = lazyRoute(() => import('@/routes/requirements/RequirementDetail'), 'RequirementDetail')
-const RequirementsList = lazyRoute(() => import('@/routes/requirements/RequirementsList'), 'RequirementsList')
 const TraceabilityMatrix = lazyRoute(() => import('@/routes/requirements/TraceabilityMatrix'), 'TraceabilityMatrix')
 const CompliancePrintView = lazyRoute(() => import('@/routes/reporting/CompliancePrintView'), 'CompliancePrintView')
 const Dashboards = lazyRoute(() => import('@/routes/dashboards/Dashboards'), 'Dashboards')
@@ -123,7 +122,8 @@ export function App() {
             <Route path="details" element={<LegacyProjectDetailsRedirect />} />
             <Route path="tasks" element={<TasksList />} />
             <Route path="tasks/:taskId" element={<TaskDetail />} />
-            <Route path="requirements" element={<RequirementsList />} />
+            {/* ADR-128: the Requirements list is gone; requirements live in tasks. */}
+            <Route path="requirements" element={<Navigate to="../tasks" replace />} />
             <Route
               path="requirements/:requirementId"
               element={

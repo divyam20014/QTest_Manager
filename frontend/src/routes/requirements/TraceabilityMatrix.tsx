@@ -143,10 +143,10 @@ export function TraceabilityMatrix() {
       <PageHeader
         back={
           <Link
-            to={`/projects/${projectId}/requirements`}
+            to={`/projects/${projectId}/tasks`}
             className="inline-flex text-xs text-[var(--muted-foreground)] underline-offset-2 hover:underline max-md:min-h-11 max-md:items-center max-md:text-sm"
           >
-            ← Back to Requirements
+            ← Back to Tasks
           </Link>
         }
         title={`Requirements Traceability Matrix ${projectQuery.data ? `— ${projectQuery.data.name}` : ''}`.trim()}

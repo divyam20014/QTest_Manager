@@ -97,10 +97,7 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
   await expect(filters.getByRole('combobox', { name: 'Sort by' })).toBeVisible()
   await page.keyboard.press('Escape')
 
-  // --- Requirements + Traceability: cards, no sideways scroll -----------------
-  await page.goto(`/projects/${project.id}/requirements`)
-  await expect(page.getByRole('list', { name: 'Requirements' }).getByRole('listitem')).toHaveCount(1)
-  await noHorizontalOverflow(page)
+  // --- Traceability: cards, no sideways scroll (requirements live in tasks, ADR-128) ----------
   await page.goto(`/projects/${project.id}/traceability-matrix`)
   const matrix = page.getByRole('list', { name: 'Requirements traceability' })
   await expect(matrix.getByRole('listitem')).toHaveCount(1)

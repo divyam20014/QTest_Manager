@@ -23,10 +23,9 @@ const tester = user('tester', ['report.view'])
 const keys = (tabs: { key: string }[]) => tabs.map((t) => t.key)
 
 describe('project tabs', () => {
-  it('has the six core tabs, six optional ones and no tab without a real page', () => {
+  it('has the five core tabs, six optional ones and no tab without a real page', () => {
     expect(PROJECT_TABS.filter((t) => t.core).map((t) => t.key)).toEqual([
       'overview',
-      'requirements',
       'test-cases',
       'test-runs',
       'defects',
@@ -91,7 +90,7 @@ describe('activeTabKey', () => {
   it('maps locations to tabs', () => {
     expect(activeTabKey('/projects/p1', '')).toBe('overview')
     expect(activeTabKey('/projects/p1/', '')).toBe('overview')
-    expect(activeTabKey('/projects/p1/traceability-matrix', '')).toBe('requirements')
+    expect(activeTabKey('/projects/p1/traceability-matrix', '')).toBe('reports')
     expect(activeTabKey('/projects/p1/test-cases/new', '')).toBe('test-cases')
     expect(activeTabKey('/projects/p1/test-plans', '')).toBe('test-plans')
     expect(activeTabKey('/projects/p1/settings', '')).toBe('settings')
@@ -125,7 +124,7 @@ describe('Tasks tab (ADR-127)', () => {
     const tasks = PROJECT_TABS.find((t) => t.key === 'tasks')
     expect(tasks).toMatchObject({ label: 'Tasks', core: false, hideable: true })
     expect(tasks?.to('p1')).toBe('/projects/p1/tasks')
-    expect(DEFAULT_TAB_ORDER.slice(0, 3)).toEqual(['overview', 'tasks', 'requirements'])
+    expect(DEFAULT_TAB_ORDER.slice(0, 3)).toEqual(['overview', 'tasks', 'test-cases'])
     expect(keys(resolveProjectTabs('p1', null, tester))).toContain('tasks')
   })
 
@@ -142,11 +141,21 @@ describe('Tasks tab (ADR-127)', () => {
 
 describe('record pages keep their tab (ADR-127)', () => {
   it('maps requirement, test case, run and defect pages to their tabs', () => {
-    expect(activeTabKey('/projects/p1/requirements/r1', '')).toBe('requirements')
+    // ADR-128: requirements live in tasks, so a requirement page belongs to the Tasks tab.
+    expect(activeTabKey('/projects/p1/requirements/r1', '')).toBe('tasks')
     expect(activeTabKey('/projects/p1/test-cases/c1/edit', '')).toBe('test-cases')
     expect(activeTabKey('/projects/p1/test-runs/u1', '')).toBe('test-runs')
     expect(activeTabKey('/projects/p1/defects/d1', '')).toBe('defects')
     expect(activeTabKey('/projects/p1/defects/new', '')).toBe('defects')
     expect(activeTabKey('/projects/p1/tasks/t1', '')).toBe('tasks')
+  })
+})
+
+describe('the Requirements tab is gone (ADR-128)', () => {
+  it('is not a tab, and a saved layout that still names it is read without it', () => {
+    expect(PROJECT_TABS.map((t) => t.key)).not.toContain('requirements')
+    const saved = { order: ['overview', 'requirements', 'defects'], hidden: [] }
+    expect(fullOrder(saved).slice(0, 2)).toEqual(['overview', 'defects'])
+    expect(keys(resolveProjectTabs('p1', saved, admin))).not.toContain('requirements')
   })
 })

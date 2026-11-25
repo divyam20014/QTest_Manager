@@ -23,7 +23,6 @@ function routes(t: RoleTenant): string[] {
     `/projects/${p}`,
     `/projects/${p}/test-cases`,
     `/projects/${p}/test-runs`,
-    `/projects/${p}/requirements`,
     `/projects/${p}/traceability-matrix`,
     // ADR-127: records open inside their project.
     `/projects/${p}/test-cases/${t.caseId}`,

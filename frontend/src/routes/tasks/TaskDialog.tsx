@@ -259,6 +259,13 @@ export function TaskDialog({
           </div>
         )}
 
+        {editing && task?.is_requirements_home && (
+          <p role="note" className="rounded-md bg-[var(--muted)] px-3 py-2 text-xs">
+            Requirements that are not in another task are kept here. Open a requirement and move it to the
+            task it belongs to. This task cannot be deleted or moved and takes no sub-tasks.
+          </p>
+        )}
+
         {(!editing || task) && (
           <>
             <FormField id="task-title" label="Title" required error={fieldErrors.title} helper="3 to 255 characters.">
@@ -314,7 +321,7 @@ export function TaskDialog({
                     onChange={(v) => set('parent_task_id', v)}
                     movingId={taskId ?? null}
                     forParent
-                    disabled={readOnly}
+                    disabled={readOnly || task?.is_requirements_home}
                     placeholder="None (top level)"
                     error={!!fieldErrors.parent_task_id}
                   />
@@ -375,7 +382,7 @@ export function TaskDialog({
               <h3 id="task-subtasks-heading" className="text-sm font-medium">
                 Sub-tasks ({task.sub_tasks_done} of {task.sub_task_count} done)
               </h3>
-              {canManage && task.depth < 4 && (
+              {canManage && task.depth < 4 && !task.is_requirements_home && (
                 <Button variant="outline" size="sm" onClick={() => onAddSubTask?.(task.id)}>
                   Add sub-task
                 </Button>
@@ -404,7 +411,7 @@ export function TaskDialog({
         <FormError>{formError}</FormError>
 
         <DialogFooter>
-          {editing && task && canManage && (
+          {editing && task && canManage && !task.is_requirements_home && (
             <Button
               variant="outline"
               size="sm"

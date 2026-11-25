@@ -43,7 +43,7 @@ describe('ProjectNavSettings', () => {
   it('starts at the defaults with nothing to save or reset', () => {
     setup(project())
     expect(order()[0]).toBe('nav-row-overview')
-    expect(order()).toHaveLength(12)
+    expect(order()).toHaveLength(11)
     expect(screen.getByRole('button', { name: 'Save tabs' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Move Overview up' })).toBeDisabled()
@@ -52,7 +52,7 @@ describe('ProjectNavSettings', () => {
 
   it('offers no way to hide core tabs or Settings', () => {
     setup(project())
-    for (const label of ['Overview', 'Requirements', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
+    for (const label of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
       expect(screen.queryByRole('checkbox', { name: `Show ${label} tab` })).toBeNull()
     }
     for (const label of ['Tasks', 'Planning', 'Releases', 'Team', 'Activity']) {
@@ -64,9 +64,9 @@ describe('ProjectNavSettings', () => {
     const user = userEvent.setup()
     setup(project())
     await user.click(screen.getByRole('button', { name: 'Move Defects up' }))
-    expect(order().slice(4, 6)).toEqual(['nav-row-defects', 'nav-row-test-runs'])
+    expect(order().slice(3, 5)).toEqual(['nav-row-defects', 'nav-row-test-runs'])
     expect(screen.getByRole('button', { name: 'Move Defects up' })).toHaveFocus()
-    expect(screen.getByRole('status')).toHaveTextContent('Defects moved to position 5 of 12')
+    expect(screen.getByRole('status')).toHaveTextContent('Defects moved to position 4 of 11')
     await user.click(screen.getByRole('checkbox', { name: 'Show Releases tab' }))
     await user.click(screen.getByRole('button', { name: 'Save tabs' }))
     await waitFor(() => expect(updateProject).toHaveBeenCalledTimes(1))
@@ -74,10 +74,9 @@ describe('ProjectNavSettings', () => {
     expect(id).toBe('p1')
     expect(body.expected_version).toBe(3)
     expect(body.nav_config.hidden).toEqual(['releases'])
-    expect(body.nav_config.order.slice(0, 7)).toEqual([
+    expect(body.nav_config.order.slice(0, 6)).toEqual([
       'overview',
       'tasks',
-      'requirements',
       'test-cases',
       'defects',
       'test-runs',
@@ -90,7 +89,7 @@ describe('ProjectNavSettings', () => {
     setup(project())
     screen.getByRole('button', { name: 'Move Reports up' }).focus()
     await user.keyboard('{Enter}')
-    expect(order().slice(5, 7)).toEqual(['nav-row-reports', 'nav-row-defects'])
+    expect(order().slice(4, 6)).toEqual(['nav-row-reports', 'nav-row-defects'])
     expect(screen.getByRole('button', { name: 'Move Reports up' })).toHaveFocus()
   })
 

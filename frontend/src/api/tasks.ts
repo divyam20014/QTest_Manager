@@ -39,6 +39,8 @@ export interface Task {
   created_by: string
   created_at: string
   updated_at: string
+  /** The project's "Unassigned requirements" task: cannot be deleted, moved or given sub-tasks. */
+  is_requirements_home: boolean
   sub_task_count: number
   sub_tasks_done: number
   requirement_count: number

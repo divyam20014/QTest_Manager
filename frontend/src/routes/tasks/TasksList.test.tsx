@@ -61,6 +61,7 @@ function task(id: string, title: string, parent: string | null, depth: number, o
     requirement_count: 0,
     defect_count: 0,
     test_case_count: 0,
+    is_requirements_home: false,
     ...over,
   }
 }
@@ -184,5 +185,32 @@ describe('TasksList', () => {
     setup()
     await screen.findByText('Payment form')
     expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('marks the default task for requirements and links to the traceability matrix (ADR-128)', async () => {
+    const home = task('9', 'Unassigned requirements', null, 0, { is_requirements_home: true })
+    getProjectTaskTree.mockResolvedValue({ items: [...TREE, home], total: 5 })
+    setup()
+    expect(await screen.findByText('Default for requirements')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Traceability matrix' })).toHaveAttribute(
+      'href',
+      '/projects/p1/traceability-matrix',
+    )
+  })
+
+  it('creates a requirement from the Tasks tab, and opens the dialog from the quick-create link', async () => {
+    me = user(['task.manage', 'requirement.manage'])
+    setup('/projects/p1/tasks?action=new-requirement')
+    const dialog = await screen.findByRole('dialog', { name: 'New Requirement' })
+    expect(within(dialog).getByLabelText('Title', { exact: false })).toBeInTheDocument()
+    // The task is optional here: without one the requirement goes to "Unassigned requirements".
+    expect(within(dialog).getByText(/Unassigned requirements/)).toBeInTheDocument()
+  })
+
+  it('offers New Requirement only with requirement.manage', async () => {
+    me = user(['task.manage'])
+    setup()
+    await screen.findByText('Payment form')
+    expect(screen.queryByRole('button', { name: 'New Requirement' })).toBeNull()
   })
 })

@@ -46,7 +46,8 @@ test('the project Overview shows task progress and links into the Tasks tab', as
   await page.goto(`/projects/${projectId}`)
   const widget = page.getByTestId('widget-task_progress')
   await expect(widget).toBeVisible()
-  await expect(widget.getByText('0 of 3 done')).toBeVisible()
+  // Three tasks plus the project's "Unassigned requirements" task, which the loose requirement created.
+  await expect(widget.getByText('0 of 4 done')).toBeVisible()
   await expect(widget.getByRole('progressbar', { name: 'Tasks done' })).toHaveAttribute('aria-valuenow', '0')
   await expect(widget.getByText('Overdue').locator('..')).toContainText('1')
 

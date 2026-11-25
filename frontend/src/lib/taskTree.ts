@@ -82,10 +82,14 @@ export const MAX_TASK_DEPTH = 4
  * subtree would pass the nesting limit. The server checks the same rules and stays authoritative.
  */
 export function validParents(tasks: readonly Task[], movingId: string | null): Task[] {
-  if (movingId === null) return tasks.filter((t) => t.depth < MAX_TASK_DEPTH)
+  // The default task for requirements takes no sub-tasks (ADR-128).
+  if (movingId === null) return tasks.filter((t) => t.depth < MAX_TASK_DEPTH && !t.is_requirements_home)
   const below = descendantIds(tasks, movingId)
   const height = subtreeHeight(tasks, movingId)
-  return tasks.filter((t) => t.id !== movingId && !below.has(t.id) && t.depth + 1 + height <= MAX_TASK_DEPTH)
+  return tasks.filter(
+    (t) =>
+      t.id !== movingId && !below.has(t.id) && !t.is_requirements_home && t.depth + 1 + height <= MAX_TASK_DEPTH,
+  )
 }
 
 /** "TASK_000001 · Title" (just the title for a task without an id). */

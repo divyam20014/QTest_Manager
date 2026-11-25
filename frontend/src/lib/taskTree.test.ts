@@ -40,6 +40,7 @@ function task(id: string, parent: string | null, depth: number, over: Partial<Ta
     requirement_count: 0,
     defect_count: 0,
     test_case_count: 0,
+    is_requirements_home: false,
     ...over,
   }
 }
@@ -104,5 +105,15 @@ describe('task tree helpers', () => {
     expect(categoryTone('todo')).toBe('neutral')
     expect(subTaskProgress({ sub_task_count: 0, sub_tasks_done: 0 })).toBeNull()
     expect(subTaskProgress({ sub_task_count: 5, sub_tasks_done: 2 })).toBe('2 of 5')
+  })
+})
+
+describe('the default task for requirements (ADR-128)', () => {
+  it('is never offered as a parent, so it takes no sub-tasks', () => {
+    const home = task('7', null, 0, { is_requirements_home: true })
+    const all = [...TASKS, home]
+    expect(validParents(all, null).map((t) => t.id)).not.toContain('7')
+    expect(validParents(all, '5').map((t) => t.id)).not.toContain('7')
+    expect(validParents(all, null).map((t) => t.id)).toContain('5')
   })
 })

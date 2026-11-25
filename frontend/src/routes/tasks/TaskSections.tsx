@@ -15,6 +15,7 @@ import {
   type TaskDetail,
 } from '@/api/tasks'
 import { listTestCases } from '@/api/testCases'
+import { hasPermission } from '@/api/auth'
 import { ActivityTimelineCard } from '@/components/ActivityTimelineCard'
 import { AttachmentsCard } from '@/components/AttachmentsCard'
 import { CommentsPanel } from '@/components/CommentsCard'
@@ -25,7 +26,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Combobox } from '@/components/ui/combobox'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { FormError } from '@/components/ui/form-field'
+import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
+import { NewRequirementDialog } from '@/routes/requirements/NewRequirementDialog'
 import { caseSource, resultLabel, resultTone } from '@/lib/taskRollup'
 import { subTaskProgress } from '@/lib/taskTree'
 import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
@@ -118,28 +121,47 @@ function SubTaskTable({ projectId, tasks }: { projectId: string; tasks: Task[] }
 // --- requirements --------------------------------------------------------------------------
 
 export function RequirementsSection({ task, includeSubTasks }: { task: TaskDetail; includeSubTasks: boolean }) {
+  const { user } = useAuth()
+  const [creating, setCreating] = useState(false)
+  const canCreate = hasPermission(user, 'requirement.manage')
   const query = useQuery({
     queryKey: ['requirements', task.project_id, 'task', task.id, includeSubTasks],
     queryFn: () =>
       listRequirements(task.project_id, { task_id: task.id, include_sub_tasks: includeSubTasks, page_size: 100 }),
   })
+  const dialog = (
+    <NewRequirementDialog
+      open={creating}
+      onClose={() => setCreating(false)}
+      projectId={task.project_id}
+      taskId={task.id}
+    />
+  )
   if (query.isLoading) return <Loading what="requirements" />
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
   const items = query.data?.items ?? []
+  const addButton = canCreate && (
+    <div className="flex justify-end">
+      <Button size="sm" onClick={() => setCreating(true)}>
+        New requirement
+      </Button>
+    </div>
+  )
   if (items.length === 0) {
     return (
-      <EmptyState
-        title="No requirements in this task"
-        description="Choose this task when you create or edit a requirement."
-        action={
-          <Link to={`/projects/${task.project_id}/requirements`} className={LINK}>
-            Open Requirements
-          </Link>
-        }
-      />
+      <>
+        <EmptyState
+          title="No requirements in this task"
+          description="Add what this task must deliver, then link the test cases that cover each one."
+          action={canCreate ? <Button size="sm" onClick={() => setCreating(true)}>New requirement</Button> : undefined}
+        />
+        {dialog}
+      </>
     )
   }
   return (
+    <div className="flex flex-col gap-3">
+      {addButton}
     <SectionTable label="Requirements of this task" head={['Title', 'Task', 'Version', 'Linked test cases']}>
       {items.map((r) => (
         <tr key={r.id}>
@@ -156,6 +178,8 @@ export function RequirementsSection({ task, includeSubTasks }: { task: TaskDetai
         </tr>
       ))}
     </SectionTable>
+      {dialog}
+    </div>
   )
 }
 

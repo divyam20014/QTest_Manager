@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
@@ -11,7 +11,7 @@ import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePre
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -21,6 +21,7 @@ import { useAuth } from '@/lib/auth'
 import { orderTree, subTaskProgress, visibleRows } from '@/lib/taskTree'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { NewRequirementDialog } from '@/routes/requirements/NewRequirementDialog'
 import { TaskDialog } from '@/routes/tasks/TaskDialog'
 import { TasksBoard } from '@/routes/tasks/TasksBoard'
 
@@ -37,7 +38,7 @@ const TASK_COLUMNS: TableColumnDef[] = [
   { key: 'links', label: 'Linked items' },
 ]
 
-const FILTER_DEFAULTS = { q: '', status: '', assignee: '', view: 'tree', page: '1', task: '' }
+const FILTER_DEFAULTS = { q: '', status: '', assignee: '', view: 'tree', page: '1', task: '', action: '' }
 
 /** The project's Tasks tab (ADR-127): the hierarchy of tasks and sub-tasks, or a filtered flat list. */
 export function TasksList() {
@@ -45,10 +46,20 @@ export function TasksList() {
   const { user } = useAuth()
   const canManage = hasPermission(user, 'task.manage')
   const canTransition = hasPermission(user, 'task.transition')
+  const canCreateRequirement = hasPermission(user, 'requirement.manage')
+  const [newRequirement, setNewRequirement] = useState(false)
   const columnPrefs = useColumnPrefs('tasks-list', TASK_COLUMNS)
   const urlFilters = useUrlFilters(FILTER_DEFAULTS)
   const v = urlFilters.values
   const page = Number(v.page) || 1
+  // The top bar's "+ New > Requirement" links here with ?action=new-requirement (ADR-128).
+  const { setFilter } = urlFilters
+  useEffect(() => {
+    if (v.action === 'new-requirement') {
+      if (canCreateRequirement) setNewRequirement(true)
+      setFilter('action', '')
+    }
+  }, [v.action, canCreateRequirement, setFilter])
   const [searchText, setSearchText] = useState(v.q)
   const debouncedSearch = useDebouncedValue(searchText.trim(), 300)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -143,6 +154,11 @@ export function TasksList() {
           <Link to={`/projects/${projectId}/tasks/${t.id}`} className="underline-offset-2 hover:underline">
             {t.title}
           </Link>
+          {t.is_requirements_home && (
+            <Badge tone="info" className="ml-1 shrink-0">
+              Default for requirements
+            </Badge>
+          )}
         </div>
       ),
       cardCell: (t) => (
@@ -188,11 +204,24 @@ export function TasksList() {
         title={`Tasks ${projectQuery.data ? `— ${projectQuery.data.name}` : ''}`.trim()}
         description="Group requirements, test cases and defects under tasks, and break a task into sub-tasks."
         actions={
-          canManage && (
-            <Button size="sm" onClick={() => setCreating({ parentId: null })}>
-              New Task
-            </Button>
-          )
+          <>
+            <Link
+              to={`/projects/${projectId}/traceability-matrix`}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              Traceability matrix
+            </Link>
+            {canCreateRequirement && (
+              <Button variant="outline" size="sm" onClick={() => setNewRequirement(true)}>
+                New Requirement
+              </Button>
+            )}
+            {canManage && (
+              <Button size="sm" onClick={() => setCreating({ parentId: null })}>
+                New Task
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -336,6 +365,7 @@ export function TasksList() {
         </div>
       )}
 
+      <NewRequirementDialog open={newRequirement} onClose={() => setNewRequirement(false)} projectId={projectId} />
       <TaskDialog
         key={creating ? `new-${creating.parentId ?? 'root'}` : (editingId ?? 'closed')}
         projectId={projectId}

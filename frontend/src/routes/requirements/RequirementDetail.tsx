@@ -91,7 +91,7 @@ export function RequirementDetail() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteRequirement(requirementId!),
     onSuccess: () => {
-      navigate(`/projects/${requirementQuery.data?.project_id}/requirements`)
+      navigate(`/projects/${requirementQuery.data?.project_id}/tasks/${requirementQuery.data?.task_id}`)
       showToast('success', 'Requirement deleted')
     },
     onError: (err) =>
@@ -463,6 +463,7 @@ function RequirementTaskCard({
               projectId={req.project_id}
               value={req.task_id ?? ''}
               placeholder="Choose a task"
+              clearable={false}
               aria-label="Change task"
               disabled={mutation.isPending}
               onChange={(id) => mutation.mutate(id)}

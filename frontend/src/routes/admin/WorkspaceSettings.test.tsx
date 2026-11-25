@@ -53,7 +53,7 @@ describe('WorkspaceSettings', () => {
     expect(await screen.findByRole('list', { name: 'Sidebar entry order' })).toBeInTheDocument()
     expect(rows('Sidebar entry order')[0]).toBe('nav-row-home')
     expect(rows('Sidebar entry order')).toHaveLength(8)
-    expect(rows('Project tab order')).toHaveLength(12)
+    expect(rows('Project tab order')).toHaveLength(11)
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled()
   })
@@ -73,7 +73,7 @@ describe('WorkspaceSettings', () => {
     for (const label of ['Dashboard', 'Projects', 'My Work', 'Admin']) {
       expect(screen.queryByRole('checkbox', { name: `Show ${label}` })).toBeNull()
     }
-    for (const label of ['Overview', 'Requirements', 'Test Cases', 'Test Runs', 'Reports', 'Settings']) {
+    for (const label of ['Overview', 'Test Cases', 'Test Runs', 'Reports', 'Settings']) {
       expect(screen.queryByRole('checkbox', { name: `Show ${label}` })).toBeNull()
     }
     // The Defects sidebar entry may be hidden; the Defects project tab is core, so only one row has a checkbox.

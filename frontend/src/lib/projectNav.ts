@@ -11,7 +11,6 @@ import { canAccessPath } from '@/lib/routeAccess'
 export type ProjectTabKey =
   | 'overview'
   | 'tasks'
-  | 'requirements'
   | 'test-cases'
   | 'test-runs'
   | 'defects'
@@ -38,7 +37,6 @@ export interface ProjectTabDef {
 export const PROJECT_TABS: readonly ProjectTabDef[] = [
   { key: 'overview', label: 'Overview', core: true, hideable: false, description: 'Health, trends and risk at a glance.', to: (id) => `/projects/${id}` },
   { key: 'tasks', label: 'Tasks', core: false, hideable: true, description: 'Tasks and sub-tasks that group requirements, test cases and defects.', to: (id) => `/projects/${id}/tasks` },
-  { key: 'requirements', label: 'Requirements', core: true, hideable: false, description: 'Requirements and the traceability matrix.', to: (id) => `/projects/${id}/requirements` },
   { key: 'test-cases', label: 'Test Cases', core: true, hideable: false, description: 'The project test repository.', to: (id) => `/projects/${id}/test-cases` },
   { key: 'test-runs', label: 'Test Runs', core: true, hideable: false, description: 'Test execution cycles and results.', to: (id) => `/projects/${id}/test-runs` },
   { key: 'defects', label: 'Defects', core: true, hideable: false, description: 'Defects reported against the project.', to: (id) => `/defects?projectId=${id}` },
@@ -137,9 +135,12 @@ export function activeTabKey(pathname: string, search: string): ProjectTabKey | 
   switch (m[1]) {
     case undefined:
       return 'overview'
+    // ADR-128: requirements live in tasks, so a requirement page belongs to the Tasks tab; the
+    // traceability matrix is a report.
     case 'requirements':
+      return 'tasks'
     case 'traceability-matrix':
-      return 'requirements'
+      return 'reports'
     case 'test-cases':
       return 'test-cases'
     case 'test-runs':

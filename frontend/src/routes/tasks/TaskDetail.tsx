@@ -88,13 +88,14 @@ export function TaskDetail() {
             <span className="font-mono text-xs text-[var(--muted-foreground)]">{task.display_id}</span>
             <TaskStatusBadge status={task.status} />
             {task.is_overdue && <Badge tone="critical">Overdue</Badge>}
+            {task.is_requirements_home && <Badge tone="info">Default for requirements</Badge>}
             {health && <Badge tone={HEALTH_TONE[health]}>{HEALTH_LABEL[health]}</Badge>}
           </>
         }
         actions={
           canManage && (
             <>
-              {task.depth < 4 && (
+              {task.depth < 4 && !task.is_requirements_home && (
                 <Button variant="outline" size="sm" onClick={() => setAddingSubTask(true)}>
                   Add sub-task
                 </Button>

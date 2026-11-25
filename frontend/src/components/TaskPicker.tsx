@@ -17,6 +17,7 @@ export function TaskPicker({
   onChange,
   movingId,
   forParent,
+  clearable = true,
   disabled,
   placeholder = 'No task',
   'aria-label': ariaLabel,
@@ -30,6 +31,8 @@ export function TaskPicker({
   movingId?: string | null
   /** Picking a parent: hides tasks that cannot take another level. */
   forParent?: boolean
+  /** Allow clearing the choice (default). A requirement always has a task, so its picker is not clearable. */
+  clearable?: boolean
   disabled?: boolean
   placeholder?: string
   'aria-label'?: string
@@ -69,7 +72,7 @@ export function TaskPicker({
               : placeholder
       }
       disabled={disabled || !projectId}
-      clearable
+      clearable={clearable}
       error={error}
       aria-label={ariaLabel}
     />
