@@ -53,7 +53,7 @@ describe('WorkspaceSettings', () => {
     expect(await screen.findByRole('list', { name: 'Sidebar entry order' })).toBeInTheDocument()
     expect(rows('Sidebar entry order')[0]).toBe('nav-row-home')
     expect(rows('Sidebar entry order')).toHaveLength(8)
-    expect(rows('Project tab order')).toHaveLength(11)
+    expect(rows('Project tab order')).toHaveLength(8)
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled()
   })
@@ -81,7 +81,7 @@ describe('WorkspaceSettings', () => {
     for (const label of ['Test Cases', 'Test Runs', 'Defects', 'Reports']) {
       expect(inList('Sidebar entry order').getByRole('checkbox', { name: `Show ${label}` })).toBeChecked()
     }
-    for (const label of ['Planning', 'Releases']) {
+    for (const label of ['Tasks', 'Planning', 'Team']) {
       expect(screen.getByRole('checkbox', { name: `Show ${label}` })).toBeChecked()
     }
     // The list view cannot be switched off: it has no control at all.
@@ -100,7 +100,7 @@ describe('WorkspaceSettings', () => {
     expect(sidebar().getByRole('button', { name: 'Move Defects up' })).toHaveFocus()
     expect(screen.getByRole('status')).toHaveTextContent('Defects moved to position 5 of 8')
     await user.click(sidebar().getByRole('checkbox', { name: 'Show Reports' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Show Releases' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Show Planning' }))
     await user.click(screen.getByRole('checkbox', { name: 'Calendar view for Test runs' }))
     await user.click(screen.getByRole('checkbox', { name: 'Board view for Defects' }))
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -108,7 +108,7 @@ describe('WorkspaceSettings', () => {
     const body = putWorkspaceConfig.mock.calls[0][0] as WorkspaceConfig
     expect(body.sidebar.hidden).toEqual(['reports'])
     expect(body.sidebar.order.slice(0, 6)).toEqual(['home', 'my-work', 'projects', 'test-cases', 'defects', 'test-runs'])
-    expect(body.project_tabs).toEqual({ order: [], hidden: ['releases'] })
+    expect(body.project_tabs).toEqual({ order: [], hidden: ['planning'] })
     expect(body.view_modes).toEqual({ defects: ['list'], test_runs: ['list', 'board'] })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled())
   })

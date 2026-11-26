@@ -113,6 +113,8 @@ test('header and tab strip: name, status, owner, progress, favourite, real tabs,
     // ADR-128: no Requirements tab; requirements are created and managed in tasks.
     expect(labels.slice(0, 6)).toEqual(['Overview', 'Tasks', 'Test Cases', 'Test Runs', 'Defects', 'Reports'])
     expect(labels).not.toContain('Requirements')
+    // ADR-131: Settings and Activity open from the header; releases are part of Planning.
+    for (const moved of ['Settings', 'Activity', 'Releases']) expect(labels).not.toContain(moved)
     await expect(tabs(page).locator('[aria-current="page"]')).toHaveCount(1)
     await expect(tabs(page).getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page')
     // No tab without a real page.
@@ -140,11 +142,18 @@ test('header and tab strip: name, status, owner, progress, favourite, real tabs,
     await page.goto('/defects')
     await expect(page.getByTestId('project-header')).toHaveCount(0)
 
-    // The settings shortcut opens the Settings tab.
+    // The header opens Activity and Settings; the one you are on says so and no tab is current.
     await page.goto(`/projects/${t.projectId}`)
-    await page.getByTestId('project-settings-shortcut').click()
-    await expect(page).toHaveURL(new RegExp(`/projects/${t.projectId}/settings$`))
-    await expect(page.getByRole('heading', { level: 1, name: 'Project settings' })).toBeVisible()
+    for (const [testId, path, heading] of [
+      ['project-activity-shortcut', 'activity', 'Activity'],
+      ['project-settings-shortcut', 'settings', 'Project settings'],
+    ] as const) {
+      await page.getByTestId(testId).click()
+      await expect(page).toHaveURL(new RegExp(`/projects/${t.projectId}/${path}$`))
+      await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+      await expect(page.getByTestId(testId)).toHaveAttribute('aria-current', 'page')
+      await expect(tabs(page).locator('[aria-current="page"]')).toHaveCount(0)
+    }
   } finally {
     await ctx.close()
   }
@@ -156,7 +165,6 @@ test('every moved tab has a real page and the old /details URL redirects to the 
     await signIn(page, 'admin')
     const expectations: [string, string][] = [
       ['test-plans', 'Planning'],
-      ['releases', 'Releases'],
       ['team', 'Team'],
       ['activity', 'Activity'],
       ['settings', 'Project settings'],
@@ -170,6 +178,13 @@ test('every moved tab has a real page and the old /details URL redirects to the 
     await page.goto(`/projects/${t.projectId}/test-plans`)
     await expect(page.getByRole('textbox', { name: 'New suite name' })).toBeVisible()
     await expect(page.getByRole('textbox', { name: 'New plan name' })).toBeVisible()
+    // The old Releases address opens that section of Planning, which stays the current tab.
+    await page.goto(`/projects/${t.projectId}/releases`)
+    await expect(page).toHaveURL(new RegExp(`/projects/${t.projectId}/test-plans[?]section=releases$`))
+    await expect(page.getByRole('tab', { name: 'Releases & builds' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('textbox', { name: 'New release name' })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'New build name' })).toBeVisible()
+    await expect(tabs(page).getByRole('link', { name: 'Planning', exact: true })).toHaveAttribute('aria-current', 'page')
     await page.goto(`/projects/${t.projectId}/details`)
     await expect(page).toHaveURL(new RegExp(`/projects/${t.projectId}$`))
     await expect(page.getByTestId('project-header')).toBeVisible()
@@ -250,13 +265,13 @@ test('settings: reorder with buttons and keyboard, hide optional tabs, save, rel
     await page.goto(`/projects/${betaId}/settings`)
     await expect(page.getByRole('heading', { level: 2, name: 'Project navigation' })).toBeVisible()
     const rows = page.getByRole('list', { name: 'Project tab order' }).getByRole('listitem')
-    await expect(rows).toHaveCount(11)
-    // Core tabs and Settings cannot be hidden: no checkbox for them.
-    for (const fixed of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
+    await expect(rows).toHaveCount(8)
+    // Core tabs cannot be hidden: no checkbox for them.
+    for (const fixed of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports']) {
       await expect(page.getByRole('checkbox', { name: `Show ${fixed} tab` })).toHaveCount(0)
     }
     await expect(page.getByRole('button', { name: 'Move Overview up' })).toBeDisabled()
-    await expect(page.getByRole('button', { name: 'Move Settings down' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Move Team down' })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Save tabs' })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled()
 
@@ -266,32 +281,32 @@ test('settings: reorder with buttons and keyboard, hide optional tabs, save, rel
     await page.getByRole('button', { name: 'Move Reports up' }).focus()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('button', { name: 'Move Reports up' })).toBeFocused()
-    await page.getByRole('checkbox', { name: 'Show Releases tab' }).uncheck()
-    await page.getByRole('checkbox', { name: 'Show Activity tab' }).uncheck()
+    await page.getByRole('checkbox', { name: 'Show Planning tab' }).uncheck()
+    await page.getByRole('checkbox', { name: 'Show Team tab' }).uncheck()
     await expect(page.getByRole('button', { name: 'Save tabs' })).toBeEnabled()
     await page.getByRole('button', { name: 'Save tabs' }).click()
     await expect(page.getByText('Project tabs saved')).toBeVisible()
 
     // Persisted: the saved config comes back from the API and the strip follows it after a reload.
     const saved = (await (await api(page, 'get', `/projects/${betaId}`)).json()).data.nav_config
-    expect(saved.hidden.sort()).toEqual(['activity', 'releases'])
+    expect(saved.hidden.sort()).toEqual(['planning', 'team'])
     expect(saved.order.slice(0, 6)).toEqual(['overview', 'tasks', 'test-cases', 'defects', 'reports', 'test-runs'])
     await page.reload()
     await expect(page.getByRole('heading', { level: 2, name: 'Project navigation' })).toBeVisible()
-    await expect(tabs(page).getByRole('link', { name: 'Releases', exact: true })).toHaveCount(0)
-    await expect(tabs(page).getByRole('link', { name: 'Activity', exact: true })).toHaveCount(0)
-    await expect(tabs(page).getByRole('link', { name: 'Planning', exact: true })).toBeVisible()
+    await expect(tabs(page).getByRole('link', { name: 'Planning', exact: true })).toHaveCount(0)
+    await expect(tabs(page).getByRole('link', { name: 'Team', exact: true })).toHaveCount(0)
+    await expect(tabs(page).getByRole('link', { name: 'Tasks', exact: true })).toBeVisible()
     const labels = (await tabs(page).getByRole('link').allInnerTexts()).map((n) => n.replace(/\s*\d+$/, '').trim())
     expect(labels.slice(0, 6)).toEqual(['Overview', 'Tasks', 'Test Cases', 'Defects', 'Reports', 'Test Runs'])
-    await expect(page.getByRole('checkbox', { name: 'Show Releases tab' })).not.toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'Show Planning tab' })).not.toBeChecked()
 
     // Hidden is not blocked: the direct link opens with a notice that offers the way back.
     await page.goto(`/projects/${betaId}/releases`)
-    await expect(page.getByRole('heading', { level: 1, name: 'Releases' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Planning' })).toBeVisible()
     const notice = page.getByTestId('hidden-tab-notice')
-    await expect(notice).toContainText('Releases tab is hidden')
+    await expect(notice).toContainText('Planning tab is hidden')
     await expect(notice.getByRole('link', { name: 'Show it in project settings' })).toBeVisible()
-    await expect(tabs(page).getByRole('link', { name: 'Releases', exact: true })).toHaveCount(0)
+    await expect(tabs(page).getByRole('link', { name: 'Planning', exact: true })).toHaveCount(0)
 
     // Releases are editable (PATCH /releases/{id}).
     const created = await api(page, 'post', `/projects/${betaId}/releases`, { name: 'R 1.0' })
@@ -309,7 +324,7 @@ test('settings: reorder with buttons and keyboard, hide optional tabs, save, rel
     await expect(page.getByText('In Progress · 2026-09-30')).toBeVisible()
 
     // The server refuses hiding a core tab or an unknown key.
-    for (const hidden of [['overview'], ['settings'], ['calendar']]) {
+    for (const hidden of [['overview'], ['defects'], ['calendar']]) {
       const bad = await api(page, 'patch', `/projects/${betaId}`, { nav_config: { order: [], hidden } })
       expect(bad.status()).toBe(422)
     }
@@ -319,7 +334,7 @@ test('settings: reorder with buttons and keyboard, hide optional tabs, save, rel
     await page.getByRole('button', { name: 'Reset to defaults' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Reset to defaults' }).click()
     await expect(page.getByText('Project tabs reset to the defaults')).toBeVisible()
-    await expect(tabs(page).getByRole('link', { name: 'Releases', exact: true })).toBeVisible()
+    await expect(tabs(page).getByRole('link', { name: 'Planning', exact: true })).toBeVisible()
     expect((await (await api(page, 'get', `/projects/${betaId}`)).json()).data.nav_config).toBeNull()
   } finally {
     await ctx.close()
@@ -334,7 +349,7 @@ test('roles: tester has no Settings, manager edits assigned projects only, hidde
     const res = await api(admin, 'patch', `/projects/${t.projectId}`, { nav_config: { order: [], hidden: ['team'] } })
     expect(res.ok(), await res.text()).toBeTruthy()
     await admin.goto(`/projects/${t.projectId}`)
-    await expect(tabs(admin).getByRole('link', { name: 'Settings', exact: true })).toBeVisible()
+    await expect(admin.getByTestId('project-settings-shortcut')).toBeVisible()
     await expect(tabs(admin).getByRole('link', { name: 'Team', exact: true })).toHaveCount(0)
   } finally {
     await actx.close()
@@ -345,7 +360,7 @@ test('roles: tester has no Settings, manager edits assigned projects only, hidde
     await signIn(tester, 'tester')
     await tester.goto(`/projects/${t.projectId}`)
     await expect(tester.getByRole('heading', { level: 1, name: 'Apex Motor Claims' })).toBeVisible()
-    await expect(tabs(tester).getByRole('link', { name: 'Settings', exact: true })).toHaveCount(0)
+    await expect(tester.getByTestId('project-activity-shortcut')).toBeVisible()
     await expect(tester.getByTestId('project-settings-shortcut')).toHaveCount(0)
     await expect(tabs(tester).getByRole('link', { name: 'Team', exact: true })).toHaveCount(0)
     // Direct links still work for the tester; the note has no way to settings.
@@ -371,7 +386,7 @@ test('roles: tester has no Settings, manager edits assigned projects only, hidde
     await signIn(manager, 'manager')
     await manager.goto(`/projects/${t.projectId}/settings`)
     await expect(manager.getByRole('heading', { level: 2, name: 'Project navigation' })).toBeVisible()
-    await expect(tabs(manager).getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect(manager.getByTestId('project-settings-shortcut')).toHaveAttribute('aria-current', 'page')
     // Assigned project: allowed. Unassigned project: the API refuses (ADR-018), the UI shows the error.
     await manager.getByRole('button', { name: 'Reset to defaults' }).click()
     await manager.getByRole('dialog').getByRole('button', { name: 'Reset to defaults' }).click()
@@ -405,10 +420,14 @@ test('phone: the project nav fits 375 and 768 without sideways scroll, More menu
     const items = menu.getByRole('menuitem')
     expect(await items.count()).toBeGreaterThan(0)
     // Choosing an item opens that tab, which then stays in the strip as the current one.
-    await menu.getByRole('menuitem', { name: 'Settings' }).click()
-    await expect(page).toHaveURL(new RegExp(`/projects/${t.projectId}/settings$`))
-    await expect(tabs(page).getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page')
+    await menu.getByRole('menuitem', { name: 'Team' }).click()
+    await expect(page).toHaveURL(new RegExp(`/projects/${t.projectId}/team$`))
+    await expect(tabs(page).getByRole('link', { name: 'Team', exact: true })).toHaveAttribute('aria-current', 'page')
     expect(await overflowOf(page)).toBeLessThanOrEqual(0)
+    // Activity and Settings are 44px targets in the header.
+    for (const testId of ['project-activity-shortcut', 'project-settings-shortcut']) {
+      expect((await page.getByTestId(testId).boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    }
 
     // Switcher panel fits the screen.
     await page.getByTestId('project-switcher').click()
@@ -421,6 +440,8 @@ test('phone: the project nav fits 375 and 768 without sideways scroll, More menu
     await page.keyboard.press('Escape')
 
     // Settings rows keep 44px reorder buttons and no sideways scroll on a phone.
+    await page.getByTestId('project-settings-shortcut').click()
+    await expect(page.getByRole('heading', { level: 2, name: 'Project navigation' })).toBeVisible()
     for (const name of ['Move Defects up', 'Move Defects down']) {
       expect((await page.getByRole('button', { name }).boundingBox())!.height).toBeGreaterThanOrEqual(44)
     }

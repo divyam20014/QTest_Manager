@@ -7,6 +7,7 @@ import {
   PROJECT_TABS,
   activeTabKey,
   approvedProgress,
+  canEditProject,
   fullOrder,
   hiddenTabs,
   isDefaultConfig,
@@ -23,7 +24,17 @@ const tester = user('tester', ['report.view'])
 const keys = (tabs: { key: string }[]) => tabs.map((t) => t.key)
 
 describe('project tabs', () => {
-  it('has the five core tabs, six optional ones and no tab without a real page', () => {
+  it('has eight tabs: five core, three optional, none without a real page', () => {
+    expect(DEFAULT_TAB_ORDER).toEqual([
+      'overview',
+      'tasks',
+      'test-cases',
+      'test-runs',
+      'defects',
+      'reports',
+      'planning',
+      'team',
+    ])
     expect(PROJECT_TABS.filter((t) => t.core).map((t) => t.key)).toEqual([
       'overview',
       'test-cases',
@@ -32,13 +43,16 @@ describe('project tabs', () => {
       'reports',
     ])
     const all = PROJECT_TABS.map((t) => t.label).join(',')
-    for (const missing of ['Documents', 'Automation', 'Calendar']) expect(all).not.toContain(missing)
-    expect(PROJECT_TABS.find((t) => t.key === 'settings')?.hideable).toBe(false)
+    for (const missing of ['Documents', 'Automation', 'Calendar', 'Settings', 'Activity', 'Releases']) {
+      expect(all).not.toContain(missing)
+    }
   })
 
-  it('uses the default order when nothing is saved and shows Settings only with project.edit', () => {
+  it('uses the default order when nothing is saved, for every role; editing is a separate check', () => {
     expect(keys(resolveProjectTabs('p1', null, admin))).toEqual(DEFAULT_TAB_ORDER)
-    expect(keys(resolveProjectTabs('p1', null, tester))).toEqual(DEFAULT_TAB_ORDER.filter((k) => k !== 'settings'))
+    expect(keys(resolveProjectTabs('p1', null, tester))).toEqual(DEFAULT_TAB_ORDER)
+    expect(canEditProject(admin)).toBe(true)
+    expect(canEditProject(tester)).toBe(false)
   })
 
   it('follows a saved order, appends tabs it does not mention and ignores unknown keys', () => {
@@ -48,13 +62,12 @@ describe('project tabs', () => {
     expect(new Set(order).size).toBe(order.length)
   })
 
-  it('hides optional tabs but never a core tab or Settings', () => {
-    const config = { order: [], hidden: ['team', 'overview', 'settings', 'nope'] }
+  it('hides optional tabs but never a core tab', () => {
+    const config = { order: [], hidden: ['team', 'overview', 'nope'] }
     expect([...hiddenTabs(config)]).toEqual(['team'])
     const shown = keys(resolveProjectTabs('p1', config, admin))
     expect(shown).not.toContain('team')
     expect(shown).toContain('overview')
-    expect(shown).toContain('settings')
   })
 
   it('hides Reports when the tenant hides it from Testers', () => {
@@ -68,7 +81,7 @@ describe('project tabs', () => {
     expect(urls['test-cases']).toBe('/projects/p1/test-cases')
     expect(urls.defects).toBe('/defects?projectId=p1')
     expect(urls.reports).toBe('/reporting?project=p1')
-    expect(urls.settings).toBe('/projects/p1/settings')
+    expect(urls.planning).toBe('/projects/p1/test-plans')
   })
 
   it('detects the default configuration', () => {
@@ -92,8 +105,11 @@ describe('activeTabKey', () => {
     expect(activeTabKey('/projects/p1/', '')).toBe('overview')
     expect(activeTabKey('/projects/p1/traceability-matrix', '')).toBe('reports')
     expect(activeTabKey('/projects/p1/test-cases/new', '')).toBe('test-cases')
-    expect(activeTabKey('/projects/p1/test-plans', '')).toBe('test-plans')
-    expect(activeTabKey('/projects/p1/settings', '')).toBe('settings')
+    expect(activeTabKey('/projects/p1/test-plans', '')).toBe('planning')
+    expect(activeTabKey('/projects/p1/releases', '')).toBe('planning')
+    // Reached from the header, so no tab is current.
+    expect(activeTabKey('/projects/p1/settings', '')).toBeNull()
+    expect(activeTabKey('/projects/p1/activity', '')).toBeNull()
     expect(activeTabKey('/defects', '?projectId=p1')).toBe('defects')
     expect(activeTabKey('/reporting', '?project=p1')).toBe('reports')
   })
@@ -114,7 +130,6 @@ describe('switchTarget', () => {
   it('falls back to Overview when the target hides the tab or the user cannot see it', () => {
     const target = { id: 'p2', nav_config: { order: [], hidden: ['team'] } }
     expect(switchTarget('team', target, admin)).toBe('/projects/p2')
-    expect(switchTarget('settings', { id: 'p2' }, tester)).toBe('/projects/p2')
     expect(switchTarget(null, { id: 'p2' }, admin)).toBe('/projects/p2')
   })
 })

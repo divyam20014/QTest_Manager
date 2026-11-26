@@ -43,19 +43,19 @@ describe('ProjectNavSettings', () => {
   it('starts at the defaults with nothing to save or reset', () => {
     setup(project())
     expect(order()[0]).toBe('nav-row-overview')
-    expect(order()).toHaveLength(11)
+    expect(order()).toHaveLength(8)
     expect(screen.getByRole('button', { name: 'Save tabs' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Move Overview up' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Move Settings down' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Move Team down' })).toBeDisabled()
   })
 
-  it('offers no way to hide core tabs or Settings', () => {
+  it('offers no way to hide core tabs', () => {
     setup(project())
-    for (const label of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
+    for (const label of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports']) {
       expect(screen.queryByRole('checkbox', { name: `Show ${label} tab` })).toBeNull()
     }
-    for (const label of ['Tasks', 'Planning', 'Releases', 'Team', 'Activity']) {
+    for (const label of ['Tasks', 'Planning', 'Team']) {
       expect(screen.getByRole('checkbox', { name: `Show ${label} tab` })).toBeChecked()
     }
   })
@@ -66,14 +66,14 @@ describe('ProjectNavSettings', () => {
     await user.click(screen.getByRole('button', { name: 'Move Defects up' }))
     expect(order().slice(3, 5)).toEqual(['nav-row-defects', 'nav-row-test-runs'])
     expect(screen.getByRole('button', { name: 'Move Defects up' })).toHaveFocus()
-    expect(screen.getByRole('status')).toHaveTextContent('Defects moved to position 4 of 11')
-    await user.click(screen.getByRole('checkbox', { name: 'Show Releases tab' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Defects moved to position 4 of 8')
+    await user.click(screen.getByRole('checkbox', { name: 'Show Planning tab' }))
     await user.click(screen.getByRole('button', { name: 'Save tabs' }))
     await waitFor(() => expect(updateProject).toHaveBeenCalledTimes(1))
     const [id, body] = updateProject.mock.calls[0]
     expect(id).toBe('p1')
     expect(body.expected_version).toBe(3)
-    expect(body.nav_config.hidden).toEqual(['releases'])
+    expect(body.nav_config.hidden).toEqual(['planning'])
     expect(body.nav_config.order.slice(0, 6)).toEqual([
       'overview',
       'tasks',

@@ -15,18 +15,15 @@ export type ProjectTabKey =
   | 'test-runs'
   | 'defects'
   | 'reports'
-  | 'test-plans'
-  | 'releases'
+  | 'planning'
   | 'team'
-  | 'activity'
-  | 'settings'
 
 export interface ProjectTabDef {
   key: ProjectTabKey
   label: string
   /** Core tabs can be reordered but never hidden. */
   core: boolean
-  /** Whether the tab may be hidden in Settings (Settings itself never can). */
+  /** Whether the tab may be hidden in Settings. */
   hideable: boolean
   /** One line shown beside the tab in Project Settings. */
   description: string
@@ -41,12 +38,18 @@ export const PROJECT_TABS: readonly ProjectTabDef[] = [
   { key: 'test-runs', label: 'Test Runs', core: true, hideable: false, description: 'Test execution cycles and results.', to: (id) => `/projects/${id}/test-runs` },
   { key: 'defects', label: 'Defects', core: true, hideable: false, description: 'Defects reported against the project.', to: (id) => `/defects?projectId=${id}` },
   { key: 'reports', label: 'Reports', core: true, hideable: false, description: 'Reports and release readiness.', to: (id) => `/reporting?project=${id}` },
-  { key: 'test-plans', label: 'Planning', core: false, hideable: true, description: 'Test suites and test plans.', to: (id) => `/projects/${id}/test-plans` },
-  { key: 'releases', label: 'Releases', core: false, hideable: true, description: 'Releases and builds.', to: (id) => `/projects/${id}/releases` },
+  { key: 'planning', label: 'Planning', core: false, hideable: true, description: 'Test suites, test plans, releases and builds.', to: (id) => `/projects/${id}/test-plans` },
   { key: 'team', label: 'Team', core: false, hideable: true, description: 'Members and project roles.', to: (id) => `/projects/${id}/team` },
-  { key: 'activity', label: 'Activity', core: false, hideable: true, description: 'Recent changes in the project.', to: (id) => `/projects/${id}/activity` },
-  { key: 'settings', label: 'Settings', core: false, hideable: false, description: 'Project details, tabs and deletion. Only shown to people who can edit the project.', to: (id) => `/projects/${id}/settings` },
 ]
+
+// ADR-131: pages of a project that are not tabs. Settings and Activity open from the project
+// header; releases are a section of Planning.
+export const projectSettingsPath = (projectId: string) => `/projects/${projectId}/settings`
+export const projectActivityPath = (projectId: string) => `/projects/${projectId}/activity`
+export const projectReleasesPath = (projectId: string) => `/projects/${projectId}/test-plans?section=releases`
+
+/** Settings is only offered to people who can edit the project (the API enforces it). */
+export const canEditProject = (user: MeResponse | null) => hasPermission(user, 'project.edit')
 
 /** Share of a project's test cases that are approved, from the counts the project already
  * carries (nothing is estimated); null when there are no test cases yet. */
@@ -95,10 +98,9 @@ export function isDefaultConfig(order: readonly string[], hidden: readonly strin
   return hidden.length === 0 && order.every((key, i) => key === DEFAULT_TAB_ORDER[i])
 }
 
-/** A tab the signed-in user may be offered at all (before hiding): Settings needs project.edit,
- * Reports follows the route gate (a tenant can hide Reports from Testers). */
+/** A tab the signed-in user may be offered at all (before hiding): Reports follows the route
+ * gate (a tenant can hide Reports from Testers). */
 export function tabAllowed(key: ProjectTabKey, user: MeResponse | null): boolean {
-  if (key === 'settings') return hasPermission(user, 'project.edit')
   if (key === 'reports') return canAccessPath(user, '/reporting')
   return true
 }
@@ -147,12 +149,11 @@ export function activeTabKey(pathname: string, search: string): ProjectTabKey | 
       return 'test-runs'
     case 'defects':
       return 'defects'
-    case 'tasks':
     case 'test-plans':
     case 'releases':
+      return 'planning'
+    case 'tasks':
     case 'team':
-    case 'activity':
-    case 'settings':
       return m[1]
     default:
       return null

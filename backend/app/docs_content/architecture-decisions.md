@@ -1949,3 +1949,13 @@ Every figure but the tree is under 350 ms. The tree is the slowest because it se
 **Decision.** The sidebar is one list: Dashboard, My Work, Projects, Test Cases, Test Runs, Defects, Reports, Admin. The group code is removed. The Execution Console is opened from Test Runs and from My Work, and counts as part of Test Runs for highlighting; the compliance report is the Compliance tab of Reports, and a person who may only export it still gets a Reports link that leads there. Both stay in the command palette. A saved workspace layout (ADR-125) that names a former group id is translated on read. This matters because a document that fails validation is ignored whole, so without it removing an id would silently reset a tenant's sidebar, tabs and view modes.
 
 **Consequences.** Before an entry's id is removed or renamed in future, it needs the same translation (`RENAMED_NAV_ENTRY_KEYS` in `schemas/workspace.py`). The Execution Console must keep a link from Test Runs: it has no sidebar entry.
+
+## ADR-131: Eight project tabs
+
+**Context.** The project strip had eleven tabs. Releases and Planning are two halves of one subject, Settings duplicated the gear already in the header, and Activity is occasional reading.
+
+**Decision.** The tabs are Overview, Tasks, Test Cases, Test Runs, Defects, Reports, Planning and Team. Releases and builds are the second section of Planning; `/projects/:id/releases` redirects there. Settings and Activity are icon links in the project header, which mark themselves when current. Activity is there for everyone and no longer depends on an Overview widget or a tab layout. Team stays a tab: the page is open to people who may not edit the project, whereas Settings is not.
+
+The merged tab has a new key, `planning`, so that old and new layouts cannot be confused: an old layout hiding only `test-plans` keeps Planning visible, because Releases was visible, while a new one hiding `planning` hides it. `NavConfig` translates old keys before validating. This is required, not a courtesy: a project's `nav_config` is validated every time the project is read, so refusing a stored key would make the project, and the project list, fail to load.
+
+**Consequences.** Activity can no longer be hidden. A later removal or rename of a tab key needs the same translation (`MERGED_NAV_KEYS` / `REMOVED_NAV_KEYS` in `schemas/project.py`).

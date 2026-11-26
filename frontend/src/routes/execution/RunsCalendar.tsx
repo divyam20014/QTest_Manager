@@ -6,6 +6,7 @@ import { getCalendar } from '@/api/calendar'
 import { CalendarView, type CalendarEvent } from '@/components/list/CalendarView'
 import { gridRange, monthOf, parseMonth } from '@/lib/calendarGrid'
 import { todayIso } from '@/lib/dueDate'
+import { projectReleasesPath } from '@/lib/projectNav'
 import { RUN_STATUS_LABEL } from './runStatus'
 
 /**
@@ -87,7 +88,7 @@ export function RunsCalendar({ projectId }: { projectId?: string }) {
           kind: 'release',
           label: r.name,
           detail: `${r.project_name}${r.status ? ` · ${r.status}` : ''}`,
-          href: `/projects/${r.project_id}/releases`,
+          href: projectReleasesPath(r.project_id),
           tone: 'info',
         })
       }

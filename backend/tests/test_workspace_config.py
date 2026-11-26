@@ -41,7 +41,7 @@ def test_unset_returns_the_built_in_defaults(client: TestClient, ws: dict) -> No
 def test_round_trip_and_reset_stores_null(client: TestClient, ws: dict, owner_engine) -> None:
     config = {
         "sidebar": {"order": ["defects", "home"], "hidden": ["test-cases", "reports"]},
-        "project_tabs": {"order": ["overview", "defects"], "hidden": ["releases"]},
+        "project_tabs": {"order": ["overview", "defects"], "hidden": ["planning"]},
         "view_modes": {"defects": ["list"], "test_runs": ["list", "calendar"]},
     }
     saved = _put(client, config)
@@ -70,7 +70,6 @@ def test_round_trip_and_reset_stores_null(client: TestClient, ws: dict, owner_en
         {"sidebar": {"hidden": ["defects", "defects"]}},
         {"sidebar": {"hidden": ["Defects"]}},  # case-sensitive
         {"project_tabs": {"hidden": ["overview"]}},  # core project tabs (Phase 3 rule)
-        {"project_tabs": {"hidden": ["settings"]}},
         {"project_tabs": {"hidden": ["documents"]}},
         {"project_tabs": {"order": ["team", "team"]}},
         {"view_modes": {"defects": ["board"]}},  # list is always available

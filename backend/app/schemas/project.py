@@ -13,28 +13,58 @@ ProjectStatus = Literal["On Track", "At Risk", "Delayed", "Completed"]
 # ADR-122: the project workspace tabs a nav_config may order or hide. Core tabs are always shown
 # (reorderable, never hidden); optional tabs may be hidden, except Settings, which stays reachable
 # for whoever may edit the project. The frontend keeps the same lists in lib/projectNav.ts.
-# ADR-128: "requirements" is no longer a tab (requirements live in tasks); a saved configuration
-# that still names it is accepted and the key is dropped.
-REMOVED_NAV_KEYS = ("requirements",)
+# ADR-128: "requirements" is no longer a tab (requirements live in tasks). ADR-131: Settings and
+# Activity open from the project header. A saved layout that still names one of these is accepted
+# and the key is dropped.
+REMOVED_NAV_KEYS = ("requirements", "settings", "activity")
+# ADR-131: these two tabs became the one "planning" tab.
+MERGED_NAV_KEYS = {"planning": ("test-plans", "releases")}
 CORE_NAV_KEYS = ("overview", "test-cases", "test-runs", "defects", "reports")
 # ADR-127: "tasks" is optional so a tenant that does not use tasks can hide the tab.
-OPTIONAL_NAV_KEYS = ("tasks", "test-plans", "releases", "team", "activity", "settings")
+OPTIONAL_NAV_KEYS = ("tasks", "planning", "team")
 ALL_NAV_KEYS = CORE_NAV_KEYS + OPTIONAL_NAV_KEYS
-HIDEABLE_NAV_KEYS = tuple(k for k in OPTIONAL_NAV_KEYS if k != "settings")
+HIDEABLE_NAV_KEYS = OPTIONAL_NAV_KEYS
+
+
+def _without_repeats(keys: list) -> list:
+    out: list = []
+    for key in keys:
+        if key not in out:
+            out.append(key)
+    return out
+
+
+def _current_nav_keys(order: list, hidden: list) -> tuple[list, list]:
+    """A layout saved before a tab was removed or merged, in today's keys. Layouts are
+    validated whenever a project is read, so an old one must never be refused."""
+    for new, old_keys in MERGED_NAV_KEYS.items():
+        if any(k in old_keys for k in order):
+            # The merged tab takes the place of whichever old one came first.
+            order = _without_repeats([new if k in old_keys else k for k in order])
+        if any(k in old_keys for k in hidden):
+            # Hidden only if everything it replaced was hidden: otherwise something the
+            # tenant could still see would disappear.
+            all_hidden = new in hidden or all(k in hidden for k in old_keys)
+            hidden = [k for k in hidden if k not in old_keys and k != new]
+            if all_hidden:
+                hidden.append(new)
+    order = [k for k in order if k not in REMOVED_NAV_KEYS]
+    hidden = [k for k in hidden if k not in REMOVED_NAV_KEYS]
+    return order, hidden
 
 
 class NavConfig(BaseModel):
-    order: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS) + 1)
-    hidden: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS) + 1)
+    order: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS))
+    hidden: list[str] = Field(default_factory=list, max_length=len(ALL_NAV_KEYS))
 
     @model_validator(mode="before")
     @classmethod
-    def _drop_removed_keys(cls, data: Any) -> Any:
+    def _use_current_keys(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            data = dict(data)
-            for field in ("order", "hidden"):
-                if isinstance(data.get(field), list):
-                    data[field] = [k for k in data[field] if k not in REMOVED_NAV_KEYS]
+            order, hidden = data.get("order", []), data.get("hidden", [])
+            if isinstance(order, list) and isinstance(hidden, list):
+                data = dict(data)
+                data["order"], data["hidden"] = _current_nav_keys(order, hidden)
         return data
 
     @model_validator(mode="after")

@@ -109,7 +109,7 @@ describe('list view modes', () => {
 })
 
 describe('project tab defaults', () => {
-  const tenant = { ...DEFAULT_WORKSPACE_CONFIG, project_tabs: { order: ['defects'], hidden: ['releases'] } }
+  const tenant = { ...DEFAULT_WORKSPACE_CONFIG, project_tabs: { order: ['defects'], hidden: ['planning'] } }
   const keys = (cfg: Parameters<typeof resolveProjectTabs>[1]) => resolveProjectTabs('p1', cfg, admin).map((t) => t.key)
 
   it('a project without its own config follows the tenant default; its own config wins', () => {
@@ -117,12 +117,12 @@ describe('project tab defaults', () => {
     const own = { order: ['team'], hidden: [] }
     expect(effectiveNavConfig(own, tenant)).toBe(own)
     expect(keys(effectiveNavConfig(null, tenant))[0]).toBe('defects')
-    expect(keys(effectiveNavConfig(null, tenant))).not.toContain('releases')
-    expect(keys(effectiveNavConfig(own, tenant))).toContain('releases')
+    expect(keys(effectiveNavConfig(null, tenant))).not.toContain('planning')
+    expect(keys(effectiveNavConfig(own, tenant))).toContain('planning')
   })
 
   it('the project switcher uses the tenant default for a target with no config', () => {
-    expect(switchTarget('releases', { id: 'p2', nav_config: null }, admin, tenant.project_tabs)).toBe('/projects/p2')
-    expect(switchTarget('releases', { id: 'p2', nav_config: null }, admin, null)).toBe('/projects/p2/releases')
+    expect(switchTarget('planning', { id: 'p2', nav_config: null }, admin, tenant.project_tabs)).toBe('/projects/p2')
+    expect(switchTarget('planning', { id: 'p2', nav_config: null }, admin, null)).toBe('/projects/p2/test-plans')
   })
 })

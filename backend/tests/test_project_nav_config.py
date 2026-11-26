@@ -1,8 +1,13 @@
 """ADR-122: projects.nav_config validation, who may change it, tenant isolation, and the
 PATCH /releases/{id} endpoint added with it."""
 
-from fastapi.testclient import TestClient
+import json
 
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from app.schemas.project import NavConfig
 from tests.test_gap_closure import _bootstrap_tenant, _create_project, _login_and_verify
 
 MANAGER = ("manager@horizon.com", "ManagerPassw0rd!")
@@ -42,7 +47,7 @@ def test_nav_config_defaults_to_null_and_round_trips(
     ctx = _setup(client, platform_admin)
     pid = ctx["project"]["id"]
     assert ctx["project"]["nav_config"] is None
-    config = {"order": ["overview", "defects", "team"], "hidden": ["releases", "activity"]}
+    config = {"order": ["overview", "defects", "team"], "hidden": ["planning", "tasks"]}
     response = _patch(client, pid, config)
     assert response.status_code == 200, response.text
     assert response.json()["data"]["nav_config"] == config
@@ -65,11 +70,10 @@ def test_nav_config_is_validated_against_the_allowlist(
         {"order": ["overview", "calendar"], "hidden": []},  # unknown key in order
         {"order": [], "hidden": ["documents"]},  # unknown key in hidden
         {"order": ["overview", "overview"], "hidden": []},  # duplicate
-        {"order": [], "hidden": ["releases", "releases"]},
+        {"order": [], "hidden": ["team", "team"]},
         {"order": [], "hidden": ["overview"]},  # core tab
         {"order": [], "hidden": ["defects"]},
-        {"order": [], "hidden": ["settings"]},  # settings is never hideable
-        {"order": [], "hidden": ["Releases"]},  # case-sensitive allowlist
+        {"order": [], "hidden": ["Planning"]},  # case-sensitive allowlist
     ]
     for config in bad:
         response = _patch(client, pid, config)
@@ -107,7 +111,7 @@ def test_nav_config_change_is_audited_and_bumps_version(
     ctx = _setup(client, platform_admin)
     pid = ctx["project"]["id"]
     before = ctx["project"]["version"]
-    config = {"order": ["overview"], "hidden": ["activity"]}
+    config = {"order": ["overview"], "hidden": ["team"]}
     assert _patch(client, pid, config).status_code == 200
     assert client.get(f"/api/v1/projects/{pid}").json()["data"]["version"] == before + 1
     logs = client.get("/api/v1/audit-logs", params={"action": "project.updated"}).json()["data"]
@@ -131,6 +135,62 @@ def test_nav_config_is_tenant_isolated(client: TestClient, platform_admin: dict)
     # And the other tenant's own project starts from the defaults.
     own = _create_project(other, "Other Insurer Project")
     assert own["nav_config"] is None
+
+
+@pytest.mark.parametrize(
+    ("saved", "order", "hidden"),
+    [
+        # The merged tab takes the place of whichever old one came first.
+        (
+            {"order": ["releases", "overview", "test-plans"], "hidden": []},
+            ["planning", "overview"],
+            [],
+        ),
+        # Only one of the two hidden: Planning stays, since the other was still visible.
+        ({"order": [], "hidden": ["test-plans"]}, [], []),
+        ({"order": [], "hidden": ["releases"]}, [], []),
+        # Both hidden: so is Planning.
+        ({"order": [], "hidden": ["releases", "team", "test-plans"]}, [], ["team", "planning"]),
+        # Tabs that are now opened from the header, and the one removed before them.
+        (
+            {"order": ["settings", "activity", "requirements", "team"], "hidden": ["activity"]},
+            ["team"],
+            [],
+        ),
+        # Today's keys are left alone: hiding Planning means hiding it.
+        ({"order": ["planning"], "hidden": ["planning"]}, ["planning"], ["planning"]),
+    ],
+)
+def test_a_layout_saved_with_old_tabs_is_read_in_todays_keys(
+    saved: dict, order: list[str], hidden: list[str]
+) -> None:
+    config = NavConfig.model_validate(saved)
+    assert (config.order, config.hidden) == (order, hidden)
+
+
+def test_a_project_with_an_old_stored_layout_still_loads(
+    client: TestClient, platform_admin: dict, owner_engine
+) -> None:
+    ctx = _setup(client, platform_admin)
+    pid = ctx["project"]["id"]
+    # Every tab of the old strip, as the settings page saved it after a reorder.
+    old_order = [
+        "overview", "tasks", "test-cases", "test-runs", "defects", "reports",
+        "test-plans", "releases", "team", "activity", "settings",
+    ]  # fmt: skip
+    stored = json.dumps({"order": old_order, "hidden": ["releases", "activity"]})
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE projects SET nav_config = CAST(:c AS jsonb) WHERE id = :p"),
+            {"c": stored, "p": pid},
+        )
+    expected = {"order": [*old_order[:6], "planning", "team"], "hidden": []}
+    one = client.get(f"/api/v1/projects/{pid}")
+    assert one.status_code == 200, one.text
+    assert one.json()["data"]["nav_config"] == expected
+    listed = client.get("/api/v1/projects")
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["data"]["items"][0]["nav_config"] == expected
 
 
 # ---- PATCH /releases/{id} ----------------------------------------------------------------

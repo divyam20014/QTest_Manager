@@ -97,7 +97,7 @@ test('admin changes the defaults on the Workspace page', async ({ browser }) => 
   const order = page.getByRole('list', { name: 'Sidebar entry order' })
   for (let i = 0; i < 3; i++) await order.getByRole('button', { name: 'Move Defects up' }).click()
   await order.getByRole('checkbox', { name: 'Show Reports', exact: true }).uncheck()
-  await page.getByRole('checkbox', { name: 'Show Releases', exact: true }).uncheck()
+  await page.getByRole('checkbox', { name: 'Show Planning', exact: true }).uncheck()
   await page.getByRole('checkbox', { name: 'Show Team', exact: true }).uncheck()
   await page.getByRole('checkbox', { name: 'Board view for Defects' }).uncheck()
   await page.getByRole('checkbox', { name: 'Calendar view for Test runs' }).uncheck()
@@ -124,11 +124,11 @@ for (const who of ['manager', 'tester'] as const) {
     expect(await sidebarOrder(page)).not.toContain('Reports')
     if (who === 'manager') await shot(page, 'workspace-manager-sidebar')
 
-    // Project tabs: the tenant default hides Releases and Team; the rest stay.
+    // Project tabs: the tenant default hides Planning and Team; the rest stay.
     await page.goto(`/projects/${t.projectId}`)
     await expect(tabs(page).getByRole('link', { name: 'Overview' })).toBeVisible()
-    await expect(tabs(page).getByRole('link', { name: 'Planning' })).toBeVisible()
-    await expect(tabs(page).getByRole('link', { name: 'Releases' })).toHaveCount(0)
+    await expect(tabs(page).getByRole('link', { name: 'Tasks' })).toBeVisible()
+    await expect(tabs(page).getByRole('link', { name: 'Planning' })).toHaveCount(0)
     await expect(tabs(page).getByRole('link', { name: 'Team' })).toHaveCount(0)
 
     // List views: no Board on defects (only the list is left, so no switch at all) ...
@@ -153,21 +153,21 @@ test('a project with its own tab setup keeps it over the workspace default', asy
   const admin = await newPage(browser)
   await signIn(admin.page, 'admin')
   const set = await apiAs(admin.page, 'patch', `/projects/${t.projectId}`, {
-    nav_config: { order: [], hidden: ['activity'] },
+    nav_config: { order: [], hidden: ['tasks'] },
   })
   expect(set.ok(), await set.text()).toBeTruthy()
   const { ctx, page } = await newPage(browser)
   await signIn(page, 'manager')
   await page.goto(`/projects/${t.projectId}`)
-  await expect(tabs(page).getByRole('link', { name: 'Releases' })).toBeVisible()
+  await expect(tabs(page).getByRole('link', { name: 'Planning' })).toBeVisible()
   await expect(tabs(page).getByRole('link', { name: 'Team' })).toBeVisible()
-  await expect(tabs(page).getByRole('link', { name: 'Activity' })).toHaveCount(0)
+  await expect(tabs(page).getByRole('link', { name: 'Tasks' })).toHaveCount(0)
   // Clearing the project's own setup returns it to the workspace default.
   const cleared = await apiAs(admin.page, 'patch', `/projects/${t.projectId}`, { nav_config: null })
   expect(cleared.ok(), await cleared.text()).toBeTruthy()
   await page.reload()
-  await expect(tabs(page).getByRole('link', { name: 'Activity' })).toBeVisible()
-  await expect(tabs(page).getByRole('link', { name: 'Releases' })).toHaveCount(0)
+  await expect(tabs(page).getByRole('link', { name: 'Tasks' })).toBeVisible()
+  await expect(tabs(page).getByRole('link', { name: 'Planning' })).toHaveCount(0)
   await ctx.close()
   await admin.ctx.close()
 })
@@ -236,18 +236,18 @@ test('reset restores everything for everyone', async ({ browser }) => {
   const admin = await newPage(browser)
   await signIn(admin.page, 'admin')
   await admin.page.goto('/admin/workspace')
-  await expect(admin.page.getByRole('checkbox', { name: 'Show Releases', exact: true })).not.toBeChecked()
+  await expect(admin.page.getByRole('checkbox', { name: 'Show Planning', exact: true })).not.toBeChecked()
   await admin.page.getByRole('button', { name: 'Reset to defaults' }).click()
   await admin.page.getByRole('dialog').getByRole('button', { name: 'Reset to defaults' }).click()
   await expect(admin.page.getByText('Workspace reset to the defaults')).toBeVisible()
-  await expect(admin.page.getByRole('checkbox', { name: 'Show Releases', exact: true })).toBeChecked()
+  await expect(admin.page.getByRole('checkbox', { name: 'Show Planning', exact: true })).toBeChecked()
   await expect(admin.page.getByRole('button', { name: 'Reset to defaults' })).toBeDisabled()
 
   const { ctx, page } = await newPage(browser)
   await signIn(page, 'manager')
   await expect(sidebar(page).getByRole('link', { name: 'Reports', exact: true })).toBeVisible()
   await page.goto(`/projects/${t.projectId}`)
-  await expect(tabs(page).getByRole('link', { name: 'Releases' })).toBeVisible()
+  await expect(tabs(page).getByRole('link', { name: 'Planning' })).toBeVisible()
   await expect(tabs(page).getByRole('link', { name: 'Team' })).toBeVisible()
   await page.goto('/defects')
   await expect(viewSwitch(page).getByRole('button', { name: 'Board' })).toBeVisible()

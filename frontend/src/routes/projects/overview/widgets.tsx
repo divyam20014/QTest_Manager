@@ -34,7 +34,7 @@ import {
   percentLabel,
   testCasesLink,
 } from '@/lib/projectDashboard'
-import { tabDef } from '@/lib/projectNav'
+import { projectActivityPath, projectReleasesPath, tabDef } from '@/lib/projectNav'
 import { RUN_CASE_STATUS_TONE } from '@/lib/statusTones'
 import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
@@ -584,7 +584,7 @@ function ReleaseReadinessWidget({ projectId }: WidgetProps) {
   )
   const title = 'Release readiness'
   return (
-    <WidgetFrame testId="widget-release_readiness" title={title} view={{ to: tabTo('releases', projectId) }}>
+    <WidgetFrame testId="widget-release_readiness" title={title} view={{ to: projectReleasesPath(projectId) }}>
       <Async q={q} title={title}>
         {(rr) => (
           <div className="flex flex-col gap-2">
@@ -611,7 +611,7 @@ function UpcomingMilestonesWidget({ projectId }: WidgetProps) {
   const q = useOverviewQuery(projectId, ['milestones'], () => fetchUpcomingMilestones(projectId))
   const title = 'Upcoming milestones'
   return (
-    <WidgetFrame testId="widget-upcoming_milestones" title={title} view={{ to: tabTo('releases', projectId) }}>
+    <WidgetFrame testId="widget-upcoming_milestones" title={title} view={{ to: projectReleasesPath(projectId) }}>
       <Async q={q} title={title}>
         {(r) =>
           r.items.length ? (
@@ -619,7 +619,7 @@ function UpcomingMilestonesWidget({ projectId }: WidgetProps) {
               {r.items.slice(0, 5).map((m) => (
                 <li key={`${m.kind}-${m.id}`}>
                   <Link
-                    to={m.kind === 'release' ? tabTo('releases', projectId) : testRunPath(projectId, m.id)}
+                    to={m.kind === 'release' ? projectReleasesPath(projectId) : testRunPath(projectId, m.id)}
                     className="flex flex-col rounded-md px-1 py-0.5 text-sm hover:bg-[var(--muted)] focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
                   >
                     <span className="truncate font-medium">{m.name}</span>
@@ -791,7 +791,7 @@ function RecentActivityWidget({ projectId }: WidgetProps) {
   const q = useOverviewQuery(projectId, ['activity'], () => fetchActivityStream(projectId))
   const title = 'Recent activity'
   return (
-    <WidgetFrame testId="widget-recent_activity" title={title} view={{ to: tabTo('activity', projectId) }}>
+    <WidgetFrame testId="widget-recent_activity" title={title} view={{ to: projectActivityPath(projectId) }}>
       <Async q={q} title={title}>
         {(entries) =>
           entries.length ? (

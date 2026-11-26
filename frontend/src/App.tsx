@@ -42,7 +42,6 @@ const WorkspaceSettings = lazyRoute(() => import('@/routes/admin/WorkspaceSettin
 const UsersRoles = lazyRoute(() => import('@/routes/admin/UsersRoles'), 'UsersRoles')
 const ProjectActivity = lazyRoute(() => import('@/routes/projects/ProjectActivity'), 'ProjectActivity')
 const ProjectPlanning = lazyRoute(() => import('@/routes/projects/ProjectPlanning'), 'ProjectPlanning')
-const ProjectReleases = lazyRoute(() => import('@/routes/projects/ProjectReleases'), 'ProjectReleases')
 const ProjectSettings = lazyRoute(() => import('@/routes/projects/ProjectSettings'), 'ProjectSettings')
 const ProjectTeam = lazyRoute(() => import('@/routes/projects/ProjectTeam'), 'ProjectTeam')
 const ProjectDashboard = lazyRoute(() => import('@/routes/projects/ProjectDashboard'), 'ProjectDashboard')
@@ -180,7 +179,8 @@ export function App() {
               }
             />
             <Route path="test-plans" element={<ProjectPlanning />} />
-            <Route path="releases" element={<ProjectReleases />} />
+            {/* ADR-131: releases and builds are a section of Planning. */}
+            <Route path="releases" element={<Navigate to="../test-plans?section=releases" replace />} />
             <Route path="team" element={<ProjectTeam />} />
             <Route path="activity" element={<ProjectActivity />} />
             <Route path="settings" element={<ProjectSettings />} />

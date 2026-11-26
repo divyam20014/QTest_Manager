@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 import { isManagerOrAbove } from '@/api/auth'
 import { ApiError } from '@/api/client'
@@ -22,23 +22,50 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Tabs } from '@/components/ui/tabs'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 
-// ADR-122: the Planning tab. TestSuitesCard and TestPlansCard moved here unchanged from the
-// former Details page (its URL now redirects to the Overview, ADR-126).
+import { BuildsReleasesCard } from './ProjectReleases'
+
+// ADR-122 / ADR-131: the Planning tab, in two sections: test suites and plans, and the releases
+// and builds that had a tab of their own. `?section=releases` opens the second.
 export function ProjectPlanning() {
   const { projectId = '' } = useParams<{ projectId: string }>()
+  const [params] = useSearchParams()
   const { user } = useAuth()
   const canManage = isManagerOrAbove(user)
+  const section = params.get('section') === 'releases' ? 'releases' : 'suites'
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Planning" description="Reusable test suites and test plans that group runs under a release." />
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <TestSuitesCard projectId={projectId} canManage={canManage} />
-        <TestPlansCard projectId={projectId} canManage={canManage} />
-      </div>
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Planning" description="Test suites and plans, and the releases and builds this project tracks." />
+      {/* Keyed so that a link to the other section switches to it while the page is open. */}
+      <Tabs
+        key={section}
+        defaultKey={section}
+        items={[
+          {
+            key: 'suites',
+            label: 'Suites & plans',
+            content: (
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <TestSuitesCard projectId={projectId} canManage={canManage} />
+                <TestPlansCard projectId={projectId} canManage={canManage} />
+              </div>
+            ),
+          },
+          {
+            key: 'releases',
+            label: 'Releases & builds',
+            content: (
+              <div className="max-w-3xl">
+                <BuildsReleasesCard projectId={projectId} canManage={canManage} />
+              </div>
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }

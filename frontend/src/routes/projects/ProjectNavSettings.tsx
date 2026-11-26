@@ -26,7 +26,7 @@ const ARROW_CLASS =
  * Project Settings > Navigation (ADR-122): choose which optional tabs are shown and put the tabs
  * in order. Reordering uses Up / Down buttons (keyboard operable, no drag). Saved with
  * PATCH /projects/{id} {nav_config}; "Reset to defaults" stores null again. Core tabs can be moved
- * but not hidden, Settings is always shown to people who can edit.
+ * but not hidden.
  */
 export function ProjectNavSettings({ project }: { project: Project }) {
   const queryClient = useQueryClient()

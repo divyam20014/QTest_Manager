@@ -7,7 +7,7 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth'
 import { isIdSegment } from '@/lib/breadcrumbs'
 import { useWorkspaceConfig, effectiveNavConfig } from '@/lib/workspaceConfig'
-import { activeTabKey, hiddenTabs, resolveProjectTabs, tabAllowed, tabDef } from '@/lib/projectNav'
+import { activeTabKey, canEditProject, hiddenTabs, projectSettingsPath, resolveProjectTabs, tabAllowed, tabDef } from '@/lib/projectNav'
 
 import { ProjectHeader } from './ProjectHeader'
 import { ProjectNav } from './ProjectNav'
@@ -46,7 +46,7 @@ export function ProjectChrome({ projectId, children }: { projectId: string; chil
   const navConfig = effectiveNavConfig(project?.nav_config, workspace)
   const tabs = resolveProjectTabs(projectId, navConfig, user)
   const hiddenHere = tabKey !== null && tabAllowed(tabKey, user) && hiddenTabs(navConfig).has(tabKey)
-  const canEdit = tabAllowed('settings', user)
+  const canEdit = canEditProject(user)
   const asHeading = tabKey === 'overview' && /^\/projects\/[^/]+\/?$/.test(location.pathname)
 
   return (
@@ -76,7 +76,7 @@ export function ProjectChrome({ projectId, children }: { projectId: string; chil
           {canEdit && (
             <>
               {' '}
-              <Link className="font-medium underline" to={`/projects/${projectId}/settings`}>
+              <Link className="font-medium underline" to={projectSettingsPath(projectId)}>
                 Show it in project settings
               </Link>
               .

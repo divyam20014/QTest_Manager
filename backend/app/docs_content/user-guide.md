@@ -46,8 +46,8 @@ A quick map of where things live:
   project. Its header has a **project switcher** (search by name; your recent
   projects come first and you stay on the same tab where the other project has
   it), and its tabs hold the Overview dashboard, Tasks (with the requirements),
-  Test Cases, Test Runs, Planning, Releases, Defects, Reports, Team, Activity and
-  Settings.
+  Test Cases, Test Runs, Defects, Reports, Planning and Team. Activity and
+  project Settings open from the two icons in the header.
 - **The same records as a board or a calendar?** The **List / Board / Calendar**
   switch above Defects, Test Cases and Test Runs (see "Views" below).
 - **Something I use often?** Star it (Favourites) or find it under Recent.
@@ -170,25 +170,25 @@ choosing one keeps you on the same tab when the other project has it, otherwise
 it opens that project's Overview.
 
 The tabs are **Overview**, **Tasks** (tasks, sub-tasks and the requirements in
-them), **Test Cases**, **Test Runs**, **Defects**, **Reports**, **Planning** (test suites and test plans),
-**Releases** (releases and builds; managers can edit a release's name, target
-date, status and notes), **Team** (members and project roles), **Activity**
-(what changed recently, plus the newest test cases and defects) and **Settings**
-(project details, tabs and deleting the project; only people who can edit the
-project see it). Small numbers beside Test Cases, Test Runs and Defects are the
-real counts (defects are the open ones). Defects and Reports open the usual
-Defects and Reports pages for this project, with the project header and tabs
-above them. When the tabs do not fit (a phone, a narrow window) the last ones
-move into a **More** menu; the tab you are on always stays visible. The old
-**Details** page (`/projects/{id}/details`) no longer exists as a page: its
-sections are now the Overview, Team, Planning, Releases, Activity and Settings
-tabs, and an old link or bookmark to it opens the project's Overview.
+them), **Test Cases**, **Test Runs**, **Defects**, **Reports**, **Planning** and
+**Team** (members and project roles). **Planning** has two sections: **Suites &
+plans** (test suites and test plans) and **Releases & builds** (managers can edit
+a release's name, target date, status and notes). Two icons in the project
+header open the rest: **Project activity** (what changed recently, plus the
+newest test cases and defects) and, for people who can edit the project,
+**Project settings** (project details, tabs and deleting the project). Small
+numbers beside Test Cases, Test Runs and Defects are the real counts (defects are
+the open ones). Defects and Reports open the usual Defects and Reports pages for
+this project, with the project header and tabs above them. When the tabs do not
+fit (a phone, a narrow window) the last ones move into a **More** menu; the tab
+you are on always stays visible. An old link to **Releases** opens that section
+of Planning. The old **Details** page (`/projects/{id}/details`) no longer exists
+as a page, and an old link or bookmark to it opens the project's Overview.
 
-**Choosing the tabs.** In **Settings > Project navigation**, a manager can move
-tabs up or down with the arrow buttons (they work from the keyboard, and the
-change is announced) and untick **Show** for Planning, Releases, Team or Activity.
-Requirements, Test Cases, Test Runs, Defects, Reports and Overview are always
-shown (they can be moved) and Settings always stays for people who can edit.
+**Choosing the tabs.** In **Project settings > Project navigation**, a manager can
+move tabs up or down with the arrow buttons (they work from the keyboard, and the
+change is announced) and untick **Show** for Tasks, Planning or Team. Overview,
+Test Cases, Test Runs, Defects and Reports are always shown (they can be moved).
 **Save tabs** stores it for everyone on that project; **Reset to defaults** puts
 the standard order back. A hidden tab is only left out of the tab row: its page
 still opens from a direct link, with a short note saying the tab is hidden (and a
@@ -479,9 +479,10 @@ anyone whose role can view all projects, including custom roles.
 
 **Projects** lists every project. **New Project** creates one with a name,
 domain, priority, budget and timeline. In a project you manage members on the
-**Team** tab, builds and releases on **Releases**, suites and plans on
-**Planning**, and the project's own details, visible tabs and deletion on
-**Settings**. Keep the builds and environments current so runs can target them
+**Team** tab; builds, releases, suites and plans on **Planning**; and the
+project's own details, visible tabs and deletion in **Project settings** (the
+gear in the project header). Keep the builds and environments current so runs
+can target them
 (environments are maintained under Admin, see "For Admins").
 
 ### Tasks and sub-tasks
@@ -840,11 +841,10 @@ data. People who may not open an area never see it, whatever you choose here.
   Reports) and use the up and down buttons to put them in
   order. Dashboard, Projects, My Work and Admin are always shown. Each person
   keeps their own favourites and recent items.
-- **Project tabs**: the default tabs of a project (Planning, Releases, Team and
-  Activity can be hidden; Overview, Requirements, Test Cases, Test Runs, Defects,
-  Reports and Settings are always there), and their order. A project that was
-  given its own tabs in Project settings keeps them; every other project follows
-  this default.
+- **Project tabs**: the default tabs of a project (Tasks, Planning and Team can
+  be hidden; Overview, Test Cases, Test Runs, Defects and Reports are always
+  there), and their order. A project that was given its own tabs in Project
+  settings keeps them; every other project follows this default.
 - **List views**: whether the Board (Defects, Test cases, Test runs) and the
   Calendar (Test runs) are offered. The list view is always available; a list
   with only the list view shows no view switch.

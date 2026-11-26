@@ -1,12 +1,14 @@
-import { Settings } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { History, Settings } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 
 import { fetchProjectTestStatus } from '@/api/projectDashboard'
 import type { Project } from '@/api/projects'
 import { RecordPin } from '@/components/RecordPin'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { type ProjectTabKey, approvedProgress } from '@/lib/projectNav'
+import { type ProjectTabKey, approvedProgress, projectActivityPath, projectSettingsPath } from '@/lib/projectNav'
+import { cn } from '@/lib/utils'
 
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { useOverviewQuery } from './overview/shared'
@@ -65,9 +67,29 @@ function ProjectProgress({ project }: { project: Project }) {
   )
 }
 
+/** An icon link to a project page that is not a tab; it says when you are on that page. */
+function HeaderLink({ to, label, testId, children }: { to: string; label: string; testId: string; children: ReactNode }) {
+  const current = useLocation().pathname === to
+  return (
+    <Link
+      to={to}
+      aria-label={label}
+      aria-current={current ? 'page' : undefined}
+      title={label}
+      data-testid={testId}
+      className={cn(
+        'inline-flex size-8 items-center justify-center rounded-[var(--radius-control)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:size-11 [&_svg]:size-4',
+        current && 'bg-[var(--muted)] text-[var(--foreground)]',
+      )}
+    >
+      {children}
+    </Link>
+  )
+}
+
 /**
  * Header of the project workspace (ADR-122): name, status, owner, progress, favourite star, the
- * project switcher and a Settings shortcut. The name is the page's <h1> only on Overview; every
+ * project switcher, and the way into Activity and Settings (ADR-131). The name is the page's <h1> only on Overview; every
  * other tab keeps its own page heading, so a page never has two.
  */
 export function ProjectHeader({
@@ -107,17 +129,16 @@ export function ProjectHeader({
         <span data-testid="project-progress" className="flex items-center gap-2">
           <ProjectProgress project={project} />
         </span>
-        {canOpenSettings && (
-          <Link
-            to={`/projects/${project.id}/settings`}
-            aria-label="Project settings"
-            title="Project settings"
-            data-testid="project-settings-shortcut"
-            className="inline-flex size-8 items-center justify-center rounded-[var(--radius-control)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] max-md:size-11 [&_svg]:size-4"
-          >
-            <Settings aria-hidden="true" />
-          </Link>
-        )}
+        <span className="flex items-center gap-1">
+          <HeaderLink to={projectActivityPath(project.id)} label="Project activity" testId="project-activity-shortcut">
+            <History aria-hidden="true" />
+          </HeaderLink>
+          {canOpenSettings && (
+            <HeaderLink to={projectSettingsPath(project.id)} label="Project settings" testId="project-settings-shortcut">
+              <Settings aria-hidden="true" />
+            </HeaderLink>
+          )}
+        </span>
       </div>
     </div>
   )

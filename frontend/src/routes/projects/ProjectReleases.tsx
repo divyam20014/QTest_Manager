@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
 
-import { isManagerOrAbove } from '@/api/auth'
 import { ApiError } from '@/api/client'
 import {
   RELEASE_STATUSES,
@@ -21,27 +19,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { FormError, FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useConfirm } from '@/components/ui/useConfirm'
-import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
-
-// ADR-122: the Releases tab. BuildsReleasesCard moved here from the former Details page;
-// releases can now be edited (PATCH /releases/{id}).
-export function ProjectReleases() {
-  const { projectId = '' } = useParams<{ projectId: string }>()
-  const { user } = useAuth()
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Releases" description="Release versions and builds this project tracks defects against." />
-      <div className="max-w-3xl">
-        <BuildsReleasesCard projectId={projectId} canManage={isManagerOrAbove(user)} />
-      </div>
-    </div>
-  )
-}
 
 function ReleaseEditDialog({
   release,
