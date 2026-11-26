@@ -179,7 +179,7 @@ function DesktopTable<T>({
               ),
             )}
             {rowActions && (
-              <th className={cn('py-2 font-medium', px)}>
+              <th className={cn('py-2 font-medium', px, overflowsX && 'sticky right-0 bg-[var(--muted)]')}>
                 <span className="sr-only">Actions</span>
               </th>
             )}
@@ -202,7 +202,7 @@ function DesktopTable<T>({
                 <tr
                   key={id}
                   {...extra}
-                  className={cn('border-t border-[var(--border)] hover:bg-[var(--muted)]', extra?.className)}
+                  className={cn('group/row border-t border-[var(--border)] hover:bg-[var(--muted)]', extra?.className)}
                   onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(e, row) : undefined}
                 >
                   {selection && (
@@ -224,7 +224,19 @@ function DesktopTable<T>({
                       {c.cell(row)}
                     </td>
                   ))}
-                  {rowActions && <td className={cn('py-2 text-right', px)}>{rowActions(row)}</td>}
+                  {rowActions && (
+                    <td
+                      className={cn(
+                        'py-2 text-right',
+                        px,
+                        // Pinned to the right edge so the buttons never sit off-screen.
+                        overflowsX &&
+                          'sticky right-0 border-l border-[var(--border)] bg-[var(--background)] group-hover/row:bg-[var(--muted)]',
+                      )}
+                    >
+                      {rowActions(row)}
+                    </td>
+                  )}
                 </tr>
               )
             })

@@ -730,7 +730,7 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
         </p>
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="ip-allowlist">IP Allowlist (PV-11.3)</Label>
+        <Label htmlFor="ip-allowlist">IP Allowlist</Label>
         <Textarea
           id="ip-allowlist"
           rows={3}

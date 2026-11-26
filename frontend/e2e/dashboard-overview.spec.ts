@@ -41,7 +41,7 @@ test('each KPI card is one link to its list', async ({ page, request }) => {
     [/^Active runs:/, /\/test-runs\?status=in_progress$/],
     [/^Open defects:/, /\/defects\?status=/],
     [/^Test cases:/, /\/test-repository$/],
-    [/^Pass rate:/, /\/reporting$/],
+    [/^Step pass rate:/, /\/reporting$/],
   ]
   for (const [name, url] of targets) {
     await page.goto('/')
@@ -71,7 +71,7 @@ test('trend is shown against the previous period, and only when there is a basel
   await page.goto('/')
   await expect(page.getByRole('link', { name: 'Open defects: 5. down 50% vs 30d ago' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Test cases: 12. up 20% vs 30d ago' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Pass rate: 80%. up 10.0 pts vs 30d ago' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Step pass rate: 80%. up 10.0 pts vs 30d ago' })).toBeVisible()
   // A zero baseline gives no trend rather than an invented one.
   await expect(page.getByRole('link', { name: 'Active runs: 3. No trend yet' })).toBeVisible()
 })
@@ -94,7 +94,7 @@ test('trend range control re-queries and Customize reaches the manage page', asy
   await expect(page.getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => days.includes('7')).toBe(true)
 
-  await page.getByRole('link', { name: 'Customize' }).click()
+  await page.getByRole('link', { name: 'Customise' }).click()
   await expect(page).toHaveURL(/\/dashboards$/)
   await expect(page.getByRole('heading', { name: 'Manage dashboards', level: 1 })).toBeVisible()
 })

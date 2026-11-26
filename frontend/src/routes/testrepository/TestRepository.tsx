@@ -771,6 +771,7 @@ export function TestRepository() {
       <ResponsiveTable
         label={label}
         className="bg-[var(--background)]"
+        dense
         rows={groupRows}
         rowKey={(r) => r.case.id}
         // The group header already names the project, so the column would only repeat it.

@@ -60,7 +60,7 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
                 <span className="font-medium">{readiness.execution_completion_percentage}%</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[var(--muted-foreground)]">Pass rate</span>
+                <span className="text-[var(--muted-foreground)]">Run case pass rate</span>
                 <span className="font-medium">{readiness.pass_percentage}%</span>
               </div>
               <div className="flex justify-between">

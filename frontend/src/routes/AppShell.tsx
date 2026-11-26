@@ -124,7 +124,7 @@ export function AppShell() {
           'qth-shell-chrome',
           // Mobile redesign Phase 1: below md the sidebar is replaced by the
           // bottom tab bar + More sheet (components/MobileNav.tsx).
-          'hidden w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] md:static md:flex md:transition-[width] md:duration-200 motion-reduce:md:transition-none',
+          'hidden w-60 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] md:sticky md:top-0 md:flex md:h-svh md:self-start md:transition-[width] md:duration-200 motion-reduce:md:transition-none',
           collapsed ? 'md:w-16' : 'md:w-60',
         )}
         style={branding?.primary_color ? ({ '--sidebar-accent': branding.primary_color } as CSSProperties) : undefined}
@@ -153,7 +153,7 @@ export function AppShell() {
 
         <SidebarNav entries={entries} collapsed={collapsed} counts={counts} announcement={announcement} />
 
-        <div className="flex flex-col gap-0.5 border-t border-[var(--sidebar-border)] px-3 py-3">
+        <div className="flex shrink-0 flex-col gap-0.5 border-t border-[var(--sidebar-border)] px-3 py-3">
           {canAccessPath(user, USER_GUIDE_ITEM.to) && <SidebarLink item={USER_GUIDE_ITEM} collapsed={collapsed} />}
           <SidebarLink item={PROFILE_ITEM} collapsed={collapsed} />
         </div>

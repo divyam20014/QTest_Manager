@@ -138,7 +138,7 @@ function TestStatusWidget({ projectId }: WidgetProps) {
               </ul>
               {s!.executed > 0 && (
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  Pass rate {percentLabel(s!.pass_rate)} of {s!.executed} executed
+                  Case pass rate {percentLabel(s!.pass_rate)} of {s!.executed} executed
                 </p>
               )}
             </div>
@@ -591,7 +591,7 @@ function ReleaseReadinessWidget({ projectId }: WidgetProps) {
             <p className="text-sm font-medium">{rr.release_name ?? 'Whole project'}</p>
             <div className="grid grid-cols-2 gap-2">
               <Tile label="Execution complete" value={percentLabel(rr.execution_completion_percentage)} />
-              <Tile label="Pass rate" value={percentLabel(rr.pass_percentage)} />
+              <Tile label="Run case pass rate" value={percentLabel(rr.pass_percentage)} />
               <Tile label="Requirement coverage" value={percentLabel(rr.requirement_coverage_percentage)} />
               <Tile
                 label="Open defects"

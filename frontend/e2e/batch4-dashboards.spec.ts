@@ -32,7 +32,7 @@ test('Custom dashboards: build, reorder, persist, privacy, team default, axe', a
     await admin.goto('/')
     await expect(admin.getByRole('link', { name: 'Dashboards', exact: true })).toHaveCount(0)
     await expect(nativeSelect(admin, 'View', { exact: true })).toHaveValue('')
-    await admin.getByRole('link', { name: 'Customize' }).click()
+    await admin.getByRole('link', { name: 'Customise' }).click()
     await expect(admin.getByRole('heading', { name: 'Manage dashboards', level: 1 })).toBeVisible()
     await expect(admin.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Manage')
     await admin.getByRole('button', { name: 'New dashboard' }).click()

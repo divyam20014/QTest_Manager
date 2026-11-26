@@ -334,7 +334,7 @@ function ReleaseReadiness({ pid, settings }: P) {
             <p className="text-sm font-medium">{r.release_name ?? 'Whole project'}</p>
             <div className="grid grid-cols-2 gap-2">
               <Tile label="Execution complete" value={pct(r.execution_completion_percentage)} />
-              <Tile label="Pass rate" value={pct(r.pass_percentage)} />
+              <Tile label="Run case pass rate" value={pct(r.pass_percentage)} />
               <Tile label="Requirement coverage" value={pct(r.requirement_coverage_percentage)} />
               <Tile
                 label="Open defects"

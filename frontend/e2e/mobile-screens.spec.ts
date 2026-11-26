@@ -83,7 +83,7 @@ test('mobile screens: cards, pinned verdict bar, dashboard, traceability, roles,
   // --- Dashboard: single column, KPI cards stacked ------------------
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /^Pass rate:/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /^Step pass rate:/ })).toBeVisible()
   await noHorizontalOverflow(page)
 
   // --- Projects: card list + sort/filters in the sheet -------------------------

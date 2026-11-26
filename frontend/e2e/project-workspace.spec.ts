@@ -99,7 +99,7 @@ test('header and tab strip: name, status, owner, progress, favourite, real tabs,
     // project has one case, executed once with a failed step: 100% executed, 0% pass rate).
     const bar = header.getByRole('progressbar', { name: 'Test execution progress' })
     await expect(bar).toHaveAttribute('aria-valuenow', '100')
-    await expect(page.getByTestId('project-progress')).toContainText('100% executed (1/1) · 0% pass rate')
+    await expect(page.getByTestId('project-progress')).toContainText('100% executed (1/1) · 0% case pass rate')
 
     const star = header.getByRole('button', { name: 'Add to favourites' })
     await star.click()

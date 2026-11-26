@@ -173,7 +173,7 @@ export function AuditLogs() {
           }`}
         >
           {verifyQuery.data.valid
-            ? `Chain verified: ${verifyQuery.data.checked_count} records, hashes consistent, no gaps (ADR-006).`
+            ? `Chain verified: ${verifyQuery.data.checked_count} records, hashes consistent, no gaps.`
             : verifyQuery.data.broken_at_id
               ? `Chain integrity FAILED at record ${verifyQuery.data.broken_at_id} — ${verifyQuery.data.checked_count} records checked.`
               : `Chain links are consistent (${verifyQuery.data.checked_count} records), but verification FAILED.`}

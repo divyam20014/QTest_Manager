@@ -32,7 +32,7 @@ test('empty tenant: honest empty states, working tile links, no overflow', async
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/')
     await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
-    await expect(page.getByRole('link', { name: /^Pass rate:/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /^Step pass rate:/ })).toBeVisible()
     await expect(page.getByText('No test cases yet')).toBeVisible()
     await expect(page.getByText('No execution activity yet')).toBeVisible()
     await expect(page.getByText('Nothing needs attention')).toBeVisible()
@@ -60,7 +60,7 @@ test('a failed summary shows an error state and recovers on retry', async ({ pag
   await expect(page.getByText("Couldn't load this").first()).toBeVisible({ timeout: 15000 })
   await page.unroute('**/api/v1/dashboard/summary')
   await page.getByRole('button', { name: 'Try again' }).first().click()
-  await expect(page.getByRole('link', { name: /^Pass rate:/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /^Step pass rate:/ })).toBeVisible()
 })
 
 test('charts: table view, trend range, and colours follow the app theme toggle', async ({ page, request }) => {

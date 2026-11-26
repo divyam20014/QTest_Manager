@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 
+import { fillDays } from '@/lib/trendDays'
 import { chartTooltipStyle, longDay, shortDay } from '@/routes/dashboardFormat'
 
 // The Recharts-backed pieces of the Dashboard live here so the heavy chart
@@ -95,7 +96,7 @@ export function TrendLineChart({
   failColor: string
   reduceMotion: boolean
 }) {
-  const trendPoints = points
+  const trendPoints = fillDays(points, { pass_count: 0, fail_count: 0 })
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={trendPoints} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>

@@ -8,6 +8,7 @@ import { buildCrumbs, isIdSegment, scopedProjectId } from '@/lib/breadcrumbs'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
+const SHORT_CRUMB = 12
 const LINK_CLASS = 'truncate text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
 
 export function Breadcrumbs() {
@@ -58,6 +59,8 @@ export function Breadcrumbs() {
               className={cn(
                 'flex min-w-0 items-center gap-1',
                 collapsible && 'hidden shrink-[100] sm:flex',
+                // Wide screens have room for the short ones ("Projects"), so only long names give way.
+                collapsible && crumb.label.length <= SHORT_CRUMB && 'xl:shrink-0',
               )}
             >
               {index > 0 && (

@@ -246,7 +246,7 @@ test('admin: every key number equals the API and the list it links to, and nothi
     requests.filter((u) => /\/(reports|dashboard)\//.test(u) && !u.includes(`project_id=${t.projectId}`) && !u.includes('/reports/traceability')),
   ).toEqual([])
   // The header progress comes from the same aggregate.
-  await expect(page.getByTestId('project-progress')).toContainText('50% executed (3/6) · 33% pass rate')
+  await expect(page.getByTestId('project-progress')).toContainText('50% executed (3/6) · 33% case pass rate')
   await shot(page, 'overview-admin-1280')
 
   // Each KPI opens a list that applies the filter: the list total equals the tile.

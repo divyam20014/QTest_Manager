@@ -519,7 +519,7 @@ export function SidebarNav({
   return (
     <nav
       aria-label="Workspace"
-      className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-3 pb-4"
+      className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-3 pb-4"
     >
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         {announcement}

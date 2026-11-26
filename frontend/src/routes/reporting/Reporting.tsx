@@ -47,6 +47,7 @@ import { ChartSkeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth'
 import { hasPermission } from '@/api/auth'
 import { pivotAggregateRows } from './aggregate'
+import { fillDays } from '@/lib/trendDays'
 import { usePrefersReducedMotion } from '@/lib/useMediaQuery'
 import { useThemePreference } from '@/lib/useThemePreference'
 import { useCanListUsers } from '@/lib/useCanListUsers'
@@ -332,7 +333,7 @@ export function Reporting() {
         table={
           domainQuery.data?.length
             ? {
-                columns: ['Domain', 'Projects', 'Test cases', 'Approved %', 'Open defects', 'Pass rate %'],
+                columns: ['Domain', 'Projects', 'Test cases', 'Approved %', 'Open defects', 'Step pass rate %'],
                 rows: domainQuery.data.map((d) => [
                   d.domain,
                   d.project_count,
@@ -354,7 +355,7 @@ export function Reporting() {
                     {d.test_case_count} test cases · {Math.round(d.approved_percentage)}% approved
                   </p>
                   <p className="text-xs text-[var(--muted-foreground)]">
-                    {d.open_defect_count} open defects · {Math.round(d.pass_percentage)}% pass rate
+                    {d.open_defect_count} open defects · {Math.round(d.pass_percentage)}% step pass rate
                   </p>
                 </div>
               ))}
@@ -414,7 +415,7 @@ export function Reporting() {
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendQuery.data?.points ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <LineChart data={fillDays(trendQuery.data?.points ?? [], { pass_count: 0, fail_count: 0, ignore_count: 0 })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="date"
@@ -457,7 +458,7 @@ export function Reporting() {
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={defectTrendQuery.data?.points ?? []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <LineChart data={fillDays(defectTrendQuery.data?.points ?? [], { opened_count: 0, closed_count: 0 })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                   <XAxis
                     dataKey="date"

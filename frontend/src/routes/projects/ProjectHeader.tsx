@@ -38,7 +38,7 @@ function ProjectProgress({ project }: { project: Project }) {
         </span>
         <span className="tabular-nums">
           {percent}% executed ({s.executed}/{s.total})
-          {s.pass_rate != null && <> · {Math.round(s.pass_rate)}% pass rate</>}
+          {s.pass_rate != null && <> · {Math.round(s.pass_rate)}% case pass rate</>}
         </span>
       </>
     )

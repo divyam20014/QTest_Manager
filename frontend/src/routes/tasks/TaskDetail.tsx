@@ -261,7 +261,7 @@ function RollupCards({ rollup, scope }: { rollup: TaskRollup | undefined; scope:
       </div>
       <div role="listitem">
         <Stat
-          label="Pass rate"
+          label="Case pass rate"
           value={rollup.pass_rate === null ? '—' : `${rollup.pass_rate}%`}
           bar={rollup.pass_rate}
           detail={

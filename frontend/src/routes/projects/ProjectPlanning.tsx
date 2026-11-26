@@ -336,7 +336,7 @@ function PlanRow({
       {rollupQuery.data && (
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
           {rollupQuery.data.execution_completion_percentage}% complete &middot;{' '}
-          {rollupQuery.data.pass_percentage}% pass rate &middot;{' '}
+          {rollupQuery.data.pass_percentage}% run case pass rate &middot;{' '}
           {Object.values(rollupQuery.data.open_defects_by_severity).reduce((a, b) => a + b, 0)}{' '}
           open defects
         </p>

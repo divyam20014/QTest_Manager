@@ -291,7 +291,7 @@ export function Dashboard() {
   const kpis = summary
     ? [
         {
-          label: 'Pass rate',
+          label: 'Step pass rate',
           value: hasPassData ? formatPercent(summary.test_runs.step_pass_percentage) : '--',
           trend: rateTrend(summary.test_runs.step_pass_percentage, sample, prev?.step_pass_percentage, prev?.step_sample_size, days),
           href: reportsHidden ? '/test-runs' : '/reporting',

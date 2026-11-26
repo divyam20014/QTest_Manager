@@ -42,7 +42,7 @@ export function DashboardSwitcher({ currentId }: { currentId?: string }) {
         to="/dashboards"
         className={buttonVariants({ variant: 'ghost', size: 'sm' })}
       >
-        Customize
+        Customise
       </Link>
     </div>
   )
