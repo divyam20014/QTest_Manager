@@ -421,7 +421,7 @@ Private per-user filter sets for the Test Cases, Defects, Test Runs, Requirement
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /saved-views?list_key= | the caller's views, optionally for one list (`test_cases`, `defects`, `test_runs`, `requirements`, `projects`) |
+| GET | /saved-views?list_key= | the caller's views, optionally for one list (`test_cases`, `test_repository` (ADR-132, the all-projects Test Cases page; filters `search, status, priority, projectId, showDeprecated, assignee`, no sort), `defects`, `test_runs`, `requirements`, `projects`) |
 | POST | /saved-views | `{list_key, name (1-60), filters, sort?, columns?, is_default?}`. `columns` (ADR-117) is an ordered list of up to 40 column keys (lower-case letters, digits, underscore; de-duplicated; stored and returned as `columns`, null when not set). 422 for an unknown filter key, wrong value type, bad sort, a malformed `columns` list or filters over 2KB; 409 for a duplicate name or more than 25 views for that list |
 | PATCH | /saved-views/{id} | rename, change filters, sort or `columns` (send `null` to clear them), set or clear `is_default` (setting it clears the previous default for that list) |
 | DELETE | /saved-views/{id} | delete |

@@ -55,9 +55,11 @@ A quick map of where things live:
 - **Changing the menus for everyone?** Admin > Workspace (admins only).
 
 Use the arrow button at the left of the header to shrink the sidebar to an icon
-rail. In the rail every entry has a tooltip, and a group opens a small panel
-with its entries (Enter or a click opens it, Escape closes it). On a phone the
-sidebar becomes a bottom bar with a **More** menu.
+rail. In the rail every entry has a tooltip. On a phone the sidebar becomes a
+bottom bar with **Dashboard**, **My Work**, **Projects**, **Defects** and
+**More**; Test Cases, Test Runs, Reports and Admin are under **More**. When a row
+of tabs is wider than the screen, an arrow at its edge shows there is more to
+swipe to.
 
 The header is one calm row: the sidebar button and the breadcrumb on the left
 (only the current page on a phone), one search field in the middle, **+ New** (a
@@ -194,9 +196,23 @@ the standard order back. A hidden tab is only left out of the tab row: its page
 still opens from a direct link, with a short note saying the tab is hidden (and a
 link to settings if you can edit), and nobody gains or loses access to any data.
 
+### The project header on smaller views
+
+On the page of a single record (a task, test case, run, defect or requirement)
+the project header shrinks to the project's name, the project switcher and the
+Activity and Settings icons. On a phone every project page except the Overview
+does the same, and the lists leave out their introduction, so records start
+higher.
+
 ### Test Cases
 
-Test Cases (in the sidebar) is where tests are written and kept. Each test case
+Test Cases (in the sidebar) is where tests are written and kept. The sidebar page
+covers every project, and each project also has a **Test Cases** tab; the columns
+they share come in the same order. On the sidebar page, **Views** saves your
+filters under a name (they are kept apart from a project tab's views), and
+**Export** appears once you choose one project in **Filters**. Filters you saved
+on this page before it had Views are copied into Views the first time you open
+it in that browser; the copy in the browser is left as it was. Each test case
 has a generated ID (`TC_000001`), is versioned (editing the steps or content
 creates a new version and the earlier ones stay viewable) and moves through a
 **Review Status**: Draft, Ready for Review, Approved or Deprecated. How a case

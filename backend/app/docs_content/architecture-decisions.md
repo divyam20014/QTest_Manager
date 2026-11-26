@@ -1959,3 +1959,21 @@ Every figure but the tree is under 350 ms. The tree is the slowest because it se
 The merged tab has a new key, `planning`, so that old and new layouts cannot be confused: an old layout hiding only `test-plans` keeps Planning visible, because Releases was visible, while a new one hiding `planning` hides it. `NavConfig` translates old keys before validating. This is required, not a courtesy: a project's `nav_config` is validated every time the project is read, so refusing a stored key would make the project, and the project list, fail to load.
 
 **Consequences.** Activity can no longer be hidden. A later removal or rename of a tab key needs the same translation (`MERGED_NAV_KEYS` / `REMOVED_NAV_KEYS` in `schemas/project.py`).
+
+## ADR-132: Two Test Cases pages that behave alike
+
+**Context.** The all-projects page and a project's Test Cases tab share a title but ordered their shared columns differently, saved filters in different places, and only the tab could export.
+
+**Decision.** The pages stay separate; merging them would risk the features only one has (bulk priority and assignee there, the board and the module filters here). The shared columns now come in the same order. The all-projects page uses saved views, stored per user on the server under their own list key, `test_repository`: its filters differ from the tab's, and a default view on one must not apply to the other. Migration `a7c9e1f3b5d8` adds the key to the table's check. Export is offered when one project is chosen, with the tab's four choices; the export API is per project.
+
+Filters saved by the old control lived only in the browser. Each user's first visit copies them into their views. The originals are not removed, so a failed or partial copy loses nothing, a second person on the same browser gets their own copy, and names already copied are remembered so that deleting a view does not bring it back.
+
+**Not done.** Exporting across all projects at once needs a new endpoint.
+
+## ADR-133: Less above the first record, and the phone bar
+
+**Context.** On a 390x844 screen the project header, tabs and page introduction pushed every row of the task and defect lists off the first screen. The phone bar offered Test Cases and Runs but neither My Work nor Projects.
+
+**Decision.** A record's page shows a compact project header (name, switcher, Activity, Settings) at every width; on phones every project page but the Overview does. Lists leave out their back link and description on phones, Export shares a row with the other actions, and Tasks drops the column picker that cards ignore. The bar is Dashboard, My Work (with its pending count), Projects, Defects and More; Test Cases and Test Runs are in More. A tab row that overflows is faded with an arrow on that side, and the selected tab is scrolled into view, again when late counts widen the tabs.
+
+**Consequences.** On a phone the Execution Console is More, Test Runs, then its button. The first record's title is visible without scrolling on the task, defect and test case lists; its whole card is not always.
