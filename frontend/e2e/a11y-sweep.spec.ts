@@ -33,6 +33,8 @@ function routes(t: RoleTenant): string[] {
     `/projects/${p}/tasks`,
     `/projects/${p}/tasks?view=board`,
     `/projects/${p}/tasks?view=flat`,
+    // ADR-128: the New Requirement dialog, open (Testers lack the permission and see the page alone).
+    `/projects/${p}/tasks?action=new-requirement`,
     `/projects/${p}/tasks/${t.taskId}`,
     `/projects/${p}/tasks/${t.subTaskId}`,
     `/projects/${p}/traceability-matrix?task=${t.taskId}&sub=1`,
