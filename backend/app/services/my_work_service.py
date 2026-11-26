@@ -4,7 +4,8 @@ Nothing here is stored. Every row is derived from existing assignments:
   * run cases: `test_run_cases.assigned_to` = me, in a run that is not finished or
     deleted, with a status that still needs attention (pending, in progress, failed
     or blocked; passed and ignored cases are done);
-  * reviews: test cases in `ready_for_review` whose `reviewer_id` is me.
+  * reviews: test cases in `ready_for_review` whose `reviewer_id` is me;
+  * tasks: tasks (and sub-tasks) assigned to me whose status category is not "done".
 
 Project visibility is the same rule the run and test case lists use (Admin and
 Manager see every project; anyone else only projects they own or belong to), and a
@@ -19,15 +20,18 @@ from sqlalchemy.orm import Session
 
 from app.models.execution import TestRun, TestRunCase
 from app.models.project import Project, ProjectMember
+from app.models.task import Task, TaskStatus
 from app.models.test_case import TestCase
 from app.schemas.my_work import (
     MyReviewListResponse,
     MyReviewOut,
     MyRunCaseListResponse,
     MyRunCaseOut,
+    MyTaskListResponse,
+    MyTaskOut,
     MyWorkSummaryOut,
 )
-from app.services import tester_visibility
+from app.services import task_status_service, tester_visibility
 
 OPEN_RUN_CASE_STATUSES = ("pending", "in_progress", "failed", "blocked")
 MAX_ITEMS = 200
@@ -79,6 +83,48 @@ def _review_query(db: Session, tenant_id: UUID, role_code: str, user_id: UUID) -
     if clause is not None:
         query = query.where(clause)
     return tester_visibility.scope_case_query(db, tenant_id, role_code, user_id, query)
+
+
+def _task_query(tenant_id: UUID, role_code: str, user_id: UUID) -> Select:
+    query = (
+        select(Task, TaskStatus, Project.name)
+        .join(TaskStatus, TaskStatus.id == Task.status_id)
+        .join(Project, Project.id == Task.project_id)
+        .where(
+            Task.tenant_id == tenant_id,
+            Task.assignee_id == user_id,
+            TaskStatus.category != "done",
+            # Stated here as well as by the ORM hook: the counts wrap this in a subquery.
+            Task.deleted_at.is_(None),
+        )
+    )
+    clause = _visible_projects_clause(tenant_id, role_code, user_id, Task.project_id)
+    return query if clause is None else query.where(clause)
+
+
+def list_tasks(db: Session, tenant_id: UUID, role_code: str, user_id: UUID) -> MyTaskListResponse:
+    """Earliest due date first, so overdue tasks lead and undated ones come last."""
+    base = _task_query(tenant_id, role_code, user_id)
+    today = datetime.now(UTC).date()
+    total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
+    rows = db.execute(
+        base.order_by(Task.due_date.asc().nulls_last(), Task.display_seq, Task.id).limit(MAX_ITEMS)
+    ).all()
+    items = [
+        MyTaskOut(
+            id=task.id,
+            display_id=task.display_id,
+            title=task.title,
+            project_id=task.project_id,
+            project_name=project_name,
+            status=task_status_service.to_ref(status),
+            priority=task.priority,
+            due_date=task.due_date,
+            overdue=task.due_date is not None and task.due_date < today,
+        )
+        for task, status, project_name in rows
+    ]
+    return MyTaskListResponse(items=items, total=total)
 
 
 def list_run_cases(
@@ -155,7 +201,15 @@ def summary(db: Session, tenant_id: UUID, role_code: str, user_id: UUID) -> MyWo
             _review_query(db, tenant_id, role_code, user_id).subquery()
         )
     ).scalar_one()
+    tasks = _task_query(tenant_id, role_code, user_id)
+    today = datetime.now(UTC).date()
+    tasks_total = db.execute(select(func.count()).select_from(tasks.subquery())).scalar_one()
+    tasks_overdue = db.execute(
+        select(func.count()).select_from(tasks.where(Task.due_date < today).subquery())
+    ).scalar_one()
     return MyWorkSummaryOut(
+        tasks_total=tasks_total,
+        tasks_overdue=tasks_overdue,
         run_cases_pending=counts.get("pending", 0),
         run_cases_in_progress=counts.get("in_progress", 0),
         run_cases_failed=counts.get("failed", 0),

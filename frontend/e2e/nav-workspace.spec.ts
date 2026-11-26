@@ -292,8 +292,9 @@ test('My Work: a tester sees their run cases and defects, a manager their review
     const summary = (await (await tp.request.get(`${API_BASE_URL}/my-work/summary`)).json()).data
     expect(summary.run_cases_total).toBe(1)
     expect(summary.reviews_total).toBe(0)
-    // The badge is the API's count, spoken as "1 pending".
-    await expect(sidebar(tp).getByRole('link', { name: /^My Work\s*, 1 pending$/ })).toBeVisible()
+    expect(summary.tasks_total).toBe(1)
+    // The badge is the API's counts (one run case and one task), spoken as "2 pending".
+    await expect(sidebar(tp).getByRole('link', { name: /^My Work\s*, 2 pending$/ })).toBeVisible()
 
     await sidebar(tp).getByRole('link', { name: /^My Work/ }).click()
     await expect(tp).toHaveURL(/\/my-work$/)
@@ -307,6 +308,12 @@ test('My Work: a tester sees their run cases and defects, a manager their review
     await expect(runLink).toHaveAttribute('href', new RegExp(`/test-run-cases/${t.runCaseId}\\?runId=${t.runId}$`))
     await shot(tp, 'mywork-1280-light')
     expect(formatFindings('my-work light', await axeFindings(tp))).toEqual([])
+
+    await tp.getByRole('tab', { name: /^Tasks/ }).click()
+    await expect(tp.getByRole('link', { name: /Settlement engine/ })).toHaveAttribute(
+      'href',
+      `/projects/${t.projectId}/tasks/${t.taskId}`,
+    )
 
     await tp.getByRole('tab', { name: /^Defects/ }).click()
     const defectLink = tp.getByRole('link', { name: /Seeded defect/ })
@@ -519,7 +526,7 @@ for (const theme of ['light', 'dark'] as const) {
 
       await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'More' }).click()
       const sheet = page.getByRole('dialog', { name: 'More' })
-      await expect(sheet.getByRole('link', { name: /^My Work\s*, 1 pending$/ })).toBeVisible()
+      await expect(sheet.getByRole('link', { name: /^My Work\s*, 2 pending$/ })).toBeVisible()
       await expect(sheet.getByRole('link', { name: 'Execution Console' })).toBeVisible()
       await expect(sheet.getByText('Favourites', { exact: true })).toBeVisible()
       await expect(sheet.getByRole('link', { name: 'Apex Motor Claims' }).first()).toBeVisible()

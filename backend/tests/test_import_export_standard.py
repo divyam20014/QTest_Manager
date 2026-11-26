@@ -1017,3 +1017,102 @@ def test_export_headers_equal_template_headers(client, platform_admin) -> None:
     df_template = list(csv.reader(io.StringIO(client.get(f"{DF}/import-template.csv").text)))[0]
     df_export = _csv(client.get(f"{DF}/export.csv"))[0]
     assert df_export[: len(df_template)] == df_template
+
+
+# --- the Task column ----------------------------------------------------------------------------
+
+
+def _new_task(client, project_id: str, title: str) -> dict:
+    response = client.post(f"/api/v1/projects/{project_id}/tasks", json={"title": title})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def _task_detail(client, task_id: str) -> dict:
+    return client.get(f"/api/v1/tasks/{task_id}").json()["data"]
+
+
+def _export_by_title(client, url: str, **kw) -> tuple[list[str], dict[str, str]]:
+    table = list(csv.reader(io.StringIO(client.get(url, **kw).text)))
+    header = table[0]
+    return header, {r[header.index("Title")]: r[header.index("Task")] for r in table[1:]}
+
+
+def test_test_case_import_links_tasks_and_export_lists_them(client, platform_admin) -> None:
+    env = setup_env(client, platform_admin)
+    pid = env["project_id"]
+    one, two = _new_task(client, pid, "First task"), _new_task(client, pid, "Second task")
+    # Repeats and lower case are accepted; each task is linked once.
+    refs = f"{two['display_id']}; {one['display_id'].lower()}; {one['display_id']}"
+    rows = [tc_row(1, task=refs), tc_row(2, task="")]
+    data = do_preview(client, "test_case", pid, csv_bytes("test_case", rows))
+    assert data["totals"]["errors"] == 0, messages(data)
+    assert {"key": "task", "label": "Task"} in data["preview_columns"]
+    assert commit(client, "test_case", data["token"]).status_code == 200
+    for task in (one, two):
+        linked = _task_detail(client, task["id"])["test_cases"]
+        assert [c["title"] for c in linked] == ["Imported test case 0001"]
+    assert "task.test_case_linked" in client.get(f"/api/v1/tasks/{one['id']}/history").text
+
+    header, cells = _export_by_title(client, f"/api/v1/projects/{pid}/test-cases/export.csv")
+    assert header[-1] == "Task"
+    assert cells["Imported test case 0001"] == f"{one['display_id']}; {two['display_id']}"
+    assert cells["Imported test case 0002"] == ""
+
+
+def test_defect_import_sets_the_task_and_export_shows_it(client, platform_admin) -> None:
+    env = setup_env(client, platform_admin)
+    pid = env["project_id"]
+    task = _new_task(client, pid, "Claims form")
+    content = csv_bytes("defect", [df_row(1, task=task["display_id"]), df_row(2)])
+    data = do_preview(client, "defect", pid, content)
+    assert data["totals"]["errors"] == 0, messages(data)
+    assert {"key": "task", "label": "Task"} in data["preview_columns"]
+    assert commit(client, "defect", data["token"]).status_code == 200
+    by_title = {d["title"]: d for d in defects_of(client, pid)}
+    assert by_title["Imported defect 0001"]["task_id"] == task["id"]
+    assert by_title["Imported defect 0002"]["task_id"] is None
+
+    header, cells = _export_by_title(client, f"{DF}/export.csv", params={"project_id": pid})
+    assert header[-1] == "Task"
+    assert cells["Imported defect 0001"] == task["display_id"]
+    assert cells["Imported defect 0002"] == ""
+
+
+@pytest.mark.parametrize(("kind", "make"), [("test_case", tc_row), ("defect", df_row)])
+def test_a_task_that_is_deleted_or_unknown_is_a_row_error(
+    client, platform_admin, kind, make
+) -> None:
+    env = setup_env(client, platform_admin)
+    pid = env["project_id"]
+    gone = _new_task(client, pid, "To be deleted")
+    assert client.delete(f"/api/v1/tasks/{gone['id']}").status_code == 200
+    rows = [make(1, task=gone["display_id"]), make(2, task="TASK_999999")]
+    data = do_preview(client, kind, pid, csv_bytes(kind, rows))
+    assert data["totals"]["errors"] == 2, messages(data)
+    assert all("does not exist in this project" in m for m in messages(data, "error"))
+
+
+def test_a_defect_takes_only_one_task(client, platform_admin) -> None:
+    env = setup_env(client, platform_admin)
+    pid = env["project_id"]
+    one, two = _new_task(client, pid, "First task"), _new_task(client, pid, "Second task")
+    content = csv_bytes("defect", [df_row(1, task=f"{one['display_id']}; {two['display_id']}")])
+    data = do_preview(client, "defect", pid, content)
+    assert any("only one task" in m for m in messages(data, "error")), messages(data)
+
+
+def test_linking_tasks_by_import_needs_task_manage(client, platform_admin) -> None:
+    env = setup_env(client, platform_admin)
+    pid = env["project_id"]
+    task = _new_task(client, pid, "Guarded task")
+    creator = as_user(
+        client, env, _custom_role_user(client, env, "TC Creator", ["testcase.create"])
+    )
+    content = csv_bytes("test_case", [tc_row(1, task=task["display_id"])])
+    data = do_preview(creator, "test_case", pid, content)
+    assert any("not allowed to link" in m for m in messages(data, "error")), messages(data)
+    # Without a task the same importer is unaffected.
+    plain = do_preview(creator, "test_case", pid, csv_bytes("test_case", [tc_row(2)]))
+    assert plain["totals"]["errors"] == 0, messages(plain)
+    assert _task_detail(client, task["id"])["test_cases"] == []

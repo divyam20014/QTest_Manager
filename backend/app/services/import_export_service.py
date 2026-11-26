@@ -30,6 +30,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_events_bulk
+from app.core.auth import get_effective_permissions_for_project
 from app.core.config import get_settings
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.core.field_standards import (
@@ -64,6 +65,7 @@ from app.models.defect import Defect, DefectLink
 from app.models.identity import User
 from app.models.import_session import ImportSession
 from app.models.project import Project, ProjectMember
+from app.models.task import Task, TaskTestCaseLink
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
 from app.schemas.defect import ReproStepIn, normalise_labels
@@ -128,6 +130,7 @@ PREVIEW_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("status", "Review Status"),
         ("steps", "Test Steps"),
         ("assignee", "Assignee"),
+        ("task", "Task"),
     ],
     "defect": [
         ("display_id", "Bug ID"),
@@ -141,6 +144,7 @@ PREVIEW_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("steps", "Steps to Reproduce"),
         ("assignee", "Assignee"),
         ("linked_issues", "Linked Test Cases"),
+        ("task", "Task"),
     ],
 }
 
@@ -580,6 +584,33 @@ def _can(actor: Actor, *codes: str, tiers: tuple[str, ...] = ()) -> bool:
     return any(c in actor.permissions for c in codes) or actor.role_code in tiers
 
 
+def _project_tasks(db: Session, tenant_id: UUID, project_id: UUID) -> dict[str, UUID]:
+    """TASK_000001 -> task id, for the live tasks of one project."""
+    rows = db.execute(
+        select(Task.display_id, Task.id).where(
+            Task.tenant_id == tenant_id,
+            Task.project_id == project_id,
+            Task.display_id.is_not(None),
+        )
+    )
+    return {str(display).upper(): task_id for display, task_id in rows}
+
+
+def _task_refs(
+    out: RowOutcome, header: str, raw: str, tasks: dict[str, UUID]
+) -> tuple[list[UUID], list[str]]:
+    ids: list[UUID] = []
+    labels: list[str] = []
+    for ref in _split_list(raw):
+        task_id = tasks.get(ref.upper())
+        if task_id is None:
+            out.errors.append(Issue(header, f"Task '{ref}' does not exist in this project."))
+        elif task_id not in ids:
+            ids.append(task_id)
+            labels.append(ref.upper())
+    return ids, labels
+
+
 # --- test case validation ----------------------------------------------------------------
 
 
@@ -604,6 +635,14 @@ def validate_test_cases(
             )
         ).scalars()
     }
+    tasks = _project_tasks(db, actor.tenant_id, project.id)
+    # The same rule as linking on the task page, including a project role override.
+    # (it reads only the user id and permissions, which an Actor has).
+    can_link_tasks = "task.manage" in get_effective_permissions_for_project(
+        db,
+        actor,  # type: ignore[arg-type]
+        project.id,
+    )
     seen_ids: dict[str, int] = {}
     seen_titles: dict[str, int] = {}
     results: list[RowOutcome] = []
@@ -737,6 +776,13 @@ def validate_test_cases(
             else:
                 plan["assignee_id"] = user.id
 
+        task_ids, task_labels = _task_refs(out, header["task"], _cell(cells, "task"), tasks)
+        if task_ids and not can_link_tasks:
+            out.errors.append(
+                Issue(header["task"], "You are not allowed to link test cases to tasks.")
+            )
+        plan["task_ids"] = task_ids
+
         out.data = {
             "display_id": plan.get("display_id") or _cell(cells, "display_id"),
             "title": title or _cell(cells, "title"),
@@ -748,6 +794,7 @@ def validate_test_cases(
             "status": _REVIEW_STATUS_LABEL.get(status, status),
             "steps": f"{len(steps)} step{'s' if len(steps) != 1 else ''}",
             "assignee": assignee_raw,
+            "task": "; ".join(task_labels) or _cell(cells, "task"),
         }
         results.append(out)
     _register_modules(modules, results)
@@ -800,6 +847,7 @@ def validate_defects(
         ),
     )
     case_by_display = {str(d).upper(): cid for d, cid in db.execute(case_query)}
+    tasks = _project_tasks(db, actor.tenant_id, project.id)
     can_assign = defect_service.can_assign(actor.role_code, actor.permissions)
     can_move = _can(actor, "defect.change_status", "defect.close", tiers=("admin", "manager"))
     can_close = defect_service.can_close(actor.role_code, actor.permissions)
@@ -956,6 +1004,11 @@ def validate_defects(
                 linked_labels.append(ref.upper())
         plan["linked_case_ids"] = linked
 
+        task_ids, task_labels = _task_refs(out, header["task"], _cell(cells, "task"), tasks)
+        if len(task_ids) > 1:
+            out.errors.append(Issue(header["task"], "A defect can belong to only one task."))
+        plan["task_id"] = task_ids[0] if task_ids else None
+
         out.data = {
             "display_id": plan.get("display_id") or _cell(cells, "display_id"),
             "title": title or _cell(cells, "title"),
@@ -968,6 +1021,7 @@ def validate_defects(
             "steps": f"{len(steps)} step{'s' if len(steps) != 1 else ''}",
             "assignee": assignee_raw,
             "linked_issues": "; ".join(linked_labels),
+            "task": "; ".join(task_labels) or _cell(cells, "task"),
         }
         results.append(out)
     _register_modules(modules, results)
@@ -1241,6 +1295,20 @@ def _insert_test_cases(
     _insert_chunks(db, TestCase, case_rows)
     _insert_chunks(db, TestCaseVersion, version_rows)
     _insert_chunks(db, TestCaseVersionStep, step_rows)
+    _insert_chunks(
+        db,
+        TaskTestCaseLink,
+        [
+            {
+                "tenant_id": actor.tenant_id,
+                "task_id": task_id,
+                "test_case_id": case_id,
+                "linked_by": actor.user_id,
+            }
+            for case_id, plan in created
+            for task_id in plan["task_ids"]
+        ],
+    )
     stmt = text(
         """
         UPDATE test_cases tc
@@ -1298,6 +1366,7 @@ def _insert_defects(
                 "root_cause": plan["root_cause"],
                 "root_cause_notes": plan["root_cause_notes"],
                 "module_id": module_ids.get(plan["module_key"]),
+                "task_id": plan["task_id"],
                 "assigned_to": plan["assignee_id"],
                 "reported_by": actor.user_id,
                 "test_case_id": linked[0] if linked else None,
@@ -1382,6 +1451,20 @@ def _run_commit(db: Session, actor: Actor, session: ImportSession, mode: str) ->
                     "import_batch": str(batch_id),
                 },
             )
+        )
+        # The task's own history records each link, as when linked by hand.
+        events.extend(
+            (
+                "task.test_case_linked",
+                "task",
+                task_id,
+                {
+                    "source": "import",
+                    "test_case_id": str(record_id),
+                    "test_case_display_id": plan["display_id"],
+                },
+            )
+            for task_id in plan.get("task_ids", [])
         )
         mapping.append(
             {

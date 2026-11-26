@@ -1,4 +1,4 @@
-import type { MyRunCase, MyRunCaseStatus } from '@/api/myWork'
+import type { MyRunCase, MyRunCaseStatus, MyTask } from '@/api/myWork'
 import type { Defect } from '@/api/defects'
 
 /** The run-case groups on the My Work page, in the order they are shown. */
@@ -13,6 +13,15 @@ export function groupRunCases(items: MyRunCase[]): { status: MyRunCaseStatus; la
   return RUN_CASE_GROUPS.map((g) => ({ ...g, items: items.filter((i) => i.status === g.status) })).filter(
     (g) => g.items.length > 0,
   )
+}
+
+/** Overdue tasks apart from the rest; the API already orders each by due date. */
+export function groupTasks(items: MyTask[]): { key: 'overdue' | 'open'; label: string; items: MyTask[] }[] {
+  const groups = [
+    { key: 'overdue' as const, label: 'Overdue', items: items.filter((t) => t.overdue) },
+    { key: 'open' as const, label: 'To do', items: items.filter((t) => !t.overdue) },
+  ]
+  return groups.filter((g) => g.items.length > 0)
 }
 
 export interface MyDefect {

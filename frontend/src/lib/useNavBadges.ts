@@ -10,8 +10,8 @@ import type { BadgeCounts } from '@/lib/navRegistry'
 /**
  * The sidebar counts, each straight from the API (never a placeholder):
  *  - defects: open defects the user can see (same scoping as the Defects list);
- *  - myWork: the user's own run cases still to do plus test cases waiting for their
- *    review, from `GET /my-work/summary` (the same queries as the My Work tabs).
+ *  - myWork: the user's own run cases still to do, unfinished tasks and test cases waiting
+ *    for their review, from `GET /my-work/summary` (the same queries as the My Work tabs).
  * A count that has not loaded or failed reads as 0, which hides the badge.
  */
 export function useNavBadges(): { counts: BadgeCounts; ready: boolean } {
@@ -32,7 +32,9 @@ export function useNavBadges(): { counts: BadgeCounts; ready: boolean } {
   })
   const counts: BadgeCounts = {
     defects: openDefectCount(defects.data),
-    myWork: myWork.data ? myWork.data.run_cases_total + myWork.data.reviews_total : 0,
+    myWork: myWork.data
+      ? myWork.data.run_cases_total + myWork.data.tasks_total + myWork.data.reviews_total
+      : 0,
   }
   return { counts, ready: defects.isSuccess && myWork.isSuccess }
 }

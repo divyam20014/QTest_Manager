@@ -35,6 +35,14 @@ def my_work_run_cases(
     return envelope(out.model_dump(mode="json"))
 
 
+@router.get("/my-work/tasks")
+def my_work_tasks(
+    ctx: SessionContext = Depends(get_current_context), db: Session = Depends(get_db)
+) -> dict:
+    out = my_work_service.list_tasks(db, ctx.tenant_id, ctx.role_code, ctx.user_id)
+    return envelope(out.model_dump(mode="json"))
+
+
 @router.get("/my-work/reviews")
 def my_work_reviews(
     ctx: SessionContext = Depends(get_current_context), db: Session = Depends(get_db)

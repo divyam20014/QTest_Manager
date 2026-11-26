@@ -3,7 +3,15 @@ import { type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { type DefectStatus, listDefectsPage } from '@/api/defects'
-import { listMyReviews, listMyRunCases, type MyReview, type MyRunCase } from '@/api/myWork'
+import {
+  listMyReviews,
+  listMyRunCases,
+  listMyTasks,
+  type MyReview,
+  type MyRunCase,
+  type MyTask,
+} from '@/api/myWork'
+import { TaskStatusBadge } from '@/components/TaskStatusBadge'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { LevelBadge } from '@/components/ui/LevelBadge'
@@ -15,12 +23,12 @@ import { useAuth } from '@/lib/auth'
 import { DEFECT_STATUSES } from '@/lib/defectWorkflow'
 import { dueRelative } from '@/lib/dueDate'
 import { formatWhen } from '@/lib/formatWhen'
-import { MY_DEFECT_REASON_LABEL, type MyDefect, groupRunCases, mergeMyDefects } from '@/lib/myWork'
+import { MY_DEFECT_REASON_LABEL, type MyDefect, groupRunCases, groupTasks, mergeMyDefects } from '@/lib/myWork'
 import { levelTone, RUN_CASE_STATUS_TONE } from '@/lib/statusTones'
 import { humanizeKey } from '@/lib/labels'
 import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
 import { severityTone } from '@/routes/defects/statusDisplay'
-import { defectPath } from '@/lib/entityRoutes'
+import { defectPath, taskPath } from '@/lib/entityRoutes'
 
 // "Open" for the person: everything not Closed or Rejected (ADR-118's definition, the same
 // one the Defects badge uses).
@@ -95,6 +103,72 @@ function RunCasesPanel({ query }: { query: ReturnType<typeof useRunCasesQuery> }
           <ul className="flex flex-col gap-2">
             {g.items.map((item) => (
               <RunCaseRow key={item.id} item={item} />
+            ))}
+          </ul>
+        </section>
+      ))}
+      {query.data.total > query.data.items.length && (
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Showing the first {query.data.items.length} of {query.data.total}.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function TaskRow({ item }: { item: MyTask }) {
+  return (
+    <li>
+      <Link to={taskPath(item.project_id, item.id)} className={ROW}>
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">
+            {item.display_id && (
+              <span className="mr-2 font-mono text-xs text-[var(--muted-foreground)]">{item.display_id}</span>
+            )}
+            {item.title}
+          </span>
+          <span className="truncate text-xs text-[var(--muted-foreground)]">
+            {item.project_name}
+            {item.due_date && !item.overdue && ` · ${dueRelative(item.due_date)}`}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-3">
+          {item.overdue && item.due_date && (
+            <StatusBadge tone="critical" title={`Due ${item.due_date}`}>
+              {dueRelative(item.due_date)}
+            </StatusBadge>
+          )}
+          <LevelBadge tone={levelTone(item.priority)}>{item.priority}</LevelBadge>
+          <TaskStatusBadge status={item.status} />
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+function TasksPanel({ query }: { query: ReturnType<typeof useTasksQuery> }) {
+  if (query.isPending) return <ListSkeleton label="Loading your tasks" />
+  if (query.isError)
+    return <ErrorState message="Your tasks could not be loaded." error={query.error} onRetry={() => query.refetch()} />
+  const groups = groupTasks(query.data.items)
+  if (groups.length === 0) {
+    return (
+      <EmptyState
+        title="No open tasks assigned to you"
+        description="Tasks and sub-tasks assigned to you appear here until they are done."
+      />
+    )
+  }
+  return (
+    <div className="flex flex-col gap-5">
+      {groups.map((g) => (
+        <section key={g.key} aria-labelledby={`mw-task-${g.key}`} className="flex flex-col gap-2">
+          <h2 id={`mw-task-${g.key}`} className="text-sm font-semibold">
+            {g.label} <span className="font-normal text-[var(--muted-foreground)]">({g.items.length})</span>
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {g.items.map((item) => (
+              <TaskRow key={item.id} item={item} />
             ))}
           </ul>
         </section>
@@ -197,6 +271,11 @@ function useRunCasesQuery(enabled: boolean) {
   return useQuery({ queryKey: ['my-work', 'run-cases', user?.user_id], queryFn: () => listMyRunCases(), enabled })
 }
 
+function useTasksQuery(enabled: boolean) {
+  const { user } = useAuth()
+  return useQuery({ queryKey: ['my-work', 'tasks', user?.user_id], queryFn: listMyTasks, enabled })
+}
+
 function useReviewsQuery(enabled: boolean) {
   const { user } = useAuth()
   return useQuery({ queryKey: ['my-work', 'reviews', user?.user_id], queryFn: listMyReviews, enabled })
@@ -227,11 +306,13 @@ function useMyDefectsQuery(enabled: boolean) {
 export function MyWork() {
   const [params] = useSearchParams()
   const runCases = useRunCasesQuery(true)
+  const tasks = useTasksQuery(true)
   const defects = useMyDefectsQuery(true)
   const reviews = useReviewsQuery(true)
 
   const requested = params.get('tab')
-  const defaultKey = requested === 'defects' || requested === 'reviews' ? requested : 'run-cases'
+  const defaultKey =
+    requested === 'tasks' || requested === 'defects' || requested === 'reviews' ? requested : 'run-cases'
 
   const countOf = (loaded: boolean, value: number | undefined) => (loaded ? value : undefined)
   const tabs: { key: string; label: string; count?: number; content: ReactNode }[] = [
@@ -240,6 +321,12 @@ export function MyWork() {
       label: 'Run cases',
       count: countOf(runCases.isSuccess, runCases.data?.total),
       content: <RunCasesPanel query={runCases} />,
+    },
+    {
+      key: 'tasks',
+      label: 'Tasks',
+      count: countOf(tasks.isSuccess, tasks.data?.total),
+      content: <TasksPanel query={tasks} />,
     },
     {
       key: 'defects',
@@ -259,7 +346,7 @@ export function MyWork() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="My Work"
-        description="What is waiting on you: run cases assigned to you, your open defects and test cases to review."
+        description="What is waiting on you: your run cases, tasks and open defects, and test cases to review."
       />
       <Card>
         <CardContent className="pt-4">

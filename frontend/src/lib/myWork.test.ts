@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Defect } from '@/api/defects'
-import type { MyRunCase } from '@/api/myWork'
+import type { MyRunCase, MyTask } from '@/api/myWork'
 
-import { groupRunCases, mergeMyDefects } from './myWork'
+import { groupRunCases, groupTasks, mergeMyDefects } from './myWork'
 
 const rc = (id: string, status: MyRunCase['status']): MyRunCase => ({
   id,
@@ -43,5 +43,22 @@ describe('my work helpers', () => {
       ['3', 'reported'],
       ['1', 'assigned'],
     ])
+  })
+})
+
+describe('groupTasks', () => {
+  const task = (id: string, overdue: boolean) => ({ id, overdue }) as MyTask
+
+  it('puts overdue tasks first and keeps the order within each group', () => {
+    const groups = groupTasks([task('a', true), task('b', false), task('c', true)])
+    expect(groups.map((g) => [g.label, g.items.map((t) => t.id)])).toEqual([
+      ['Overdue', ['a', 'c']],
+      ['To do', ['b']],
+    ])
+  })
+
+  it('leaves out an empty group', () => {
+    expect(groupTasks([task('a', false)]).map((g) => g.key)).toEqual(['open'])
+    expect(groupTasks([])).toEqual([])
   })
 })

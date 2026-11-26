@@ -26,9 +26,10 @@ MAX_IDS = 2_000
 
 # The 22 fields in display order (key -> header), then the free-text root cause notes
 # next to the root cause code they belong to is NOT merged into it: it is one extra
-# column at the end.
+# column after them, followed by the defect's task id.
 EXPORT_COLUMNS: list[tuple[str, str]] = [(f.key, f.label) for f in DEFECT_FIELDS] + [
-    ("root_cause_notes", "Root Cause Notes")
+    ("root_cause_notes", "Root Cause Notes"),
+    ("task", "Task"),
 ]
 EXPORT_COLUMN_KEYS = [k for k, _ in EXPORT_COLUMNS]
 EXPORT_HEADER_BY_KEY = dict(EXPORT_COLUMNS)
@@ -129,6 +130,7 @@ def _cell_builders(
         ),
         "labels": lambda o: "; ".join(o.labels),
         "root_cause_notes": lambda o: o.root_cause_notes or "",
+        "task": lambda o: o.task_display_id or "",
     }
 
 

@@ -1,4 +1,5 @@
 import { apiFetch } from '@/api/client'
+import type { TaskStatusRef } from '@/api/tasks'
 
 // ADR-121: read-only lists of the signed-in user's own pending work. Defects reuse the
 // existing /defects filters (assignee_id / reported_by), so only run cases and reviews
@@ -34,6 +35,19 @@ export interface MyReview {
   created_at: string
 }
 
+export interface MyTask {
+  id: string
+  display_id: string | null
+  title: string
+  project_id: string
+  project_name: string
+  status: TaskStatusRef
+  priority: string
+  due_date: string | null
+  /** Past due and not in a "done" status. */
+  overdue: boolean
+}
+
 export interface MyWorkSummary {
   run_cases_pending: number
   run_cases_in_progress: number
@@ -41,6 +55,8 @@ export interface MyWorkSummary {
   run_cases_blocked: number
   run_cases_total: number
   reviews_total: number
+  tasks_total: number
+  tasks_overdue: number
 }
 
 export function getMyWorkSummary(): Promise<MyWorkSummary> {
@@ -49,6 +65,10 @@ export function getMyWorkSummary(): Promise<MyWorkSummary> {
 
 export function listMyRunCases(projectId?: string): Promise<{ items: MyRunCase[]; total: number }> {
   return apiFetch(`/my-work/run-cases${projectId ? `?project_id=${projectId}` : ''}`)
+}
+
+export function listMyTasks(): Promise<{ items: MyTask[]; total: number }> {
+  return apiFetch('/my-work/tasks')
 }
 
 export function listMyReviews(): Promise<{ items: MyReview[]; total: number }> {

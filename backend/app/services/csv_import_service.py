@@ -29,6 +29,7 @@ from app.core.text_sanitize import clean_plain, sanitize_markdown
 from app.models.defect import Defect, DefectLink
 from app.models.identity import User
 from app.models.project import Project, ProjectMember
+from app.models.task import Task, TaskTestCaseLink
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
 from app.schemas.csv_import import (
@@ -784,6 +785,19 @@ def _filtered_cases(
         page += 1
 
 
+def _linked_task_ids(db: Session, case_ids: list[UUID]) -> dict[UUID, list[str]]:
+    """case id -> the display ids of the tasks it is linked to (deleted tasks left out)."""
+    out: dict[UUID, list[str]] = {}
+    for case_id, display_id in db.execute(
+        select(TaskTestCaseLink.test_case_id, Task.display_id)
+        .join(Task, Task.id == TaskTestCaseLink.task_id)
+        .where(TaskTestCaseLink.test_case_id.in_(case_ids))
+        .order_by(Task.display_seq)
+    ):
+        out.setdefault(case_id, []).append(display_id or "")
+    return out
+
+
 def export_test_cases_data(
     db: Session,
     tenant_id: UUID,
@@ -841,11 +855,13 @@ def export_test_cases_data(
     # the export can never disagree with the list.
     outs: dict = {}
     last_by_case: dict = {}
+    tasks_by_case: dict = {}
     for case_index, case in enumerate(cases):
         if case_index % EXPORT_CHUNK == 0:
             chunk = cases[case_index : case_index + EXPORT_CHUNK]
             outs = {o.id: o for o in test_case_service.to_out_many(db, chunk)}
             last_by_case = _last_executions(db, tenant_id, [c.id for c in chunk])
+            tasks_by_case = _linked_task_ids(db, [c.id for c in chunk])
         out = outs[case.id]
         steps_cell = format_steps([(s.action, s.test_data, s.expected) for s in out.steps])
         assignee_email = users_by_id[case.assignee_id].email if case.assignee_id else ""
@@ -856,6 +872,7 @@ def export_test_cases_data(
             "title": out.title,
             "module": module_cell,
             "project": project.name,
+            "task": "; ".join(tasks_by_case.get(case.id, [])),
             "priority": out.priority,
             "status": STATUS_DISPLAY.get(out.status, out.status),
             "description": out.description,

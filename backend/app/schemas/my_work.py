@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.task import TaskStatusRef
+
 MyRunCaseStatus = Literal["pending", "in_progress", "failed", "blocked"]
 
 
@@ -45,6 +47,24 @@ class MyReviewListResponse(BaseModel):
     total: int
 
 
+class MyTaskOut(BaseModel):
+    id: UUID
+    display_id: str | None
+    title: str
+    project_id: UUID
+    project_name: str
+    status: TaskStatusRef
+    priority: str
+    due_date: date | None = None
+    # Past due and not in a "done" status.
+    overdue: bool = False
+
+
+class MyTaskListResponse(BaseModel):
+    items: list[MyTaskOut]
+    total: int
+
+
 class MyWorkSummaryOut(BaseModel):
     """Counts behind the sidebar badge and the My Work tab labels. They come from the
     same queries as the lists, so a badge can never disagree with its tab."""
@@ -55,3 +75,5 @@ class MyWorkSummaryOut(BaseModel):
     run_cases_blocked: int
     run_cases_total: int
     reviews_total: int
+    tasks_total: int
+    tasks_overdue: int

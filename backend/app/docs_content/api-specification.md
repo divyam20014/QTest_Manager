@@ -149,6 +149,8 @@ Authentication (ADR-074, supersedes HTTP Basic): sign in through `/platform/auth
 | POST | /notifications/mark-all-read | mark all of the caller's unread notifications read | all (own) |
 
 ## CSV Import/Export (FR-TC-002, ADR-021)
+The standard templates, preview/commit import and exports of test cases and defects end with a `Task` column (task display ids of the project; a defect takes one, a test case several separated by `;`). An unknown or deleted task is a row error, and linking test cases needs `task.manage` (the project role override applies). The legacy `/import` and mapped endpoints ignore it.
+
 | Method | Path | Purpose | Role |
 |---|---|---|---|
 | GET | /projects/{id}/test-cases/export.csv | export one project's test cases: every field of the 22-field standard (Test Case ID, requirement, module, test type, severity, automation status, environment, preconditions, test data, steps (one per line, `N. action \| test data \| expected`, ADR-120), expected result, postconditions, execution status, actual result, executed by, execution date, defect ids, created by, attachment and comment counts, plus the legacy columns). `columns=display_id,title,...` selects and orders columns; the same filters as the list (`search`, `priority`, `status`, `assignee_id`, `module_id`, `test_type`, `severity`, `automation_status`, `environment`, `execution_status`, `executed_by`, `quarantined`) and `sort` select and order the rows, so an export can be the current filtered view (ADR-117) (`display_id`, `title`, `module`, `sub_module`, `project`, `priority`, `status`, `description`, `scenario_id`, `scenario_description`, `preconditions`, `test_data`, `assignee`, `steps`, `requirement_ref`, `test_type`, `severity`, `automation_status`, `environment`, `expected_result`, `postconditions`, `execution_status`, `actual_result`, `executed_by`, `last_executed_at`, `linked_defects`, `created_by`, `attachments`, `comments`); unknown or repeated key = 422. Soft-deleted cases excluded; Tester scope applies (ADR-116) | `testcase.bulk_import_export` or `testcase.export` (assigned for tester) |
@@ -400,8 +402,9 @@ Read-only, scoped to the caller. Any signed-in user may call them (no permission
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /my-work/summary | counts for the sidebar badge and the tab labels: `run_cases_pending, run_cases_in_progress, run_cases_failed, run_cases_blocked, run_cases_total, reviews_total` |
+| GET | /my-work/summary | counts for the sidebar badge and the tab labels: `run_cases_pending, run_cases_in_progress, run_cases_failed, run_cases_blocked, run_cases_total, reviews_total, tasks_total, tasks_overdue` |
 | GET | /my-work/run-cases | `{items, total}` (at most 200 items): run cases assigned to the caller in an unfinished, undeleted run with status pending, in_progress, failed or blocked; each has `id, run_id, run_name, run_paused, project_id, project_name, test_case_id, test_case_display_id, title, status, blocked_reason, started_at, due_date, overdue` (ADR-123: `overdue` = `due_date` before today (UTC) and status pending or in_progress); optional `project_id` narrows both the items and the total to one project (the project Overview's "My pending activities"); ordered in progress, failed, blocked, pending |
+| GET | /my-work/tasks | `{items, total}` (at most 200): tasks and sub-tasks assigned to the caller whose status category is not `done`, in projects the caller can open, earliest due date first and undated last; `id, display_id, title, project_id, project_name, status, priority, due_date, overdue` (`overdue` = `due_date` before today, UTC) |
 | GET | /my-work/reviews | `{items, total}` (at most 200): test cases in `ready_for_review` whose `reviewer_id` is the caller; `id, display_id, title, priority, project_id, project_name, created_at` |
 
 ## Calendar (ADR-124)

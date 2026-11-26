@@ -150,3 +150,51 @@ def test_reviews_are_cases_waiting_on_the_caller(client: TestClient, platform_ad
     assert manager.post(f"/api/v1/test-cases/{case['id']}/approve").status_code == 200
     assert manager.get("/api/v1/my-work/reviews").json()["data"]["total"] == 0
     assert manager.get("/api/v1/my-work/summary").json()["data"]["reviews_total"] == 0
+
+
+def test_tasks_are_the_callers_unfinished_ones_in_projects_they_can_open(
+    client: TestClient, platform_admin: dict
+) -> None:
+    ctx = _setup(client, platform_admin)
+    project = ctx["project"]
+    statuses = {s["code"]: s["id"] for s in client.get("/api/v1/task-statuses").json()["data"]}
+
+    def make(title: str, **extra) -> dict:
+        response = client.post(
+            f"/api/v1/projects/{project['id']}/tasks",
+            json={"title": title, "assignee_id": ctx["tester_id"], **extra},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()["data"]
+
+    undated = make("No due date")
+    later = make("Due later", due_date="2999-01-01")
+    late = make("Already late", due_date="2000-01-01")
+    finished = make("Finished work", due_date="2000-01-01")
+    removed = make("Deleted work", due_date="2000-01-01")
+    client.post(f"/api/v1/projects/{project['id']}/tasks", json={"title": "Nobody has this"})
+    done = client.post(
+        f"/api/v1/tasks/{finished['id']}/status", json={"status_id": statuses["done"]}
+    )
+    assert done.status_code == 200, done.text
+    assert client.delete(f"/api/v1/tasks/{removed['id']}").status_code == 200
+
+    tester = _as(client, ctx["tenant_id"], TESTER)
+    listing = tester.get("/api/v1/my-work/tasks").json()["data"]
+    assert [i["id"] for i in listing["items"]] == [late["id"], later["id"], undated["id"]]
+    assert listing["total"] == 3
+    assert [i["overdue"] for i in listing["items"]] == [True, False, False]
+    assert listing["items"][0]["project_name"] == project["name"]
+    summary = tester.get("/api/v1/my-work/summary").json()["data"]
+    assert (summary["tasks_total"], summary["tasks_overdue"]) == (3, 1)
+
+    # Only the assignee's own tasks.
+    assert client.get("/api/v1/my-work/tasks").json()["data"]["total"] == 0
+    assert TestClient(client.app).get("/api/v1/my-work/tasks").status_code == 401
+
+    # Once the tester leaves the project they cannot open its tasks, so none are listed.
+    left = client.delete(f"/api/v1/projects/{project['id']}/members/{ctx['tester_id']}")
+    assert left.status_code == 200, left.text
+    assert tester.get(f"/api/v1/tasks/{late['id']}").status_code == 403
+    assert tester.get("/api/v1/my-work/tasks").json()["data"]["total"] == 0
+    assert tester.get("/api/v1/my-work/summary").json()["data"]["tasks_total"] == 0

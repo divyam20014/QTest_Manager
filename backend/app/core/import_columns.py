@@ -160,6 +160,14 @@ TEST_CASE_COLUMNS: Final[tuple[ImportColumn, ...]] = tuple(
         extra=True,
         note="The project is chosen in the import dialog; ignored on import.",
     ),
+    ImportColumn(
+        "task",
+        "Task",
+        extra=True,
+        aliases=("Task ID", "Task IDs", "Tasks"),
+        note="Optional. Task ids of this project (e.g. TASK_000001) to link, separated by ';'. "
+        "Needs the task.manage permission.",
+    ),
 )
 # Accepted on import only (legacy files): appended to the Module path.
 TC_IMPORT_ONLY: Final[tuple[ImportColumn, ...]] = (
@@ -243,7 +251,16 @@ DEFECT_COLUMNS: Final[tuple[ImportColumn, ...]] = tuple(
         _DEFECT_EXAMPLE,
     )
     for f in DEFECT_FIELDS
-) + (ImportColumn("root_cause_notes", "Root Cause Notes", extra=True, note="Optional. Markdown."),)
+) + (
+    ImportColumn("root_cause_notes", "Root Cause Notes", extra=True, note="Optional. Markdown."),
+    ImportColumn(
+        "task",
+        "Task",
+        extra=True,
+        aliases=("Task ID",),
+        note="Optional. The id of one task of this project, e.g. TASK_000001.",
+    ),
+)
 
 COLUMNS_BY_KIND: Final[dict[str, tuple[ImportColumn, ...]]] = {
     "test_case": TEST_CASE_COLUMNS,

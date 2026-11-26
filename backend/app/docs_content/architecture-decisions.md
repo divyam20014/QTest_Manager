@@ -1933,3 +1933,11 @@ Every figure but the tree is under 350 ms. The tree is the slowest because it se
 **Not done, and why.** A project-wide list of every requirement was not kept: the task tree, the matrix, search and the report builder cover it. Removing the entity (option C in the plan) was rejected for the loss described above. The downgrade makes the column nullable again and drops the flag but leaves the default tasks, which are ordinary tasks.
 
 **Consequences.** A project that had loose requirements shows one extra task and counts it in task totals and roll-ups. Anything that creates a requirement must go through `requirement_service.create_requirement` (it is the only creator); any new code that deletes tasks must move their requirements to the default task as `delete_task` does.
+
+## ADR-129: Tasks in My Work, and a Task column in import and export
+
+**Context.** Tasks have assignees and due dates (ADR-127), but My Work did not show them, and neither CSV nor Excel carried the link between a record and its task.
+
+**Decision.** `GET /my-work/tasks` lists the caller's tasks that are not in a `done` category, using the same project visibility as the rest of My Work, which matches the rule for opening a task; the summary counts and the sidebar badge include them. The standard import and export gain one last, optional `Task` column that holds task display ids, which are unambiguous where titles are not. A defect takes one id (`defects.task_id`); a test case takes several (`task_test_case_links`). Import never does more than the task page allows: an id outside the project is a row error, and linking a test case needs `task.manage`, including a project role override. Each imported link is recorded in the task's history.
+
+**Not done.** The legacy 11/13-column import and the column-mapping import do not read the column. A file moved to another project reports its task ids as errors rather than dropping them silently. Conditional access rules on `task.manage` are evaluated on the task routes only, not per imported row.

@@ -83,7 +83,9 @@ Cases in the sidebar) are unchanged.
 
 **My Work** is one page of what is waiting on you, with a tab each for **Run
 cases** (assigned to you and not finished, grouped as In progress, Failed -
-retest, Blocked and Not run; each one opens the Execution Console),
+retest, Blocked and Not run; each one opens the Execution Console), **Tasks**
+(tasks and sub-tasks assigned to you, from every project you can open, until
+they are done; overdue ones first, then by due date),
 **Defects** (open defects assigned to you or reported by you) and **Reviews**
 (test cases submitted for review with you named as the reviewer). It only reads
 data; nothing is stored for it. You see only what your role and project access
@@ -622,6 +624,12 @@ Defect imports follow the status rules: any status is accepted when its resoluti
 Linked test cases are given by their ids (`TC_000012; TC_000013`) and must exist in the
 project. Assignees are given by email and must be project members; assigning needs the
 assign permission, and importing a defect as Closed or Rejected needs the close permission.
+
+The last column, **Task**, is optional. Give a defect the id of one task in the project
+(`TASK_000012`). A test case can be linked to several (`TASK_000012; TASK_000013`), which
+needs the permission to manage tasks. An id that is not a task of the chosen project makes
+the row an error, so clear or replace the column when you move a file between projects.
+The older column-mapping import does not read this column.
 
 **Export** offers Excel or CSV with all fields, the columns shown in the list, or only the
 rows you selected. The exported file uses the template's headers, so it can be imported
