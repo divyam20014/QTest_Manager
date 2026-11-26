@@ -7,7 +7,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-ListKey = Literal["test_cases", "defects", "test_runs", "requirements", "projects"]
+ListKey = Literal[
+    "test_cases", "test_repository", "defects", "test_runs", "requirements", "projects"
+]
 
 MAX_FILTERS_BYTES = 2048
 MAX_VIEWS_PER_LIST = 25
@@ -71,6 +73,16 @@ FILTER_ALLOWLIST: dict[str, dict[str, Callable[[str], bool]]] = {
         "environment": _is_text,
         "executionStatus": _is_text,
         "executedBy": _is_uuid,
+    },
+    # ADR-132: the all-projects Test Cases page. Separate from "test_cases" (one project's
+    # tab): the filters differ, and a default view on one page must not apply to the other.
+    "test_repository": {
+        "search": _is_text,
+        "status": _is_token,
+        "priority": _is_token,
+        "projectId": _is_uuid,
+        "showDeprecated": _is_bool,
+        "assignee": _is_token,
     },
     "defects": {
         "projectId": _is_uuid,
@@ -142,6 +154,7 @@ SORT_ALLOWLIST: dict[str, set[str]] = {
             "fix_version",
         )
     },
+    "test_repository": set(),
     "test_runs": set(),
     "requirements": set(),
     "projects": set(),

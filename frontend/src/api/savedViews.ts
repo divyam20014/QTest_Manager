@@ -1,6 +1,6 @@
 import { apiFetch } from '@/api/client'
 
-export type ViewListKey = 'test_cases' | 'defects' | 'test_runs' | 'requirements' | 'projects'
+export type ViewListKey = 'test_cases' | 'test_repository' | 'defects' | 'test_runs' | 'requirements' | 'projects'
 
 export interface SavedView {
   id: string

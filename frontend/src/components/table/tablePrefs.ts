@@ -138,39 +138,3 @@ export function useColumnPrefs(viewKey: string, columns: TableColumnDef[]) {
 
 /** ADR-105: the single shared table-preferences hook (visible columns, widths, density). */
 export const useTablePrefs = useColumnPrefs
-
-export function useSavedFilters<T extends Record<string, string>>(viewKey: string) {
-  const key = `qtesthub:table-filters:${viewKey}`
-  const [saved, setSaved] = useState<Record<string, T>>(() => {
-    try {
-      const raw = localStorage.getItem(key)
-      return raw ? JSON.parse(raw) : {}
-    } catch {
-      return {}
-    }
-  })
-
-  const persist = useCallback(
-    (next: Record<string, T>) => {
-      setSaved(next)
-      try {
-        localStorage.setItem(key, JSON.stringify(next))
-      } catch {
-        // Private browsing / blocked storage.
-      }
-    },
-    [key],
-  )
-
-  const save = useCallback((name: string, filters: T) => persist({ ...saved, [name]: filters }), [saved, persist])
-  const remove = useCallback(
-    (name: string) => {
-      const next = { ...saved }
-      delete next[name]
-      persist(next)
-    },
-    [saved, persist],
-  )
-
-  return { saved, save, remove }
-}

@@ -13,6 +13,7 @@ import {
   listAllTestCases,
   listTestCases,
   submitForReview,
+  testCaseExportPath,
   type Priority,
   type TestCase,
   type TestCaseStatus,
@@ -46,8 +47,10 @@ import {
   type RowSelection,
 } from '@/components/table/ResponsiveTable'
 import { useRowContextMenu, type RowContextMenuItem } from '@/components/table/RowContextMenu'
-import { SavedFiltersMenu } from '@/components/table/SavedFiltersMenu'
-import { useColumnPrefs, useSavedFilters, type TableColumnDef } from '@/components/table/tablePrefs'
+import { ViewsMenu } from '@/components/table/ViewsMenu'
+import { compactFilters, useApplyDefaultView, viewsKey, type ViewState } from '@/components/table/viewsHelpers'
+import { ExportMenu } from '@/components/ui/ExportMenu'
+import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
 import { ExecutionStatusBadge } from '@/routes/testcases/ExecutionStatusBadge'
 import { useToast } from '@/lib/toast'
 import { useCanListUsers } from '@/lib/useCanListUsers'
@@ -55,15 +58,17 @@ import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { cn } from '@/lib/utils'
 import { STATUS_DISPLAY, priorityTone } from '@/routes/testcases/statusDisplay'
 import { BulkMetadataDialog, type BulkMetadataKind } from './BulkMetadataDialog'
+import { copySavedFilters } from './copySavedFilters'
 import { testCasePath } from '@/lib/entityRoutes'
 
+// ADR-132: the columns shared with a project's Test Cases tab come in the same order.
 const REPO_COLUMNS: TableColumnDef[] = [
-  { key: 'title', label: 'Title', alwaysVisible: true, defaultWidth: 280 },
   { key: 'display_id', label: 'Test Case ID', defaultWidth: 120 },
+  { key: 'title', label: 'Title', alwaysVisible: true, defaultWidth: 280 },
   { key: 'project', label: 'Project', defaultWidth: 160 },
-  { key: 'status', label: 'Review Status', alwaysVisible: true, defaultWidth: 140 },
-  { key: 'execution', label: 'Execution Status', defaultWidth: 140 },
   { key: 'priority', label: 'Priority', defaultWidth: 110 },
+  { key: 'execution', label: 'Execution Status', defaultWidth: 140 },
+  { key: 'status', label: 'Review Status', alwaysVisible: true, defaultWidth: 140 },
   { key: 'assignee', label: 'Assignee', defaultWidth: 140 },
   { key: 'steps', label: 'Steps', defaultWidth: 80, defaultHidden: true },
 ]
@@ -186,6 +191,7 @@ export function TestRepository() {
   }
   const assigneeFilter = mine && user ? user.user_id : ''
   const canCreate = hasPermission(user, 'testcase.create')
+  const canExport = hasPermission(user, 'testcase.export') || hasPermission(user, 'testcase.bulk_import_export')
   // Bug #8: deprecated cases cluttered the list by default (every seeded
   // case here happened to be deprecated) -- hidden unless explicitly
   // toggled on, or unless the status filter itself is set to Deprecated.
@@ -243,7 +249,6 @@ export function TestRepository() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
   const columnPrefs = useColumnPrefs('test-repository', REPO_COLUMNS)
-  const savedFilters = useSavedFilters<Record<string, string>>('test-repository')
   const rowMenu = useRowContextMenu()
 
   const currentFilters = {
@@ -251,17 +256,42 @@ export function TestRepository() {
     status,
     priority,
     projectId,
-    showDeprecated: showDeprecated ? 'true' : 'false',
+    showDeprecated: showDeprecated ? 'true' : '',
     assignee: mine ? 'me' : '',
   }
-  function applyFilters(f: Record<string, string>) {
+  const applyView = (view: ViewState) => {
+    const f = view.filters
     setSearch(f.search ?? '')
     setStatus((f.status as TestCaseStatus | '') ?? '')
     setPriority((f.priority as Priority | '') ?? '')
     setProjectId(f.projectId ?? '')
     setShowDeprecated(f.showDeprecated === 'true')
-    setMine(f.assignee === 'me')
+    setMineState(f.assignee === 'me')
+    // One URL update for both: two in a row would each start from the same old address.
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (f.status) params.set('status', f.status)
+        else params.delete('status')
+        if (f.assignee === 'me') params.set('assignee', 'me')
+        else params.delete('assignee')
+        return params
+      },
+      { replace: true },
+    )
   }
+  // A default view applies only when the address asks for nothing itself.
+  useApplyDefaultView(
+    'test_repository',
+    searchParams.has('status') || searchParams.has('assignee') || searchParams.has('action'),
+    applyView,
+  )
+  useEffect(() => {
+    if (!user) return
+    void copySavedFilters(user.user_id).then((created) => {
+      if (created > 0) void queryClient.invalidateQueries({ queryKey: viewsKey('test_repository') })
+    })
+  }, [user, queryClient])
 
   const projectsQuery = useQuery({
     queryKey: ['projects', 'all'],
@@ -664,8 +694,41 @@ export function TestRepository() {
 
   const selectedRows = rows.filter((r) => selected.has(r.case.id))
 
+  // The same four choices as a project's Test Cases tab: the current filtered set, every field
+  // or the columns shown here.
+  function exportItems(project: string) {
+    const params = {
+      search: debouncedSearch,
+      status,
+      priority,
+      assignee_id: assigneeFilter,
+      sort: '-created_at',
+    }
+    const shown = REPO_COLUMNS.filter((c) => c.alwaysVisible || columnPrefs.isVisible(c.key)).map(
+      (c) => (c.key === 'execution' ? 'execution_status' : c.key),
+    )
+    return (['xlsx', 'csv'] as const).flatMap((format) => {
+      const name = format === 'xlsx' ? 'Excel' : 'CSV'
+      const fallbackName = `test_cases_export.${format}`
+      return [
+        { label: `${name}: all fields`, path: testCaseExportPath(project, format, params), fallbackName },
+        { label: `${name}: selected columns`, path: testCaseExportPath(project, format, params, shown), fallbackName },
+      ]
+    })
+  }
+
   // One definition feeds the desktop table and the phone cards (ResponsiveTable).
   const tableColumns: ResponsiveColumn<Row>[] = [
+    {
+      key: 'display_id',
+      header: 'Test Case ID',
+      card: 'meta',
+      cell: ({ case: tc }) => (
+        <Link to={testCasePath(tc.project_id, tc.id)} className="font-mono text-xs underline-offset-2 hover:underline">
+          {tc.display_id ?? tc.id.slice(0, 8)}
+        </Link>
+      ),
+    },
     {
       key: 'title',
       header: 'Title',
@@ -679,16 +742,6 @@ export function TestRepository() {
       cardCell: ({ case: tc }) => (
         <Link to={testCasePath(tc.project_id, tc.id)} className={CARD_LINK_CLASS}>
           {tc.title}
-        </Link>
-      ),
-    },
-    {
-      key: 'display_id',
-      header: 'Test Case ID',
-      card: 'meta',
-      cell: ({ case: tc }) => (
-        <Link to={testCasePath(tc.project_id, tc.id)} className="font-mono text-xs underline-offset-2 hover:underline">
-          {tc.display_id ?? tc.id.slice(0, 8)}
         </Link>
       ),
     },
@@ -708,6 +761,12 @@ export function TestRepository() {
       cardCell: ({ project }) => project.name,
     },
     {
+      key: 'priority',
+      header: 'Priority',
+      card: 'badge',
+      cell: ({ case: tc }) => <LevelBadge tone={priorityTone(tc.priority)}>{tc.priority}</LevelBadge>,
+    },
+    {
       key: 'execution',
       header: 'Execution Status',
       card: 'badge',
@@ -723,12 +782,6 @@ export function TestRepository() {
           {tc.quarantined && <QuarantinedBadge title={tc.quarantine_reason} />}
         </span>
       ),
-    },
-    {
-      key: 'priority',
-      header: 'Priority',
-      card: 'badge',
-      cell: ({ case: tc }) => <LevelBadge tone={priorityTone(tc.priority)}>{tc.priority}</LevelBadge>,
     },
     {
       key: 'assignee',
@@ -869,9 +922,12 @@ export function TestRepository() {
         title="Test Cases"
         description="Every test case across your projects."
         actions={
-          <Button onClick={() => startCreate(projectId)} disabled={projects.length === 0 || !canCreate} title={canCreate ? undefined : 'You need the Create test case permission'}>
-            New Test Case
-          </Button>
+          <>
+            {canExport && projectId && <ExportMenu items={exportItems(projectId)} menuLabel="Export test cases" />}
+            <Button onClick={() => startCreate(projectId)} disabled={projects.length === 0 || !canCreate} title={canCreate ? undefined : 'You need the Create test case permission'}>
+              New Test Case
+            </Button>
+          </>
         }
       />
 
@@ -895,12 +951,10 @@ export function TestRepository() {
         chips={filterChips}
         onRemoveChip={removeChip}
         saved={
-          <SavedFiltersMenu
-            current={currentFilters}
-            saved={savedFilters.saved}
-            onSave={savedFilters.save}
-            onApply={applyFilters}
-            onRemove={savedFilters.remove}
+          <ViewsMenu
+            listKey="test_repository"
+            current={{ filters: compactFilters(currentFilters, Object.keys(currentFilters)), sort: null }}
+            onApply={applyView}
           />
         }
         columns={

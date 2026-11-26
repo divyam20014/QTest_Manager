@@ -178,3 +178,49 @@ def test_columns_are_stored_validated_and_clearable(
     # No columns at all stays valid (older clients).
     plain = _create(client, "plain", list_key="test_cases", filters={})
     assert plain.json()["data"]["columns"] is None
+
+
+def test_the_all_projects_test_case_page_has_views_of_its_own(
+    client: TestClient, platform_admin: dict
+) -> None:
+    _setup_admin_project_and_case(client, platform_admin)
+    # Everything the page can filter on, as it sends it.
+    filters = {
+        "search": "payout",
+        "status": "ready_for_review",
+        "priority": "High",
+        "projectId": str(uuid4()),
+        "showDeprecated": "true",
+        "assignee": "me",
+    }
+    created = client.post(
+        URL,
+        json={
+            "list_key": "test_repository",
+            "name": "Mine",
+            "filters": filters,
+            "is_default": True,
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["data"]["filters"] == filters
+    # One project's tab keeps its own views and its own default.
+    mine_on_tab = client.post(
+        URL, json={"list_key": "test_cases", "name": "Mine", "filters": {}, "is_default": True}
+    )
+    assert mine_on_tab.status_code == 200, mine_on_tab.text
+    listed = client.get(URL, params={"list_key": "test_repository"}).json()["data"]
+    assert [(v["name"], v["is_default"]) for v in listed] == [("Mine", True)]
+    for list_key, bad in (
+        ("test_cases", {"projectId": str(uuid4())}),
+        ("test_repository", {"moduleId": str(uuid4())}),
+        ("test_repository", {"showDeprecated": "yes"}),
+    ):
+        refused = client.post(URL, json={"list_key": list_key, "name": "x", "filters": bad})
+        assert refused.status_code == 422, (list_key, bad, refused.text)
+    sorted_view = client.post(
+        URL,
+        json={"list_key": "test_repository", "name": "s", "filters": {}, "sort": "-created_at"},
+    )
+    assert sorted_view.status_code == 422, "the page has no sort of its own"
+
