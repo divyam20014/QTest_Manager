@@ -11,8 +11,8 @@ test fixtures:
 
 and never any name in PROTECTED_NAMES, whatever its name looks like. It also
 removes test platform admins that the e2e fixtures create (``mfa-e2e-*``,
-``mfa-shot-*``, ``pw-e2e-*``, ``audit-e2e-*``, ``sess-e2e-*`` at ``@example.com``,
-never ``owner@qtesthub.local``). An admin that a tenant ``audit_logs`` row still
+``mfa-a11y-*``, ``mfa-shot-*``, ``pw-e2e-*``, ``audit-e2e-*``, ``sess-e2e-*`` at
+``@example.com``, never ``owner@qtesthub.local``). An admin that a tenant ``audit_logs`` row still
 points at (a real FK) is KEPT, and ``platform_audit_events`` is never touched: it is
 append-only and its actor/target ids carry no FK.
 
@@ -39,7 +39,8 @@ FIXTURE_NAME_REGEX = r" [0-9]{13}-[0-9]+$"
 AD_HOC_NAME_REGEX = r"^(Shots|Shots4|Shots4b|Probe) [0-9]+$"
 # Fixture emails are `<prefix>[-word...]-<epoch ms>[-<random>]@example.com`.
 TEST_ADMIN_EMAIL_REGEX = (
-    r"^(mfa-e2e|mfa-shot|pw-e2e|audit-e2e|sess-e2e)(-[a-z]+)*-[0-9]+(-[0-9]+)?@example\.com$"
+    r"^(mfa-e2e|mfa-shot|mfa-a11y|pw-e2e|audit-e2e|sess-e2e)"
+    r"(-[a-z]+)*-[0-9]+(-[0-9]+)?@example\.com$"
 )
 # Tables that reference a tenant-scoped parent but carry no tenant_id column.
 CHILD_TABLES = {

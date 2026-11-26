@@ -50,6 +50,8 @@ ADMIN_EMAIL = "admin@meridianauto.demo"
 ADMIN_PASSWORD = "DemoAdmin!2026"
 TESTER_EMAIL = "tester@meridianauto.demo"
 TESTER_PASSWORD = "DemoTester!2026"
+# A failed step needs an actual result (ADR-116).
+FAILED_STEP_RESULT = "The observed behaviour did not match the expected result."
 
 REQUIREMENTS = [
     (
@@ -504,7 +506,13 @@ def main() -> None:
                         verdict = verdict_pattern[i % len(verdict_pattern)]
                         set_tenant_context(db, str(tenant.id))
                         execution_service.record_verdict(
-                            db, tenant.id, "admin", admin.id, step.id, verdict
+                            db,
+                            tenant.id,
+                            "admin",
+                            admin.id,
+                            step.id,
+                            verdict,
+                            actual_result=FAILED_STEP_RESULT if verdict == "fail" else None,
                         )
                 print(
                     f"Created test run 'Sprint 42 Regression' with real execution history ({len(run_cases)} cases)"
@@ -896,7 +904,13 @@ def _enrich(db, tenant, admin):
                     verdict = "fail" if fails and s_index == len(steps) - 1 else "pass"
                     _ctx(db, tenant)
                     execution_service.record_verdict(
-                        db, tenant.id, "tester", executor.id, step.id, verdict
+                        db,
+                        tenant.id,
+                        "tester",
+                        executor.id,
+                        step.id,
+                        verdict,
+                        actual_result=FAILED_STEP_RESULT if verdict == "fail" else None,
                     )
                     _ctx(db, tenant)
                     _backdate(
