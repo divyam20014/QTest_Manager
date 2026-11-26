@@ -505,10 +505,12 @@ export function TestCasesList() {
           </Link>
         }
         title="Test Cases"
+        compactOnPhone
+        actionsClassName="max-md:flex-nowrap max-md:[&>button:last-child]:flex-1"
         description="Write, review and approve the test cases for this project."
         actions={
           <>
-            {canExport && <ExportMenu items={exportItems} menuLabel="Export test cases" />}
+            {canExport && <ExportMenu items={exportItems} menuLabel="Export test cases" className="max-md:flex-1" />}
             <MoreActionsMenu
               items={[
                 ...(canCreate ? [{ label: 'Quick add', onSelect: () => setQuickOpen(true) }, { type: 'separator' as const }] : []),

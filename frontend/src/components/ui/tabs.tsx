@@ -1,5 +1,6 @@
-import { type KeyboardEvent, type ReactNode, useId, useRef, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,40 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
   const activeItem = items.find((i) => i.key === active) ?? items[0]
   const baseId = useId()
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const listRef = useRef<HTMLDivElement>(null)
+  // ADR-133: which sides of the row have tabs out of sight, so that side can be faded.
+  const [more, setMore] = useState({ left: false, right: false })
+
+  function measure() {
+    const list = listRef.current
+    if (!list) return
+    const left = list.scrollLeft > 1
+    const right = list.scrollLeft + list.clientWidth < list.scrollWidth - 1
+    setMore((m) => (m.left === left && m.right === right ? m : { left, right }))
+  }
+
+  // Changes when a tab's width can: counts often arrive after the first paint.
+  const signature = items.map((i) => `${i.key}:${i.label}:${i.count ?? ''}`).join('|')
+
+  useEffect(() => {
+    measure()
+    const list = listRef.current
+    if (!list || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(list)
+    return () => observer.disconnect()
+  }, [signature])
+
+  // A tab opened from a link (?tab=reviews) may start out of sight: bring it into view.
+  useEffect(() => {
+    const list = listRef.current
+    const tab = activeItem ? tabRefs.current[activeItem.key] : null
+    if (!list || !tab) return
+    const over = tab.offsetLeft + tab.offsetWidth - (list.scrollLeft + list.clientWidth)
+    if (over > 0) list.scrollLeft += over
+    else if (tab.offsetLeft < list.scrollLeft) list.scrollLeft = tab.offsetLeft
+    measure()
+  }, [activeItem?.key, signature])
 
   // WAI-ARIA tabs pattern: only the active tab is in the Tab order (roving
   // tabindex), so the arrow keys / Home / End must move between tabs --
@@ -48,7 +83,13 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-[var(--border)]">
+      <div className="relative min-w-0">
+      <div
+        ref={listRef}
+        role="tablist"
+        onScroll={measure}
+        className="relative flex gap-1 overflow-x-auto border-b border-[var(--border)]"
+      >
         {items.map((item, index) => {
           const isActive = item.key === activeItem?.key
           return (
@@ -82,6 +123,25 @@ export function Tabs({ items, defaultKey }: { items: TabItem[]; defaultKey?: str
             </button>
           )
         })}
+      </div>
+        {(['left', 'right'] as const).map(
+          (side) =>
+            more[side] && (
+              <span
+                key={side}
+                aria-hidden="true"
+                data-testid={`tabs-more-${side}`}
+                className={cn(
+                  'pointer-events-none absolute inset-y-0 flex w-10 items-center text-[var(--muted-foreground)]',
+                  side === 'left'
+                    ? 'left-0 justify-start bg-gradient-to-r from-[var(--background)] from-40% to-transparent'
+                    : 'right-0 justify-end bg-gradient-to-l from-[var(--background)] from-40% to-transparent',
+                )}
+              >
+                {side === 'left' ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
+              </span>
+            ),
+        )}
       </div>
       <div role="tabpanel" id={`${baseId}-panel`} aria-labelledby={`${baseId}-tab-${activeItem?.key}`}>
         {activeItem?.content}

@@ -100,7 +100,7 @@ test('top bar at 390: current-page-only breadcrumb, + New icon, Test Cases tab',
     const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' })
     await expect(crumbs.locator('[aria-current="page"]')).toHaveText('Test Cases')
     await expect(crumbs.getByRole('link', { name: 'Projects' })).toBeHidden()
-    await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Test Cases' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Projects' })).toBeVisible()
     const plus = page.getByRole('button', { name: 'New', exact: true })
     const box = (await plus.boundingBox())!
     expect(box.width).toBeGreaterThanOrEqual(44)

@@ -7,7 +7,7 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { useAuth } from '@/lib/auth'
 import { isIdSegment } from '@/lib/breadcrumbs'
 import { useWorkspaceConfig, effectiveNavConfig } from '@/lib/workspaceConfig'
-import { activeTabKey, canEditProject, hiddenTabs, projectSettingsPath, resolveProjectTabs, tabAllowed, tabDef } from '@/lib/projectNav'
+import { activeTabKey, canEditProject, headerDensity, hiddenTabs, projectSettingsPath, resolveProjectTabs, tabAllowed, tabDef } from '@/lib/projectNav'
 
 import { ProjectHeader } from './ProjectHeader'
 import { ProjectNav } from './ProjectNav'
@@ -51,7 +51,13 @@ export function ProjectChrome({ projectId, children }: { projectId: string; chil
 
   return (
     <div className="flex flex-col gap-3 md:gap-4">
-      <ProjectHeader project={project} tabKey={tabKey} asHeading={asHeading} canOpenSettings={canEdit} />
+      <ProjectHeader
+        project={project}
+        tabKey={tabKey}
+        asHeading={asHeading}
+        canOpenSettings={canEdit}
+        density={headerDensity(location.pathname)}
+      />
       <ProjectNav
         tabs={tabs}
         activeKey={tabKey}

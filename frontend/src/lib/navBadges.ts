@@ -1,3 +1,5 @@
+import type { MyWorkSummary } from '@/api/myWork'
+
 /**
  * Open defects = everything not Closed or Rejected (ADR-118: the same definition as the dashboard
  * KPI and every backend count). A Deferred defect is parked but still open.
@@ -16,4 +18,9 @@ export function navBadgeText(count: number): string | null {
 /** Screen-reader name for a nav item that carries a count, e.g. "Defects, 12 open". */
 export function navBadgeLabel(label: string, count: number, noun = 'open'): string {
   return navBadgeText(count) ? `${label}, ${count} ${noun}` : label
+}
+
+/** The My Work count: run cases still to do, unfinished tasks and cases waiting for review. */
+export function myWorkPending(summary: MyWorkSummary | undefined): number {
+  return summary ? summary.run_cases_total + summary.tasks_total + summary.reviews_total : 0
 }

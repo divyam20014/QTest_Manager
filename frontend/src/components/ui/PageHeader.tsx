@@ -21,6 +21,7 @@ export function PageHeader({
   back,
   actionsClassName,
   className,
+  compactOnPhone,
 }: {
   title: ReactNode
   description?: ReactNode
@@ -33,16 +34,18 @@ export function PageHeader({
   /** Extra classes for the actions wrapper (e.g. a phone grid). */
   actionsClassName?: string
   className?: string
+  /** Lists: leave out the back link and description on phones, so the first row starts higher. */
+  compactOnPhone?: boolean
 }) {
   return (
     <div className={cn('flex flex-wrap items-center justify-between gap-x-4 gap-y-2', className)}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        {back}
+        {back && (compactOnPhone ? <div className="max-md:hidden">{back}</div> : back)}
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="qth-type-page-title min-w-0 break-words">{title}</h1>
           {meta}
         </div>
-        {description && <p className="qth-type-helper max-w-prose">{description}</p>}
+        {description && <p className={cn('qth-type-helper max-w-prose', compactOnPhone && 'max-md:hidden')}>{description}</p>}
       </div>
       {actions && (
         <div className={cn('flex flex-wrap items-center gap-2 max-md:w-full', actionsClassName)}>{actions}</div>

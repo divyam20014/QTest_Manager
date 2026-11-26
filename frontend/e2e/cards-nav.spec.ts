@@ -94,14 +94,14 @@ test('phone tab bar: badge, sliding indicator, hide on scroll, pinned console', 
 
   // Sliding indicator follows the active tab.
   const indicator = bar.getByTestId('tab-indicator')
-  await bar.getByRole('link', { name: /^Runs/ }).click()
-  await expect(page).toHaveURL(/\/test-runs$/)
+  await bar.getByRole('link', { name: 'Projects' }).click()
+  await expect(page).toHaveURL(/\/projects$/)
   await expect(indicator).toHaveAttribute('data-index', '2')
-  const runsBox = (await bar.getByRole('link', { name: /^Runs/ }).boundingBox())!
+  const tabBox = (await bar.getByRole('link', { name: 'Projects' }).boundingBox())!
   await expect
     .poll(async () => {
       const b = (await indicator.boundingBox())!
-      return Math.abs(b.x + b.width / 2 - (runsBox.x + runsBox.width / 2))
+      return Math.abs(b.x + b.width / 2 - (tabBox.x + tabBox.width / 2))
     })
     .toBeLessThan(3)
 

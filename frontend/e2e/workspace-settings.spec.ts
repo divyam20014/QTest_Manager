@@ -188,8 +188,8 @@ test('the phone menu follows the workspace defaults too', async ({ browser }) =>
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'More' }).click()
   const sheet = page.getByRole('dialog', { name: 'More' })
   // Reports is hidden by the workspace defaults; what stays is still listed (Defects is a bottom tab).
+  await expect(sheet.getByRole('link', { name: 'Test Cases' })).toBeVisible()
   await expect(sheet.getByRole('link', { name: 'Reports', exact: true })).toHaveCount(0)
-  await expect(sheet.getByRole('link', { name: 'My Work' })).toBeVisible()
   await shot(page, 'workspace-more-375-dark')
   await ctx.close()
 })

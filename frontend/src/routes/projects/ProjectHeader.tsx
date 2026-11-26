@@ -97,11 +97,13 @@ export function ProjectHeader({
   tabKey,
   asHeading,
   canOpenSettings,
+  density = 'full',
 }: {
   project: Project | undefined
   tabKey: ProjectTabKey | null
   asHeading: boolean
   canOpenSettings: boolean
+  density?: 'full' | 'phone-compact' | 'compact'
 }) {
   if (!project) {
     return (
@@ -113,22 +115,50 @@ export function ProjectHeader({
     )
   }
   const Name = asHeading ? 'h1' : 'p'
+  const compact = density === 'compact'
+  // On phones the details leave a compact header; on a record page they are not rendered at all.
+  const details = density === 'phone-compact' ? 'max-md:hidden' : ''
   return (
-    <div data-testid="project-header" className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Name className="qth-type-page-title min-w-0 break-words">{project.name}</Name>
+    <div
+      data-testid="project-header"
+      data-density={density}
+      className={cn(
+        'relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2',
+        density !== 'full' && 'max-md:flex-nowrap',
+        compact && 'flex-nowrap',
+      )}
+    >
+      <div className={cn('flex min-w-0 flex-wrap items-center gap-2', density !== 'full' && 'max-md:flex-nowrap', compact && 'flex-nowrap')}>
+        <Name
+          className={cn(
+            'qth-type-page-title min-w-0 break-words',
+            compact && 'truncate text-base text-[var(--muted-foreground)]',
+            density === 'phone-compact' && 'max-md:truncate max-md:text-base',
+          )}
+          title={project.name}
+        >
+          {project.name}
+        </Name>
         <ProjectSwitcher projectId={project.id} projectName={project.name} tabKey={tabKey} />
-        <RecordPin type="project" id={project.id} title={project.name} url={`/projects/${project.id}`} />
-        <StatusBadge tone={STATUS_TONE[project.status]}>{project.status}</StatusBadge>
-        <StatusBadge tone={PRIORITY_TONE[project.priority]}>{project.priority}</StatusBadge>
+        {!compact && (
+          <span className={details ? 'contents max-md:hidden' : 'contents'}>
+            <RecordPin type="project" id={project.id} title={project.name} url={`/projects/${project.id}`} />
+            <StatusBadge tone={STATUS_TONE[project.status]}>{project.status}</StatusBadge>
+            <StatusBadge tone={PRIORITY_TONE[project.priority]}>{project.priority}</StatusBadge>
+          </span>
+        )}
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[var(--muted-foreground)]">
-        <span data-testid="project-owner">
-          Owner: <span className="text-[var(--foreground)]">{project.manager_name}</span>
-        </span>
-        <span data-testid="project-progress" className="flex items-center gap-2">
-          <ProjectProgress project={project} />
-        </span>
+      <div className={cn('flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[var(--muted-foreground)]', density !== 'full' && 'max-md:shrink-0', compact && 'shrink-0')}>
+        {!compact && (
+          <>
+            <span data-testid="project-owner" className={details}>
+              Owner: <span className="text-[var(--foreground)]">{project.manager_name}</span>
+            </span>
+            <span data-testid="project-progress" className={cn('flex items-center gap-2', details)}>
+              <ProjectProgress project={project} />
+            </span>
+          </>
+        )}
         <span className="flex items-center gap-1">
           <HeaderLink to={projectActivityPath(project.id)} label="Project activity" testId="project-activity-shortcut">
             <History aria-hidden="true" />

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { getDefectStatusCounts } from '@/api/defects'
 import { getMyWorkSummary } from '@/api/myWork'
 import { useAuth } from '@/lib/auth'
-import { openDefectCount } from '@/lib/navBadges'
+import { myWorkPending, openDefectCount } from '@/lib/navBadges'
 import type { BadgeCounts } from '@/lib/navRegistry'
 
 /**
@@ -32,9 +32,7 @@ export function useNavBadges(): { counts: BadgeCounts; ready: boolean } {
   })
   const counts: BadgeCounts = {
     defects: openDefectCount(defects.data),
-    myWork: myWork.data
-      ? myWork.data.run_cases_total + myWork.data.tasks_total + myWork.data.reviews_total
-      : 0,
+    myWork: myWorkPending(myWork.data),
   }
   return { counts, ready: defects.isSuccess && myWork.isSuccess }
 }

@@ -19,8 +19,8 @@ test('mobile shell: bottom tab bar navigates and the More sheet opens, traps foc
   await expect(page.getByRole('button', { name: 'Collapse sidebar' })).toBeHidden()
 
   // Tab targets are at least 44px tall.
-  for (const name of ['Dashboard', 'Test Cases', 'Runs', 'Defects', 'More']) {
-    const box = await bar.getByRole(name === 'More' ? 'button' : 'link', { name }).boundingBox()
+  for (const name of ['Dashboard', 'My Work', 'Projects', 'Defects', 'More']) {
+    const box = await bar.getByRole(name === 'More' ? 'button' : 'link', { name: new RegExp(`^${name}`) }).boundingBox()
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
   }
 
@@ -38,7 +38,10 @@ test('mobile shell: bottom tab bar navigates and the More sheet opens, traps foc
   await more.click()
   const sheet = page.getByRole('dialog', { name: 'More' })
   await expect(sheet).toBeVisible()
-  await expect(sheet.getByRole('link', { name: 'Projects' })).toBeVisible()
+  // What left the bar is listed here (ADR-133); what is on the bar is not repeated.
+  await expect(sheet.getByRole('link', { name: 'Test Cases' })).toBeVisible()
+  await expect(sheet.getByRole('link', { name: 'Test Runs' })).toBeVisible()
+  await expect(sheet.getByRole('link', { name: 'Projects' })).toHaveCount(0)
   await expect(sheet.getByRole('button', { name: 'Ask AI' })).toBeVisible()
   await expect(sheet.getByRole('button', { name: 'Appearance' })).toBeVisible()
   await expect(sheet.getByRole('button', { name: 'Sign out' })).toBeVisible()
@@ -48,7 +51,7 @@ test('mobile shell: bottom tab bar navigates and the More sheet opens, traps foc
   await expect(more).toBeFocused()
 
   await more.click()
-  await sheet.getByRole('link', { name: 'Projects' }).click()
-  await expect(page).toHaveURL(/\/projects$/)
+  await sheet.getByRole('link', { name: 'Test Cases' }).click()
+  await expect(page).toHaveURL(/\/test-repository$/)
   await expect(sheet).toBeHidden()
 })

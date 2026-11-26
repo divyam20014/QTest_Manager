@@ -2,9 +2,9 @@ import {
   BookOpen,
   Bot,
   Bug,
-  ClipboardList,
-  FileStack,
+  Building2,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   Menu,
   Search,
@@ -16,7 +16,8 @@ import { type ComponentType, useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { getDefectStatusCounts } from '@/api/defects'
-import { navBadgeText, openDefectCount } from '@/lib/navBadges'
+import { getMyWorkSummary } from '@/api/myWork'
+import { myWorkPending, navBadgeText, openDefectCount } from '@/lib/navBadges'
 import { getUnreadCount } from '@/api/notifications'
 import { AIAssistantPanel } from '@/components/AIAssistantPanel'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -55,10 +56,11 @@ interface TabItem extends MobileNavItem {
   navId?: string
 }
 
+// ADR-133. Test Cases and Test Runs are in the "More" sheet.
 const MOBILE_TABS: TabItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/test-repository', label: 'Test Cases', icon: FileStack, navId: 'test-cases' },
-  { to: '/test-runs', label: 'Runs', icon: ClipboardList, navId: 'test-runs' },
+  { to: '/my-work', label: 'My Work', icon: ListChecks, navId: 'my-work' },
+  { to: '/projects', label: 'Projects', icon: Building2, navId: 'projects' },
   { to: '/defects', label: 'Defects', icon: Bug, navId: 'defects' },
 ]
 
@@ -136,6 +138,14 @@ export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: 
   // Everything not Closed or Rejected: the same group as the sidebar badge and the dashboard (ADR-118).
   const openDefects = canSeeDefects ? openDefectCount(defectCounts.data) : 0
   const unreadCount = unread.data?.count ?? 0
+  // Same cache key as the sidebar badge, so the two can never disagree.
+  const myWork = useQuery({
+    queryKey: ['my-work', 'summary', user?.user_id],
+    queryFn: getMyWorkSummary,
+    enabled: !!user,
+    staleTime: 30_000,
+  })
+  const pending = myWorkPending(myWork.data)
 
   const exempt = moreOpen || focusWithin || NEVER_HIDE_PATH.test(location.pathname)
   const scrollHidden = useScrollHidden(exempt)
@@ -182,7 +192,7 @@ export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: 
           }}
         />
         {tabs.map((tab) => {
-          const badge = tab.to === '/defects' ? openDefects : 0
+          const badge = tab.to === '/defects' ? openDefects : tab.to === '/my-work' ? pending : 0
           return (
             <NavLink
               key={tab.to}
@@ -195,7 +205,11 @@ export function MobileTabBar({ moreOpen, onMore }: { moreOpen: boolean; onMore: 
                 <TabBadge count={badge} />
               </span>
               <span className="max-w-full truncate">{tab.label}</span>
-              {badge > 0 && <span className="sr-only">, {badge} open</span>}
+              {badge > 0 && (
+                <span className="sr-only">
+                  , {badge} {tab.to === '/my-work' ? 'pending' : 'open'}
+                </span>
+              )}
             </NavLink>
           )
         })}

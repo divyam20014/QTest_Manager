@@ -9,6 +9,7 @@ import {
   approvedProgress,
   canEditProject,
   fullOrder,
+  headerDensity,
   hiddenTabs,
   isDefaultConfig,
   resolveProjectTabs,
@@ -172,5 +173,24 @@ describe('the Requirements tab is gone (ADR-128)', () => {
     const saved = { order: ['overview', 'requirements', 'defects'], hidden: [] }
     expect(fullOrder(saved).slice(0, 2)).toEqual(['overview', 'defects'])
     expect(keys(resolveProjectTabs('p1', saved, admin))).not.toContain('requirements')
+  })
+})
+
+describe('headerDensity (ADR-133)', () => {
+  it('is full only on the Overview', () => {
+    expect(headerDensity('/projects/p1')).toBe('full')
+    expect(headerDensity('/projects/p1/')).toBe('full')
+  })
+
+  it('is compact everywhere on a record and its forms', () => {
+    for (const path of ['tasks/t1', 'requirements/r1', 'test-cases/new', 'test-cases/c1/edit', 'test-runs/u1', 'defects/d1']) {
+      expect(headerDensity(`/projects/p1/${path}`), path).toBe('compact')
+    }
+  })
+
+  it('is compact on phones only for the other project pages, including those outside /projects', () => {
+    for (const path of ['/projects/p1/tasks', '/projects/p1/test-cases', '/projects/p1/test-plans', '/defects', '/reporting']) {
+      expect(headerDensity(path), path).toBe('phone-compact')
+    }
   })
 })

@@ -474,11 +474,13 @@ export function DefectsList() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Defects"
+        compactOnPhone
         description="Track, triage and resolve the defects found during testing."
-        actionsClassName="max-md:[&>button:last-child]:flex-1"
+        // On phones Export, More and New share one row.
+        actionsClassName="max-md:flex-nowrap max-md:[&>button:last-child]:flex-1"
         actions={
           <>
-            {perms.canExport && <ExportMenu items={exportItems} menuLabel="Export defects" />}
+            {perms.canExport && <ExportMenu items={exportItems} menuLabel="Export defects" className="max-md:flex-1" />}
             {perms.canImport && <MoreActionsMenu items={[{ label: 'Import defects', onSelect: () => setImportOpen(true) }]} />}
             <Button
               disabled={!perms.canCreate}

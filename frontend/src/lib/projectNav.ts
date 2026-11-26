@@ -126,6 +126,16 @@ export function resolveProjectTabs(
     })
 }
 
+/**
+ * How much of the project header a page shows (ADR-133). A record's own page (or a form for one)
+ * keeps the name and switcher only, so the record starts higher. On phones every page but the
+ * Overview does the same; wider screens show the full header there.
+ */
+export function headerDensity(pathname: string): 'full' | 'phone-compact' | 'compact' {
+  if (/^\/projects\/[^/]+\/(tasks|requirements|test-cases|test-runs|defects)\/[^/]+/.test(pathname)) return 'compact'
+  return /^\/projects\/[^/]+\/?$/.test(pathname) ? 'full' : 'phone-compact'
+}
+
 /** Which tab a location belongs to, or null (for example a project sub-page that is not a tab). */
 export function activeTabKey(pathname: string, search: string): ProjectTabKey | null {
   const clean = pathname.replace(/\/+$/, '') || '/'

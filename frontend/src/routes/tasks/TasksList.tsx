@@ -201,7 +201,14 @@ export function TasksList() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={`Tasks ${projectQuery.data ? `— ${projectQuery.data.name}` : ''}`.trim()}
+        compactOnPhone
+        title={
+          <>
+            Tasks
+            {/* The project header above names the project, so phones skip it here. */}
+            {projectQuery.data && <span className="max-md:hidden"> — {projectQuery.data.name}</span>}
+          </>
+        }
         description="Group requirements, test cases and defects under tasks, and break a task into sub-tasks."
         actions={
           <>
@@ -281,14 +288,17 @@ export function TasksList() {
           ]}
         />
         {!board && (
-          <ColumnVisibilityMenu
-            columns={TASK_COLUMNS}
-            isVisible={columnPrefs.isVisible}
-            toggleVisible={columnPrefs.toggleVisible}
-            showAll={columnPrefs.showAll}
-            density={columnPrefs.density}
-            setDensity={columnPrefs.setDensity}
-          />
+          // Phones show cards, which ignore column choices (as on the other lists).
+          <div className="max-md:hidden">
+            <ColumnVisibilityMenu
+              columns={TASK_COLUMNS}
+              isVisible={columnPrefs.isVisible}
+              toggleVisible={columnPrefs.toggleVisible}
+              showAll={columnPrefs.showAll}
+              density={columnPrefs.density}
+              setDensity={columnPrefs.setDensity}
+            />
+          </div>
         )}
       </div>
       {treeCapped && (
