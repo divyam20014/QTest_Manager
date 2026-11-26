@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { API_BASE_URL, bootstrapTenant, loginViaUi } from './fixtures'
 
 // The compliance report data is gated by `report.compliance_export` (Admin and
-// Manager hold it, Tester does not). The sidebar entry and the page must follow
+// Manager hold it, Tester does not). The Reports tab and the page must follow
 // that permission instead of showing a link a role cannot use.
 
 test('Compliance Reports is offered to, and opens for, only the roles that can export it', async ({
@@ -31,7 +31,7 @@ test('Compliance Reports is offered to, and opens for, only the roles that can e
     expect(res.ok()).toBeTruthy()
   }
 
-  const complianceLink = (p: typeof page) => p.getByRole('link', { name: /Compliance Reports/ })
+  const complianceLink = (p: typeof page) => p.getByRole('link', { name: 'Compliance', exact: true })
 
   // ---- Tester: no link, and the URL shows "No access" without provoking a 403.
   await loginViaUi(page, tenant.tenantId, people.tester.email, people.tester.password)
@@ -49,6 +49,7 @@ test('Compliance Reports is offered to, and opens for, only the roles that can e
   await expect(page.getByTestId('no-access')).toHaveCount(0)
   // ...but without the compliance export buttons it cannot use.
   await expect(page.getByRole('heading', { name: 'Reporting', exact: true })).toBeVisible()
+  await expect(complianceLink(page)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Export', exact: true })).toHaveCount(0)
 
   // ---- Manager and Admin: link offered, page opens.
@@ -59,8 +60,8 @@ test('Compliance Reports is offered to, and opens for, only the roles that can e
     const context = await browser.newContext()
     const p = await context.newPage()
     await loginViaUi(p, tenant.tenantId, who.email, who.password)
-    await expect(complianceLink(p).first()).toBeVisible()
     await p.goto('/reporting')
+    await expect(complianceLink(p)).toBeVisible()
     await p.getByRole('button', { name: 'Export', exact: true }).click()
     await expect(p.getByRole('menuitem', { name: 'Print' })).toBeVisible()
     await expect(p.getByRole('menuitem', { name: 'CSV' })).toBeVisible()

@@ -75,74 +75,62 @@ test.beforeAll(async ({ playwright }) => {
   t = { ...seeded, reviewCaseId: review.id }
 })
 
-test('sidebar groups are toggle buttons: aria-expanded, remembered, auto-expand, keyboard', async ({ browser }) => {
+test('the sidebar is one flat list of links, with one current entry at a time', async ({ browser }) => {
   const { ctx, page } = await newPage(browser, { width: 1280, height: 800 })
   try {
     await signIn(page, 'admin')
     const side = sidebar(page)
     await shot(page, 'sidebar-1280-light')
 
-    // Headings are buttons, never links; the leaves keep their names.
-    const exec = side.getByRole('button', { name: 'Test Execution' })
-    await expect(side.getByRole('link', { name: 'Test Execution' })).toHaveCount(0)
-    await expect(exec).toHaveAttribute('aria-expanded', 'true')
-    await expect(side.getByRole('link', { name: 'Test Runs' })).toBeVisible()
-    await expect(side.getByRole('link', { name: 'Execution Console' })).toBeVisible()
-    await expect(side.getByRole('link', { name: 'My Work' })).toHaveAttribute('href', '/my-work')
-    // Nothing without a page behind it.
-    for (const name of ['Calendar', 'Documents', 'Test Automation', 'Releases']) {
+    const menu = side.getByRole('navigation', { name: 'Workspace' })
+    for (const [id, href] of [
+      ['home', '/'],
+      ['my-work', '/my-work'],
+      ['projects', '/projects'],
+      ['test-cases', '/test-repository'],
+      ['test-runs', '/test-runs'],
+      ['defects', '/defects'],
+      ['reports', '/reporting'],
+    ] as const) {
+      await expect(menu.getByTestId(`nav-${id}`)).toHaveAttribute('href', href)
+    }
+    // No groups, no entry for a page opened from another one, nothing without a page behind it.
+    await expect(menu.locator('[data-testid^="nav-group-"]')).toHaveCount(0)
+    for (const name of ['Execution Console', 'Compliance Reports', 'Calendar', 'Documents', 'Test Automation', 'Releases']) {
       await expect(side.getByText(name, { exact: true })).toHaveCount(0)
     }
 
-    // Close it: the leaves go, the state survives a reload.
-    await exec.click()
-    await expect(exec).toHaveAttribute('aria-expanded', 'false')
-    await expect(side.getByRole('link', { name: 'Test Runs' })).toBeHidden()
-    await page.reload()
-    await expect(side.getByRole('button', { name: 'Test Execution' })).toHaveAttribute('aria-expanded', 'false')
-
-    // Arriving at a page inside the group opens it, and the current leaf says so.
     await page.goto('/test-runs')
-    await expect(exec).toHaveAttribute('aria-expanded', 'true')
-    await expect(side.getByRole('link', { name: 'Test Runs' })).toHaveAttribute('aria-current', 'page')
-    await expect(side.getByRole('link', { name: 'Execution Console' })).not.toHaveAttribute('aria-current', 'page')
-    // Only one entry is current at a time.
-    await expect(side.locator('[aria-current="page"]')).toHaveCount(1)
-    await shot(page, 'sidebar-1280-light-active-group')
-
-    // Closing the current group by hand sticks until the next navigation.
-    await exec.click()
-    await expect(exec).toHaveAttribute('aria-expanded', 'false')
-    await page.waitForTimeout(300)
-    await expect(exec).toHaveAttribute('aria-expanded', 'false')
-
-    // Keyboard: Enter and Space both toggle, focus stays on the toggle.
-    const reports = side.getByRole('button', { name: 'Reports & Analytics' })
-    await reports.focus()
-    await page.keyboard.press('Enter')
-    await expect(reports).toHaveAttribute('aria-expanded', 'false')
-    await page.keyboard.press('Space')
-    await expect(reports).toHaveAttribute('aria-expanded', 'true')
-    await expect(reports).toBeFocused()
-    await expect(side.getByRole('link', { name: /Compliance Reports/ })).toHaveAttribute('target', '_blank')
-
-    // The old destinations are all still one click away.
-    for (const [name, href] of [
-      ['Projects', '/projects'],
-      ['Test Cases', '/test-repository'],
-      ['Defects', '/defects'],
-      ['Reports', '/reporting'],
-    ] as const) {
-      await expect(side.getByRole('link', { name: new RegExp(`^${name}`) })).toHaveAttribute('href', href)
-    }
+    await expect(page.getByRole('heading', { level: 1, name: 'Test Runs' })).toBeVisible()
+    await expect(menu.getByTestId('nav-test-runs')).toHaveAttribute('aria-current', 'page')
+    await expect(menu.locator('[aria-current="page"]')).toHaveCount(1)
     expect(await overflowOf(page)).toBeLessThanOrEqual(0)
-    expect(formatFindings('sidebar groups light', await axeFindings(page))).toEqual([])
+    expect(formatFindings('flat sidebar light', await axeFindings(page))).toEqual([])
   } finally {
     await ctx.close()
   }
 })
 
-test('icon rail: groups open a flyout, tooltips, Escape returns focus, keyboard operable', async ({ browser }) => {
+test('the Execution Console opens from Test Runs and My Work and keeps Test Runs current', async ({ browser }) => {
+  const { ctx, page } = await newPage(browser, { width: 1280, height: 800 })
+  try {
+    await signIn(page, 'tester')
+    for (const [from, name] of [
+      ['/test-runs', 'Execution Console'],
+      ['/my-work', 'Open the Execution Console'],
+    ] as const) {
+      await page.goto(from)
+      await page.getByRole('main').getByRole('link', { name }).click()
+      await expect(page).toHaveURL(/\/execution$/)
+      await expect(page.getByRole('heading', { level: 1, name: 'Execution Console' })).toBeVisible()
+      await expect(sidebar(page).getByTestId('nav-test-runs')).toHaveAttribute('aria-current', 'page')
+    }
+  } finally {
+    await ctx.close()
+  }
+})
+
+test('icon rail: every link keeps its name and a tooltip, by pointer and keyboard', async ({ browser }) => {
   const { ctx, page } = await newPage(browser, { width: 1280, height: 800 })
   try {
     await signIn(page, 'admin')
@@ -150,38 +138,21 @@ test('icon rail: groups open a flyout, tooltips, Escape returns focus, keyboard 
     const side = sidebar(page)
     await expect.poll(async () => Math.round((await side.boundingBox())!.width)).toBe(64)
 
-    const exec = side.getByRole('button', { name: 'Test Execution' })
-    await expect(exec).toHaveAttribute('aria-expanded', 'false')
-    await exec.hover()
-    await expect(page.getByRole('tooltip', { name: 'Test Execution' })).toBeVisible()
-
-    await exec.click()
-    const flyout = page.getByRole('group', { name: 'Test Execution' })
-    await expect(exec).toHaveAttribute('aria-expanded', 'true')
-    await expect(flyout.getByRole('link', { name: 'Test Runs' })).toBeVisible()
-    await expect(flyout.getByRole('link', { name: 'Execution Console' })).toBeVisible()
-    await shot(page, 'rail-1280-light-flyout')
-    expect(formatFindings('rail flyout', await axeFindings(page))).toEqual([])
+    const runs = side.getByRole('link', { name: 'Test Runs' })
+    await runs.hover()
+    await expect(page.getByRole('tooltip', { name: 'Test Runs' })).toBeVisible()
     await page.keyboard.press('Escape')
-    await expect(flyout).toBeHidden()
-    await expect(exec).toBeFocused()
-
-    // Keyboard only: open, Tab into the flyout, Enter on a link navigates and closes it.
-    await page.keyboard.press('Enter')
-    await expect(flyout).toBeVisible()
-    await page.keyboard.press('Tab')
-    await expect(flyout.getByRole('link', { name: 'Test Runs' })).toBeFocused()
+    await expect(page.getByRole('tooltip', { name: 'Test Runs' })).toBeHidden()
+    await runs.focus()
     await page.keyboard.press('Enter')
     await expect(page).toHaveURL(/\/test-runs$/)
-    await expect(flyout).toBeHidden()
-    // The rail marks the group holding the current page.
-    await expect(side.getByRole('button', { name: 'Test Execution' })).toHaveAttribute('aria-current', 'true')
-    // Top-level links keep their name and tooltip in the rail.
+    await expect(runs).toHaveAttribute('aria-current', 'page')
     await side.getByRole('link', { name: 'My Work' }).focus()
     await expect(page.getByRole('tooltip', { name: 'My Work' })).toBeVisible()
     await shot(page, 'rail-1280-light')
     expect(await overflowOf(page)).toBeLessThanOrEqual(0)
     expect(Math.round((await side.boundingBox())!.width)).toBe(64)
+    expect(formatFindings('icon rail', await axeFindings(page))).toEqual([])
   } finally {
     await ctx.close()
   }
@@ -527,7 +498,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'More' }).click()
       const sheet = page.getByRole('dialog', { name: 'More' })
       await expect(sheet.getByRole('link', { name: /^My Work\s*, 2 pending$/ })).toBeVisible()
-      await expect(sheet.getByRole('link', { name: 'Execution Console' })).toBeVisible()
+      await expect(sheet.getByRole('link', { name: 'Execution Console' })).toHaveCount(0)
       await expect(sheet.getByText('Favourites', { exact: true })).toBeVisible()
       await expect(sheet.getByRole('link', { name: 'Apex Motor Claims' }).first()).toBeVisible()
       await shot(page, `mobile-more-375-${theme}`)
@@ -538,6 +509,11 @@ for (const theme of ['light', 'dark'] as const) {
       expect(await overflowOf(page)).toBeLessThanOrEqual(0)
       await shot(page, `mywork-375-${theme}`)
       expect(formatFindings(`phone my work ${theme}`, await axeFindings(page))).toEqual([])
+      // On a phone the console is two taps away: the Runs tab, then the button on Test Runs.
+      await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Runs' }).click()
+      await page.getByRole('main').getByRole('link', { name: 'Execution Console' }).click()
+      await expect(page).toHaveURL(/\/execution$/)
+      expect(await overflowOf(page)).toBeLessThanOrEqual(0)
     } finally {
       await ctx.close()
     }

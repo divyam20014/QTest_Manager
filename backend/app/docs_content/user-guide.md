@@ -29,16 +29,13 @@ and do. It is set by your Admin and is not something you change yourself.
 ### Finding your way around
 
 Everything starts from the **sidebar** on the left (a bottom bar with a **More**
-menu on a phone). It lists **Dashboard**, **Projects**, **My Work**, **Test
-Cases**, **Test Execution** (Test Runs, Execution Console), **Defects**,
-**Reports & Analytics** (Reports, Compliance Reports) and **Admin**. (An admin
-sees the Test Cases entry as "Test Management" in Admin > Workspace; it is the
-same entry, shown as the plain Test Cases link while it holds one page.) **User Guide** and
-**Profile** sit at the bottom. A name with an arrow, such as Test Execution, is a
-group: select it to open or close its list. It stays open or closed the way you
-left it, and the group holding the page you are on opens by itself. Entries your
-role cannot open are not shown, and a group with only one visible entry shows as
-that entry. The small number beside **Defects** is your open defects and the one
+menu on a phone). It lists **Dashboard**, **My Work**, **Projects**, **Test
+Cases**, **Test Runs**, **Defects**, **Reports** and **Admin**. **User Guide** and
+**Profile** sit at the bottom. Entries your role cannot open are not shown. Two
+pages are reached from another page: the **Execution Console** from **Test Runs**
+or **My Work** (Test Runs stays highlighted while you are in it), and the
+compliance report from the **Compliance** tab of **Reports**. Search (Ctrl/Cmd+K)
+finds both. The small number beside **Defects** is your open defects and the one
 beside **My Work** is what is waiting on you (see below); both come from live
 data and are announced to screen readers when they change.
 
@@ -295,7 +292,9 @@ different options from the defaults.
 
 A test run is a set of test cases to execute, usually against one build and
 environment. **Test Runs** lists them. **Execution Console** (or **Execute** on
-a run) is where you work through one.
+a run) is where you work through one. To see every case waiting to be executed,
+open the console with the **Execution Console** button on **Test Runs**, or **Open
+the Execution Console** on **My Work**.
 
 1. Open a run assigned to you and open the first case. In the console, mark each
    step **Pass**, **Fail**, **Blocked** or **Ignore**, add notes, and attach
@@ -666,7 +665,7 @@ effectiveness* is the rest; both read "No defects" when there is nothing to
 measure. The card lists open escaped defects by age and severity, a per-release
 table and a monthly trend, and exports to Excel.
 
-**Compliance** (also **Compliance Reports** in the sidebar) opens print-ready
+**Compliance** (a tab of **Reports**) opens print-ready
 compliance exports, available to roles that hold the compliance export
 permission.
 
@@ -837,8 +836,8 @@ page still opens from a direct link, and nobody gains or loses access to any
 data. People who may not open an area never see it, whatever you choose here.
 
 - **Sidebar**: the entries of the left sidebar, the phone menu and the command
-  palette. Untick **Show** to hide an entry (Test Management, Test Execution,
-  Defects, Reports & Analytics) and use the up and down buttons to put them in
+  palette. Untick **Show** to hide an entry (Test Cases, Test Runs, Defects,
+  Reports) and use the up and down buttons to put them in
   order. Dashboard, Projects, My Work and Admin are always shown. Each person
   keeps their own favourites and recent items.
 - **Project tabs**: the default tabs of a project (Planning, Releases, Team and

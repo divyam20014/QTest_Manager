@@ -4,7 +4,7 @@ import type { MeResponse } from '@/api/auth'
 
 import {
   NAV_REGISTRY,
-  activeGroupId,
+  PALETTE_EXTRA_ENTRIES,
   isLeafActive,
   leafBadge,
   paletteEntries,
@@ -20,27 +20,27 @@ const admin = user('admin', ['tenant.settings.manage', 'report.view', 'report.co
 const manager = user('manager', ['project.view.all', 'report.view', 'report.compliance_export'])
 const tester = user('tester', ['report.view'])
 
-const labels = (entries: ReturnType<typeof resolveRegistry>) =>
-  entries.map((e) => (e.kind === 'link' ? e.item.label : `${e.group.label}[${e.group.items.map((i) => i.label).join(',')}]`))
+const labels = (entries: ReturnType<typeof resolveRegistry>) => entries.map((e) => e.label)
 
-const topLinks = () => NAV_REGISTRY.flatMap((e) => (e.kind === 'link' ? [e.item] : []))
+const leaf = (id: string) => NAV_REGISTRY.find((i) => i.id === id)!
+const activeIds = (pathname: string) => resolveRegistry(admin).filter((e) => isLeafActive(e, pathname)).map((e) => e.id)
 
 describe('nav registry', () => {
-  it('shows an admin the full structure with real pages only', () => {
+  it('shows an admin one flat list of real pages', () => {
     expect(labels(resolveRegistry(admin))).toEqual([
       'Dashboard',
-      'Projects',
       'My Work',
+      'Projects',
       'Test Cases',
-      'Test Execution[Test Runs,Execution Console]',
+      'Test Runs',
       'Defects',
-      'Reports & Analytics[Reports,Compliance Reports]',
+      'Reports',
       'Admin',
     ])
   })
 
   it('does not list modules that have no page (Calendar, Documents, Test Automation)', () => {
-    const all = JSON.stringify(NAV_REGISTRY.map((e) => (e.kind === 'link' ? e.item.label : e.group.label)))
+    const all = JSON.stringify(NAV_REGISTRY.map((e) => e.label))
     for (const missing of ['Calendar', 'Documents', 'Automation', 'Releases', 'Team']) {
       expect(all).not.toContain(missing)
     }
@@ -48,16 +48,13 @@ describe('nav registry', () => {
 
   it('filters by the same access rules as the route gate', () => {
     // Manager: no Users & Roles, but Environments is theirs, so Admin stays and points there.
-    const m = resolveRegistry(manager)
-    const adminLeaf = m.find((e) => e.kind === 'link' && e.item.id === 'admin')
-    expect(adminLeaf && adminLeaf.kind === 'link' && adminLeaf.item.to).toBe('/admin/environments')
-    // Tester: no admin, and the single remaining Reports link replaces its one-item group.
+    expect(resolveRegistry(manager).find((e) => e.id === 'admin')?.to).toBe('/admin/environments')
     expect(labels(resolveRegistry(tester))).toEqual([
       'Dashboard',
-      'Projects',
       'My Work',
+      'Projects',
       'Test Cases',
-      'Test Execution[Test Runs,Execution Console]',
+      'Test Runs',
       'Defects',
       'Reports',
     ])
@@ -68,37 +65,29 @@ describe('nav registry', () => {
     expect(labels(resolveRegistry(hidden))).not.toContain('Reports')
   })
 
-  it('marks the leaf and the group holding the current route', () => {
-    const entries = resolveRegistry(admin)
-    expect(activeGroupId(entries, '/test-runs/abc')).toBe('test-execution')
-    expect(activeGroupId(entries, '/test-run-cases/abc')).toBe('test-execution')
-    expect(activeGroupId(entries, '/reporting/builder')).toBe('reports')
-    expect(activeGroupId(entries, '/defects')).toBeNull()
-    const home = topLinks()[0]
-    expect(isLeafActive(home, '/')).toBe(true)
-    expect(isLeafActive(home, '/projects')).toBe(false)
-  })
-
-  it('never marks the new-tab compliance link as the current page', () => {
-    const entries = resolveRegistry(admin)
-    const group = entries.find((e) => e.kind === 'group' && e.group.id === 'reports')
-    const compliance = group && group.kind === 'group' ? group.group.items[1] : null
-    expect(compliance && isLeafActive(compliance, '/reporting/print')).toBe(false)
+  it('keeps the entry lit on the pages opened from it', () => {
+    expect(activeIds('/test-runs/abc')).toEqual(['test-runs'])
+    expect(activeIds('/execution')).toEqual(['test-runs'])
+    expect(activeIds('/test-run-cases/abc')).toEqual(['test-runs'])
+    expect(activeIds('/reporting/print')).toEqual(['reports'])
+    expect(activeIds('/reporting/builder')).toEqual(['reports'])
+    expect(isLeafActive(leaf('home'), '/')).toBe(true)
+    expect(isLeafActive(leaf('home'), '/projects')).toBe(false)
   })
 
   it('badges come from real counts and hide at zero', () => {
-    const defects = topLinks().find((i) => i.id === 'defects')!
-    const myWork = topLinks().find((i) => i.id === 'my-work')!
-    expect(leafBadge(defects, { defects: 4, myWork: 2 })).toEqual({ count: 4, noun: 'open' })
-    expect(leafBadge(myWork, { defects: 4, myWork: 2 })).toEqual({ count: 2, noun: 'pending' })
-    expect(leafBadge(topLinks()[0], { defects: 4, myWork: 2 })).toBeNull()
+    expect(leafBadge(leaf('defects'), { defects: 4, myWork: 2 })).toEqual({ count: 4, noun: 'open' })
+    expect(leafBadge(leaf('my-work'), { defects: 4, myWork: 2 })).toEqual({ count: 2, noun: 'pending' })
+    expect(leafBadge(leaf('home'), { defects: 4, myWork: 2 })).toBeNull()
   })
 
   it('feeds the palette and the phone sheet from the same resolved entries', () => {
     const entries = resolveRegistry(admin)
-    expect(paletteEntries(entries).map((p) => p.label)).toContain('Execution Console')
+    expect(paletteEntries(entries).map((x) => x.label)).toEqual(labels(entries))
+    // The pages that left the menu are still one search away.
+    expect(PALETTE_EXTRA_ENTRIES.map((x) => x.path)).toEqual(expect.arrayContaining(['/execution', '/reporting/print']))
     const sheet = sheetSections(entries, { defects: 3, myWork: 0 })
-    expect(sheet.map((s) => s.label)).toEqual(['Workspace', 'Test Execution', 'Reports & Analytics'])
+    expect(sheet.map((x) => x.label)).toEqual(['Workspace'])
     const defects = sheet[0].items.find((i) => i.label === 'Defects')
     expect(defects?.count).toBe(3)
     expect(defects?.countNoun).toBe('open')

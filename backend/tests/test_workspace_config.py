@@ -6,8 +6,11 @@ rule and tenant isolation.
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import text
 
+from app.schemas.workspace import SidebarConfig
+from app.services import workspace_service
 from tests.test_tester_visibility import _as, _setup
 
 API = "/api/v1"
@@ -37,7 +40,7 @@ def test_unset_returns_the_built_in_defaults(client: TestClient, ws: dict) -> No
 
 def test_round_trip_and_reset_stores_null(client: TestClient, ws: dict, owner_engine) -> None:
     config = {
-        "sidebar": {"order": ["defects", "home"], "hidden": ["test-management", "reports"]},
+        "sidebar": {"order": ["defects", "home"], "hidden": ["test-cases", "reports"]},
         "project_tabs": {"order": ["overview", "defects"], "hidden": ["releases"]},
         "view_modes": {"defects": ["list"], "test_runs": ["list", "calendar"]},
     }
@@ -141,3 +144,27 @@ def test_other_tenants_never_see_or_change_the_config(
     assert got["sidebar"]["hidden"] == ["reports"] and got["view_modes"] == {}
     _as(other_client, other, "tester")
     assert other_client.get(URL).json()["data"]["view_modes"] == {"defects": ["list"]}
+
+
+def test_a_layout_saved_with_the_old_group_ids_keeps_its_meaning() -> None:
+    saved = {
+        "sidebar": {
+            "order": ["defects", "test-execution", "home", "test-management"],
+            "hidden": ["test-management"],
+        },
+        "view_modes": {"defects": ["list"]},
+    }
+    config = workspace_service._load(saved)
+    assert config.sidebar.order == ["defects", "test-runs", "home", "test-cases"]
+    assert config.sidebar.hidden == ["test-cases"]
+    # The rest of the document survives with it.
+    assert config.view_modes == {"defects": ["list"]}
+
+
+def test_old_and_new_ids_together_collapse_but_other_repeats_are_refused() -> None:
+    config = SidebarConfig.model_validate(
+        {"order": ["test-runs", "test-execution", "home"], "hidden": []}
+    )
+    assert config.order == ["test-runs", "home"]
+    with pytest.raises(ValidationError):
+        SidebarConfig.model_validate({"order": ["home", "home"], "hidden": []})

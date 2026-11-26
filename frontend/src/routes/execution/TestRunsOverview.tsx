@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
+import { MonitorPlay } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { listAllTestRuns, type TestRunSummary } from '@/api/execution'
@@ -18,7 +19,7 @@ import { useApplyDefaultView, type ViewState } from '@/components/table/viewsHel
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
@@ -29,6 +30,8 @@ import { useListModes } from '@/lib/workspaceConfig'
 import { RunsBoard } from './RunsBoard'
 import { RunsCalendar } from './RunsCalendar'
 import { testRunPath } from '@/lib/entityRoutes'
+import { useAuth } from '@/lib/auth'
+import { canAccessPath } from '@/lib/routeAccess'
 
 const RUNS_PAGE_SIZE = 50
 // ADR-124: runs are also shown as a board by status and on a calendar.
@@ -110,6 +113,7 @@ const OVERVIEW_COLUMNS: ResponsiveColumn<OverviewRow>[] = [
 // no tenant-wide /test-runs endpoint exists, so each project's runs are
 // fetched and merged here rather than adding a new backend aggregate.
 export function TestRunsOverview() {
+  const { user } = useAuth()
   const columnPrefs = useColumnPrefs('test-runs-overview', OVERVIEW_COLUMN_DEFS)
   const [projectId, setProjectId] = useState('')
   // Pass C (deferred item #3): the Dashboard's "Active Test Runs" KPI
@@ -224,7 +228,18 @@ export function TestRunsOverview() {
   }))
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Test Runs" description="Test runs across every project you can see." />
+      <PageHeader
+        title="Test Runs"
+        description="Test runs across every project you can see."
+        actions={
+          canAccessPath(user, '/execution') && (
+            <Link to="/execution" className={buttonVariants({ variant: 'outline' })}>
+              <MonitorPlay className="size-4" aria-hidden="true" />
+              Execution Console
+            </Link>
+          )
+        }
+      />
 
       {viewMode === 'list' && (
         <FilterTabs

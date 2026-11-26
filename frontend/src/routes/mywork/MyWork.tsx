@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { MonitorPlay } from 'lucide-react'
 import { type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -29,6 +30,7 @@ import { humanizeKey } from '@/lib/labels'
 import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
 import { severityTone } from '@/routes/defects/statusDisplay'
 import { defectPath, taskPath } from '@/lib/entityRoutes'
+import { canAccessPath } from '@/lib/routeAccess'
 
 // "Open" for the person: everything not Closed or Rejected (ADR-118's definition, the same
 // one the Defects badge uses).
@@ -77,6 +79,20 @@ function RunCaseRow({ item }: { item: MyRunCase }) {
         </span>
       </Link>
     </li>
+  )
+}
+
+function ConsoleLink() {
+  const { user } = useAuth()
+  if (!canAccessPath(user, '/execution')) return null
+  return (
+    <Link
+      to="/execution"
+      className="inline-flex min-h-9 items-center gap-2 self-end text-sm font-medium underline-offset-2 hover:underline max-md:min-h-11"
+    >
+      <MonitorPlay className="size-4" aria-hidden="true" />
+      Open the Execution Console
+    </Link>
   )
 }
 
@@ -320,7 +336,12 @@ export function MyWork() {
       key: 'run-cases',
       label: 'Run cases',
       count: countOf(runCases.isSuccess, runCases.data?.total),
-      content: <RunCasesPanel query={runCases} />,
+      content: (
+        <div className="flex flex-col gap-2">
+          <ConsoleLink />
+          <RunCasesPanel query={runCases} />
+        </div>
+      ),
     },
     {
       key: 'tasks',

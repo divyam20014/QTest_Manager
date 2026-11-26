@@ -5,8 +5,8 @@ import { bootstrapTenant, loginViaUi } from './fixtures'
 // UI/UX remediation Phase C: application shell. Header controls fit at tablet
 // widths (UX-001), the account menu's accessible name starts with its visible
 // text (UX-006), the sidebar has one entry per destination with names and
-// tooltips when collapsed (UX-024), Compliance Reports opens in a new tab
-// (UX-025), and every page opens with a single PageHeader <h1> (UX-010).
+// tooltips when collapsed (UX-024), the compliance report is reached from Reports
+// (ADR-130), and every page opens with a single PageHeader <h1> (UX-010).
 
 const overflowOf = (page: import('@playwright/test').Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
@@ -32,7 +32,7 @@ test('tablet widths: header controls fit and the search is an icon below lg', as
   await expect(page.getByRole('search')).toBeVisible()
 })
 
-test('desktop shell: account menu name, collapsed sidebar tooltips, new-tab compliance link', async ({
+test('desktop shell: account menu name, collapsed sidebar tooltips, no compliance menu entry', async ({
   page,
   request,
 }) => {
@@ -61,10 +61,8 @@ test('desktop shell: account menu name, collapsed sidebar tooltips, new-tab comp
   await expect(sidebar.getByRole('link', { name: 'Organization' })).toHaveCount(0)
   await expect(sidebar.getByRole('link', { name: 'Profile' })).toHaveCount(1)
 
-  // UX-025: Compliance Reports leaves the shell, so it opens in a new tab.
-  const compliance = sidebar.getByRole('link', { name: /Compliance Reports/ })
-  await expect(compliance).toHaveAttribute('target', '_blank')
-  await expect(compliance).toHaveAttribute('rel', /noopener/)
+  // ADR-130: the compliance report is a tab of Reports, not a menu entry of its own.
+  await expect(sidebar.getByRole('link', { name: /Compliance/ })).toHaveCount(0)
 
   // Collapsed: every link keeps an accessible name and shows a tooltip.
   await page.getByRole('button', { name: 'Collapse sidebar' }).click()

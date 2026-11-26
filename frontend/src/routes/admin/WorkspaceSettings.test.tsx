@@ -70,15 +70,18 @@ describe('WorkspaceSettings', () => {
   it('offers no way to hide core sidebar entries or core project tabs', async () => {
     setup()
     await screen.findByRole('list', { name: 'Sidebar entry order' })
+    const inList = (name: string) => within(screen.getByRole('list', { name }))
     for (const label of ['Dashboard', 'Projects', 'My Work', 'Admin']) {
       expect(screen.queryByRole('checkbox', { name: `Show ${label}` })).toBeNull()
     }
-    for (const label of ['Overview', 'Test Cases', 'Test Runs', 'Reports', 'Settings']) {
-      expect(screen.queryByRole('checkbox', { name: `Show ${label}` })).toBeNull()
+    for (const label of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
+      expect(inList('Project tab order').queryByRole('checkbox', { name: `Show ${label}` })).toBeNull()
     }
-    // The Defects sidebar entry may be hidden; the Defects project tab is core, so only one row has a checkbox.
-    expect(screen.getAllByRole('checkbox', { name: 'Show Defects' })).toHaveLength(1)
-    for (const label of ['Test Management', 'Test Execution', 'Reports & Analytics', 'Planning', 'Releases']) {
+    // The sidebar entries of the same names may be hidden.
+    for (const label of ['Test Cases', 'Test Runs', 'Defects', 'Reports']) {
+      expect(inList('Sidebar entry order').getByRole('checkbox', { name: `Show ${label}` })).toBeChecked()
+    }
+    for (const label of ['Planning', 'Releases']) {
       expect(screen.getByRole('checkbox', { name: `Show ${label}` })).toBeChecked()
     }
     // The list view cannot be switched off: it has no control at all.
@@ -93,10 +96,10 @@ describe('WorkspaceSettings', () => {
     // Defects is both a sidebar entry and a (core) project tab: pick the sidebar's.
     const sidebar = () => within(screen.getByRole('list', { name: 'Sidebar entry order' }))
     await user.click(sidebar().getByRole('button', { name: 'Move Defects up' }))
-    expect(rows('Sidebar entry order').slice(4, 6)).toEqual(['nav-row-defects', 'nav-row-test-execution'])
+    expect(rows('Sidebar entry order').slice(4, 6)).toEqual(['nav-row-defects', 'nav-row-test-runs'])
     expect(sidebar().getByRole('button', { name: 'Move Defects up' })).toHaveFocus()
     expect(screen.getByRole('status')).toHaveTextContent('Defects moved to position 5 of 8')
-    await user.click(screen.getByRole('checkbox', { name: 'Show Reports & Analytics' }))
+    await user.click(sidebar().getByRole('checkbox', { name: 'Show Reports' }))
     await user.click(screen.getByRole('checkbox', { name: 'Show Releases' }))
     await user.click(screen.getByRole('checkbox', { name: 'Calendar view for Test runs' }))
     await user.click(screen.getByRole('checkbox', { name: 'Board view for Defects' }))
@@ -104,7 +107,7 @@ describe('WorkspaceSettings', () => {
     await waitFor(() => expect(putWorkspaceConfig).toHaveBeenCalledTimes(1))
     const body = putWorkspaceConfig.mock.calls[0][0] as WorkspaceConfig
     expect(body.sidebar.hidden).toEqual(['reports'])
-    expect(body.sidebar.order.slice(0, 6)).toEqual(['home', 'projects', 'my-work', 'test-management', 'defects', 'test-execution'])
+    expect(body.sidebar.order.slice(0, 6)).toEqual(['home', 'my-work', 'projects', 'test-cases', 'defects', 'test-runs'])
     expect(body.project_tabs).toEqual({ order: [], hidden: ['releases'] })
     expect(body.view_modes).toEqual({ defects: ['list'], test_runs: ['list', 'board'] })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled())
@@ -114,10 +117,11 @@ describe('WorkspaceSettings', () => {
     const user = userEvent.setup()
     setup()
     await screen.findByRole('list', { name: 'Sidebar entry order' })
-    screen.getByRole('button', { name: 'Move Reports & Analytics up' }).focus()
+    const sidebar = within(screen.getByRole('list', { name: 'Sidebar entry order' }))
+    sidebar.getByRole('button', { name: 'Move Reports up' }).focus()
     await user.keyboard('{Enter}')
     expect(rows('Sidebar entry order').slice(5, 7)).toEqual(['nav-row-reports', 'nav-row-defects'])
-    expect(screen.getByRole('button', { name: 'Move Reports & Analytics up' })).toHaveFocus()
+    expect(sidebar.getByRole('button', { name: 'Move Reports up' })).toHaveFocus()
   })
 
   it('shows a saved config and resets to the defaults after confirming', async () => {
@@ -130,7 +134,7 @@ describe('WorkspaceSettings', () => {
     setup()
     await screen.findByRole('list', { name: 'Sidebar entry order' })
     expect(rows('Sidebar entry order')[0]).toBe('nav-row-defects')
-    expect(screen.getByRole('checkbox', { name: 'Show Reports & Analytics' })).not.toBeChecked()
+    expect(within(screen.getByRole('list', { name: 'Sidebar entry order' })).getByRole('checkbox', { name: 'Show Reports' })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Show Team' })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Calendar view for Test runs' })).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()

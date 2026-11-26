@@ -1941,3 +1941,11 @@ Every figure but the tree is under 350 ms. The tree is the slowest because it se
 **Decision.** `GET /my-work/tasks` lists the caller's tasks that are not in a `done` category, using the same project visibility as the rest of My Work, which matches the rule for opening a task; the summary counts and the sidebar badge include them. The standard import and export gain one last, optional `Task` column that holds task display ids, which are unambiguous where titles are not. A defect takes one id (`defects.task_id`); a test case takes several (`task_test_case_links`). Import never does more than the task page allows: an id outside the project is a row error, and linking a test case needs `task.manage`, including a project role override. Each imported link is recorded in the task's history.
 
 **Not done.** The legacy 11/13-column import and the column-mapping import do not read the column. A file moved to another project reports its task ids as errors rather than dropping them silently. Conditional access rules on `task.manage` are evaluated on the task routes only, not per imported row.
+
+## ADR-130: A flat sidebar
+
+**Context.** The sidebar had three groups, one of which held a single page. The Execution Console and the compliance report had entries of their own although each belongs to another page, and the compliance entry opened a new tab.
+
+**Decision.** The sidebar is one list: Dashboard, My Work, Projects, Test Cases, Test Runs, Defects, Reports, Admin. The group code is removed. The Execution Console is opened from Test Runs and from My Work, and counts as part of Test Runs for highlighting; the compliance report is the Compliance tab of Reports, and a person who may only export it still gets a Reports link that leads there. Both stay in the command palette. A saved workspace layout (ADR-125) that names a former group id is translated on read. This matters because a document that fails validation is ignored whole, so without it removing an id would silently reset a tenant's sidebar, tabs and view modes.
+
+**Consequences.** Before an entry's id is removed or renamed in future, it needs the same translation (`RENAMED_NAV_ENTRY_KEYS` in `schemas/workspace.py`). The Execution Console must keep a link from Test Runs: it has no sidebar entry.

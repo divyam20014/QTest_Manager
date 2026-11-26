@@ -41,7 +41,7 @@ describe('phone tab bar and the workspace defaults', () => {
   })
 
   it('drops a tab whose sidebar entry is hidden and keeps the rest', () => {
-    config = { ...DEFAULT_WORKSPACE_CONFIG, sidebar: { order: [], hidden: ['defects', 'test-execution'] } }
+    config = { ...DEFAULT_WORKSPACE_CONFIG, sidebar: { order: [], hidden: ['defects', 'test-runs'] } }
     setup()
     expect(screen.queryByRole('link', { name: 'Defects' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Runs' })).toBeNull()

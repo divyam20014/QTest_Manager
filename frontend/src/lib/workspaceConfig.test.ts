@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { MeResponse } from '@/api/auth'
 
-import { NAV_ENTRY_META, NAV_REGISTRY, applyNavConfig, fullNavOrder, hiddenNavIds, navEntryId, resolveRegistry } from './navRegistry'
+import { NAV_ENTRY_META, NAV_REGISTRY, applyNavConfig, fullNavOrder, hiddenNavIds, resolveRegistry } from './navRegistry'
 import { resolveProjectTabs, switchTarget } from './projectNav'
 import {
   DEFAULT_WORKSPACE_CONFIG,
@@ -18,21 +18,21 @@ function user(role: string, permissions: string[]): MeResponse {
 const admin = user('admin', ['tenant.settings.manage', 'report.view', 'report.compliance_export'])
 const tester = user('tester', ['report.view'])
 
-const ids = (entries: ReturnType<typeof resolveRegistry>) => entries.map((e) => (e.kind === 'link' ? e.item.id : e.group.id))
+const ids = (entries: ReturnType<typeof resolveRegistry>) => entries.map((e) => e.id)
 
 describe('sidebar defaults (applyNavConfig)', () => {
   it('lists the entries an admin can order, with the core ones locked', () => {
     expect(NAV_ENTRY_META.map((m) => m.id)).toEqual([
       'home',
-      'projects',
       'my-work',
-      'test-management',
-      'test-execution',
+      'projects',
+      'test-cases',
+      'test-runs',
       'defects',
       'reports',
       'admin',
     ])
-    expect(NAV_ENTRY_META.filter((m) => m.core).map((m) => m.id)).toEqual(['home', 'projects', 'my-work', 'admin'])
+    expect(NAV_ENTRY_META.filter((m) => m.core).map((m) => m.id)).toEqual(['home', 'my-work', 'projects', 'admin'])
   })
 
   it('is the registry itself when nothing is configured', () => {
@@ -41,11 +41,9 @@ describe('sidebar defaults (applyNavConfig)', () => {
   })
 
   it('hides entries and reorders the rest, for every consumer of the resolved list', () => {
-    const cfg = { order: ['defects', 'home'], hidden: ['reports', 'test-management'] }
+    const cfg = { order: ['defects', 'home'], hidden: ['reports', 'test-cases'] }
     const resolved = resolveRegistry(admin, applyNavConfig(NAV_REGISTRY, cfg))
-    // Test Management is a one-leaf group, so it resolves to the plain Test Cases link (id test-cases):
-    // hiding it by group id removes it either way.
-    expect(ids(resolved)).toEqual(['defects', 'home', 'projects', 'my-work', 'test-execution', 'admin'])
+    expect(ids(resolved)).toEqual(['defects', 'home', 'my-work', 'projects', 'test-runs', 'admin'])
   })
 
   it('never hides a core entry, even from a hand-edited config, and ignores unknown ids', () => {
@@ -67,14 +65,14 @@ describe('sidebar defaults (applyNavConfig)', () => {
     expect(fullNavOrder(['defects'])).toEqual([
       'defects',
       'home',
-      'projects',
       'my-work',
-      'test-management',
-      'test-execution',
+      'projects',
+      'test-cases',
+      'test-runs',
       'reports',
       'admin',
     ])
-    expect(NAV_REGISTRY.map(navEntryId)).toEqual(NAV_ENTRY_META.map((m) => m.id))
+    expect(NAV_REGISTRY.map((e) => e.id)).toEqual(NAV_ENTRY_META.map((m) => m.id))
   })
 })
 

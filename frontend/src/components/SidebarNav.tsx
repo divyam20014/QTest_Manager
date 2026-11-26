@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink, History, Star, X } from 'lucide-react'
+import { ChevronDown, History, Star, X } from 'lucide-react'
 import {
   type ComponentType,
   type ReactNode,
@@ -15,16 +15,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { PIN_ICON } from '@/components/pinIcons'
 import { useAuth } from '@/lib/auth'
 import { navBadgeLabel, navBadgeText } from '@/lib/navBadges'
-import {
-  type BadgeCounts,
-  type NavGroup,
-  type NavLeaf,
-  type ResolvedEntry,
-  activeGroupId,
-  isGroupActive,
-  isLeafActive,
-  leafBadge,
-} from '@/lib/navRegistry'
+import { type BadgeCounts, type NavLeaf, isLeafActive, leafBadge } from '@/lib/navRegistry'
 import { PIN_TYPE_LABEL, type PinnedItem, pinKey } from '@/lib/pinnedItems'
 import { useFavourites } from '@/lib/useFavourites'
 import { useRecents } from '@/lib/useRecents'
@@ -61,11 +52,11 @@ function readOpenState(key: string | null): Record<string, boolean> {
 }
 
 /**
- * Open/closed state of the groups and the Favourites / Recent sections, remembered per
- * tenant and user. Everything is open until the user closes it. Storage failures just mean
- * the state is not remembered across reloads.
+ * Open/closed state of the Favourites / Recent sections, remembered per tenant and user.
+ * Both are open until the user closes them. Storage failures just mean the state is not
+ * remembered across reloads.
  */
-function useOpenState(autoOpenId: string | null) {
+function useOpenState() {
   const { user } = useAuth()
   const key = user ? `qtesthub:nav-groups:${user.tenant_id}:${user.user_id}` : null
   const [store, setStore] = useState(() => ({ key, data: readOpenState(key) }))
@@ -90,13 +81,6 @@ function useOpenState(autoOpenId: string | null) {
     },
     [key],
   )
-
-  // The group holding the current page opens when you arrive there (including by URL).
-  // Only the route triggers this, so closing it by hand sticks until you navigate again.
-  const { pathname } = useLocation()
-  useEffect(() => {
-    if (autoOpenId) setOpen(autoOpenId, true)
-  }, [pathname, autoOpenId, setOpen])
 
   return { isOpen: (id: string) => data[id] !== false, setOpen }
 }
@@ -192,57 +176,38 @@ export function SidebarLink({
           {badge}
         </span>
       )}
-      {item.newTab && !collapsed && <ExternalLink className="ml-auto size-3 shrink-0 opacity-70" aria-hidden="true" />}
-      {item.newTab && <span className="sr-only"> (opens in a new tab)</span>}
     </>
   )
 
   const cls = rowClass({ rail: collapsed, active, className })
   return (
     <>
-      {item.newTab ? (
-        <a
-          ref={ref as Ref<HTMLAnchorElement>}
-          href={item.to}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={collapsed ? `${badgedLabel} (opens in a new tab)` : undefined}
-          data-testid={`nav-${item.id}`}
-          className={cls}
-          {...events}
-        >
-          {content}
-        </a>
-      ) : (
-        <Link
-          ref={ref as Ref<HTMLAnchorElement>}
-          to={item.to}
-          aria-label={collapsed ? badgedLabel : undefined}
-          aria-current={active ? 'page' : undefined}
-          data-testid={`nav-${item.id}`}
-          className={cls}
-          {...events}
-        >
-          {content}
-        </Link>
-      )}
+      <Link
+        ref={ref as Ref<HTMLAnchorElement>}
+        to={item.to}
+        aria-label={collapsed ? badgedLabel : undefined}
+        aria-current={active ? 'page' : undefined}
+        data-testid={`nav-${item.id}`}
+        className={cls}
+        {...events}
+      >
+        {content}
+      </Link>
       {collapsed && <RailTooltip tip={tip} label={badgedLabel} />}
     </>
   )
 }
 
-// ---- icon-rail flyout (groups, favourites, recent) -------------------------------
+// ---- icon-rail flyout (favourites, recent) ---------------------------------------
 
 function RailFlyout({
   icon: IconCmp,
   label,
-  active,
   testId,
   children,
 }: {
   icon: Icon
   label: string
-  active?: boolean
   testId?: string
   children: ReactNode
 }) {
@@ -299,10 +264,9 @@ function RailFlyout({
         aria-expanded={open}
         aria-haspopup="true"
         aria-controls={open ? panelId : undefined}
-        aria-current={active ? 'true' : undefined}
         data-testid={testId}
         onClick={toggle}
-        className={rowClass({ rail: true, active })}
+        className={rowClass({ rail: true })}
         {...tipState.events}
       >
         <IconCmp className="size-4 shrink-0" aria-hidden="true" />
@@ -322,71 +286,6 @@ function RailFlyout({
           {children}
         </div>
       )}
-    </div>
-  )
-}
-
-// ---- an expandable group ------------------------------------------------------------
-
-function SidebarGroup({
-  group,
-  collapsed,
-  counts,
-  open,
-  onToggle,
-}: {
-  group: NavGroup
-  collapsed: boolean
-  counts: BadgeCounts
-  open: boolean
-  onToggle: (open: boolean) => void
-}) {
-  const { pathname } = useLocation()
-  const panelId = useId()
-  const holdsActive = isGroupActive(group, pathname)
-
-  if (collapsed) {
-    return (
-      <RailFlyout icon={group.icon} label={group.label} active={holdsActive} testId={`nav-group-${group.id}`}>
-        {group.items.map((leaf) => (
-          <SidebarLink key={leaf.id} item={leaf} collapsed={false} counts={counts} />
-        ))}
-      </RailFlyout>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-0.5">
-      {/* A toggle, never a link: it only opens and closes its list. */}
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        data-testid={`nav-group-${group.id}`}
-        onClick={() => onToggle(!open)}
-        className={rowClass({ className: cn('font-medium', !open && holdsActive && 'text-white') })}
-      >
-        <group.icon className="size-4 shrink-0" aria-hidden="true" />
-        <span className="truncate">{group.label}</span>
-        <ChevronDown
-          aria-hidden="true"
-          className={cn(
-            'ml-auto size-3.5 shrink-0 text-[var(--sidebar-foreground-muted)] transition-transform duration-150 motion-reduce:transition-none',
-            !open && '-rotate-90',
-          )}
-        />
-      </button>
-      <ul
-        id={panelId}
-        hidden={!open}
-        className="ml-3.5 flex flex-col gap-0.5 border-l border-[var(--sidebar-border)] pl-1"
-      >
-        {group.items.map((leaf) => (
-          <li key={leaf.id}>
-            <SidebarLink item={leaf} collapsed={false} counts={counts} className="gap-2 px-2" />
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }
@@ -505,14 +404,13 @@ export function SidebarNav({
   counts,
   announcement,
 }: {
-  entries: ResolvedEntry[]
+  entries: NavLeaf[]
   collapsed: boolean
   counts: BadgeCounts
   /** Polite live-region text for badge changes. */
   announcement: string
 }) {
-  const { pathname } = useLocation()
-  const { isOpen, setOpen } = useOpenState(activeGroupId(entries, pathname))
+  const { isOpen, setOpen } = useOpenState()
   const favourites = useFavourites()
   const recents = useRecents()
 
@@ -524,20 +422,9 @@ export function SidebarNav({
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         {announcement}
       </div>
-      {entries.map((entry) =>
-        entry.kind === 'link' ? (
-          <SidebarLink key={entry.item.id} item={entry.item} collapsed={collapsed} counts={counts} />
-        ) : (
-          <SidebarGroup
-            key={entry.group.id}
-            group={entry.group}
-            collapsed={collapsed}
-            counts={counts}
-            open={isOpen(entry.group.id)}
-            onToggle={(v) => setOpen(entry.group.id, v)}
-          />
-        ),
-      )}
+      {entries.map((item) => (
+        <SidebarLink key={item.id} item={item} collapsed={collapsed} counts={counts} />
+      ))}
       {(favourites.items.length > 0 || recents.items.length > 0) && (
         <hr aria-hidden="true" className="mx-2 my-2 border-0 border-t border-[var(--sidebar-border)]" />
       )}

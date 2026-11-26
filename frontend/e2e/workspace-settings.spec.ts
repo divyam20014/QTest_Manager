@@ -67,7 +67,6 @@ const viewSwitch = (page: Page) => page.getByRole('group', { name: 'View', exact
 const sidebarOrder = (page: Page) =>
   sidebar(page)
     .getByRole('link')
-    .or(sidebar(page).getByRole('button', { name: /Test Execution|Reports & Analytics/ }))
     .allInnerTexts()
     .then((names) => names.map((n) => n.replace(/\s+/g, ' ').trim()))
 
@@ -90,13 +89,14 @@ test('admin changes the defaults on the Workspace page', async ({ browser }) => 
   for (const name of ['Dashboard', 'Projects', 'My Work', 'Admin']) {
     await expect(page.getByRole('checkbox', { name: `Show ${name}`, exact: true })).toHaveCount(0)
   }
+  const tabOrder = page.getByRole('list', { name: 'Project tab order' })
   for (const name of ['Overview', 'Requirements', 'Test Runs', 'Reports', 'Settings']) {
-    await expect(page.getByRole('checkbox', { name: `Show ${name}`, exact: true })).toHaveCount(0)
+    await expect(tabOrder.getByRole('checkbox', { name: `Show ${name}`, exact: true })).toHaveCount(0)
   }
 
   const order = page.getByRole('list', { name: 'Sidebar entry order' })
   for (let i = 0; i < 3; i++) await order.getByRole('button', { name: 'Move Defects up' }).click()
-  await order.getByRole('checkbox', { name: 'Show Reports & Analytics' }).uncheck()
+  await order.getByRole('checkbox', { name: 'Show Reports', exact: true }).uncheck()
   await page.getByRole('checkbox', { name: 'Show Releases', exact: true }).uncheck()
   await page.getByRole('checkbox', { name: 'Show Team', exact: true }).uncheck()
   await page.getByRole('checkbox', { name: 'Board view for Defects' }).uncheck()
@@ -106,7 +106,7 @@ test('admin changes the defaults on the Workspace page', async ({ browser }) => 
   await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
 
   // The admin's own sidebar follows immediately (the cached query was updated by the save).
-  await expect(sidebar(page).getByRole('button', { name: /Reports & Analytics/ })).toHaveCount(0)
+  await expect(sidebar(page).getByRole('link', { name: 'Reports', exact: true })).toHaveCount(0)
   await shot(page, 'workspace-saved-sidebar')
   await ctx.close()
 })
@@ -117,7 +117,6 @@ for (const who of ['manager', 'tester'] as const) {
     await signIn(page, who)
     // Sidebar: Reports is gone, Defects moved up above Test Cases (DOM and visual order).
     await expect(sidebar(page).getByRole('link', { name: /^Defects/ })).toBeVisible()
-    await expect(sidebar(page).getByRole('button', { name: /Reports & Analytics/ })).toHaveCount(0)
     await expect(sidebar(page).getByRole('link', { name: 'Reports', exact: true })).toHaveCount(0)
     const defectsBox = await sidebar(page).getByRole('link', { name: /^Defects/ }).boundingBox()
     const casesBox = await sidebar(page).getByRole('link', { name: 'Test Cases' }).boundingBox()
@@ -189,7 +188,6 @@ test('the phone menu follows the workspace defaults too', async ({ browser }) =>
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'More' }).click()
   const sheet = page.getByRole('dialog', { name: 'More' })
   // Reports is hidden by the workspace defaults; what stays is still listed (Defects is a bottom tab).
-  await expect(sheet.getByText('Reports & Analytics')).toHaveCount(0)
   await expect(sheet.getByRole('link', { name: 'Reports', exact: true })).toHaveCount(0)
   await expect(sheet.getByRole('link', { name: 'My Work' })).toBeVisible()
   await shot(page, 'workspace-more-375-dark')
@@ -247,7 +245,7 @@ test('reset restores everything for everyone', async ({ browser }) => {
 
   const { ctx, page } = await newPage(browser)
   await signIn(page, 'manager')
-  await expect(sidebar(page).getByRole('button', { name: /Reports & Analytics/ })).toBeVisible()
+  await expect(sidebar(page).getByRole('link', { name: 'Reports', exact: true })).toBeVisible()
   await page.goto(`/projects/${t.projectId}`)
   await expect(tabs(page).getByRole('link', { name: 'Releases' })).toBeVisible()
   await expect(tabs(page).getByRole('link', { name: 'Team' })).toBeVisible()
