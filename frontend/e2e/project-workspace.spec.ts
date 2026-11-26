@@ -250,7 +250,7 @@ test('settings: reorder with buttons and keyboard, hide optional tabs, save, rel
     await page.goto(`/projects/${betaId}/settings`)
     await expect(page.getByRole('heading', { level: 2, name: 'Project navigation' })).toBeVisible()
     const rows = page.getByRole('list', { name: 'Project tab order' }).getByRole('listitem')
-    await expect(rows).toHaveCount(12)
+    await expect(rows).toHaveCount(11)
     // Core tabs and Settings cannot be hidden: no checkbox for them.
     for (const fixed of ['Overview', 'Test Cases', 'Test Runs', 'Defects', 'Reports', 'Settings']) {
       await expect(page.getByRole('checkbox', { name: `Show ${fixed} tab` })).toHaveCount(0)

@@ -163,7 +163,8 @@ test('project dashboard: default tab, scoped numbers, tabs, details, breadcrumb,
   // "Report defect" lands on the defect form with this project preselected.
   if (perms.includes('defect.create')) {
     await tm.getByRole('link', { name: 'Report defect' }).click()
-    await expect(tm).toHaveURL(new RegExp(`/defects/new[?]projectId=${t.projectId}`))
+    // ADR-127: the creation form lives inside the project, so the URL names it in the path.
+    await expect(tm).toHaveURL(new RegExp(`/projects/${t.projectId}/defects/new$`))
     await expect(tm.getByRole('heading', { name: 'New Defect', level: 1 })).toBeVisible()
     await expect(tm.getByRole('combobox', { name: /^Project/ })).toContainText('Apex Motor Claims')
   }
