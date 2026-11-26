@@ -931,7 +931,10 @@ def _enrich(db, tenant, admin):
                 db.commit()
             if finished:
                 _ctx(db, tenant)
-                execution_service.finish_test_run(db, tenant.id, owner.id, run.id)
+                # A run whose cases all pass has already finished itself (ADR-070).
+                if db.scalar(select(TestRun.finished_at).where(TestRun.id == run.id)) is None:
+                    _ctx(db, tenant)
+                    execution_service.finish_test_run(db, tenant.id, owner.id, run.id)
                 _ctx(db, tenant)
                 _backdate(db, TestRun, run.id, finished_at=run_day + timedelta(days=2, hours=8))
                 db.commit()
