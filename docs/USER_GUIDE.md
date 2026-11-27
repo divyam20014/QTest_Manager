@@ -29,16 +29,13 @@ and do. It is set by your Admin and is not something you change yourself.
 ### Finding your way around
 
 Everything starts from the **sidebar** on the left (a bottom bar with a **More**
-menu on a phone). It lists **Dashboard**, **Projects**, **My Work**, **Test
-Cases**, **Test Execution** (Test Runs, Execution Console), **Defects**,
-**Reports & Analytics** (Reports, Compliance Reports) and **Admin**. (An admin
-sees the Test Cases entry as "Test Management" in Admin > Workspace; it is the
-same entry, shown as the plain Test Cases link while it holds one page.) **User Guide** and
-**Profile** sit at the bottom. A name with an arrow, such as Test Execution, is a
-group: select it to open or close its list. It stays open or closed the way you
-left it, and the group holding the page you are on opens by itself. Entries your
-role cannot open are not shown, and a group with only one visible entry shows as
-that entry. The small number beside **Defects** is your open defects and the one
+menu on a phone). It lists **Dashboard**, **My Work**, **Projects**, **Test
+Cases**, **Test Runs**, **Defects**, **Reports** and **Admin**. **User Guide** and
+**Profile** sit at the bottom. Entries your role cannot open are not shown. Two
+pages are reached from another page: the **Execution Console** from **Test Runs**
+or **My Work** (Test Runs stays highlighted while you are in it), and the
+compliance report from the **Compliance** tab of **Reports**. Search (Ctrl/Cmd+K)
+finds both. The small number beside **Defects** is your open defects and the one
 beside **My Work** is what is waiting on you (see below); both come from live
 data and are announced to screen readers when they change.
 
@@ -49,8 +46,8 @@ A quick map of where things live:
   project. Its header has a **project switcher** (search by name; your recent
   projects come first and you stay on the same tab where the other project has
   it), and its tabs hold the Overview dashboard, Tasks (with the requirements),
-  Test Cases, Test Runs, Planning, Releases, Defects, Reports, Team, Activity and
-  Settings.
+  Test Cases, Test Runs, Defects, Reports, Planning and Team. Activity and
+  project Settings open from the two icons in the header.
 - **The same records as a board or a calendar?** The **List / Board / Calendar**
   switch above Defects, Test Cases and Test Runs (see "Views" below).
 - **Something I use often?** Star it (Favourites) or find it under Recent.
@@ -58,9 +55,11 @@ A quick map of where things live:
 - **Changing the menus for everyone?** Admin > Workspace (admins only).
 
 Use the arrow button at the left of the header to shrink the sidebar to an icon
-rail. In the rail every entry has a tooltip, and a group opens a small panel
-with its entries (Enter or a click opens it, Escape closes it). On a phone the
-sidebar becomes a bottom bar with a **More** menu.
+rail. In the rail every entry has a tooltip. On a phone the sidebar becomes a
+bottom bar with **Dashboard**, **My Work**, **Projects**, **Defects** and
+**More**; Test Cases, Test Runs, Reports and Admin are under **More**. When a row
+of tabs is wider than the screen, an arrow at its edge shows there is more to
+swipe to.
 
 The header is one calm row: the sidebar button and the breadcrumb on the left
 (only the current page on a phone), one search field in the middle, **+ New** (a
@@ -83,7 +82,9 @@ Cases in the sidebar) are unchanged.
 
 **My Work** is one page of what is waiting on you, with a tab each for **Run
 cases** (assigned to you and not finished, grouped as In progress, Failed -
-retest, Blocked and Not run; each one opens the Execution Console),
+retest, Blocked and Not run; each one opens the Execution Console), **Tasks**
+(tasks and sub-tasks assigned to you, from every project you can open, until
+they are done; overdue ones first, then by due date),
 **Defects** (open defects assigned to you or reported by you) and **Reviews**
 (test cases submitted for review with you named as the reviewer). It only reads
 data; nothing is stored for it. You see only what your role and project access
@@ -171,33 +172,47 @@ choosing one keeps you on the same tab when the other project has it, otherwise
 it opens that project's Overview.
 
 The tabs are **Overview**, **Tasks** (tasks, sub-tasks and the requirements in
-them), **Test Cases**, **Test Runs**, **Defects**, **Reports**, **Planning** (test suites and test plans),
-**Releases** (releases and builds; managers can edit a release's name, target
-date, status and notes), **Team** (members and project roles), **Activity**
-(what changed recently, plus the newest test cases and defects) and **Settings**
-(project details, tabs and deleting the project; only people who can edit the
-project see it). Small numbers beside Test Cases, Test Runs and Defects are the
-real counts (defects are the open ones). Defects and Reports open the usual
-Defects and Reports pages for this project, with the project header and tabs
-above them. When the tabs do not fit (a phone, a narrow window) the last ones
-move into a **More** menu; the tab you are on always stays visible. The old
-**Details** page (`/projects/{id}/details`) no longer exists as a page: its
-sections are now the Overview, Team, Planning, Releases, Activity and Settings
-tabs, and an old link or bookmark to it opens the project's Overview.
+them), **Test Cases**, **Test Runs**, **Defects**, **Reports**, **Planning** and
+**Team** (members and project roles). **Planning** has two sections: **Suites &
+plans** (test suites and test plans) and **Releases & builds** (managers can edit
+a release's name, target date, status and notes). Two icons in the project
+header open the rest: **Project activity** (what changed recently, plus the
+newest test cases and defects) and, for people who can edit the project,
+**Project settings** (project details, tabs and deleting the project). Small
+numbers beside Test Cases, Test Runs and Defects are the real counts (defects are
+the open ones). Defects and Reports open the usual Defects and Reports pages for
+this project, with the project header and tabs above them. When the tabs do not
+fit (a phone, a narrow window) the last ones move into a **More** menu; the tab
+you are on always stays visible. An old link to **Releases** opens that section
+of Planning. The old **Details** page (`/projects/{id}/details`) no longer exists
+as a page, and an old link or bookmark to it opens the project's Overview.
 
-**Choosing the tabs.** In **Settings > Project navigation**, a manager can move
-tabs up or down with the arrow buttons (they work from the keyboard, and the
-change is announced) and untick **Show** for Planning, Releases, Team or Activity.
-Requirements, Test Cases, Test Runs, Defects, Reports and Overview are always
-shown (they can be moved) and Settings always stays for people who can edit.
+**Choosing the tabs.** In **Project settings > Project navigation**, a manager can
+move tabs up or down with the arrow buttons (they work from the keyboard, and the
+change is announced) and untick **Show** for Tasks, Planning or Team. Overview,
+Test Cases, Test Runs, Defects and Reports are always shown (they can be moved).
 **Save tabs** stores it for everyone on that project; **Reset to defaults** puts
 the standard order back. A hidden tab is only left out of the tab row: its page
 still opens from a direct link, with a short note saying the tab is hidden (and a
 link to settings if you can edit), and nobody gains or loses access to any data.
 
+### The project header on smaller views
+
+On the page of a single record (a task, test case, run, defect or requirement)
+the project header shrinks to the project's name, the project switcher and the
+Activity and Settings icons. On a phone every project page except the Overview
+does the same, and the lists leave out their introduction, so records start
+higher.
+
 ### Test Cases
 
-Test Cases (in the sidebar) is where tests are written and kept. Each test case
+Test Cases (in the sidebar) is where tests are written and kept. The sidebar page
+covers every project, and each project also has a **Test Cases** tab; the columns
+they share come in the same order. On the sidebar page, **Views** saves your
+filters under a name (they are kept apart from a project tab's views), and
+**Export** appears once you choose one project in **Filters**. Filters you saved
+on this page before it had Views are copied into Views the first time you open
+it in that browser; the copy in the browser is left as it was. Each test case
 has a generated ID (`TC_000001`), is versioned (editing the steps or content
 creates a new version and the earlier ones stay viewable) and moves through a
 **Review Status**: Draft, Ready for Review, Approved or Deprecated. How a case
@@ -293,7 +308,9 @@ different options from the defaults.
 
 A test run is a set of test cases to execute, usually against one build and
 environment. **Test Runs** lists them. **Execution Console** (or **Execute** on
-a run) is where you work through one.
+a run) is where you work through one. To see every case waiting to be executed,
+open the console with the **Execution Console** button on **Test Runs**, or **Open
+the Execution Console** on **My Work**.
 
 1. Open a run assigned to you and open the first case. In the console, mark each
    step **Pass**, **Fail**, **Blocked** or **Ignore**, add notes, and attach
@@ -478,9 +495,10 @@ anyone whose role can view all projects, including custom roles.
 
 **Projects** lists every project. **New Project** creates one with a name,
 domain, priority, budget and timeline. In a project you manage members on the
-**Team** tab, builds and releases on **Releases**, suites and plans on
-**Planning**, and the project's own details, visible tabs and deletion on
-**Settings**. Keep the builds and environments current so runs can target them
+**Team** tab; builds, releases, suites and plans on **Planning**; and the
+project's own details, visible tabs and deletion in **Project settings** (the
+gear in the project header). Keep the builds and environments current so runs
+can target them
 (environments are maintained under Admin, see "For Admins").
 
 ### Tasks and sub-tasks
@@ -623,6 +641,12 @@ Linked test cases are given by their ids (`TC_000012; TC_000013`) and must exist
 project. Assignees are given by email and must be project members; assigning needs the
 assign permission, and importing a defect as Closed or Rejected needs the close permission.
 
+The last column, **Task**, is optional. Give a defect the id of one task in the project
+(`TASK_000012`). A test case can be linked to several (`TASK_000012; TASK_000013`), which
+needs the permission to manage tasks. An id that is not a task of the chosen project makes
+the row an error, so clear or replace the column when you move a file between projects.
+The older column-mapping import does not read this column.
+
 **Export** offers Excel or CSV with all fields, the columns shown in the list, or only the
 rows you selected. The exported file uses the template's headers, so it can be imported
 again as it is (the columns that only describe results, such as Execution Status or
@@ -658,7 +682,7 @@ effectiveness* is the rest; both read "No defects" when there is nothing to
 measure. The card lists open escaped defects by age and severity, a per-release
 table and a monthly trend, and exports to Excel.
 
-**Compliance** (also **Compliance Reports** in the sidebar) opens print-ready
+**Compliance** (a tab of **Reports**) opens print-ready
 compliance exports, available to roles that hold the compliance export
 permission.
 
@@ -829,15 +853,14 @@ page still opens from a direct link, and nobody gains or loses access to any
 data. People who may not open an area never see it, whatever you choose here.
 
 - **Sidebar**: the entries of the left sidebar, the phone menu and the command
-  palette. Untick **Show** to hide an entry (Test Management, Test Execution,
-  Defects, Reports & Analytics) and use the up and down buttons to put them in
+  palette. Untick **Show** to hide an entry (Test Cases, Test Runs, Defects,
+  Reports) and use the up and down buttons to put them in
   order. Dashboard, Projects, My Work and Admin are always shown. Each person
   keeps their own favourites and recent items.
-- **Project tabs**: the default tabs of a project (Planning, Releases, Team and
-  Activity can be hidden; Overview, Requirements, Test Cases, Test Runs, Defects,
-  Reports and Settings are always there), and their order. A project that was
-  given its own tabs in Project settings keeps them; every other project follows
-  this default.
+- **Project tabs**: the default tabs of a project (Tasks, Planning and Team can
+  be hidden; Overview, Test Cases, Test Runs, Defects and Reports are always
+  there), and their order. A project that was given its own tabs in Project
+  settings keeps them; every other project follows this default.
 - **List views**: whether the Board (Defects, Test cases, Test runs) and the
   Calendar (Test runs) are offered. The list view is always available; a list
   with only the list view shows no view switch.

@@ -1933,3 +1933,57 @@ Every figure but the tree is under 350 ms. The tree is the slowest because it se
 **Not done, and why.** A project-wide list of every requirement was not kept: the task tree, the matrix, search and the report builder cover it. Removing the entity (option C in the plan) was rejected for the loss described above. The downgrade makes the column nullable again and drops the flag but leaves the default tasks, which are ordinary tasks.
 
 **Consequences.** A project that had loose requirements shows one extra task and counts it in task totals and roll-ups. Anything that creates a requirement must go through `requirement_service.create_requirement` (it is the only creator); any new code that deletes tasks must move their requirements to the default task as `delete_task` does.
+
+## ADR-129: Tasks in My Work, and a Task column in import and export
+
+**Context.** Tasks have assignees and due dates (ADR-127), but My Work did not show them, and neither CSV nor Excel carried the link between a record and its task.
+
+**Decision.** `GET /my-work/tasks` lists the caller's tasks that are not in a `done` category, using the same project visibility as the rest of My Work, which matches the rule for opening a task; the summary counts and the sidebar badge include them. The standard import and export gain one last, optional `Task` column that holds task display ids, which are unambiguous where titles are not. A defect takes one id (`defects.task_id`); a test case takes several (`task_test_case_links`). Import never does more than the task page allows: an id outside the project is a row error, and linking a test case needs `task.manage`, including a project role override. Each imported link is recorded in the task's history.
+
+**Not done.** The legacy 11/13-column import and the column-mapping import do not read the column. A file moved to another project reports its task ids as errors rather than dropping them silently. Conditional access rules on `task.manage` are evaluated on the task routes only, not per imported row.
+
+## ADR-130: A flat sidebar
+
+**Context.** The sidebar had three groups, one of which held a single page. The Execution Console and the compliance report had entries of their own although each belongs to another page, and the compliance entry opened a new tab.
+
+**Decision.** The sidebar is one list: Dashboard, My Work, Projects, Test Cases, Test Runs, Defects, Reports, Admin. The group code is removed. The Execution Console is opened from Test Runs and from My Work, and counts as part of Test Runs for highlighting; the compliance report is the Compliance tab of Reports, and a person who may only export it still gets a Reports link that leads there. Both stay in the command palette. A saved workspace layout (ADR-125) that names a former group id is translated on read. This matters because a document that fails validation is ignored whole, so without it removing an id would silently reset a tenant's sidebar, tabs and view modes.
+
+**Consequences.** Before an entry's id is removed or renamed in future, it needs the same translation (`RENAMED_NAV_ENTRY_KEYS` in `schemas/workspace.py`). The Execution Console must keep a link from Test Runs: it has no sidebar entry.
+
+## ADR-131: Eight project tabs
+
+**Context.** The project strip had eleven tabs. Releases and Planning are two halves of one subject, Settings duplicated the gear already in the header, and Activity is occasional reading.
+
+**Decision.** The tabs are Overview, Tasks, Test Cases, Test Runs, Defects, Reports, Planning and Team. Releases and builds are the second section of Planning; `/projects/:id/releases` redirects there. Settings and Activity are icon links in the project header, which mark themselves when current. Activity is there for everyone and no longer depends on an Overview widget or a tab layout. Team stays a tab: the page is open to people who may not edit the project, whereas Settings is not.
+
+The merged tab has a new key, `planning`, so that old and new layouts cannot be confused: an old layout hiding only `test-plans` keeps Planning visible, because Releases was visible, while a new one hiding `planning` hides it. `NavConfig` translates old keys before validating. This is required, not a courtesy: a project's `nav_config` is validated every time the project is read, so refusing a stored key would make the project, and the project list, fail to load.
+
+**Consequences.** Activity can no longer be hidden. A later removal or rename of a tab key needs the same translation (`MERGED_NAV_KEYS` / `REMOVED_NAV_KEYS` in `schemas/project.py`).
+
+## ADR-132: Two Test Cases pages that behave alike
+
+**Context.** The all-projects page and a project's Test Cases tab share a title but ordered their shared columns differently, saved filters in different places, and only the tab could export.
+
+**Decision.** The pages stay separate; merging them would risk the features only one has (bulk priority and assignee there, the board and the module filters here). The shared columns now come in the same order. The all-projects page uses saved views, stored per user on the server under their own list key, `test_repository`: its filters differ from the tab's, and a default view on one must not apply to the other. Migration `a7c9e1f3b5d8` adds the key to the table's check. Export is offered when one project is chosen, with the tab's four choices; the export API is per project.
+
+Filters saved by the old control lived only in the browser. Each user's first visit copies them into their views. The originals are not removed, so a failed or partial copy loses nothing, a second person on the same browser gets their own copy, and names already copied are remembered so that deleting a view does not bring it back.
+
+**Not done.** Exporting across all projects at once needs a new endpoint.
+
+## ADR-133: Less above the first record, and the phone bar
+
+**Context.** On a 390x844 screen the project header, tabs and page introduction pushed every row of the task and defect lists off the first screen. The phone bar offered Test Cases and Runs but neither My Work nor Projects.
+
+**Decision.** A record's page shows a compact project header (name, switcher, Activity, Settings) at every width; on phones every project page but the Overview does. Lists leave out their back link and description on phones, Export shares a row with the other actions, and Tasks drops the column picker that cards ignore. The bar is Dashboard, My Work (with its pending count), Projects, Defects and More; Test Cases and Test Runs are in More. A tab row that overflows is faded with an arrow on that side, and the selected tab is scrolled into view, again when late counts widen the tabs.
+
+**Consequences.** On a phone the Execution Console is More, Test Runs, then its button. The first record's title is visible without scrolling on the task, defect and test case lists; its whole card is not always.
+
+## ADR-134: Browser tests get a stack of their own
+
+**Context.** By default the browser tests ran against the development app and its database. They create tenants and platform admins, enter wrong authenticator codes on purpose against the platform admin's address, and one helper edits rows with `psql`, with the database name written in. Playwright reused whatever already answered on port 5173. A developer's real data and real admin account were one `npm run test:e2e` away.
+
+**Decision.** `npm run test:e2e` runs `scripts/run_e2e.py`, which creates the database `qtesthub_e2e`, migrates it, seeds the test platform admin, starts an API, a worker and a web server from the working tree on ports 8100 and 5175, runs Playwright and removes it all. It refuses to start if either port is taken or a test file names the development ports or database, and it confirms the web server calls the test API before any test runs. `e2e/target.ts` is the only place the tests get addresses and the database name from. The Playwright config and the shared fixtures both refuse to load unless the runner started the stack, and refuse ports 5173 and 8000, other computers and any database that is not a throwaway one. There is no override.
+
+Migrations set the passwords of the database roles, which are shared by the whole Postgres server. The runner reads the real ones from Docker's resolved configuration and migrates with them, so a test run cannot lock the development app out of its database. It also sets mail, error reporting and file storage to local or off, whatever the shell or a `.env` file says.
+
+**Consequences.** Running the tests no longer needs a Docker rebuild. `npx playwright test` on its own, including from an editor extension, stops with an explanation. The checks stop mistakes, not someone deliberately working round them. The backend tests (`pytest`) already use their own database, but migrate it with the default role passwords, which would change the passwords of a server that uses others.
