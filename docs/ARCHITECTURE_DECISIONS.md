@@ -2053,3 +2053,15 @@ The version is not `version_number`: an edit to a draft keeps that number.
 **Decision.** No template tables. `template_project_id` on creation copies that project's tab layout and module tree, from any project the user may open, archived ones included. Nothing else is copied.
 
 **Consequences.** There is no protected "template" record: changing the source changes what later copies receive.
+
+## ADR-143: One access decision per project; QA Lead, Developer and Viewer
+
+**Context.** A project role override changed only some route checks. Service rules and most routes used the organization role, so a restrictive project role often did not restrict (a Manager made Tester on a project could still edit it and lift the restriction), a permissive one worked in part, and any role, Admin included, could be handed out by whoever managed members. Reproduced in tests before the change. AI test case generation did not require `testcase.create`.
+
+**Decision.** `core/project_access.py` answers what a user may do on a project: the project role, if set, replaces both permission codes and access tier. The answer is computed when the request context is built, from the project the request is about, so route checks and the tier rules inside services read the same thing. The project comes from path parameters; `?project_id=` counts only for reads whose path names none, so it cannot be used to act under another project's role; records of two projects with different answers are refused. Actions that name the project elsewhere ask for it explicitly: creating a defect, bulk edits, bulk module moves and both imports. Every path parameter must be listed as naming a project or not, enforced by a test.
+
+Organization permissions are never changed by a project role, and an organization Admin is never restricted. A project role never yields the Admin tier, and Admin can no longer be assigned as one. Except for an Admin, nobody changes their own project role or removes themselves while they have one, and assigning or clearing a role needs every project permission it would give.
+
+New permission `record.contribute` covers comments, attachments, custom values and AI actions on records; the migration (`f5b7d9e1a3c4`) gives it to every existing role. AI generation also needs `testcase.create`, and recording a retest result `testcase.execute`. New system roles: QA Lead (Manager tier), Developer and Viewer (Tester tier). `python -m scripts.report_role_changes` lists who an upgrade affects. The matrix is in `docs/product-expansion/QTESTHUB_PHASE1E_PERMISSIONS.md`.
+
+**Consequences.** A custom role created from now on must be given `record.contribute` to comment. Lists and reports that span all projects use the organization role; filtered to one project (`?project_id=`), they use that project's role. The interface still decides which buttons to show from the organization role, so a button may be shown that the server refuses, or hidden although a project role allows it. A Developer can still move a defect to Verified through the status workflow, which needs only `defect.change_status`: R-8 covers retest results only.

@@ -1,6 +1,7 @@
 import csv
 import io
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -25,6 +26,7 @@ from app.core.field_standards import (
 )
 from app.core.import_columns import TEST_CASE_COLUMNS
 from app.core.import_steps import format_steps
+from app.core.project_access import access_for_project
 from app.core.text_sanitize import clean_plain, sanitize_markdown
 from app.models.defect import Defect, DefectLink
 from app.models.identity import User
@@ -357,6 +359,22 @@ def import_test_cases_mapped(
     return _import_test_case_rows(db, tenant_id, role_code, actor_user_id, canonical_rows)
 
 
+def _import_check(
+    db: Session, user_id: UUID, org_tier: str, needed: tuple[str, ...]
+) -> Callable[[UUID], bool]:
+    """ADR-143: whether the importer's role on a project allows the import. Without a
+    project role there, the route's organization-wide check has already decided."""
+    answers: dict[UUID, bool] = {}
+
+    def allowed(project_id: UUID) -> bool:
+        if project_id not in answers:
+            _, permissions = access_for_project(db, user_id, org_tier, {*needed}, project_id)
+            answers[project_id] = bool(permissions.intersection(needed))
+        return answers[project_id]
+
+    return allowed
+
+
 def _import_test_case_rows(
     db: Session,
     tenant_id: UUID,
@@ -382,6 +400,9 @@ def _import_test_case_rows(
             select(User).where(User.tenant_id == tenant_id, User.is_active.is_(True))
         ).scalars()
     }
+    case_rows_allowed = _import_check(
+        db, actor_user_id, role_code, ("testcase.bulk_import_export", "testcase.create")
+    )
     assigned_project_ids: set[UUID] = set()
     if role_code == "tester":
         assigned_project_ids = set(
@@ -557,6 +578,8 @@ def _import_test_case_rows(
             and project.id not in assigned_project_ids
         ):
             errors.append(f"You are not assigned to project '{project_name}'.")
+        elif not case_rows_allowed(project.id):
+            errors.append(f"Your role on project '{project_name}' does not allow this import.")
         elif title:
             dedup_key = (project.id, title.lower())
             if dedup_key in existing_titles:
@@ -1025,6 +1048,9 @@ def import_defects(
             select(User).where(User.tenant_id == tenant_id, User.is_active.is_(True))
         ).scalars()
     }
+    defect_rows_allowed = _import_check(
+        db, actor_user_id, role_code, ("defect.create", "defect.import")
+    )
     assigned_project_ids: set[UUID] = set()
     if role_code == "tester":
         assigned_project_ids = set(
@@ -1125,6 +1151,8 @@ def import_defects(
             and project.id not in assigned_project_ids
         ):
             errors.append(f"You are not assigned to project '{project_name}'.")
+        elif not defect_rows_allowed(project.id):
+            errors.append(f"Your role on project '{project_name}' does not allow this import.")
 
         severity = (row.get("Severity") or "").strip()
         if severity not in valid_severities:

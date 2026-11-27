@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -15,9 +15,15 @@ from app.core.policy import (
     enforce_mfa_verified,
     resolve_project_id_for_resource,
 )
+from app.core.project_access import (
+    SYSTEM_TIERS,
+    access_for_project,
+    access_for_request,
+    projects_of_request,
+    tier_of,
+)
 from app.models.identity import Permission, Role, RolePermission, User
 from app.models.identity import Session as SessionModel
-from app.models.project import ProjectMember
 from app.models.tenant import Tenant
 
 settings = get_settings()
@@ -41,6 +47,15 @@ class SessionContext:
     role_code: str
     display_role: str
     permissions: set[str]
+    # ADR-143: `role_code` and `permissions` describe the project the request is about,
+    # if it is about one. These keep the organization-wide answer.
+    org_role_code: str = ""
+    org_permissions: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        if not self.org_role_code:
+            self.org_role_code = self.role_code
+            self.org_permissions = set(self.permissions)
 
 
 def client_ip(request: Request) -> str | None:
@@ -73,9 +88,6 @@ def parse_session_cookie(request: Request) -> UUID:
         raise UnauthorizedError("Invalid session") from exc
 
 
-_SYSTEM_ROLE_CODES = ("admin", "manager", "tester")
-
-
 def _load_role_and_permissions(
     db: Session, tenant_id: UUID, user_id: UUID
 ) -> tuple[str, str, set[str]]:
@@ -97,17 +109,11 @@ def _load_role_and_permissions(
         .all()
     )
 
-    if role_row.code in _SYSTEM_ROLE_CODES:
-        effective_role_code = role_row.code
-        display_role = role_row.code
-    else:
-        # ADR-059: a custom role maps onto whichever existing access tier
-        # its permissions match most closely, so it composes with every
-        # pre-existing hardcoded role_code comparison in the codebase.
-        effective_role_code = "manager" if "project.view.all" in permission_codes else "tester"
-        display_role = role_row.name
+    # A system role outside the three tiers (QA Lead, Developer, Viewer) and a custom
+    # role are shown by name and mapped onto a tier.
+    display_role = role_row.code if role_row.code in SYSTEM_TIERS else role_row.name
 
-    return effective_role_code, display_role, permission_codes
+    return tier_of(role_row.code, permission_codes), display_role, permission_codes
 
 
 def get_current_context(request: Request, db: Session = Depends(get_db)) -> SessionContext:
@@ -151,14 +157,33 @@ def get_current_context(request: Request, db: Session = Depends(get_db)) -> Sess
         db, session_row.tenant_id, session_row.user_id
     )
 
+    # ADR-143: if the request is about a project where this user has a project role, that
+    # role decides, both for the route's check and for the rules inside services.
+    projects = projects_of_request(
+        db, request.method, request.path_params, request.query_params.get("project_id")
+    )
+    effective_role, effective_permissions = access_for_request(
+        db, session_row.user_id, role_code, permissions, projects
+    )
+
     return SessionContext(
         session_id=session_row.id,
         tenant_id=session_row.tenant_id,
         user_id=session_row.user_id,
-        role_code=role_code,
+        role_code=effective_role,
         display_role=display_role,
-        permissions=permissions,
+        permissions=effective_permissions,
+        org_role_code=role_code,
+        org_permissions=permissions,
     )
+
+
+def context_for_project(db: Session, ctx: SessionContext, project_id: UUID) -> SessionContext:
+    """The context for a project the request names somewhere other than its path."""
+    role_code, permissions = access_for_project(
+        db, ctx.user_id, ctx.org_role_code, ctx.org_permissions, project_id
+    )
+    return replace(ctx, role_code=role_code, permissions=permissions)
 
 
 def require_permission(code: str):
@@ -178,38 +203,8 @@ def require_permission(code: str):
 def get_effective_permissions_for_project(
     db: Session, ctx: SessionContext, project_id: UUID
 ) -> set[str]:
-    """RBAC Phase 1 (project-level role scoping): if this member has a
-    project-scoped role override (`project_members.role_id`), their
-    permissions FOR ACTIONS SCOPED TO THIS PROJECT come from that role
-    instead of their tenant-wide role. No override (the default -- every
-    member until an admin/manager explicitly sets one) means this returns
-    `ctx.permissions` unchanged, so behavior for the overwhelming majority
-    of users is identical to before this feature existed.
-
-    This only generalizes the FastAPI permission *gate* -- it does not
-    change `ctx.role_code`, so deeper service-layer logic that branches on
-    role_code (e.g. manager-assigned-or-admin checks) still uses the
-    tenant-wide role. Extending the override to that layer is a
-    deliberately deferred, separately-scoped follow-up, not part of this
-    phase.
-    """
-    override_role_id = db.execute(
-        select(ProjectMember.role_id).where(
-            ProjectMember.project_id == project_id, ProjectMember.user_id == ctx.user_id
-        )
-    ).scalar_one_or_none()
-    if override_role_id is None:
-        return ctx.permissions
-
-    return set(
-        db.execute(
-            select(Permission.code)
-            .join(RolePermission, RolePermission.permission_id == Permission.id)
-            .where(RolePermission.role_id == override_role_id)
-        )
-        .scalars()
-        .all()
-    )
+    """The user's permission codes for records of this project (ADR-143)."""
+    return context_for_project(db, ctx, project_id).permissions
 
 
 def require_project_permission(code: str):

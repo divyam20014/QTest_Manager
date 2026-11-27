@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import (
     SessionContext,
+    context_for_project,
     get_current_context,
-    get_effective_permissions_for_project,
     require_project_permission,
     require_resource_permission,
 )
@@ -285,6 +285,11 @@ def compare_versions(
     return envelope(result.model_dump(mode="json"))
 
 
+def _access_on(db: Session, ctx: SessionContext, project_id: UUID) -> tuple[str, set[str]]:
+    effective = context_for_project(db, ctx, project_id)
+    return effective.role_code, effective.permissions
+
+
 @router.post("/test-cases/bulk-update")
 def bulk_update_test_cases(
     req: TestCaseBulkUpdateRequest,
@@ -300,8 +305,7 @@ def bulk_update_test_cases(
         ctx.role_code,
         ctx.user_id,
         req,
-        can_edit=lambda project_id: "testcase.edit"
-        in get_effective_permissions_for_project(db, ctx, project_id),
+        access=lambda project_id: _access_on(db, ctx, project_id),
     )
     return envelope(result.model_dump(mode="json"))
 
@@ -407,12 +411,10 @@ def delete_test_case(
 ) -> dict:
     """ADR-116: soft delete. Needs `testcase.delete`; a Tester-tier caller without it
     may still delete their own draft (unchanged behaviour)."""
-    case = test_case_service.get_test_case(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
-    )
-    can_delete = "testcase.delete" in get_effective_permissions_for_project(
-        db, ctx, case.project_id
-    )
+    # Refuses a case the caller cannot open before anything else.
+    test_case_service.get_test_case(db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id)
+    # ADR-143: `ctx` already describes the case's project.
+    can_delete = "testcase.delete" in ctx.permissions
     test_case_service.delete_test_case(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, can_delete=can_delete
     )

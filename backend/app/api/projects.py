@@ -186,6 +186,8 @@ def set_member_role(
     db: Session = Depends(get_db),
 ) -> dict:
     project = project_service.set_member_role(
-        db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id, user_id, req.role_id
+        db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id, user_id, req.role_id,
+        actor_permissions=ctx.permissions,
+        actor_is_org_admin=ctx.org_role_code == "admin"
     )
     return envelope(project_service.to_out(db, project).model_dump(mode="json"))

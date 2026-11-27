@@ -1,6 +1,6 @@
 # Phase 1E: Project roles and new roles (for approval)
 
-Status: **proposal. Nothing in this document is built.** It changes who can do what, so the roadmap requires approval first. Marks as in [Current state](QTESTHUB_CURRENT_STATE.md): **[V]** verified, **[R]** recommended, **[U]** unknown.
+Status: **approved by the product owner and built on 2026-11-27** (ADR-143), with all five recommendations. Sections 1 and 2 describe the earlier behaviour. Marks as in [Current state](QTESTHUB_CURRENT_STATE.md): **[V]** verified, **[R]** recommended, **[U]** unknown.
 
 ## 1. How access is decided today [V]
 
@@ -132,3 +132,9 @@ Complexity **High**: it touches most write paths.
 | 3 | Should QA Lead see **all** projects? The alternative is only assigned ones, but then tester restrictions would apply to them | All projects |
 | 4 | Should QA Lead keep `environment.manage` (environments, releases, builds)? | Yes |
 | 5 | Fix P-4 (AI generation) now, ahead of the rest? It is small and separate | Yes |
+
+## 8. As built
+
+- The decision is made once per request instead of moving each service rule (section 6, steps 3 and 4). Routes that name the project outside the address ask explicitly.
+- R-8 covers recording a retest result. **Open:** a Developer can still set a defect to Verified through the status workflow, which needs only `defect.change_status`. Closing that needs a further decision.
+- The interface still chooses buttons from the organization role; the server applies the project role.

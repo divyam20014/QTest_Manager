@@ -1402,13 +1402,13 @@ def bulk_update_metadata(
     role_code: str,
     actor_user_id: UUID,
     req: TestCaseBulkUpdateRequest,
-    can_edit: Callable[[UUID], bool],
+    access: Callable[[UUID], tuple[str, set[str]]],
 ) -> TestCaseBulkUpdateResult:
     """ADR-070: apply a priority and/or assignee change to many test cases,
     one item at a time through `update_test_case` (so project access, the
     priority option check, assignee notification, audit entry and the
-    no-version-fork rule are all inherited, not re-implemented). `can_edit`
-    is the caller's project-scoped `testcase.edit` check. A failure on one
+    no-version-fork rule are all inherited, not re-implemented). `access`
+    gives the caller's tier and permissions on an item's project (ADR-143). A failure on one
     item (no permission, not in project, bad assignee) is reported for that
     item and does not stop the rest."""
     fields = req.model_fields_set & {"priority", "assignee_id"}
@@ -1431,12 +1431,13 @@ def bulk_update_metadata(
         set_tenant_context(db, str(tenant_id))
         try:
             case = _get_test_case_or_404(db, tenant_id, test_case_id)
-            if not can_edit(case.project_id):
+            item_role, permissions = access(case.project_id)
+            if "testcase.edit" not in permissions:
                 raise ForbiddenError("Missing permission: testcase.edit")
             update_test_case(
                 db,
                 tenant_id,
-                role_code,
+                item_role,
                 actor_user_id,
                 test_case_id,
                 TestCaseUpdateRequest(**update_kwargs),

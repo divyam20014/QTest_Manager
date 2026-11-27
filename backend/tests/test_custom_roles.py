@@ -44,15 +44,15 @@ def test_create_role_tenant_isolation(client: TestClient, platform_admin: dict) 
     )
 
     create_response = client.post(
-        "/api/v1/roles", json={"name": "QA Lead", "permission_codes": ["testcase.create"]}
+        "/api/v1/roles", json={"name": "Release Captain", "permission_codes": ["testcase.create"]}
     )
     assert create_response.status_code == 200, create_response.text
 
     # Other tenant must never see this tenant's custom role.
     other_roles = other_client.get("/api/v1/roles").json()["data"]
-    assert all(r["name"] != "QA Lead" for r in other_roles)
+    assert all(r["name"] != "Release Captain" for r in other_roles)
 
-    # Both tenants see the 3 system roles.
+    # Both tenants see the system roles.
     own_roles = client.get("/api/v1/roles").json()["data"]
     system_names = {r["name"] for r in own_roles if r["is_system"]}
     assert {"Admin", "Manager", "Tester"} <= system_names

@@ -13,8 +13,10 @@ from app.core.errors import (
     ForbiddenError,
     NotFoundError,
     ProjectArchivedError,
+    ValidationAppError,
 )
 from app.core.field_standards import CLOSED_DEFECT_STATUSES
+from app.core.project_access import ORGANIZATION_PERMISSIONS, permissions_of_role
 from app.models.defect import Defect
 from app.models.execution import TestRun
 from app.models.identity import Role, User
@@ -590,6 +592,16 @@ def remove_member(
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_manager_assigned_or_admin(db, project, role_code, actor_user_id)
 
+    # ADR-143: leaving would also drop your own project role, and the limit with it.
+    if member_user_id == actor_user_id and role_code != "admin":
+        own_role = db.execute(
+            select(ProjectMember.role_id).where(
+                ProjectMember.project_id == project_id, ProjectMember.user_id == actor_user_id
+            )
+        ).scalar_one_or_none()
+        if own_role is not None:
+            raise ForbiddenError("Only an organization Admin can remove your own project role")
+
     db.execute(
         delete(ProjectMember).where(
             ProjectMember.project_id == project_id, ProjectMember.user_id == member_user_id
@@ -649,6 +661,9 @@ def set_member_role(
     project_id: UUID,
     member_user_id: UUID,
     role_id: UUID | None,
+    *,
+    actor_permissions: set[str],
+    actor_is_org_admin: bool,
 ) -> Project:
     project = _get_project_or_404(db, tenant_id, project_id)
     _require_manager_assigned_or_admin(db, project, role_code, actor_user_id)
@@ -674,6 +689,29 @@ def set_member_role(
         ).scalar_one_or_none()
         if role is None:
             raise NotFoundError("Role not found")
+        if role.code == "admin":
+            raise ValidationAppError(
+                "Admin is an organization role and cannot be a project role",
+                fields={"role_id": "Admin cannot be a project role"},
+            )
+
+    # ADR-143: nobody hands out, or lifts a limit to, more than they have here.
+    if not actor_is_org_admin:
+        if member_user_id == actor_user_id:
+            raise ForbiddenError("Only an organization Admin can change your own project role")
+        granted_role = role_id
+        if granted_role is None:  # clearing gives back the person's organization role
+            granted_role = db.execute(
+                select(User.role_id).where(User.id == member_user_id)
+            ).scalar_one()
+        missing = (
+            permissions_of_role(db, granted_role) - ORGANIZATION_PERMISSIONS - actor_permissions
+        )
+        if missing:
+            raise ForbiddenError(
+                "You cannot give permissions you do not have on this project: "
+                + ", ".join(sorted(missing))
+            )
 
     member.role_id = role_id
     record_audit_event(

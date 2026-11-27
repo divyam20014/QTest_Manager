@@ -30,10 +30,11 @@ The other findings are open, except as noted below.
 - **1B** (ADR-140): archive and restore; the database makes an archived project read-only.
 - **1C** (ADR-141): teams, added to a project as a copy of their current members.
 - **1D** (ADR-142): a new project can copy another's tabs and module folders. No template tables; task statuses were already organization-wide.
-- **1E** (roles and F-06): **not built.** See [the permission proposal](QTESTHUB_PHASE1E_PERMISSIONS.md), awaiting approval.
+- **1E** (ADR-143), approved and built: F-06 and F-12 fixed; QA Lead, Developer and Viewer added. The problems were reproduced in tests first. A read-only report on the development database: no project roles set; one custom role is affected (AI generation) and no active user has it. See [the approved proposal](QTESTHUB_PHASE1E_PERMISSIONS.md).
 - **Two older defects found and fixed:** saving a project's dates, budget or linked manager answered with a server error (introduced 2026-11-09); so did giving an existing user a custom role.
 - **Test results:** full backend suite 1,647 of 1,650 passed (1 hour 50 minutes). One failure is the known import speed budget (GAP-69). Two were a flaw in the new route-guard test, which counted routes other tests add; it was corrected and passes after those tests. The full suite was not run again after that correction.
-- Migrations `b1d3f5a7c9e2` to `e4a6c8d0f2b3` have not been applied to the development database.
+- **After 1E**, a second full backend run: 1,626 of 1,668 passed (1 hour 24 minutes). 39 failures were a defect introduced by 1E that stopped every import-wizard import (two causes: the wrong names for the import types, and a permission lookup handed the importer instead of the signed-in context, hidden from the type check by an ignore marker). One was a test using the new role name "QA Lead" and one a test listing task permission holders. All were fixed and their files rerun and passing. The remaining one is the import speed budget (GAP-69). The full suite was not run again after these fixes.
+- Migrations `b1d3f5a7c9e2` to `f5b7d9e1a3c4` have not been applied to the development database.
 
 ## How to read these documents
 

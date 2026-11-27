@@ -19,7 +19,7 @@ import gzip
 import json
 import re
 from collections.abc import Collection
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -30,7 +30,6 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_events_bulk
-from app.core.auth import get_effective_permissions_for_project
 from app.core.config import get_settings
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.core.field_standards import (
@@ -60,6 +59,7 @@ from app.core.import_columns import (
     build_header_index,
 )
 from app.core.import_steps import ParsedStep, parse_steps
+from app.core.project_access import access_for_project
 from app.core.text_sanitize import clean_plain, sanitize_markdown
 from app.models.defect import Defect, DefectLink
 from app.models.identity import User
@@ -429,6 +429,23 @@ def _load_people(db: Session, tenant_id: UUID) -> _People:
     return _People(by_email, by_name)
 
 
+_IMPORT_PERMISSIONS = {  # one entry for each of KINDS
+    "test_case": ("testcase.bulk_import_export", "testcase.create"),
+    "defect": ("defect.create", "defect.import"),
+}
+
+
+def actor_on_project(db: Session, actor: Actor, project_id: UUID, kind: str) -> Actor:
+    """ADR-143: the importer as they are on this project, which must allow the import."""
+    role_code, permissions = access_for_project(
+        db, actor.user_id, actor.role_code, set(actor.permissions), project_id
+    )
+    needed = _IMPORT_PERMISSIONS[kind]
+    if not permissions.intersection(needed):
+        raise ForbiddenError(f"Missing permission: {' or '.join(needed)}")
+    return replace(actor, role_code=role_code, permissions=frozenset(permissions))
+
+
 def load_project(db: Session, actor: Actor, project_id: UUID) -> Project:
     project = db.execute(
         select(Project).where(Project.tenant_id == actor.tenant_id, Project.id == project_id)
@@ -636,13 +653,9 @@ def validate_test_cases(
         ).scalars()
     }
     tasks = _project_tasks(db, actor.tenant_id, project.id)
-    # The same rule as linking on the task page, including a project role override.
-    # (it reads only the user id and permissions, which an Actor has).
-    can_link_tasks = "task.manage" in get_effective_permissions_for_project(
-        db,
-        actor,  # type: ignore[arg-type]
-        project.id,
-    )
+    # The same rule as linking on the task page. `actor` already holds this project's
+    # permissions (`actor_on_project`, ADR-143).
+    can_link_tasks = "task.manage" in actor.permissions
     seen_ids: dict[str, int] = {}
     seen_titles: dict[str, int] = {}
     results: list[RowOutcome] = []
@@ -1108,6 +1121,7 @@ def create_preview(
     filename: str | None,
     raw: bytes,
 ) -> dict[str, Any]:
+    actor = actor_on_project(db, actor, project_id, kind)
     project = load_project(db, actor, project_id)
     mapped = map_file(kind, filename, raw)
     outcome = validate(db, actor, kind, project, mapped.rows)
@@ -1394,6 +1408,7 @@ def _insert_defects(
 def _run_commit(db: Session, actor: Actor, session: ImportSession, mode: str) -> dict[str, Any]:
     """Validate again and insert in the caller's transaction (no commit here)."""
     kind = session.kind
+    actor = actor_on_project(db, actor, session.project_id, kind)
     project = load_project(db, actor, session.project_id)
     data = _unpack(session.payload)
     rows = [(int(n), cells) for n, cells in data["rows"]]

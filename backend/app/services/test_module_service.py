@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -229,6 +230,7 @@ def bulk_assign_test_cases(
     actor_user_id: UUID,
     test_case_ids: list[UUID],
     module_id: UUID | None,
+    access: Callable[[UUID], tuple[str, set[str]]],
 ) -> int:
     """Gap-closure pass (ADR-057): a bulk-move for the module-assignment
     action that was previously one-test-case-at-a-time only. Each row
@@ -251,7 +253,10 @@ def bulk_assign_test_cases(
         if case is None:
             raise NotFoundError(f"Test case not found: {test_case_id}")
         project = _get_project_or_404(db, tenant_id, case.project_id)
-        _require_project_access(db, project, role_code, actor_user_id)
+        item_role, permissions = access(case.project_id)
+        if "testcase.edit" not in permissions:
+            raise ForbiddenError("Missing permission: testcase.edit")
+        _require_project_access(db, project, item_role, actor_user_id)
         if target_module is not None and target_module.project_id != case.project_id:
             raise ConflictError(
                 f"Module belongs to a different project than test case {test_case_id}"

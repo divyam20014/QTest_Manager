@@ -136,7 +136,12 @@ def get_custom_field_values(
     return envelope({"values": values})
 
 
-@router.put("/custom-fields/values/{owner_type}/{owner_id}")
+@router.put(
+    "/custom-fields/values/{owner_type}/{owner_id}",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def set_custom_field_values(
     owner_type: str,
     owner_id: UUID,

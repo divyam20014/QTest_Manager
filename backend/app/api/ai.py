@@ -14,7 +14,13 @@ from app.services import ai_service
 router = APIRouter(tags=["ai"])
 
 
-@router.post("/requirements/{requirement_id}/generate-test-cases")
+@router.post(
+    "/requirements/{requirement_id}/generate-test-cases",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+        Depends(require_permission("testcase.create")),
+    ],
+)
 def generate_test_cases(
     requirement_id: UUID,
     req: GenerateTestCasesRequest,
@@ -28,7 +34,12 @@ def generate_test_cases(
     return envelope(result.model_dump(mode="json"))
 
 
-@router.post("/test-cases/{test_case_id}/ai-review")
+@router.post(
+    "/test-cases/{test_case_id}/ai-review",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def review_test_case(
     test_case_id: UUID,
     ctx: SessionContext = Depends(get_current_context),
@@ -40,7 +51,12 @@ def review_test_case(
     return envelope(result.model_dump(mode="json"))
 
 
-@router.post("/requirements/{requirement_id}/analyze-change")
+@router.post(
+    "/requirements/{requirement_id}/analyze-change",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def analyze_requirement_change(
     requirement_id: UUID,
     ctx: SessionContext = Depends(get_current_context),

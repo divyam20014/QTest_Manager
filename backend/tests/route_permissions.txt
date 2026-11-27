@@ -1,8 +1,8 @@
 DELETE /api/v1/access-rules/{rule_id}  ->  require_permission(access_rule.manage)
-DELETE /api/v1/attachments/{attachment_id}  ->  signed-in
+DELETE /api/v1/attachments/{attachment_id}  ->  require_permission(record.contribute)
 DELETE /api/v1/auth/sessions/{session_id}  ->  signed-in
 DELETE /api/v1/builds/{build_id}  ->  require_permission(environment.manage)
-DELETE /api/v1/comments/{comment_id}  ->  signed-in
+DELETE /api/v1/comments/{comment_id}  ->  require_permission(record.contribute)
 DELETE /api/v1/custom-fields/definitions/{definition_id}  ->  require_permission(field_customization.manage)
 DELETE /api/v1/dashboards/{dashboard_id}  ->  signed-in
 DELETE /api/v1/data-set-rows/{row_id}  ->  require_permission(testcase.edit)
@@ -268,21 +268,21 @@ POST /api/v1/custom-fields/definitions  ->  require_permission(field_customizati
 POST /api/v1/dashboards  ->  signed-in
 POST /api/v1/dashboards/{dashboard_id}/team-default  ->  signed-in
 POST /api/v1/data-sets/{data_set_id}/rows  ->  require_permission(testcase.edit)
-POST /api/v1/defects  ->  require_permission(defect.create)
+POST /api/v1/defects  ->  require_defect_create
 POST /api/v1/defects/import  ->  require_any_permission(defect.create|defect.import)
 POST /api/v1/defects/import/commit  ->  require_any_permission(defect.create|defect.import)
 POST /api/v1/defects/import/preview  ->  require_any_permission(defect.create|defect.import)
-POST /api/v1/defects/{defect_id}/ai-suggest-root-cause  ->  signed-in
-POST /api/v1/defects/{defect_id}/attachments  ->  signed-in
-POST /api/v1/defects/{defect_id}/comments  ->  signed-in
+POST /api/v1/defects/{defect_id}/ai-suggest-root-cause  ->  require_permission(record.contribute)
+POST /api/v1/defects/{defect_id}/attachments  ->  require_permission(record.contribute)
+POST /api/v1/defects/{defect_id}/comments  ->  require_permission(record.contribute)
 POST /api/v1/defects/{defect_id}/links  ->  require_defect_permission(defect.create|defect.edit)
 POST /api/v1/defects/{defect_id}/reopen  ->  require_defect_permission(defect.change_status|defect.close|defect.create)
 POST /api/v1/defects/{defect_id}/retest  ->  require_defect_permission(defect.change_status|defect.close|defect.create)
-POST /api/v1/defects/{defect_id}/retest-result  ->  require_defect_permission(defect.change_status)
+POST /api/v1/defects/{defect_id}/retest-result  ->  require_defect_permission(defect.change_status), require_permission(testcase.execute)
 POST /api/v1/defects/{defect_id}/test-cases/{test_case_id}  ->  require_defect_permission(defect.create|defect.edit)
 POST /api/v1/environments  ->  require_permission(environment.manage)
 POST /api/v1/execution-steps/{execution_step_id}/attachments  ->  require_permission(executionstep.record)
-POST /api/v1/execution-steps/{execution_step_id}/comments  ->  signed-in
+POST /api/v1/execution-steps/{execution_step_id}/comments  ->  require_permission(record.contribute)
 POST /api/v1/execution-steps/{execution_step_id}/open  ->  require_execute_permission
 POST /api/v1/execution-steps/{execution_step_id}/verdict  ->  require_execute_permission
 POST /api/v1/export  ->  require_permission(tenant.settings.manage)
@@ -327,9 +327,9 @@ POST /api/v1/report-builder/preview  ->  require_permission(report.view), requir
 POST /api/v1/report-builder/reports  ->  require_permission(report.view), require_reports_not_hidden
 POST /api/v1/report-builder/reports/{report_id}/run  ->  require_permission(report.view), require_reports_not_hidden
 POST /api/v1/report-schedules  ->  require_permission(report.schedule_manage)
-POST /api/v1/requirements/{requirement_id}/analyze-change  ->  signed-in
+POST /api/v1/requirements/{requirement_id}/analyze-change  ->  require_permission(record.contribute)
 POST /api/v1/requirements/{requirement_id}/attachments  ->  require_permission(requirement.manage)
-POST /api/v1/requirements/{requirement_id}/generate-test-cases  ->  signed-in
+POST /api/v1/requirements/{requirement_id}/generate-test-cases  ->  require_permission(record.contribute), require_permission(testcase.create)
 POST /api/v1/requirements/{requirement_id}/test-cases  ->  require_permission(requirement.manage)
 POST /api/v1/roles  ->  require_permission(user.manage)
 POST /api/v1/saved-views  ->  signed-in
@@ -340,11 +340,11 @@ POST /api/v1/settings/branding/logo  ->  require_permission(tenant.settings.mana
 POST /api/v1/settings/subscription/switch-plan  ->  require_permission(tenant.settings.manage)
 POST /api/v1/task-statuses  ->  require_permission(task_status.manage)
 POST /api/v1/tasks/{task_id}/attachments  ->  require_permission(task.transition)
-POST /api/v1/tasks/{task_id}/comments  ->  signed-in
+POST /api/v1/tasks/{task_id}/comments  ->  require_permission(record.contribute)
 POST /api/v1/tasks/{task_id}/status  ->  require_resource_permission(task.transition, task)
 POST /api/v1/tasks/{task_id}/test-cases  ->  require_resource_permission(task.manage, task)
 POST /api/v1/teams  ->  require_permission(user.manage)
-POST /api/v1/test-cases/bulk-assign-module  ->  require_permission(testcase.edit)
+POST /api/v1/test-cases/bulk-assign-module  ->  signed-in
 POST /api/v1/test-cases/bulk-update  ->  signed-in
 POST /api/v1/test-cases/import  ->  require_permission(testcase.bulk_import_export)
 POST /api/v1/test-cases/import/async  ->  require_permission(testcase.bulk_import_export)
@@ -352,10 +352,10 @@ POST /api/v1/test-cases/import/commit  ->  require_any_permission(testcase.bulk_
 POST /api/v1/test-cases/import/detect-columns  ->  require_permission(testcase.bulk_import_export)
 POST /api/v1/test-cases/import/mapped  ->  require_permission(testcase.bulk_import_export)
 POST /api/v1/test-cases/import/preview  ->  require_any_permission(testcase.bulk_import_export|testcase.create)
-POST /api/v1/test-cases/{test_case_id}/ai-review  ->  signed-in
+POST /api/v1/test-cases/{test_case_id}/ai-review  ->  require_permission(record.contribute)
 POST /api/v1/test-cases/{test_case_id}/approve  ->  require_resource_permission(testcase.approve, test_case)
 POST /api/v1/test-cases/{test_case_id}/attachments  ->  require_permission(testcase.edit)
-POST /api/v1/test-cases/{test_case_id}/comments  ->  signed-in
+POST /api/v1/test-cases/{test_case_id}/comments  ->  require_permission(record.contribute)
 POST /api/v1/test-cases/{test_case_id}/data-sets  ->  require_permission(testcase.edit)
 POST /api/v1/test-cases/{test_case_id}/deprecate  ->  require_resource_permission(testcase.deprecate, test_case)
 POST /api/v1/test-cases/{test_case_id}/duplicate  ->  require_resource_permission(testcase.create, test_case)
@@ -381,7 +381,7 @@ POST /api/v1/users/invite  ->  require_permission(user.manage)
 POST /api/v1/users/invite/{token}/accept  ->  none
 POST /api/v1/users/{user_id}/erase  ->  require_permission(user.erase)
 POST /api/v1/users/{user_id}/reset-password  ->  require_permission(user.manage)
-PUT /api/v1/custom-fields/values/{owner_type}/{owner_id}  ->  signed-in
+PUT /api/v1/custom-fields/values/{owner_type}/{owner_id}  ->  require_permission(record.contribute)
 PUT /api/v1/dashboards/{dashboard_id}/widgets  ->  signed-in
 PUT /api/v1/platform/tenants/{tenant_id}/subscription  ->  require_platform_admin
 PUT /api/v1/projects/{project_id}/dashboard  ->  signed-in

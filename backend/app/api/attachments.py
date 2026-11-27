@@ -62,7 +62,12 @@ def list_defect_attachments(
     return envelope([a.model_dump(mode="json") for a in attachments])
 
 
-@router.post("/defects/{defect_id}/attachments")
+@router.post(
+    "/defects/{defect_id}/attachments",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 @limiter.limit("30/minute")
 def upload_defect_attachment(
     request: Request,
@@ -189,7 +194,12 @@ def download_attachment(
     )
 
 
-@router.delete("/attachments/{attachment_id}")
+@router.delete(
+    "/attachments/{attachment_id}",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def delete_attachment(
     attachment_id: UUID,
     # Shared across all owner types, each with its own (or no) upload-time

@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, get_current_context, require_permission
+from app.core.auth import (
+    SessionContext,
+    context_for_project,
+    get_current_context,
+    require_permission,
+)
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.test_module import (
@@ -85,10 +90,14 @@ def assign_module(
 @router.post("/test-cases/bulk-assign-module")
 def bulk_assign_module(
     req: BulkAssignModuleRequest,
-    ctx: SessionContext = Depends(require_permission("testcase.edit")),
+    ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    def access(project_id: UUID) -> tuple[str, set[str]]:
+        effective = context_for_project(db, ctx, project_id)
+        return effective.role_code, effective.permissions
+
     count = test_module_service.bulk_assign_test_cases(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, req.test_case_ids, req.module_id
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, req.test_case_ids, req.module_id, access
     )
     return envelope({"reassigned": count})

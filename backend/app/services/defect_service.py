@@ -658,6 +658,15 @@ def _resolve_origin(db: Session, tenant_id: UUID, req: DefectCreateRequest) -> O
     return None
 
 
+def project_of_new_defect(db: Session, tenant_id: UUID, req: DefectCreateRequest) -> UUID:
+    """The project a new defect would belong to."""
+    origin = _resolve_origin(db, tenant_id, req)
+    if origin is not None:
+        return origin.project_id
+    assert req.project_id is not None  # enforced by the schema validator
+    return req.project_id
+
+
 def enforce_create_requirements(req: DefectCreateRequest, merged: dict[str, Any]) -> None:
     """ADR-118: the API-level mandatory fields of a NEW defect: title, description, at
     least one step to reproduce, expected and actual result, environment, severity and

@@ -869,6 +869,19 @@ manage statuses). A release freeze can include task changes: choose the action
   Close, Delete and Export (under **Access Control**); the built-in Tester role
   cannot assign, close or export.
 - **Security & SSO**: single sign-on and sign-in requirements such as MFA.
+- **Roles.** Admin, Manager, Tester, **QA Lead** (works on every project:
+  requirements, tests, approvals and defects, without creating, editing or
+  staffing projects), **Developer** (their projects: works on tasks and updates
+  defects; cannot run tests or close defects) and **Viewer** (their projects:
+  reads only), plus your own custom roles. Give a custom role
+  **record.contribute** if its people should comment and attach files.
+- **Project roles.** On a project's **Team** tab you can give a member a
+  different role on that project. It applies to everything in that project, both
+  to allow and to limit; organization settings and an Admin are not affected.
+  You cannot change your own project role (an Admin can), give a role with
+  permissions you do not have there, or use Admin as a project role. Some
+  buttons still follow the person's organization role; the server applies the
+  project role in every case.
 - **Teams** (Admin > Teams): named groups, with an optional lead, that can be
   added to a project in one step. A team gives no access by itself.
 - **Project domains** (in Settings): the choices for a project's Domain, one per

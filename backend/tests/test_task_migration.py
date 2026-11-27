@@ -132,8 +132,9 @@ def test_task_migrations_up_down_up_with_data() -> None:
                 "WHERE r.tenant_id IS NULL AND p.code LIKE 'task%%' GROUP BY p.code"
             )
             assert dict(cur.fetchall()) == {
-                "task.manage": ["admin", "manager"],
-                "task.transition": ["admin", "manager", "tester"],
+                # ADR-143: QA Lead and Developer are system roles too.
+                "task.manage": ["admin", "manager", "qa_lead"],
+                "task.transition": ["admin", "developer", "manager", "qa_lead", "tester"],
                 "task_status.manage": ["admin"],
             }
             # ADR-128: the requirement that had no task is filed under a per-project default

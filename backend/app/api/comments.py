@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.auth import SessionContext, get_current_context
+from app.core.auth import SessionContext, get_current_context, require_permission
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.comment import CommentCreateRequest
@@ -30,7 +30,12 @@ def list_test_case_comments(
     return envelope([c.model_dump(mode="json") for c in comments])
 
 
-@router.post("/test-cases/{test_case_id}/comments")
+@router.post(
+    "/test-cases/{test_case_id}/comments",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def create_test_case_comment(
     test_case_id: UUID,
     req: CommentCreateRequest,
@@ -55,7 +60,12 @@ def list_defect_comments(
     return envelope([c.model_dump(mode="json") for c in comments])
 
 
-@router.post("/defects/{defect_id}/comments")
+@router.post(
+    "/defects/{defect_id}/comments",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def create_defect_comment(
     defect_id: UUID,
     req: CommentCreateRequest,
@@ -80,7 +90,12 @@ def list_execution_step_comments(
     return envelope([c.model_dump(mode="json") for c in comments])
 
 
-@router.post("/execution-steps/{execution_step_id}/comments")
+@router.post(
+    "/execution-steps/{execution_step_id}/comments",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def create_execution_step_comment(
     execution_step_id: UUID,
     req: CommentCreateRequest,
@@ -106,7 +121,12 @@ def list_task_comments(
     return envelope([c.model_dump(mode="json") for c in comments])
 
 
-@router.post("/tasks/{task_id}/comments")
+@router.post(
+    "/tasks/{task_id}/comments",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def create_task_comment(
     task_id: UUID,
     req: CommentCreateRequest,
@@ -119,7 +139,12 @@ def create_task_comment(
     return envelope(comment.model_dump(mode="json"))
 
 
-@router.delete("/comments/{comment_id}")
+@router.delete(
+    "/comments/{comment_id}",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def delete_comment(
     comment_id: UUID,
     ctx: SessionContext = Depends(get_current_context),

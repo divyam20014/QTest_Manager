@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import (
     SessionContext,
+    context_for_project,
     get_current_context,
     get_effective_permissions_for_project,
     require_any_permission,
@@ -240,11 +241,27 @@ def export_defects_xlsx(
     return export_common.xlsx_response(data, "Defects", "defects_export.xlsx")
 
 
+def require_defect_create(
+    request: Request,
+    req: DefectCreateRequest,
+    ctx: SessionContext = Depends(get_current_context),
+    db: Session = Depends(get_db),
+) -> SessionContext:
+    """ADR-143: `defect.create` on the project named in the body, directly or through the
+    execution the defect is raised from."""
+    project_id = defect_service.project_of_new_defect(db, ctx.tenant_id, req)
+    effective = context_for_project(db, ctx, project_id)
+    if "defect.create" not in effective.permissions:
+        raise ForbiddenError("Missing permission: defect.create")
+    apply_access_rules(effective, request, db, "defect.create", project_id)
+    return effective
+
+
 @router.post("")
 def create_defect(
     req: DefectCreateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ctx: SessionContext = Depends(require_permission("defect.create")),
+    ctx: SessionContext = Depends(require_defect_create),
     db: Session = Depends(get_db),
 ) -> dict:
     """ADR-118: mandatory on create (422 with `error.fields`): title, description, at
@@ -416,7 +433,12 @@ def update_root_cause(
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))
 
 
-@router.post("/{defect_id}/ai-suggest-root-cause")
+@router.post(
+    "/{defect_id}/ai-suggest-root-cause",
+    dependencies=[
+        Depends(require_permission("record.contribute")),
+    ],
+)
 def ai_suggest_root_cause(
     defect_id: UUID,
     ctx: SessionContext = Depends(get_current_context),
@@ -522,7 +544,12 @@ def start_retest(
     return envelope(out.model_dump(mode="json"))
 
 
-@router.post("/{defect_id}/retest-result")
+@router.post(
+    "/{defect_id}/retest-result",
+    dependencies=[
+        Depends(require_permission("testcase.execute")),
+    ],
+)
 def record_retest_result(
     defect_id: UUID,
     req: DefectRetestResultRequest,

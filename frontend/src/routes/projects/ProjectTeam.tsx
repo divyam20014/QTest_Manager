@@ -37,7 +37,10 @@ export function ProjectTeam() {
     return <EmptyState title="Project not found" description="It may have been deleted, or you may not have access to it." />
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Team" description="Who works on this project and which role they hold here." />
+      <PageHeader
+        title="Team"
+        description="Who works on this project. A project role replaces a person’s role for everything in this project."
+      />
       <div className="flex max-w-3xl flex-col gap-4">
         <TeamMembersCard projectId={projectId} assignedUserIds={projectQuery.data.assigned_user_ids} />
         {!projectQuery.data.archived_at && <AddTeamCard projectId={projectId} />}
@@ -125,7 +128,9 @@ export function TeamMembersCard({ projectId, assignedUserIds }: { projectId: str
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'members-with-roles'] })
       showToast('success', 'Project role updated')
     },
-    onError: () => showToast('error', 'Could not update that member’s project role'),
+    // A refusal says why: for example, which permissions you do not hold here (ADR-143).
+    onError: (err) =>
+      showToast('error', err instanceof ApiError ? err.message : 'Could not update that member’s project role'),
   })
 
   const addMemberMutation = useMutation({
@@ -144,7 +149,7 @@ export function TeamMembersCard({ projectId, assignedUserIds }: { projectId: str
       queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
       showToast('success', 'Member removed')
     },
-    onError: () => showToast('error', 'Could not remove that member'),
+    onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not remove that member'),
   })
 
   const assignableUsers = (usersQuery.data ?? []).filter((u) => !assignedUserIds.includes(u.id))
@@ -203,7 +208,10 @@ export function TeamMembersCard({ projectId, assignedUserIds }: { projectId: str
                       disabled={setMemberRoleMutation.isPending}
                     >
                       <option value="">Use tenant role ({member.role})</option>
-                      {assignableRolesQuery.data.map((r) => (
+                      {/* ADR-143: Admin is an organization role and cannot be a project role. */}
+                      {assignableRolesQuery.data
+                        .filter((r) => (r.is_active && r.code !== 'admin') || r.id === projectRole?.project_role_id)
+                        .map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.name}
                         </option>

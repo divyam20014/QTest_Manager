@@ -500,3 +500,7 @@ The backend sets `app.current_tenant` from the authenticated session at the star
 - `users`: unique `(id, tenant_id)`, so other tables can require a user of the same tenant.
 - `teams(id, tenant_id, name, lead_user_id, created_at)`: unique `(tenant_id, lower(name))`; `(lead_user_id, tenant_id)` references users.
 - `team_members(id, tenant_id, team_id, user_id, created_at)`: unique `(team_id, user_id)`; composite foreign keys to the team and the user of the same tenant. Both tables have forced row-level security.
+
+## Changes for ADR-143
+
+Migration `f5b7d9e1a3c4`: permission `record.contribute`, granted to every existing role, and the system roles `qa_lead`, `developer` and `viewer` (`tenant_id` NULL) with their grants. No table changes. The downgrade refuses while a user, invitation or project member holds one of the new roles.
