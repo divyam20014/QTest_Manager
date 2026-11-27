@@ -1,0 +1,136 @@
+# Checks for every pull request and every push to main.
+# The browser tests take hours, so they run nightly and on request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '30 19 * * *' # 01:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  backend:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          # Throwaway values for this job's own database; tests/conftest.py expects them.
+          POSTGRES_USER: qtesthub
+          POSTGRES_PASSWORD: qtesthub
+          POSTGRES_DB: qtesthub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qtesthub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lint (errors that break the code)
+        run: ruff check . --select E9,F63,F7,F82
+      - name: Documentation is in sync
+        run: python -m scripts.sync_docs --check
+      - name: Tests
+        run: python -m pytest tests -q --log-level=CRITICAL --durations=15
+      # The next three have existing findings. They report without failing the build
+      # until those are cleared; then remove `continue-on-error`.
+      - name: Full lint (report only)
+        if: success() || failure()
+        continue-on-error: true
+        run: ruff check . --statistics
+      - name: Formatting (report only)
+        if: success() || failure()
+        continue-on-error: true
+        run: ruff format --check .
+      - name: Types (report only)
+        if: success() || failure()
+        continue-on-error: true
+        run: mypy app
+
+  browser:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each shard has its own machine, database and servers.
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Start the database
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=qtesthub"
+            echo "AI_CREDENTIAL_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')"
+          } > .env
+          docker compose up -d --wait db
+      - name: Browser tests
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
+        working-directory: frontend
+      - name: Keep the failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-results-${{ matrix.shard }}
+          path: |
+            frontend/test-results
+            /tmp/qtesthub-e2e-logs-*
+          if-no-files-found: ignore

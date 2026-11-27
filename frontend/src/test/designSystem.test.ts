@@ -63,6 +63,9 @@ describe('design tokens', () => {
 // shrink; when you remove some, lower the number (or delete the entry).
 const HARD_CODED_COLOUR_BASELINE: Record<string, number> = {
   'routes/admin/Settings.tsx': 1,
+  // The default colour saved with a new task status. It is stored data, and
+  // <input type="color"> accepts only a #rrggbb value. Must not grow.
+  'routes/admin/TaskStatuses.tsx': 1,
   // Deliberately fixed white/black print sheet (black table borders, grey header,
   // neutral rules); theme tokens would change it in dark mode. Must not grow.
   'routes/reporting/CompliancePrintView.tsx': 7,
