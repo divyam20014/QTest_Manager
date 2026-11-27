@@ -234,6 +234,8 @@ export function fetchDefectAgingSummary(projectId?: string): Promise<DefectAging
 
 export interface ReleaseReadinessReport {
   project_id: string
+  /** ADR-137: the figures always cover the whole project. */
+  scope?: 'project'
   release_id: string | null
   release_name: string | null
   total_test_cases: number

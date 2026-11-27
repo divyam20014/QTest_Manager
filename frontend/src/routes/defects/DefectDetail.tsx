@@ -161,6 +161,7 @@ export function DefectDetail() {
   if (!defect) return <EmptyState title="Defect not found" description="It may have been deleted, or you may not have access to it." />
 
   const actionDefect: ActionDefect = {
+    row_version: defect.row_version,
     id: defect.id,
     status: defect.status,
     title: defect.title,

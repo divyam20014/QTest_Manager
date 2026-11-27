@@ -2,7 +2,7 @@ import type { WidgetSettings, WidgetSize, WidgetType } from '@/api/dashboards'
 
 // ADR-099: the fixed widget catalogue. Settings kinds map 1:1 to the typed,
 // validated settings on the API (extra keys are rejected there).
-export type SettingKind = 'project' | 'days' | 'top_n' | 'release' | 'report'
+export type SettingKind = 'project' | 'days' | 'top_n' | 'report'
 
 export interface SettingField {
   kind: SettingKind
@@ -63,9 +63,9 @@ export const WIDGET_CATALOGUE: WidgetDef[] = [
   {
     type: 'release_readiness',
     label: 'Release readiness',
-    description: 'Execution, pass rate, open defects and coverage for a project or one release.',
+    description: 'Execution, pass rate, open defects and coverage for a whole project.',
     needsReports: true,
-    fields: [{ kind: 'project', required: true }, { kind: 'release' }],
+    fields: [{ kind: 'project', required: true }],
     defaults: {},
   },
   {

@@ -49,6 +49,8 @@ class Defect(Base, TenantScopedMixin):
         ),
     )
 
+    # ADR-136: moves once per saved change; a save from an older copy is refused.
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False
     )

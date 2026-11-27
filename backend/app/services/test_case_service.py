@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core import pagination
 from app.core.audit import record_audit_event
 from app.core.audit_diff import audit_diff
+from app.core.concurrency import bump_row_version, check_row_version
 from app.core.db import set_tenant_context
 from app.core.errors import (
     AppError,
@@ -132,12 +133,17 @@ def _get_test_case_or_404(
     *,
     include_deleted: bool = False,
     role_code: str | None = None,
+    for_update: bool = False,
 ) -> TestCase:
     """`include_deleted` (ADR-116) is for the read-only history paths: a soft-deleted
     case stays readable by id for Admin and Manager, never for anyone else."""
     stmt = select(TestCase).where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
     if include_deleted:
         stmt = stmt.execution_options(include_deleted=True)
+    if for_update:
+        # ADR-136: held until commit. populate_existing re-reads a row the request has
+        # already loaded, so the check sees what the last writer committed.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     case = db.execute(stmt).scalar_one_or_none()
     if case is None:
         raise NotFoundError("Test case not found")
@@ -415,6 +421,7 @@ def to_out_many(db: Session, cases: list[TestCase]) -> list[TestCaseOut]:
             TestCaseOut(
                 id=case.id,
                 project_id=case.project_id,
+                row_version=case.row_version,
                 title=case.title,
                 description=version.description,
                 priority=cast(Priority, case.priority),
@@ -1193,10 +1200,11 @@ def update_test_case(
     test_case_id: UUID,
     req: TestCaseUpdateRequest,
 ) -> TestCase:
-    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    case = _get_test_case_or_404(db, tenant_id, test_case_id, for_update=True)
     _authorize_case_access(db, tenant_id, role_code, actor_user_id, case)
 
     changes = req.model_dump(exclude_unset=True)
+    check_row_version(case, changes.pop("expected_version", None), "test case")
     changes.pop("test_data_format", None)  # a hint about the request, not a field
     # The display id never changes. Echoing the current value back (a form that
     # re-sends the whole record) is harmless; any other value is refused.
@@ -1366,7 +1374,11 @@ def update_test_case(
         case.automation_status = changes["automation_status"] or DEFAULT_AUTOMATION_STATUS
 
     after_version = _get_current_version(db, case)
-    diff = audit_diff(before, _case_snapshot(case, after_version, new_steps))
+    after = _case_snapshot(case, after_version, new_steps)
+    # Steps are summarised in the snapshot, so `content_changed` covers them.
+    if content_changed or after != before:
+        bump_row_version(case)
+    diff = audit_diff(before, after)
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -1484,7 +1496,7 @@ def submit_for_review(
     test_case_id: UUID,
     reviewer_id: UUID | None = None,
 ) -> TestCase:
-    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    case = _get_test_case_or_404(db, tenant_id, test_case_id, for_update=True)
     _authorize_case_access(db, tenant_id, role_code, actor_user_id, case)
 
     if case.status != "draft":
@@ -1499,6 +1511,7 @@ def submit_for_review(
 
     case.status = "ready_for_review"
     case.reviewer_id = reviewer_id
+    bump_row_version(case)
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -1523,10 +1536,16 @@ def _authorize_reviewer(case: TestCase, role_code: str, actor_user_id: UUID) -> 
 
 
 def approve_test_case(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, test_case_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    test_case_id: UUID,
+    expected_version: int | None = None,
 ) -> TestCase:
     """Caller must already hold testcase.approve (manager/admin only)."""
-    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    case = _get_test_case_or_404(db, tenant_id, test_case_id, for_update=True)
+    check_row_version(case, expected_version, "test case")
 
     if case.status != "ready_for_review":
         raise ConflictError(f"Cannot approve from status '{case.status}'")
@@ -1539,6 +1558,7 @@ def approve_test_case(
     version.approved_at = datetime.now(UTC)
     case.status = "approved"
     case.reviewer_id = None
+    bump_row_version(case)
 
     record_audit_event(
         db,
@@ -1561,6 +1581,7 @@ def request_changes_test_case(
     actor_user_id: UUID,
     test_case_id: UUID,
     comment_body: str,
+    expected_version: int | None = None,
 ) -> TestCase:
     """Reviewer-only (or Admin). Reuses the Comment infrastructure (Phase 8)
     to carry the feedback, and sends the case back to 'draft' -- the same
@@ -1569,25 +1590,16 @@ def request_changes_test_case(
     from app.schemas.comment import CommentCreateRequest
     from app.services import comment_service
 
-    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    case = _get_test_case_or_404(db, tenant_id, test_case_id, for_update=True)
+    check_row_version(case, expected_version, "test case")
 
     if case.status != "ready_for_review":
         raise ConflictError(f"Cannot request changes from status '{case.status}'")
     _authorize_reviewer(case, role_code, actor_user_id)
 
-    comment_service.create_comment(
-        db,
-        tenant_id,
-        role_code,
-        actor_user_id,
-        "test_case",
-        case.id,
-        CommentCreateRequest(body=comment_body, mentioned_user_ids=[]),
-    )
-
     case.status = "draft"
     case.reviewer_id = None
-
+    bump_row_version(case)
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -1599,7 +1611,18 @@ def request_changes_test_case(
     _notify_author_of_decision(
         db, tenant_id, actor_user_id, case, "sent back with requested changes"
     )
-    db.commit()
+    # Last, because it commits: the lock is held until status and comment are saved.
+    comment_service.create_comment(
+        db,
+        tenant_id,
+        role_code,
+        actor_user_id,
+        "test_case",
+        case.id,
+        CommentCreateRequest(body=comment_body, mentioned_user_ids=[]),
+    )
+    # The tenant setting ends with the transaction (ADR-007); the caller still reads.
+    set_tenant_context(db, str(tenant_id))
     return case
 
 
@@ -1607,13 +1630,14 @@ def deprecate_test_case(
     db: Session, tenant_id: UUID, actor_user_id: UUID, test_case_id: UUID
 ) -> TestCase:
     """Caller must already hold testcase.deprecate (manager/admin only)."""
-    case = _get_test_case_or_404(db, tenant_id, test_case_id)
+    case = _get_test_case_or_404(db, tenant_id, test_case_id, for_update=True)
 
     if case.status == "deprecated":
         raise ConflictError("Test case is already deprecated")
 
     previous_status = case.status
     case.status = "deprecated"
+    bump_row_version(case)
 
     record_audit_event(
         db,

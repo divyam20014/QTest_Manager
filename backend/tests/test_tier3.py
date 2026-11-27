@@ -256,6 +256,28 @@ def test_release_readiness_reports_metrics(client: TestClient, platform_admin: d
     assert data["requirement_coverage_percentage"] == 0.0
 
 
+def test_release_readiness_never_labels_project_figures_as_a_release(
+    client: TestClient, platform_admin: dict
+) -> None:
+    """ADR-137 (finding F-02): the figures are not limited to a release, so no release's
+    name is put on them."""
+    _, project_id = _setup_admin_and_project(client, platform_admin)
+    _create_case(client, project_id, "Readiness Case One")
+    release = client.post(
+        f"/api/v1/projects/{project_id}/releases", json={"name": "Release 1"}
+    ).json()["data"]
+    url = f"/api/v1/reports/release-readiness?project_id={project_id}"
+
+    whole = client.get(url).json()["data"]
+    asked = client.get(f"{url}&release_id={release['id']}").json()["data"]
+
+    assert whole["scope"] == asked["scope"] == "project"
+    assert asked == whole
+    assert asked["release_id"] is None and asked["release_name"] is None
+    unknown = client.get(f"{url}&release_id=00000000-0000-0000-0000-000000000000")
+    assert unknown.status_code == 404
+
+
 def test_workload_summary_counts_assignments(client: TestClient, platform_admin: dict) -> None:
     _, project_id = _setup_admin_and_project(client, platform_admin)
     tester_id = _create_user(

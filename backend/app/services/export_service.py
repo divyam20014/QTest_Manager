@@ -17,33 +17,58 @@ for a job that is intentionally tenant-wide, not per-project. Attachment
 archive a bounded size regardless of how much binary content a tenant has
 accumulated -- a future phase could add an opt-in "include attachment
 bytes" mode if a real need for that surfaces.
+
+ADR-138: every table is either exported or listed in `EXCLUDED_TABLES` with
+the reason. A test compares both lists with the database, so a new table
+cannot be left out by accident.
 """
 
 import io
 import json
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import DeclarativeBase, Session
 
 from app.core.db import set_tenant_context
 from app.core.errors import ForbiddenError, NotFoundError, ValidationAppError
 from app.core.storage import get_storage_backend
+from app.models.access_rule import AccessRule
+from app.models.ai_usage import AIUsageLog
+from app.models.audit import AuditLog
 from app.models.background_job import BackgroundJob
 from app.models.comment import Comment, CommentMention
+from app.models.dashboard import Dashboard, DashboardWidget
 from app.models.defect import Defect, DefectLink
 from app.models.execution import ExecutionStep, TestRun, TestRunCase
-from app.models.identity import User
-from app.models.project import Project
+from app.models.field_customization import (
+    CustomFieldDefinition,
+    CustomFieldValue,
+    FieldOption,
+    StatusLabel,
+)
+from app.models.identity import Permission, Role, RolePermission, User
+from app.models.notification import Notification
+from app.models.project import Project, ProjectMember
+from app.models.report_schedule import ReportSchedule
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.saved_report import SavedReport
+from app.models.saved_view import SavedView
+from app.models.shared_step import SharedStep
+from app.models.sso_config import SsoConfig
+from app.models.subscription import Subscription
 from app.models.task import Task, TaskStatus, TaskTestCaseLink
+from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import Attachment, TestCase, TestCaseVersion, TestCaseVersionStep
+from app.models.test_data_set import TestDataSet, TestDataSetRow
 from app.models.test_module import TestModule
+from app.models.test_plan import TestPlan, TestPlanRun
+from app.models.test_suite import TestSuite, TestSuiteCase
 from app.services import job_service
 
 TENANT_EXPORT_JOB_TYPE = "tenant_export"
@@ -51,7 +76,37 @@ TENANT_EXPORT_JOB_TYPE = "tenant_export"
 # Columns that must never leave the system, even in an admin-triggered
 # export -- the same credentials every other part of this codebase treats
 # as write-only/never-serialized.
-_EXCLUDED_COLUMNS = {"password_hash", "token_hash", "code_hash", "client_secret_encrypted"}
+_EXCLUDED_COLUMNS = {
+    "password_hash",
+    "token_hash",
+    "code_hash",
+    "client_secret_encrypted",
+    "ai_api_key_encrypted",
+}
+
+# ADR-138: tables that are deliberately not in a tenant's export.
+EXCLUDED_TABLES: dict[str, str] = {
+    "sessions": "sign-in sessions (credentials)",
+    "mfa_challenges": "one-time sign-in codes (credentials)",
+    "user_invites": "invitation tokens (credentials)",
+    "scim_tokens": "provisioning tokens (credentials)",
+    "service_tokens": "integration tokens (credentials)",
+    "background_jobs": "internal job queue, with internal file references",
+    "idempotency_keys": "short-lived request de-duplication",
+    "import_sessions": "uploads waiting to be committed",
+    "entity_counters": "counters behind display IDs; the IDs are on the records",
+    "permissions": "the product's permission list; codes appear in role_permissions",
+    "plans": "the product's price plans",
+    "marketing_leads": "the provider's sales enquiries",
+    "audit_chain_checkpoints": "seals over the audit chains, kept by the provider",
+    "platform_admins": "the provider's administrators",
+    "platform_admin_recovery_codes": "the provider's credentials",
+    "platform_sessions": "the provider's sessions",
+    "platform_audit_events": "the provider's own audit log",
+}
+
+# Exported, but not selected by their own `tenant_id` column alone.
+_SPECIAL_TABLES = ("tenants", "roles", "project_members", "role_permissions")
 
 _EXPORT_MODELS: list[tuple[str, type[DeclarativeBase]]] = [
     ("users", User),
@@ -78,11 +133,71 @@ _EXPORT_MODELS: list[tuple[str, type[DeclarativeBase]]] = [
     ("task_statuses", TaskStatus),
     ("tasks", Task),
     ("task_test_case_links", TaskTestCaseLink),
+    # ADR-138: previously left out.
+    ("test_suites", TestSuite),
+    ("test_suite_cases", TestSuiteCase),
+    ("test_plans", TestPlan),
+    ("test_plan_runs", TestPlanRun),
+    ("shared_steps", SharedStep),
+    ("test_data_sets", TestDataSet),
+    ("test_data_set_rows", TestDataSetRow),
+    ("custom_field_definitions", CustomFieldDefinition),
+    ("custom_field_values", CustomFieldValue),
+    ("field_options", FieldOption),
+    ("status_labels", StatusLabel),
+    ("saved_views", SavedView),
+    ("saved_reports", SavedReport),
+    ("report_schedules", ReportSchedule),
+    ("dashboards", Dashboard),
+    ("dashboard_widgets", DashboardWidget),
+    ("notifications", Notification),
+    ("access_rules", AccessRule),
+    ("sso_configs", SsoConfig),
+    ("subscriptions", Subscription),
+    ("ai_usage_logs", AIUsageLog),
+    ("audit_logs", AuditLog),
 ]
 
 
+def exported_tables() -> list[str]:
+    return [name for name, _ in _EXPORT_MODELS] + list(_SPECIAL_TABLES)
+
+
+def _special_rows(db: Session, tenant_id: UUID) -> dict[str, list[dict[str, Any]]]:
+    # The organization's own record.
+    tenant = db.execute(select(Tenant).where(Tenant.id == tenant_id)).scalars().all()
+    # Its custom roles, plus the shared system roles its users refer to.
+    own_or_system = or_(Role.tenant_id == tenant_id, Role.tenant_id.is_(None))
+    roles = db.execute(select(Role).where(own_or_system)).scalars().all()
+    # These two have no tenant column, so each is limited through its parent.
+    members = (
+        db.execute(
+            select(ProjectMember)
+            .join(Project, Project.id == ProjectMember.project_id)
+            .where(Project.tenant_id == tenant_id)
+        )
+        .scalars()
+        .all()
+    )
+    grants = db.execute(
+        select(RolePermission.role_id, Permission.code)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .join(Role, Role.id == RolePermission.role_id)
+        .where(own_or_system)
+        .order_by(RolePermission.role_id, Permission.code)
+    ).all()
+    return {
+        "tenants": [_row_to_dict(row) for row in tenant],
+        "roles": [_row_to_dict(row) for row in roles],
+        "project_members": [_row_to_dict(row) for row in members],
+        "role_permissions": [
+            {"role_id": role_id, "permission_code": code} for role_id, code in grants
+        ],
+    }
+
+
 def _json_default(value: Any) -> Any:
-    if isinstance(value, UUID | datetime | date):
+    if isinstance(value, UUID | datetime | date | time):
         return str(value)
     if isinstance(value, Decimal):
         return float(value)
@@ -90,11 +205,20 @@ def _json_default(value: Any) -> Any:
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
+    # Read through the mapped attribute: a column's name can differ from it. audit_logs
+    # has a "metadata" column, and `row.metadata` is SQLAlchemy's own.
     return {
-        col.name: getattr(row, col.name)
-        for col in row.__table__.columns
-        if col.name not in _EXCLUDED_COLUMNS
+        attr.columns[0].name: getattr(row, attr.key)
+        for attr in row.__mapper__.column_attrs
+        if attr.columns[0].name not in _EXCLUDED_COLUMNS
     }
+
+
+def _write_table(
+    archive: zipfile.ZipFile, manifest: dict[str, int], name: str, rows: list[dict[str, Any]]
+) -> None:
+    manifest[name] = len(rows)
+    archive.writestr(f"{name}.json", json.dumps(rows, default=_json_default, indent=2))
 
 
 def request_export(db: Session, tenant_id: UUID, actor_user_id: UUID) -> BackgroundJob:
@@ -119,9 +243,9 @@ def run_export(db: Session, tenant_id: UUID) -> dict:
                 .scalars()
                 .all()
             )
-            payload = [_row_to_dict(row) for row in rows]
-            manifest[name] = len(payload)
-            archive.writestr(f"{name}.json", json.dumps(payload, default=_json_default, indent=2))
+            _write_table(archive, manifest, name, [_row_to_dict(row) for row in rows])
+        for name, payload in _special_rows(db, tenant_id).items():
+            _write_table(archive, manifest, name, payload)
         manifest_payload = {
             "tenant_id": str(tenant_id),
             "generated_at": datetime.utcnow().isoformat(),

@@ -38,6 +38,8 @@ export interface LinkedDefect {
 
 export interface TestCase {
   id: string
+  /** ADR-136: send back as `expected_version` when saving or deciding. */
+  row_version?: number
   project_id: string
   title: string
   description: string
@@ -172,7 +174,7 @@ export interface TestCaseCreateRequest {
   requirement_ref?: string | null
 }
 
-export type TestCaseUpdateRequest = Partial<TestCaseCreateRequest>
+export type TestCaseUpdateRequest = Partial<TestCaseCreateRequest> & { expected_version?: number }
 
 const FILTER_KEYS = [
   'test_type',
@@ -258,14 +260,17 @@ export function submitForReview(id: string, reviewerId?: string | null): Promise
   })
 }
 
-export function approveTestCase(id: string): Promise<TestCase> {
-  return apiFetch<TestCase>(`/test-cases/${id}/approve`, { method: 'POST' })
+export function approveTestCase(id: string, expectedVersion?: number): Promise<TestCase> {
+  return apiFetch<TestCase>(`/test-cases/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ expected_version: expectedVersion }),
+  })
 }
 
-export function requestChanges(id: string, comment: string): Promise<TestCase> {
+export function requestChanges(id: string, comment: string, expectedVersion?: number): Promise<TestCase> {
   return apiFetch<TestCase>(`/test-cases/${id}/request-changes`, {
     method: 'POST',
-    body: JSON.stringify({ comment }),
+    body: JSON.stringify({ comment, expected_version: expectedVersion }),
   })
 }
 

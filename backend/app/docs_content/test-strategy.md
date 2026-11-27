@@ -110,3 +110,13 @@ established choice (confirmed earlier, via explicit user decision: "Lightweight
 pytest timing," no k6) stands unless a future phase's scale requirements
 genuinely demand it, in which case that phase's own test plan should say so
 explicitly rather than silently expanding scope.
+
+## 6. Checks that fail when something new is not decided
+
+| Test | Fails when |
+|---|---|
+| `test_tenant_isolation_schema.py` | a table with `tenant_id` lacks forced row-level security and is not a listed exception; a table without `tenant_id` is not listed; a policy skips the tenant; the application role could bypass RLS |
+| `test_route_permissions.py` | a route is added or its guard changes without updating `route_permissions.txt`; a route open to anyone is not listed with a reason |
+| `test_export_completeness.py` | a table is neither in the tenant export nor excluded with a reason |
+
+The route record shows guards declared on routes. It does not show checks made inside services, and it does not certify that a recorded guard is sufficient.

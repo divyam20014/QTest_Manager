@@ -45,6 +45,14 @@ class ConflictError(AppError):
         super().__init__("conflict", message, status_code=409)
 
 
+class StaleWriteError(AppError):
+    """ADR-136: the record changed after the caller read it. Its own code, so a client
+    can tell this from other conflicts and keep the user's input."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("stale_write", message, status_code=409)
+
+
 class ConfigurationError(AppError):
     """Raised when a feature is enabled by config but its required
     infrastructure (e.g. an SMTP server) isn't configured. Fails loudly

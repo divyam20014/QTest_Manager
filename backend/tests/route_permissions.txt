@@ -1,0 +1,388 @@
+DELETE /api/v1/access-rules/{rule_id}  ->  require_permission(access_rule.manage)
+DELETE /api/v1/attachments/{attachment_id}  ->  signed-in
+DELETE /api/v1/auth/sessions/{session_id}  ->  signed-in
+DELETE /api/v1/builds/{build_id}  ->  require_permission(environment.manage)
+DELETE /api/v1/comments/{comment_id}  ->  signed-in
+DELETE /api/v1/custom-fields/definitions/{definition_id}  ->  require_permission(field_customization.manage)
+DELETE /api/v1/dashboards/{dashboard_id}  ->  signed-in
+DELETE /api/v1/data-set-rows/{row_id}  ->  require_permission(testcase.edit)
+DELETE /api/v1/data-sets/{data_set_id}  ->  require_permission(testcase.edit)
+DELETE /api/v1/defects/{defect_id}  ->  require_resource_permission(defect.delete, defect)
+DELETE /api/v1/defects/{defect_id}/links/{link_id}  ->  require_defect_permission(defect.create|defect.edit)
+DELETE /api/v1/defects/{defect_id}/test-cases/{test_case_id}  ->  require_defect_permission(defect.create|defect.edit)
+DELETE /api/v1/environments/{environment_id}  ->  require_permission(environment.manage)
+DELETE /api/v1/field-options/{option_id}  ->  require_permission(field_customization.manage)
+DELETE /api/v1/modules/{module_id}  ->  require_permission(testcase.edit)
+DELETE /api/v1/platform/auth/sessions/{session_id}  ->  full_session
+DELETE /api/v1/projects/{project_id}  ->  require_permission(project.delete)
+DELETE /api/v1/projects/{project_id}/dashboard  ->  signed-in
+DELETE /api/v1/projects/{project_id}/dashboard/default  ->  require_project_permission(project.edit)
+DELETE /api/v1/projects/{project_id}/members/{user_id}  ->  require_permission(project.members.manage)
+DELETE /api/v1/releases/{release_id}  ->  require_permission(environment.manage)
+DELETE /api/v1/report-builder/reports/{report_id}  ->  require_permission(report.view), require_reports_not_hidden
+DELETE /api/v1/report-schedules/{schedule_id}  ->  require_permission(report.schedule_manage)
+DELETE /api/v1/requirements/{requirement_id}  ->  require_permission(requirement.manage)
+DELETE /api/v1/requirements/{requirement_id}/test-cases/{test_case_id}  ->  require_permission(requirement.manage)
+DELETE /api/v1/roles/{role_id}  ->  require_permission(user.manage)
+DELETE /api/v1/saved-views/{view_id}  ->  signed-in
+DELETE /api/v1/scim-tokens/{token_id}  ->  require_permission(sso.manage)
+DELETE /api/v1/scim/v2/{tenant_id}/Users/{user_id}  ->  require_scim_token
+DELETE /api/v1/service-tokens/{token_id}  ->  require_permission(integration.manage)
+DELETE /api/v1/shared-steps/{shared_step_id}  ->  require_permission(testcase.edit)
+DELETE /api/v1/task-statuses/{status_id}  ->  require_permission(task_status.manage)
+DELETE /api/v1/tasks/{task_id}  ->  require_resource_permission(task.manage, task)
+DELETE /api/v1/tasks/{task_id}/test-cases/{test_case_id}  ->  require_resource_permission(task.manage, task)
+DELETE /api/v1/test-cases/{test_case_id}  ->  signed-in
+DELETE /api/v1/test-plans/{plan_id}  ->  require_permission(testrun.create)
+DELETE /api/v1/test-runs/{run_id}  ->  require_permission(testrun.delete)
+DELETE /api/v1/test-runs/{run_id}/cases/{test_run_case_id}  ->  require_permission(testrun.create)
+DELETE /api/v1/test-suites/{suite_id}  ->  require_permission(testrun.create)
+DELETE /api/v1/users/{user_id}  ->  require_permission(user.manage)
+GET /api/v1/access-rules  ->  require_permission(access_rule.manage)
+GET /api/v1/access-rules/active  ->  signed-in
+GET /api/v1/access-rules/{rule_id}  ->  require_permission(access_rule.manage)
+GET /api/v1/ai/usage  ->  require_permission(tenant.settings.manage)
+GET /api/v1/attachments/{attachment_id}/download  ->  signed-in
+GET /api/v1/audit-logs  ->  require_permission(audit.view)
+GET /api/v1/audit-logs/checkpoints  ->  require_permission(audit.view)
+GET /api/v1/audit-logs/checkpoints/export  ->  require_permission(audit.view)
+GET /api/v1/audit-logs/export  ->  require_permission(audit.view)
+GET /api/v1/audit-logs/verify-chain  ->  require_permission(audit.view)
+GET /api/v1/auth/me  ->  signed-in
+GET /api/v1/auth/sessions  ->  signed-in
+GET /api/v1/auth/sso/{tenant_id}/callback  ->  none
+GET /api/v1/auth/sso/{tenant_id}/login  ->  none
+GET /api/v1/auth/sso/{tenant_id}/status  ->  none
+GET /api/v1/calendar  ->  signed-in
+GET /api/v1/custom-fields/definitions  ->  signed-in
+GET /api/v1/custom-fields/values/{owner_type}/{owner_id}  ->  signed-in
+GET /api/v1/dashboard/activity-stream  ->  require_permission(report.view)
+GET /api/v1/dashboard/domain-distribution  ->  require_permission(report.view)
+GET /api/v1/dashboard/summary  ->  require_permission(report.view)
+GET /api/v1/dashboards  ->  signed-in
+GET /api/v1/dashboards/{dashboard_id}  ->  signed-in
+GET /api/v1/defects  ->  signed-in
+GET /api/v1/defects/columns  ->  signed-in
+GET /api/v1/defects/export.csv  ->  require_any_permission(defect.export)
+GET /api/v1/defects/export.xlsx  ->  require_any_permission(defect.export)
+GET /api/v1/defects/import-template.csv  ->  require_any_permission(defect.create|defect.import)
+GET /api/v1/defects/import-template.xlsx  ->  require_any_permission(defect.create|defect.import)
+GET /api/v1/defects/import/preview/{token}/rows  ->  require_any_permission(defect.create|defect.import)
+GET /api/v1/defects/import/status/{job_id}  ->  require_any_permission(defect.create|defect.import)
+GET /api/v1/defects/import/template.csv  ->  require_any_permission(defect.create|defect.import)
+GET /api/v1/defects/status-counts  ->  signed-in
+GET /api/v1/defects/{defect_id}  ->  signed-in
+GET /api/v1/defects/{defect_id}/attachments  ->  signed-in
+GET /api/v1/defects/{defect_id}/comments  ->  signed-in
+GET /api/v1/defects/{defect_id}/history  ->  signed-in
+GET /api/v1/defects/{defect_id}/possible-duplicates  ->  signed-in
+GET /api/v1/defects/{defect_id}/retests  ->  signed-in
+GET /api/v1/defects/{defect_id}/test-cases  ->  signed-in
+GET /api/v1/environments  ->  signed-in
+GET /api/v1/execution-steps/{execution_step_id}/attachments  ->  signed-in
+GET /api/v1/execution-steps/{execution_step_id}/comments  ->  signed-in
+GET /api/v1/export/jobs/{job_id}  ->  require_permission(tenant.settings.manage)
+GET /api/v1/export/jobs/{job_id}/download  ->  require_permission(tenant.settings.manage)
+GET /api/v1/field-options  ->  signed-in
+GET /api/v1/health  ->  none
+GET /api/v1/my-work/reviews  ->  signed-in
+GET /api/v1/my-work/run-cases  ->  signed-in
+GET /api/v1/my-work/summary  ->  signed-in
+GET /api/v1/my-work/tasks  ->  signed-in
+GET /api/v1/notifications  ->  signed-in
+GET /api/v1/notifications/unread-count  ->  signed-in
+GET /api/v1/platform/admins  ->  require_platform_admin
+GET /api/v1/platform/audit-events  ->  require_platform_admin
+GET /api/v1/platform/audit-events/checkpoints  ->  require_platform_admin
+GET /api/v1/platform/audit-events/checkpoints/export  ->  require_platform_admin
+GET /api/v1/platform/audit-events/verify  ->  require_platform_admin
+GET /api/v1/platform/auth/me  ->  none
+GET /api/v1/platform/auth/sessions  ->  full_session
+GET /api/v1/platform/docs  ->  require_platform_admin
+GET /api/v1/platform/docs/{slug}  ->  require_platform_admin
+GET /api/v1/platform/leads  ->  require_platform_admin
+GET /api/v1/platform/plans  ->  require_platform_admin
+GET /api/v1/platform/tenants  ->  require_platform_admin
+GET /api/v1/platform/tenants/{tenant_id}/subscription  ->  require_platform_admin
+GET /api/v1/projects  ->  signed-in
+GET /api/v1/projects/{project_id}  ->  signed-in
+GET /api/v1/projects/{project_id}/builds  ->  signed-in
+GET /api/v1/projects/{project_id}/dashboard  ->  signed-in
+GET /api/v1/projects/{project_id}/members  ->  require_any_permission(project.members.manage|user.manage)
+GET /api/v1/projects/{project_id}/modules  ->  signed-in
+GET /api/v1/projects/{project_id}/releases  ->  signed-in
+GET /api/v1/projects/{project_id}/requirements  ->  signed-in
+GET /api/v1/projects/{project_id}/requirements/coverage  ->  signed-in
+GET /api/v1/projects/{project_id}/shared-steps  ->  signed-in
+GET /api/v1/projects/{project_id}/tasks  ->  signed-in
+GET /api/v1/projects/{project_id}/tasks/summary  ->  signed-in
+GET /api/v1/projects/{project_id}/tasks/tree  ->  signed-in
+GET /api/v1/projects/{project_id}/test-cases  ->  signed-in
+GET /api/v1/projects/{project_id}/test-cases/export.csv  ->  require_any_permission(testcase.bulk_import_export|testcase.export)
+GET /api/v1/projects/{project_id}/test-cases/export.xlsx  ->  require_any_permission(testcase.bulk_import_export|testcase.export)
+GET /api/v1/projects/{project_id}/test-plans  ->  signed-in
+GET /api/v1/projects/{project_id}/test-runs  ->  signed-in
+GET /api/v1/projects/{project_id}/test-suites  ->  signed-in
+GET /api/v1/ready  ->  none
+GET /api/v1/report-builder/reports  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/report-builder/reports/{report_id}  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/report-builder/reports/{report_id}/export.csv  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/report-builder/reports/{report_id}/export.xlsx  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/report-builder/sources  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/report-schedules  ->  require_permission(report.schedule_manage)
+GET /api/v1/reports/aggregate  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/aggregate/export.xlsx  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/compliance-detail  ->  require_permission(report.compliance_export), require_reports_not_hidden
+GET /api/v1/reports/compliance-detail/pdf  ->  require_permission(report.compliance_export), require_reports_not_hidden
+GET /api/v1/reports/compliance-export  ->  require_permission(report.compliance_export), require_reports_not_hidden
+GET /api/v1/reports/compliance-export.xlsx  ->  require_permission(report.compliance_export), require_reports_not_hidden
+GET /api/v1/reports/defect-aging  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/defect-leakage  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/defect-leakage/export.xlsx  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/defect-reopen-summary  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/defect-trend  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/execution-trend  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/flaky-tests  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/module-coverage  ->  require_permission(report.view)
+GET /api/v1/reports/overdue-run-cases  ->  require_permission(report.view)
+GET /api/v1/reports/project-test-status  ->  require_permission(report.view)
+GET /api/v1/reports/quality-metrics  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/quality-metrics/export.xlsx  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/release-readiness  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/tester-performance  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/traceability-matrix  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/traceability-matrix/export  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/traceability-matrix/export.xlsx  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/reports/upcoming-milestones  ->  require_permission(report.view)
+GET /api/v1/reports/workload  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/requirements/{requirement_id}  ->  signed-in
+GET /api/v1/requirements/{requirement_id}/attachments  ->  signed-in
+GET /api/v1/requirements/{requirement_id}/history  ->  signed-in
+GET /api/v1/requirements/{requirement_id}/versions  ->  signed-in
+GET /api/v1/roles  ->  require_permission(user.manage)
+GET /api/v1/roles/assignable  ->  require_any_permission(project.members.manage|user.manage)
+GET /api/v1/roles/permissions  ->  require_permission(user.manage)
+GET /api/v1/saved-views  ->  signed-in
+GET /api/v1/scim-tokens  ->  require_permission(sso.manage)
+GET /api/v1/scim/v2/{tenant_id}/Users  ->  require_scim_token
+GET /api/v1/scim/v2/{tenant_id}/Users/{user_id}  ->  require_scim_token
+GET /api/v1/search  ->  signed-in
+GET /api/v1/service-tokens  ->  require_permission(integration.manage)
+GET /api/v1/settings  ->  require_permission(tenant.settings.manage)
+GET /api/v1/settings/branding  ->  signed-in
+GET /api/v1/settings/branding/logo  ->  signed-in
+GET /api/v1/settings/subscription  ->  require_permission(tenant.settings.manage)
+GET /api/v1/settings/subscription/history  ->  require_permission(tenant.settings.manage)
+GET /api/v1/settings/subscription/plans  ->  signed-in
+GET /api/v1/settings/subscription/usage  ->  require_permission(tenant.settings.manage)
+GET /api/v1/settings/workspace  ->  signed-in
+GET /api/v1/sso/config  ->  require_permission(sso.manage)
+GET /api/v1/status-labels  ->  signed-in
+GET /api/v1/task-statuses  ->  signed-in
+GET /api/v1/tasks/{task_id}  ->  signed-in
+GET /api/v1/tasks/{task_id}/attachments  ->  signed-in
+GET /api/v1/tasks/{task_id}/comments  ->  signed-in
+GET /api/v1/tasks/{task_id}/history  ->  signed-in
+GET /api/v1/tasks/{task_id}/rollup  ->  signed-in
+GET /api/v1/tasks/{task_id}/test-cases  ->  signed-in
+GET /api/v1/tasks/{task_id}/test-runs  ->  signed-in
+GET /api/v1/templates  ->  signed-in
+GET /api/v1/test-cases  ->  signed-in
+GET /api/v1/test-cases/columns  ->  signed-in
+GET /api/v1/test-cases/import-template.csv  ->  require_any_permission(testcase.bulk_import_export|testcase.create)
+GET /api/v1/test-cases/import-template.xlsx  ->  require_any_permission(testcase.bulk_import_export|testcase.create)
+GET /api/v1/test-cases/import/jobs/{job_id}  ->  require_permission(testcase.bulk_import_export)
+GET /api/v1/test-cases/import/preview/{token}/rows  ->  require_any_permission(testcase.bulk_import_export|testcase.create)
+GET /api/v1/test-cases/import/status/{job_id}  ->  require_any_permission(testcase.bulk_import_export|testcase.create)
+GET /api/v1/test-cases/import/template.csv  ->  require_permission(testcase.bulk_import_export)
+GET /api/v1/test-cases/{test_case_id}  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/attachments  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/comments  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/data-sets  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/defects  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/executions  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/history  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/requirements  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/versions  ->  signed-in
+GET /api/v1/test-cases/{test_case_id}/versions/compare  ->  signed-in
+GET /api/v1/test-data/field-types  ->  signed-in
+GET /api/v1/test-plans/{plan_id}/rollup  ->  signed-in
+GET /api/v1/test-run-cases/{test_run_case_id}/context  ->  signed-in
+GET /api/v1/test-run-cases/{test_run_case_id}/defect-draft  ->  signed-in
+GET /api/v1/test-run-cases/{test_run_case_id}/steps  ->  signed-in
+GET /api/v1/test-runs  ->  signed-in
+GET /api/v1/test-runs/{run_id}  ->  signed-in
+GET /api/v1/user-guide  ->  signed-in
+GET /api/v1/users  ->  require_any_permission(project.members.manage|user.manage)
+GET /api/v1/users/me/history  ->  signed-in
+PATCH /api/v1/access-rules/{rule_id}  ->  require_permission(access_rule.manage)
+PATCH /api/v1/custom-fields/definitions/{definition_id}  ->  require_permission(field_customization.manage)
+PATCH /api/v1/dashboards/{dashboard_id}  ->  signed-in
+PATCH /api/v1/defects/{defect_id}  ->  require_defect_permission(defect.create|defect.edit), require_policy(resource_not_locked)
+PATCH /api/v1/defects/{defect_id}/build-release  ->  require_defect_permission(defect.create|defect.edit)
+PATCH /api/v1/defects/{defect_id}/environment  ->  require_defect_permission(defect.create|defect.edit)
+PATCH /api/v1/defects/{defect_id}/root-cause  ->  require_defect_permission(defect.create|defect.edit)
+PATCH /api/v1/defects/{defect_id}/status  ->  require_defect_permission(defect.change_status|defect.close|defect.create)
+PATCH /api/v1/environments/{environment_id}  ->  require_permission(environment.manage)
+PATCH /api/v1/field-options/{option_id}  ->  require_permission(field_customization.manage)
+PATCH /api/v1/modules/{module_id}  ->  require_permission(testcase.edit)
+PATCH /api/v1/notifications/{notification_id}/read  ->  signed-in
+PATCH /api/v1/platform/admins/{admin_id}  ->  require_platform_admin
+PATCH /api/v1/platform/leads/{lead_id}  ->  require_platform_admin
+PATCH /api/v1/platform/plans/{plan_code}  ->  require_platform_admin
+PATCH /api/v1/platform/tenants/{tenant_id}/data-region  ->  require_platform_admin
+PATCH /api/v1/platform/tenants/{tenant_id}/status  ->  require_platform_admin
+PATCH /api/v1/projects/{project_id}  ->  require_permission(project.edit)
+PATCH /api/v1/projects/{project_id}/members/{user_id}/role  ->  require_permission(project.members.manage)
+PATCH /api/v1/releases/{release_id}  ->  require_permission(environment.manage)
+PATCH /api/v1/report-builder/reports/{report_id}  ->  require_permission(report.view), require_reports_not_hidden
+PATCH /api/v1/report-schedules/{schedule_id}  ->  require_permission(report.schedule_manage)
+PATCH /api/v1/requirements/{requirement_id}  ->  require_permission(requirement.manage)
+PATCH /api/v1/roles/{role_id}  ->  require_permission(user.manage)
+PATCH /api/v1/saved-views/{view_id}  ->  signed-in
+PATCH /api/v1/scim/v2/{tenant_id}/Users/{user_id}  ->  require_scim_token
+PATCH /api/v1/settings  ->  require_permission(tenant.settings.manage)
+PATCH /api/v1/shared-steps/{shared_step_id}  ->  require_permission(testcase.edit)
+PATCH /api/v1/task-statuses/{status_id}  ->  require_permission(task_status.manage)
+PATCH /api/v1/tasks/{task_id}  ->  require_resource_permission(task.manage, task)
+PATCH /api/v1/test-cases/{test_case_id}  ->  require_resource_permission(testcase.edit, test_case)
+PATCH /api/v1/test-plans/{plan_id}  ->  require_permission(testrun.create)
+PATCH /api/v1/test-run-cases/{test_run_case_id}/assign  ->  require_permission(testrun.create)
+PATCH /api/v1/test-runs/{run_id}  ->  require_permission(testrun.create)
+PATCH /api/v1/test-suites/{suite_id}  ->  require_permission(testrun.create)
+PATCH /api/v1/users/{user_id}  ->  require_permission(user.manage)
+POST /api/v1/access-rules  ->  require_permission(access_rule.manage)
+POST /api/v1/access-rules/preview  ->  require_permission(access_rule.manage)
+POST /api/v1/ai/assistant/query  ->  signed-in
+POST /api/v1/audit-logs/checkpoints  ->  require_permission(audit.view)
+POST /api/v1/auth/identify  ->  none
+POST /api/v1/auth/login  ->  none
+POST /api/v1/auth/logout  ->  signed-in
+POST /api/v1/auth/mfa/verify  ->  none
+POST /api/v1/auth/signup  ->  none
+POST /api/v1/ci/{tenant_id}/webhooks/test-results  ->  require_service_token(ci_results)
+POST /api/v1/custom-fields/definitions  ->  require_permission(field_customization.manage)
+POST /api/v1/dashboards  ->  signed-in
+POST /api/v1/dashboards/{dashboard_id}/team-default  ->  signed-in
+POST /api/v1/data-sets/{data_set_id}/rows  ->  require_permission(testcase.edit)
+POST /api/v1/defects  ->  require_permission(defect.create)
+POST /api/v1/defects/import  ->  require_any_permission(defect.create|defect.import)
+POST /api/v1/defects/import/commit  ->  require_any_permission(defect.create|defect.import)
+POST /api/v1/defects/import/preview  ->  require_any_permission(defect.create|defect.import)
+POST /api/v1/defects/{defect_id}/ai-suggest-root-cause  ->  signed-in
+POST /api/v1/defects/{defect_id}/attachments  ->  signed-in
+POST /api/v1/defects/{defect_id}/comments  ->  signed-in
+POST /api/v1/defects/{defect_id}/links  ->  require_defect_permission(defect.create|defect.edit)
+POST /api/v1/defects/{defect_id}/reopen  ->  require_defect_permission(defect.change_status|defect.close|defect.create)
+POST /api/v1/defects/{defect_id}/retest  ->  require_defect_permission(defect.change_status|defect.close|defect.create)
+POST /api/v1/defects/{defect_id}/retest-result  ->  require_defect_permission(defect.change_status)
+POST /api/v1/defects/{defect_id}/test-cases/{test_case_id}  ->  require_defect_permission(defect.create|defect.edit)
+POST /api/v1/environments  ->  require_permission(environment.manage)
+POST /api/v1/execution-steps/{execution_step_id}/attachments  ->  require_permission(executionstep.record)
+POST /api/v1/execution-steps/{execution_step_id}/comments  ->  signed-in
+POST /api/v1/execution-steps/{execution_step_id}/open  ->  require_execute_permission
+POST /api/v1/execution-steps/{execution_step_id}/verdict  ->  require_execute_permission
+POST /api/v1/export  ->  require_permission(tenant.settings.manage)
+POST /api/v1/field-options  ->  require_permission(field_customization.manage)
+POST /api/v1/notifications/mark-all-read  ->  signed-in
+POST /api/v1/platform/admins  ->  require_platform_admin, require_platform_admin_step_up
+POST /api/v1/platform/admins/{admin_id}/enrolment-code  ->  require_platform_admin, require_platform_admin_step_up
+POST /api/v1/platform/admins/{admin_id}/password-reset-code  ->  require_platform_admin, require_platform_admin_step_up
+POST /api/v1/platform/admins/{admin_id}/reset-mfa  ->  require_platform_admin, require_platform_admin_step_up
+POST /api/v1/platform/audit-events/checkpoints  ->  require_platform_admin
+POST /api/v1/platform/auth/login  ->  none
+POST /api/v1/platform/auth/logout  ->  none
+POST /api/v1/platform/auth/mfa/enroll/start  ->  pre_mfa_session
+POST /api/v1/platform/auth/mfa/enroll/verify  ->  pre_mfa_session
+POST /api/v1/platform/auth/mfa/verify  ->  pre_mfa_session
+POST /api/v1/platform/auth/password/change  ->  full_session
+POST /api/v1/platform/auth/password/reset  ->  none
+POST /api/v1/platform/auth/step-up  ->  full_session
+POST /api/v1/platform/plans  ->  require_platform_admin
+POST /api/v1/platform/tenants  ->  require_platform_admin
+POST /api/v1/platform/tenants/{tenant_id}/clear-ip-allowlist  ->  require_platform_admin
+POST /api/v1/projects  ->  require_permission(project.create)
+POST /api/v1/projects/{project_id}/builds  ->  require_permission(environment.manage)
+POST /api/v1/projects/{project_id}/builds/bulk  ->  require_permission(environment.manage)
+POST /api/v1/projects/{project_id}/members  ->  require_permission(project.members.manage)
+POST /api/v1/projects/{project_id}/modules  ->  require_permission(testcase.edit)
+POST /api/v1/projects/{project_id}/releases  ->  require_permission(environment.manage)
+POST /api/v1/projects/{project_id}/releases/bulk  ->  require_permission(environment.manage)
+POST /api/v1/projects/{project_id}/requirements  ->  require_project_permission(requirement.manage)
+POST /api/v1/projects/{project_id}/shared-steps  ->  require_permission(testcase.edit)
+POST /api/v1/projects/{project_id}/tasks  ->  require_project_permission(task.manage)
+POST /api/v1/projects/{project_id}/templates/import  ->  require_permission(testcase.edit)
+POST /api/v1/projects/{project_id}/test-cases  ->  require_project_permission(testcase.create)
+POST /api/v1/projects/{project_id}/test-plans  ->  require_permission(testrun.create)
+POST /api/v1/projects/{project_id}/test-runs  ->  require_project_permission(testrun.create)
+POST /api/v1/projects/{project_id}/test-suites  ->  require_permission(testrun.create)
+POST /api/v1/public/leads  ->  none
+POST /api/v1/report-builder/preview  ->  require_permission(report.view), require_reports_not_hidden
+POST /api/v1/report-builder/reports  ->  require_permission(report.view), require_reports_not_hidden
+POST /api/v1/report-builder/reports/{report_id}/run  ->  require_permission(report.view), require_reports_not_hidden
+POST /api/v1/report-schedules  ->  require_permission(report.schedule_manage)
+POST /api/v1/requirements/{requirement_id}/analyze-change  ->  signed-in
+POST /api/v1/requirements/{requirement_id}/attachments  ->  require_permission(requirement.manage)
+POST /api/v1/requirements/{requirement_id}/generate-test-cases  ->  signed-in
+POST /api/v1/requirements/{requirement_id}/test-cases  ->  require_permission(requirement.manage)
+POST /api/v1/roles  ->  require_permission(user.manage)
+POST /api/v1/saved-views  ->  signed-in
+POST /api/v1/scim-tokens  ->  require_permission(sso.manage)
+POST /api/v1/scim/v2/{tenant_id}/Users  ->  require_scim_token
+POST /api/v1/service-tokens  ->  require_permission(integration.manage)
+POST /api/v1/settings/branding/logo  ->  require_permission(tenant.settings.manage)
+POST /api/v1/settings/subscription/switch-plan  ->  require_permission(tenant.settings.manage)
+POST /api/v1/task-statuses  ->  require_permission(task_status.manage)
+POST /api/v1/tasks/{task_id}/attachments  ->  require_permission(task.transition)
+POST /api/v1/tasks/{task_id}/comments  ->  signed-in
+POST /api/v1/tasks/{task_id}/status  ->  require_resource_permission(task.transition, task)
+POST /api/v1/tasks/{task_id}/test-cases  ->  require_resource_permission(task.manage, task)
+POST /api/v1/test-cases/bulk-assign-module  ->  require_permission(testcase.edit)
+POST /api/v1/test-cases/bulk-update  ->  signed-in
+POST /api/v1/test-cases/import  ->  require_permission(testcase.bulk_import_export)
+POST /api/v1/test-cases/import/async  ->  require_permission(testcase.bulk_import_export)
+POST /api/v1/test-cases/import/commit  ->  require_any_permission(testcase.bulk_import_export|testcase.create)
+POST /api/v1/test-cases/import/detect-columns  ->  require_permission(testcase.bulk_import_export)
+POST /api/v1/test-cases/import/mapped  ->  require_permission(testcase.bulk_import_export)
+POST /api/v1/test-cases/import/preview  ->  require_any_permission(testcase.bulk_import_export|testcase.create)
+POST /api/v1/test-cases/{test_case_id}/ai-review  ->  signed-in
+POST /api/v1/test-cases/{test_case_id}/approve  ->  require_resource_permission(testcase.approve, test_case)
+POST /api/v1/test-cases/{test_case_id}/attachments  ->  require_permission(testcase.edit)
+POST /api/v1/test-cases/{test_case_id}/comments  ->  signed-in
+POST /api/v1/test-cases/{test_case_id}/data-sets  ->  require_permission(testcase.edit)
+POST /api/v1/test-cases/{test_case_id}/deprecate  ->  require_resource_permission(testcase.deprecate, test_case)
+POST /api/v1/test-cases/{test_case_id}/duplicate  ->  require_resource_permission(testcase.create, test_case)
+POST /api/v1/test-cases/{test_case_id}/module  ->  require_permission(testcase.edit)
+POST /api/v1/test-cases/{test_case_id}/quarantine  ->  require_resource_permission(testcase.approve, test_case)
+POST /api/v1/test-cases/{test_case_id}/request-changes  ->  require_resource_permission(testcase.approve, test_case)
+POST /api/v1/test-cases/{test_case_id}/submit-review  ->  require_resource_permission(testcase.edit, test_case)
+POST /api/v1/test-cases/{test_case_id}/unquarantine  ->  require_resource_permission(testcase.approve, test_case)
+POST /api/v1/test-data/generate  ->  signed-in
+POST /api/v1/test-data/mask  ->  signed-in
+POST /api/v1/test-run-cases/{test_run_case_id}/block  ->  require_execute_permission
+POST /api/v1/test-run-cases/{test_run_case_id}/defects/{defect_id}  ->  require_any_permission(defect.create|defect.edit)
+POST /api/v1/test-run-cases/{test_run_case_id}/unblock  ->  require_execute_permission
+POST /api/v1/test-runs/{run_id}/cases  ->  require_permission(testrun.create)
+POST /api/v1/test-runs/{run_id}/finish  ->  require_permission(testrun.finish)
+POST /api/v1/test-runs/{run_id}/pause  ->  require_permission(testrun.finish)
+POST /api/v1/test-runs/{run_id}/reopen  ->  require_permission(testrun.finish)
+POST /api/v1/test-runs/{run_id}/rerun-failed  ->  require_resource_permission(testrun.create, test_run)
+POST /api/v1/test-runs/{run_id}/resume  ->  require_permission(testrun.finish)
+POST /api/v1/test-suites/{suite_id}/create-run  ->  require_permission(testrun.create)
+POST /api/v1/users  ->  require_permission(user.manage)
+POST /api/v1/users/invite  ->  require_permission(user.manage)
+POST /api/v1/users/invite/{token}/accept  ->  none
+POST /api/v1/users/{user_id}/erase  ->  require_permission(user.erase)
+POST /api/v1/users/{user_id}/reset-password  ->  require_permission(user.manage)
+PUT /api/v1/custom-fields/values/{owner_type}/{owner_id}  ->  signed-in
+PUT /api/v1/dashboards/{dashboard_id}/widgets  ->  signed-in
+PUT /api/v1/platform/tenants/{tenant_id}/subscription  ->  require_platform_admin
+PUT /api/v1/projects/{project_id}/dashboard  ->  signed-in
+PUT /api/v1/projects/{project_id}/dashboard/default  ->  require_project_permission(project.edit)
+PUT /api/v1/scim/v2/{tenant_id}/Users/{user_id}  ->  require_scim_token
+PUT /api/v1/settings/branding  ->  require_permission(tenant.settings.manage)
+PUT /api/v1/settings/workspace  ->  require_permission(tenant.settings.manage)
+PUT /api/v1/sso/config  ->  require_permission(sso.manage)
+PUT /api/v1/status-labels  ->  require_permission(field_customization.manage)
+PUT /api/v1/test-plans/{plan_id}/runs  ->  require_permission(testrun.create)
+PUT /api/v1/test-suites/{suite_id}/cases  ->  require_permission(testrun.create)

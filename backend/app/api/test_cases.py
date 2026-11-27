@@ -18,6 +18,7 @@ from app.schemas.test_case import (
     AutomationStatus,
     QuarantineRequest,
     RequestChangesRequest,
+    ReviewDecisionRequest,
     SubmitForReviewRequest,
     TestCaseBulkUpdateRequest,
     TestCaseCreateRequest,
@@ -334,11 +335,12 @@ def submit_for_review(
 @router.post("/test-cases/{test_case_id}/approve")
 def approve_test_case(
     test_case_id: UUID,
+    req: ReviewDecisionRequest = ReviewDecisionRequest(),
     ctx: SessionContext = Depends(require_resource_permission("testcase.approve", "test_case")),
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.approve_test_case(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id
+        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, req.expected_version
     )
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 
@@ -351,7 +353,13 @@ def request_changes(
     db: Session = Depends(get_db),
 ) -> dict:
     case = test_case_service.request_changes_test_case(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, test_case_id, req.comment
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        test_case_id,
+        req.comment,
+        req.expected_version,
     )
     return envelope(test_case_service.to_out(db, case).model_dump(mode="json"))
 

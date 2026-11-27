@@ -16,7 +16,6 @@ import {
 } from '@/api/dashboards'
 import { listProjects } from '@/api/projects'
 import { listSavedReports } from '@/api/reportBuilder'
-import { listReleases } from '@/api/testAssets'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { ErrorState } from '@/components/ui/empty-state'
@@ -74,11 +73,6 @@ function SettingsForm({
 }) {
   const projects = useQuery({ queryKey: ['projects', 'all'], queryFn: () => listProjects({ page_size: 100 }) })
   const projectId = settings.project_id ? String(settings.project_id) : ''
-  const releases = useQuery({
-    queryKey: ['dashboards', 'releases', projectId],
-    queryFn: () => listReleases(projectId),
-    enabled: !!projectId && def.fields.some((f) => f.kind === 'release'),
-  })
   const reports = useQuery({
     queryKey: ['report-builder', 'reports'],
     queryFn: listSavedReports,
@@ -144,28 +138,6 @@ function SettingsForm({
                 {[5, 10, 20, 50].map((n) => (
                   <option key={n} value={n}>
                     Top {n}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )
-        }
-        if (f.kind === 'release') {
-          return (
-            <div key={f.kind} className="flex flex-col gap-1">
-              <label htmlFor={id} className="text-sm font-medium">
-                Release (optional)
-              </label>
-              <Select
-                id={id}
-                value={settings.release_id ? String(settings.release_id) : ''}
-                disabled={!projectId}
-                onChange={(e) => set({ release_id: e.target.value })}
-              >
-                <option value="">Whole project</option>
-                {(releases.data ?? []).map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
                   </option>
                 ))}
               </Select>

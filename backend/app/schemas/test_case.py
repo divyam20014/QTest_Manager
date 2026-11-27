@@ -188,6 +188,8 @@ class TestCaseUpdateRequest(_TestCaseContent):
     # The id is immutable; echoing the current value back is tolerated, anything
     # else is refused by the service.
     display_id: str | None = Field(default=None, max_length=64)
+    # ADR-136: the `row_version` the caller read. Omit to skip the check.
+    expected_version: int | None = None
 
 
 class TestCaseBulkUpdateRequest(BaseModel):
@@ -223,6 +225,8 @@ class LinkedDefectOut(BaseModel):
 class TestCaseOut(BaseModel):
     id: UUID
     project_id: UUID
+    # ADR-136: send back as `expected_version` when saving or deciding.
+    row_version: int
     title: str
     description: str
     priority: Priority
@@ -335,12 +339,18 @@ class TestCaseFieldCatalogOut(BaseModel):
     execution_statuses: list[str]
 
 
+class ReviewDecisionRequest(BaseModel):
+    # ADR-136: the `row_version` the reviewer was looking at.
+    expected_version: int | None = None
+
+
 class SubmitForReviewRequest(BaseModel):
     reviewer_id: UUID | None = None
 
 
 class RequestChangesRequest(BaseModel):
     comment: str = Field(min_length=1)
+    expected_version: int | None = None
 
 
 class TestCaseListResponse(BaseModel):

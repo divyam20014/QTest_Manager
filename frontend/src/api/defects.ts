@@ -83,6 +83,8 @@ export interface LinkedTestCase {
 
 export interface Defect {
   id: string
+  /** ADR-136: send back as `expected_version` when saving. */
+  row_version?: number
   project_id: string
   project_name: string
   test_case_id: string | null
@@ -194,6 +196,7 @@ export interface DefectCreateRequest {
 }
 
 export interface DefectUpdateRequest {
+  expected_version?: number
   title?: string
   severity?: Severity
   priority?: Priority
@@ -487,6 +490,7 @@ export function createDefect(req: DefectCreateRequest): Promise<Defect> {
 }
 
 export interface DefectStatusChange {
+  expected_version?: number
   status: DefectStatus
   resolution?: Resolution | null
   comment?: string
@@ -495,7 +499,7 @@ export interface DefectStatusChange {
 }
 
 export function updateDefectStatus(id: string, change: DefectStatusChange): Promise<Defect> {
-  const { status, resolution, comment, verification_confirmed } = change
+  const { status, resolution, comment, verification_confirmed, expected_version } = change
   return apiFetch<Defect>(`/defects/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({
@@ -503,6 +507,7 @@ export function updateDefectStatus(id: string, change: DefectStatusChange): Prom
       verification_confirmed: verification_confirmed ?? false,
       ...(resolution ? { resolution } : {}),
       ...(comment ? { comment } : {}),
+      expected_version,
     }),
   })
 }

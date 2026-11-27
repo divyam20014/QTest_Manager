@@ -17,6 +17,7 @@ from rapidfuzz import fuzz
 from sqlalchemy import Select, and_, case, func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
+from app.core.concurrency import bump_row_version, check_row_version
 from app.core import pagination
 from app.core.audit import record_audit_event
 from app.core.audit_diff import audit_diff
@@ -203,19 +204,29 @@ def _assigned_project_ids(db: Session, user_id: UUID) -> set[UUID]:
     )
 
 
-def _get_defect_or_404(db: Session, tenant_id: UUID, defect_id: UUID) -> Defect:
-    defect = db.execute(
-        select(Defect).where(Defect.tenant_id == tenant_id, Defect.id == defect_id)
-    ).scalar_one_or_none()
+def _get_defect_or_404(
+    db: Session, tenant_id: UUID, defect_id: UUID, *, for_update: bool = False
+) -> Defect:
+    query = select(Defect).where(Defect.tenant_id == tenant_id, Defect.id == defect_id)
+    if for_update:
+        # ADR-136: held until commit; populate_existing re-reads an already loaded row.
+        query = query.with_for_update().execution_options(populate_existing=True)
+    defect = db.execute(query).scalar_one_or_none()
     if defect is None:
         raise NotFoundError("Defect not found")
     return defect
 
 
 def get_defect(
-    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, defect_id: UUID
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    user_id: UUID,
+    defect_id: UUID,
+    *,
+    for_update: bool = False,
 ) -> Defect:
-    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    defect = _get_defect_or_404(db, tenant_id, defect_id, for_update=for_update)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, user_id)
     return defect
@@ -903,11 +914,12 @@ def update_defect(
     *,
     permissions: Collection[str] | None = None,
 ) -> Defect:
-    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    defect = _get_defect_or_404(db, tenant_id, defect_id, for_update=True)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
 
     changes = req.model_dump(exclude_unset=True)
+    check_row_version(defect, changes.pop("expected_version", None), "defect")
     if (
         "assigned_to" in changes
         and changes["assigned_to"] != defect.assigned_to
@@ -1018,6 +1030,7 @@ def update_defect(
 
     diff = audit_diff(before, _snapshot(defect))
     if diff:
+        bump_row_version(defect)
         record_audit_event(
             db,
             tenant_id=tenant_id,
@@ -1567,6 +1580,7 @@ def apply_transition(
 
     defect.status = new_status
     defect.resolution = new_resolution
+    bump_row_version(defect)
     now = datetime.now(UTC)
     if new_status in CLOSED_DEFECT_STATUSES:
         defect.closed_at = now
@@ -1639,10 +1653,12 @@ def update_status(
     comment: str | None = None,
     *,
     permissions: Collection[str] | None = None,
+    expected_version: int | None = None,
 ) -> Defect:
-    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    defect = _get_defect_or_404(db, tenant_id, defect_id, for_update=True)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
+    check_row_version(defect, expected_version, "defect")
 
     if new_status not in DEFECT_STATUSES:
         raise ValidationAppError(
@@ -1699,7 +1715,7 @@ def reopen_defect(
     if not can_close(role_code, permissions):
         raise ForbiddenError("Only Admin/Manager can reopen a defect")
 
-    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    defect = _get_defect_or_404(db, tenant_id, defect_id, for_update=True)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
 
@@ -1723,7 +1739,7 @@ def set_defect_environment(
 ) -> Defect:
     """Tier 2 (PV-8.1): points a defect at a real Environment entity,
     same project-access check as update_root_cause."""
-    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    defect = _get_defect_or_404(db, tenant_id, defect_id, for_update=True)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
     _enforce_environment_rules(
@@ -1731,6 +1747,8 @@ def set_defect_environment(
     )
 
     previous = defect.environment_id
+    if previous != environment_id:
+        bump_row_version(defect)
     defect.environment_id = environment_id
 
     record_audit_event(
@@ -1760,7 +1778,7 @@ def update_build_release(
 ) -> Defect:
     """Tier 2 (PV-8.2): classification metadata, same project-access check
     as update_root_cause -- not a workflow transition."""
-    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    defect = _get_defect_or_404(db, tenant_id, defect_id, for_update=True)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
 
@@ -1768,6 +1786,11 @@ def update_build_release(
         "found_in_build_id": defect.found_in_build_id,
         "fixed_in_release_id": defect.fixed_in_release_id,
     }
+    if (defect.found_in_build_id, defect.fixed_in_release_id) != (
+        found_in_build_id,
+        fixed_in_release_id,
+    ):
+        bump_row_version(defect)
     defect.found_in_build_id = found_in_build_id
     defect.fixed_in_release_id = fixed_in_release_id
 
@@ -1804,11 +1827,13 @@ def update_root_cause(
 ) -> Defect:
     """Classification metadata, not a workflow transition -- same
     project-access check as add_link/update_status, no extra role gate."""
-    defect = _get_defect_or_404(db, tenant_id, defect_id)
+    defect = _get_defect_or_404(db, tenant_id, defect_id, for_update=True)
     project = _get_project_or_404(db, tenant_id, defect.project_id)
     _require_project_access(db, project, role_code, actor_user_id)
 
     previous = defect.root_cause
+    if previous != root_cause:
+        bump_row_version(defect)
     defect.root_cause = root_cause
 
     record_audit_event(
@@ -2508,6 +2533,7 @@ def _defect_out(
     return DefectOut(
         id=defect.id,
         project_id=defect.project_id,
+        row_version=defect.row_version,
         project_name=project_name,
         test_case_id=defect.test_case_id,
         test_case_title=test_case_title,

@@ -1,3 +1,4 @@
+import { isStaleWrite } from '@/lib/staleWrite'
 import { VersionDiffView } from './VersionDiffView'
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -128,7 +129,7 @@ export function TestCaseDetail() {
   const runAction = useMutation({
     mutationFn: async (action: 'submit' | 'approve' | 'deprecate' | 'delete'): Promise<unknown> => {
       if (action === 'submit') return submitForReview(testCaseId!, reviewerId || null)
-      if (action === 'approve') return approveTestCase(testCaseId!)
+      if (action === 'approve') return approveTestCase(testCaseId!, caseQuery.data?.row_version)
       if (action === 'deprecate') return deprecateTestCase(testCaseId!)
       return deleteTestCase(testCaseId!)
     },
@@ -146,6 +147,8 @@ export function TestCaseDetail() {
       invalidate()
     },
     onError: (err) => {
+      // Show what it says now, so the next decision is about what is on screen.
+      if (isStaleWrite(err)) invalidate()
       const message = err instanceof ApiError ? err.message : 'Something went wrong'
       setActionError(message)
       showToast('error', message)
@@ -153,7 +156,7 @@ export function TestCaseDetail() {
   })
 
   const requestChangesMutation = useMutation({
-    mutationFn: () => requestChanges(testCaseId!, changesComment),
+    mutationFn: () => requestChanges(testCaseId!, changesComment, caseQuery.data?.row_version),
     onSuccess: () => {
       showToast('success', 'Changes requested — sent back to draft.')
       setRequestChangesOpen(false)
@@ -161,8 +164,10 @@ export function TestCaseDetail() {
       invalidate()
       queryClient.invalidateQueries({ queryKey: ['comments', 'test_case', testCaseId] })
     },
-    onError: (err) =>
-      showToast('error', err instanceof ApiError ? err.message : 'Something went wrong'),
+    onError: (err) => {
+      if (isStaleWrite(err)) invalidate()
+      showToast('error', err instanceof ApiError ? err.message : 'Something went wrong')
+    },
   })
 
   const { ask, dialog: confirmDialog } = useConfirm()

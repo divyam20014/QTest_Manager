@@ -238,7 +238,9 @@ def start_retest(
     defect's linked test cases (their current versions), assigned to the reporter or the
     chosen tester, and links the defect to each run case. A Fixed defect moves to Retest
     on the way (the transition table allows it)."""
-    defect = defect_service.get_defect(db, tenant_id, role_code, actor_user_id, defect_id)
+    defect = defect_service.get_defect(
+        db, tenant_id, role_code, actor_user_id, defect_id, for_update=True
+    )
     if defect.status not in ("Fixed", "Retest"):
         raise ConflictError(
             f"A retest can only be started for a defect that is Fixed or already in Retest, "
@@ -347,7 +349,9 @@ def record_retest_result(
     assignee and reporter are notified, the failure text is appended to the actual
     result). The run case must belong to a Retest run of this defect and show the
     matching status; the run case itself is never modified."""
-    defect = defect_service.get_defect(db, tenant_id, role_code, actor_user_id, defect_id)
+    defect = defect_service.get_defect(
+        db, tenant_id, role_code, actor_user_id, defect_id, for_update=True
+    )
     if defect.status != "Retest":
         raise ConflictError(
             f"A retest result can only be recorded for a defect in Retest, not '{defect.status}'"

@@ -236,6 +236,8 @@ class DefectUpdateRequest(BaseModel):
     @classmethod
     def _steps(cls, v: list[ReproStepIn] | None) -> list[ReproStepIn] | None:
         return _check_step_count(v)
+    # ADR-136: the `row_version` the caller read. Omit to skip the check.
+    expected_version: int | None = None
 
 
 class DefectStatusUpdateRequest(BaseModel):
@@ -248,6 +250,8 @@ class DefectStatusUpdateRequest(BaseModel):
     # one, Fixed defaults to 'Fixed', open statuses must not carry one).
     resolution: Resolution | None = None
     comment: str | None = Field(default=None, max_length=2000)
+    # ADR-136: the `row_version` the caller read. Omit to skip the check.
+    expected_version: int | None = None
 
 
 class DefectRootCauseUpdateRequest(BaseModel):
@@ -455,6 +459,8 @@ class DefectDraftOut(BaseModel):
 class DefectOut(BaseModel):
     id: UUID
     project_id: UUID
+    # ADR-136: send back as `expected_version` when saving.
+    row_version: int
     project_name: str
     test_case_id: UUID | None
     test_case_title: str | None

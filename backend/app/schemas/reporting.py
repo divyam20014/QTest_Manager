@@ -209,8 +209,11 @@ class ReleaseReadinessReport(BaseModel):
     to a QA manager deciding go/no-go than a single blended number."""
 
     project_id: UUID
-    release_id: UUID | None
-    release_name: str | None
+    # ADR-137: what the figures cover. Always the project until releases have a scope,
+    # so `release_id` and `release_name` are always null.
+    scope: Literal["project"] = "project"
+    release_id: UUID | None = None
+    release_name: str | None = None
     total_test_cases: int
     execution_completion_percentage: float
     pass_percentage: float

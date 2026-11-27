@@ -1014,13 +1014,15 @@ def get_release_readiness(
     project_id: UUID,
     release_id: UUID | None = None,
 ) -> ReleaseReadinessReport:
-    """PV-7.1: the underlying metrics rather than one blended score."""
+    """PV-7.1: the underlying metrics rather than one blended score.
+
+    ADR-137: every figure covers the whole project. `release_id` is accepted, and must be a
+    release of this project, but changes nothing and is not echoed back."""
     accessible = _accessible_project_ids(db, tenant_id, role_code, user_id)
     if accessible is not None and project_id not in accessible:
         raise ForbiddenError("Project not accessible")
     project = _get_project_or_404(db, tenant_id, project_id)
 
-    release_name = None
     if release_id is not None:
         release = db.execute(
             select(Release).where(
@@ -1031,7 +1033,6 @@ def get_release_readiness(
         ).scalar_one_or_none()
         if release is None:
             raise NotFoundError("Release not found")
-        release_name = release.name
 
     total_test_cases = db.execute(
         select(func.count()).select_from(TestCase).where(TestCase.project_id == project_id)
@@ -1072,8 +1073,6 @@ def get_release_readiness(
 
     return ReleaseReadinessReport(
         project_id=project_id,
-        release_id=release_id,
-        release_name=release_name,
         total_test_cases=total_test_cases,
         execution_completion_percentage=completion_pct,
         pass_percentage=pass_pct,

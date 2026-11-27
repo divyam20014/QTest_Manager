@@ -219,7 +219,14 @@ creates a new version and the earlier ones stay viewable) and moves through a
 last *ran* is a separate thing, its **Execution Status** (Pass, Fail, Blocked,
 Skipped or Not Run), taken from the most recent run. A result always keeps the
 text it was run against. For that reason the steps and content of a
-**Deprecated** test case cannot be changed. You can still change details such as
+**Deprecated** test case cannot be changed.
+
+If someone else saves a test case or defect while you are editing it, your save
+is refused so that you do not undo their change. The edit form keeps what you
+typed, brings in what they changed, and names any field you both changed; check
+it and save again. **Approve**, **Request changes**, status changes and
+assignment are refused in the same way if the record changed after you opened
+it, so look at it again before you decide. You can still change details such as
 priority and module; to change the content, duplicate the test case.
 
 Writing a test case:
@@ -309,8 +316,10 @@ different options from the defaults.
 
 ### Test Runs and the Execution Console
 
-A test run is a set of test cases to execute, usually against one build and
-environment. **Test Runs** lists them. **Execution Console** (or **Execute** on
+A test run is a set of test cases to execute. A run does not record which build
+or environment was tested; if that matters, put it in the run's name. A defect
+has its own Environment and Build / Version Found fields. **Test Runs** lists
+the runs. **Execution Console** (or **Execute** on
 a run) is where you work through one. To see every case waiting to be executed,
 open the console with the **Execution Console** button on **Test Runs**, or **Open
 the Execution Console** on **My Work**.
@@ -500,8 +509,8 @@ anyone whose role can view all projects, including custom roles.
 domain, priority, budget and timeline. In a project you manage members on the
 **Team** tab; builds, releases, suites and plans on **Planning**; and the
 project's own details, visible tabs and deletion in **Project settings** (the
-gear in the project header). Keep the builds and environments current so runs
-can target them
+gear in the project header). Keep releases, builds and environments current:
+defects refer to them. Test runs do not record a build or an environment yet
 (environments are maintained under Admin, see "For Admins").
 
 ### Tasks and sub-tasks
@@ -570,9 +579,10 @@ assignee and dates.
 
 ### Planning and assigning runs
 
-1. In **Test Runs** choose **New test run**, pick the project, build and
-   environment, and choose the cases (tick **Skip quarantined cases** to leave
-   out flaky ones).
+1. In **Test Runs** choose **New test run**, pick the project, name the run, and
+   choose the cases (tick **Skip quarantined cases** to leave out flaky ones). A
+   run does not record a build or an environment, so name it so that people can
+   tell what was tested.
 2. Assign testers to the run. **Create and start** opens the Execution Console on
    the first case right away.
 3. Watch progress on the run page. **Finish Run** closes a run when some cases
@@ -676,8 +686,10 @@ it from lists and reports; its history is kept.
 
 **Reports** has the tabs **Overview**, **Compliance** and **Report builder**.
 Overview holds dashboards and exportable reports: execution summaries, defect
-trends and aging, requirement coverage, release readiness and workload. Filter by
-project and date. The **Defect Leakage & Test Effectiveness** card shows how many
+trends and aging, requirement coverage, release readiness and workload. **Release
+readiness always covers the whole project, not one release**: it cannot yet tell
+which runs, test cases or defects belong to a release, so do not read it as one
+release's result. Filter by project and date. The **Defect Leakage & Test Effectiveness** card shows how many
 defects reached users. A defect has *escaped* when it is linked to a release
 whose release date has passed, or when its environment is named Production or
 Prod. *Leakage* is escaped defects divided by all defects, and *detection
@@ -845,7 +857,9 @@ manage statuses). A release freeze can include task changes: choose the action
 - **Integrations**: SCIM and service tokens for connecting other systems.
 - **Data**: **Tester visibility** (limit Testers to assigned cases, hide Reports
   from Testers), AI features, your subscription and seat usage, data export and
-  scheduled reports.
+  scheduled reports. The data export is a zip of your organization's records,
+  including settings and the audit log. It leaves out passwords, keys and sign-in
+  tokens, and lists attachments without the files themselves.
 
 ### Workspace
 

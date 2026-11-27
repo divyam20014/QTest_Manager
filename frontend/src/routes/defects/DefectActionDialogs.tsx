@@ -1,3 +1,4 @@
+import { isStaleWrite } from '@/lib/staleWrite'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -25,7 +26,7 @@ import { useCanListUsers } from '@/lib/useCanListUsers'
 import { defectPath } from '@/lib/entityRoutes'
 
 /** What the dialogs need to know about a defect. */
-export type ActionDefect = Pick<Defect, 'id' | 'status' | 'title' | 'display_id' | 'resolution' | 'assigned_to' | 'reported_by' | 'project_id'>
+export type ActionDefect = Pick<Defect, 'id' | 'status' | 'title' | 'display_id' | 'resolution' | 'assigned_to' | 'reported_by' | 'project_id' | 'row_version'>
 
 function useRefreshDefects() {
   const queryClient = useQueryClient()
@@ -72,6 +73,8 @@ function StatusChangeForm({ defect, initialTarget, onClose }: { defect: ActionDe
   const [comment, setComment] = useState('')
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // ADR-136: what the person was looking at when the dialog opened.
+  const [seenVersion] = useState(defect.row_version)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -80,13 +83,17 @@ function StatusChangeForm({ defect, initialTarget, onClose }: { defect: ActionDe
         resolution: (resolution || undefined) as Resolution | undefined,
         comment: comment.trim() || undefined,
         verification_confirmed: verified,
+        expected_version: seenVersion,
       }),
     onSuccess: (updated) => {
       refresh()
       show('success', `${defect.display_id ?? 'Defect'} is now ${updated.status_label ?? updated.status}`)
       onClose()
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not change the status. Try again.'),
+    onError: (err) => {
+      if (isStaleWrite(err)) refresh()
+      setError(err instanceof ApiError ? err.message : 'Could not change the status. Try again.')
+    },
   })
 
   function submit() {
@@ -200,11 +207,14 @@ function AssignForm({ defect, onClose }: { defect: ActionDefect; onClose: () => 
   const canAlsoSetAssigned = perms.canChangeStatus && allowedNextStatuses(defect.status).includes('Assigned')
   const [alsoAssigned, setAlsoAssigned] = useState(defect.status === 'New')
   const [error, setError] = useState<string | null>(null)
+  const [seenVersion] = useState(defect.row_version)
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const updated = await updateDefect(defect.id, { assigned_to: assignee || null })
-      if (assignee && alsoAssigned && canAlsoSetAssigned) return updateDefectStatus(defect.id, { status: 'Assigned' })
+      const updated = await updateDefect(defect.id, { assigned_to: assignee || null, expected_version: seenVersion })
+      if (assignee && alsoAssigned && canAlsoSetAssigned) {
+        return updateDefectStatus(defect.id, { status: 'Assigned', expected_version: updated.row_version })
+      }
       return updated
     },
     onSuccess: () => {
@@ -212,7 +222,10 @@ function AssignForm({ defect, onClose }: { defect: ActionDefect; onClose: () => 
       show('success', assignee ? 'Defect assigned' : 'Defect unassigned')
       onClose()
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not assign the defect. Try again.'),
+    onError: (err) => {
+      if (isStaleWrite(err)) refresh()
+      setError(err instanceof ApiError ? err.message : 'Could not assign the defect. Try again.')
+    },
   })
 
   if (!canListUsers) {

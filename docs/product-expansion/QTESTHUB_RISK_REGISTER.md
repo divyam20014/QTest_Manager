@@ -34,6 +34,17 @@ Likelihood and impact: **H / M / L**. Ratings are judgement **[R]**. "Basis" say
 | R-28 | Maintainability | Very large screens and service files slow changes and cause regressions | M | M | [V] | Split when a phase changes them, not as a separate rewrite | all |
 | R-29 | Delivery | Team size, hosting, customers and deadlines are unknown, so phase sizing may be wrong | M | M | [U] | Confirm before planning dates | 0 |
 
+## Status after 2026-11-27
+
+- **R-01:** fixed in the service (ADR-135). Direct database changes are not blocked.
+- **R-04:** documentation reconciled; the backend tests include the sync check.
+- **R-02:** reduced. Figures are labelled whole-project (ADR-137); per-release readiness is still missing.
+- **R-03:** reduced for test cases, defects and approval (ADR-136). Tasks, requirements and releases remain.
+- **R-06:** export completed, with a coverage test (ADR-138). Large-tenant memory use is unmeasured.
+- **R-07:** reduced by the schema isolation and route guard tests.
+- **R-30 (new, security, L likelihood, M impact, [V] code reading):** AI test case generation does not require `testcase.create` (F-12). Mitigation: require it on the route and test it.
+- **R-05:** partly reduced. Backend and frontend suites have been run; the browser suite has not, and CI has not yet run.
+
 ## Top five
 
 R-02, R-01, R-03, R-05, R-07. The first three affect whether the product's evidence can be trusted.

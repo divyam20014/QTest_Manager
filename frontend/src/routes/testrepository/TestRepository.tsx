@@ -120,7 +120,7 @@ const NEXT_ACTION: Partial<Record<TestCaseStatus, { label: string; bulkLabel: st
 
 async function runNextAction(tc: TestCase): Promise<void> {
   if (tc.status === 'draft') await submitForReview(tc.id)
-  else if (tc.status === 'ready_for_review') await approveTestCase(tc.id)
+  else if (tc.status === 'ready_for_review') await approveTestCase(tc.id, tc.row_version)
   else if (tc.status === 'approved') await deprecateTestCase(tc.id)
 }
 

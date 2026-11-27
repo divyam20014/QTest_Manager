@@ -1995,3 +1995,29 @@ Migrations set the passwords of the database roles, which are shared by the whol
 **Decision.** `update_test_case` applies two rules. A content change to a deprecated case is refused with 409; deprecated is the end of a case's life, and Duplicate is the way to continue from it. A content change to any other version that a run points to, including a deleted run, creates a new version and leaves the review status as it was. No known API path reaches the second rule; it holds the guarantee if one appears. Details held on the case and not on the version, such as priority and module, can still change.
 
 **Consequences.** The rule is in the service, not the database, so SQL run directly against the tables can still change a version. A database trigger would close that and is not built. Records already rewritten before this change cannot be restored from the version; the audit log's old and new values are the only trace, and they are cut at 300 characters.
+
+## ADR-136: A save made from an out-of-date copy is refused
+
+**Context.** Two people could edit one test case or defect and the second save replaced the first without a word. A reviewer could approve content changed after they opened it, because editing a case in review leaves it in review. Both were reproduced. Only project updates sent `expected_version`.
+
+**Decision.** `test_cases` and `defects` have a `row_version` (migration `b1d3f5a7c9e2`) that moves once per saved change, including review steps, status moves and module moves. Saves and decisions lock the row, then compare. Updating a test case or a defect, approving, requesting changes and changing a defect's status accept an optional `expected_version`; when it differs the answer is 409 with error code `stale_write`, so a client can tell it from other conflicts. Omitting it keeps the old behaviour for API clients. The application always sends it. An edit form keeps the copy it was opened with, and after a refusal moves the user's unsaved entries onto the latest copy: a field the user changed keeps their entry, every other field takes the saved value, and fields both changed are named. Nothing is saved until the user saves again. This also fixes the defect form restoring old values after a partly applied save, and the test case form comparing old entries with a newer copy fetched in the background.
+
+The version is not `version_number`: an edit to a draft keeps that number.
+
+**Consequences.** Not covered: tasks, requirements and releases; reopen, deprecate and submit take no `expected_version`, though their status rules are checked under the same lock; links, comments and attachments, which add to a record rather than replace it. Approving from a list checks against the version in that list. The refusal does not name who saved; the record's history does.
+
+## ADR-137: Release readiness says it covers the whole project
+
+**Context.** `/reports/release-readiness` accepted a release, put its name on the report, and computed every figure from the whole project. Test runs record no release or build, so runs cannot be attributed to a release.
+
+**Decision.** The report has `scope: "project"` and returns `release_id` and `release_name` as null. `release_id` is still accepted and still 404s for an unknown release, so existing callers keep working. The screens say "Whole project, not one release", the dashboard widget no longer offers a release, and a release already saved on a widget is ignored. Real per-release readiness waits for builds on runs and a release scope.
+
+**Consequences.** A caller that read `release_name` now gets null.
+
+## ADR-138: The tenant export covers every table, or says why not
+
+**Context.** The export listed 23 tables chosen by hand. Suites, plans, shared steps, test data, custom fields, configuration, saved reports, dashboards, project members, roles and the audit log were missing.
+
+**Decision.** They are included. `EXCLUDED_TABLES` names every table left out with its reason: credentials, internal working tables and the provider's own data. A test compares both lists with the database. Tables without a tenant column are limited through their parent; shared system roles are included because users refer to them. `ai_api_key_encrypted` joins the columns that never leave. Values are read through mapped attributes: `audit_logs.metadata` made the whole job fail otherwise.
+
+**Consequences.** Archives are larger, mostly because of the audit log, and the job still builds each table in memory; that has not been measured with a large tenant. Attachment file contents are still not in the archive.

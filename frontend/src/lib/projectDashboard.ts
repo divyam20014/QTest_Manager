@@ -71,7 +71,7 @@ export const WIDGET_META: Record<ProjectWidgetType, WidgetMeta> = {
   },
   release_readiness: {
     label: 'Release readiness',
-    description: 'Execution, pass rate, coverage and open defects for the latest release.',
+    description: 'Execution, pass rate, coverage and open defects for the whole project.',
     group: 'Analytics',
     needsReports: true,
   },

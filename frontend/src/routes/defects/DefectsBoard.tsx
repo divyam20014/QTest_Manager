@@ -1,3 +1,4 @@
+import { isStaleWrite } from '@/lib/staleWrite'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
@@ -25,6 +26,7 @@ const asAction = (d: Defect): ActionDefect => ({
   assigned_to: d.assigned_to,
   reported_by: d.reported_by,
   project_id: d.project_id,
+  row_version: d.row_version,
 })
 
 /**
@@ -98,8 +100,10 @@ export function DefectsBoard({
       return 'deferred'
     }
     try {
-      await updateDefectStatus(defect.id, { status: to as Defect['status'] })
+      await updateDefectStatus(defect.id, { status: to as Defect['status'], expected_version: defect.row_version })
     } catch (err) {
+      // Someone else changed it: reload the board so the card shows where it is now.
+      if (isStaleWrite(err)) void queryClient.invalidateQueries({ queryKey: ['defects'] })
       throw new Error(err instanceof ApiError ? err.message : 'Could not change the status. Try again.')
     }
     void queryClient.invalidateQueries({ queryKey: ['defects'] })

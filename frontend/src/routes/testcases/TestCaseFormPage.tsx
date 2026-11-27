@@ -1,3 +1,5 @@
+import { StaleWriteNotice } from '@/components/StaleWriteNotice'
+import { isStaleWrite, rebaseValues } from '@/lib/staleWrite'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -85,9 +87,11 @@ export function TestCaseEditPage() {
     queryKey: ['test-cases', 'detail', testCaseId],
     queryFn: () => getTestCase(testCaseId!),
     enabled: !!testCaseId,
+    // The form keeps the copy it opens with (ADR-136), so it must not open a cached one.
+    refetchOnMount: 'always',
   })
   if (!hasPermission(user, 'testcase.edit')) return <NoAccess />
-  if (query.isLoading) return <DetailSkeleton />
+  if (query.isLoading || !query.isFetchedAfterMount) return <DetailSkeleton />
   if (query.isError) return <ErrorState message="Could not load this test case." error={query.error} onRetry={() => query.refetch()} />
   if (!query.data) return <EmptyState title="Test case not found" description="It may have been deleted, or you may not have access to it." />
   return <TestCaseFormPage mode="edit" projectId={query.data.project_id} testCase={query.data} />
@@ -111,11 +115,14 @@ function TestCaseFormPage({
 
   // `initial` is what "unchanged" means: the saved case, or a blank form. Entries carried over from
   // Quick add (`prefill`) are the user's own unsaved input, so they count as changes.
-  const initial = useMemo(
-    () => (testCase ? valuesFromTestCase(testCase) : emptyFormValues()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [testCase?.id, testCase?.version_number],
-  )
+  // ADR-136: the copy the form was opened with. A background refetch must not replace it, or
+  // saving would compare old entries with newer values and undo someone else's change.
+  const [opened, setOpened] = useState(() => ({
+    values: testCase ? valuesFromTestCase(testCase) : emptyFormValues(),
+    version: testCase?.row_version,
+  }))
+  const initial = opened.values
+  const [staleFields, setStaleFields] = useState<string[] | null>(null)
   const [values, setValues] = useState<TestCaseFormValues>(() => (testCase ? initial : emptyFormValues(prefill)))
   const [touched, setTouched] = useState<Partial<Record<FormFieldKey, true>>>({})
   const [serverErrors, setServerErrors] = useState<FormErrors>({})
@@ -188,7 +195,7 @@ function TestCaseFormPage({
         }
         return created
       }
-      return updateTestCase(testCase!.id, toUpdateRequest(values, initial))
+      return updateTestCase(testCase!.id, { ...toUpdateRequest(values, initial), expected_version: opened.version })
     },
     onSuccess: (saved, { submit }) => {
       setSubmitted(true)
@@ -205,7 +212,22 @@ function TestCaseFormPage({
       )
       navigate(testCasePath(saved.project_id, saved.id))
     },
-    onError: (err) => {
+    onError: async (err) => {
+      if (isStaleWrite(err)) {
+        try {
+          const latest = await getTestCase(testCase!.id)
+          const theirs = valuesFromTestCase(latest)
+          const rebased = rebaseValues(values, initial, theirs)
+          setOpened({ values: theirs, version: latest.row_version })
+          setValues(rebased.values)
+          setStaleFields(rebased.bothChanged)
+          setSubmitted(false)
+          void queryClient.invalidateQueries({ queryKey: ['test-cases'] })
+          return
+        } catch {
+          // The latest copy could not be read: show the API's message and keep the form as it is.
+        }
+      }
       // Data stays in the form; the API's per-field messages go onto the fields.
       if (err instanceof ApiError && err.fields) {
         const mapped = mapServerFields(err.fields)
@@ -225,6 +247,7 @@ function TestCaseFormPage({
 
   function save(submit: boolean) {
     setFormError(null)
+    setStaleFields(null)
     setServerErrors({})
     setStepServerErrors({})
     setSubmitted(true)
@@ -627,6 +650,9 @@ function TestCaseFormPage({
           )}
         </FormSection>
 
+        {staleFields && testCase && (
+          <StaleWriteNotice bothChanged={staleFields} savedUrl={testCasePath(testCase.project_id, testCase.id)} />
+        )}
         <FormError>{formError}</FormError>
 
         {/* Sticky action bar: stays on screen however long the form is (phones: above the home indicator). */}

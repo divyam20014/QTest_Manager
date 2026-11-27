@@ -9,8 +9,20 @@ These documents describe the baseline below. Since then:
 - **F-01 fixed** (ADR-135). Content edits to a deprecated case are refused, and a version with results is never edited in place. The rule is in the service; there is no database trigger. A read-only check of the development database found no executed history affected: one of 6 deprecated cases had been edited afterwards, and it had no results.
 - **F-08 fixed.** The served documents were copied back into `docs/`, and the sync check passes.
 - **CI added** as a workflow file. It has not run, because it has not been pushed.
+- **Backend suite run to completion:** 1,582 of 1,584 tests passed (1 hour 50 minutes). One failure was an out-of-date test of the project tab keys (not updated with ADR-131); it was corrected and its file passes (13 of 13). The other is the 2,000-row import speed budget (GAP-69), which stays open. The full suite was not run again after the correction.
+- **Frontend:** type check, lint (warnings only) and build passed. All 615 unit tests passed: the full run had one failure, the design-system colour rule, and that file passed after an explained exception was recorded.
+- **Browser suite: not run to completion.** The product owner chose to skip it on 2026-11-27.
 
-The other findings are open.
+The other findings are open, except as noted below.
+
+### Phase 0 completion (later on 2026-11-27)
+
+- **F-04 fixed for test cases and defects** (ADR-136). The silent overwrite and the unseen approval were first reproduced. Tasks, requirements and releases are not covered. Migration `b1d3f5a7c9e2`.
+- **F-02 corrected, not solved** (ADR-137): the figures are labelled as whole-project. Per-release readiness is not built.
+- **F-03:** the user guide no longer says runs record a build or environment. Runs still do not.
+- **F-05 fixed** (ADR-138). Work on it showed that adding the audit log would have failed the whole export job; that is handled.
+- **Added:** tests for tenant isolation of the schema, route guards and export coverage.
+- **F-12 (new, open):** `POST /requirements/{id}/generate-test-cases` checks project access but not `testcase.create`, and it saves test cases. With AI enabled, a role without that permission could create them. **[V] code reading; [U] not reproduced.**
 
 ## How to read these documents
 
@@ -28,7 +40,7 @@ Companion documents: [Gap analysis](QTESTHUB_GAP_ANALYSIS.md), [Product blueprin
 
 | Area | Count |
 |---|---|
-| Backend application | 238 Python files, about 46,000 lines; 366 endpoints in 47 route files; 69 service modules |
+| Backend application | 238 Python files, about 46,000 lines; 366 route declarations in 47 route files (the running app registers 388 method routes); 69 service modules |
 | Database | 76 Alembic migrations |
 | Frontend | 435 TypeScript files, about 70,000 lines; 20 runtime npm dependencies |
 | Tests | 96 backend test files (1,075 test functions), 80 frontend unit test files, 77 browser spec files |

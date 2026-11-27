@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.concurrency import bump_row_version
 from app.core.audit import record_audit_event
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
@@ -191,7 +192,10 @@ def assign_test_case(
     module_id: UUID | None,
 ) -> None:
     case = db.execute(
-        select(TestCase).where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
+        select(TestCase)
+        .where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if case is None:
         raise NotFoundError("Test case not found")
@@ -203,7 +207,9 @@ def assign_test_case(
         if module.project_id != case.project_id:
             raise ConflictError("Module belongs to a different project")
 
-    case.module_id = module_id
+    if case.module_id != module_id:
+        case.module_id = module_id
+        bump_row_version(case)
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -234,9 +240,13 @@ def bulk_assign_test_cases(
         target_module = _get_module_or_404(db, tenant_id, module_id)
 
     reassigned = 0
-    for test_case_id in test_case_ids:
+    # Locked in id order, so two overlapping bulk moves cannot deadlock.
+    for test_case_id in sorted(test_case_ids):
         case = db.execute(
-            select(TestCase).where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
+            select(TestCase)
+            .where(TestCase.tenant_id == tenant_id, TestCase.id == test_case_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).scalar_one_or_none()
         if case is None:
             raise NotFoundError(f"Test case not found: {test_case_id}")
@@ -246,7 +256,9 @@ def bulk_assign_test_cases(
             raise ConflictError(
                 f"Module belongs to a different project than test case {test_case_id}"
             )
-        case.module_id = module_id
+        if case.module_id != module_id:
+            case.module_id = module_id
+            bump_row_version(case)
         reassigned += 1
 
     record_audit_event(

@@ -20,7 +20,6 @@ import {
 } from '@/api/reporting'
 import { getCoverageReport } from '@/api/requirements'
 import { getProjectTaskSummary } from '@/api/tasks'
-import { listReleases } from '@/api/testAssets'
 import { ChartLegend, ChartPanel } from '@/components/ui/ChartPanel'
 import { ChartSkeleton } from '@/components/ui/skeleton'
 import { LevelBadge } from '@/components/ui/LevelBadge'
@@ -568,27 +567,15 @@ function TesterWorkloadWidget({ projectId }: WidgetProps) {
 // --- Release readiness -----------------------------------------------------------------------
 
 function ReleaseReadinessWidget({ projectId }: WidgetProps) {
-  const releases = useOverviewQuery(projectId, ['releases'], () => listReleases(projectId))
-  // The release being worked towards: the soonest dated one that is not Released or Cancelled,
-  // else the most recently created release; with none, the whole project.
-  const all = releases.data ?? []
-  const open = all
-    .filter((r) => r.release_date && r.status !== 'Released' && r.status !== 'Cancelled')
-    .sort((a, b) => String(a.release_date).localeCompare(String(b.release_date)))
-  const latest = open[0] ?? [...all].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
-  const q = useOverviewQuery(
-    projectId,
-    ['readiness', latest?.id ?? 'project'],
-    () => fetchReleaseReadiness(projectId, latest?.id),
-    !releases.isPending,
-  )
+  // ADR-137: the report covers the whole project, so no release is picked or named.
+  const q = useOverviewQuery(projectId, ['readiness'], () => fetchReleaseReadiness(projectId))
   const title = 'Release readiness'
   return (
     <WidgetFrame testId="widget-release_readiness" title={title} view={{ to: projectReleasesPath(projectId) }}>
       <Async q={q} title={title}>
         {(rr) => (
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">{rr.release_name ?? 'Whole project'}</p>
+            <p className="text-sm font-medium">Whole project, not one release</p>
             <div className="grid grid-cols-2 gap-2">
               <Tile label="Execution complete" value={percentLabel(rr.execution_completion_percentage)} />
               <Tile label="Run case pass rate" value={percentLabel(rr.pass_percentage)} />

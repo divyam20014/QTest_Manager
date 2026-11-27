@@ -353,6 +353,7 @@ def update_status(
         req.verification_confirmed,
         req.resolution,
         req.comment,
+        expected_version=req.expected_version,
         permissions=ctx.permissions,
     )
     return envelope(defect_service.to_out(db, defect).model_dump(mode="json"))

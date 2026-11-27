@@ -45,6 +45,7 @@ export function QAManagerIntelligenceCard({ projectId }: { projectId: string }) 
       <EmbossedCard>
         <CardHeader>
           <CardTitle>Release Readiness</CardTitle>
+          <p className="text-xs text-[var(--muted-foreground)]">Whole project, not one release</p>
         </CardHeader>
         <CardContent>
           {!readiness ? (

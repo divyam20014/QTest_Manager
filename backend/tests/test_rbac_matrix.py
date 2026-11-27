@@ -104,7 +104,7 @@ def test_workspace_settings_matrix(client: TestClient, mx: dict) -> None:
 
 def test_project_nav_config_matrix(client: TestClient, mx: dict) -> None:
     p = mx["project_id"]
-    cfg = {"nav_config": {"order": ["overview"], "hidden": ["releases"]}}
+    cfg = {"nav_config": {"order": ["overview"], "hidden": ["planning"]}}
     _check(
         client,
         mx,

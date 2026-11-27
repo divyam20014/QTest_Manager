@@ -1,3 +1,5 @@
+import { StaleWriteNotice } from '@/components/StaleWriteNotice'
+import { isStaleWrite, rebaseValues } from '@/lib/staleWrite'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -89,9 +91,15 @@ export function DefectCreatePage() {
 export function DefectEditPage() {
   const { defectId } = useParams<{ defectId: string }>()
   const { user } = useAuth()
-  const query = useQuery({ queryKey: ['defects', 'detail', defectId], queryFn: () => getDefect(defectId!), enabled: !!defectId })
+  const query = useQuery({
+    queryKey: ['defects', 'detail', defectId],
+    queryFn: () => getDefect(defectId!),
+    enabled: !!defectId,
+    // The form keeps the copy it opens with (ADR-136), so it must not open a cached one.
+    refetchOnMount: 'always',
+  })
   if (!hasPermission(user, 'defect.edit') && !hasPermission(user, 'defect.create')) return <NoAccess />
-  if (query.isLoading) return <DetailSkeleton />
+  if (query.isLoading || !query.isFetchedAfterMount) return <DetailSkeleton />
   if (query.isError) return <ErrorState message="Could not load this defect." error={query.error} onRetry={() => query.refetch()} />
   if (!query.data) return <EmptyState title="Defect not found" description="It may have been deleted, or you may not have access to it." />
   return <DefectFormPage mode="edit" defect={query.data} />
@@ -116,6 +124,9 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
 
   // The baseline is what "unchanged" means: the saved defect (refreshed after a partly applied save) or a blank form.
   const [baseline, setBaseline] = useState<DefectFormValues | null>(() => (defect ? valuesFromDefect(defect) : null))
+  // ADR-136: the version of the copy in `baseline`.
+  const [openedVersion, setOpenedVersion] = useState(defect?.row_version)
+  const [staleFields, setStaleFields] = useState<string[] | null>(null)
   // Inside a project (/projects/:id/defects/new) the URL names it; the old /defects/new?projectId= still works.
   const routeProject = useParams<{ projectId: string }>().projectId
   const queryProject = routeProject ?? searchParams.get('projectId') ?? ''
@@ -231,19 +242,39 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
         return created
       }
       let current = defect!
+      // Each step of this save moves the version, so the next step expects what the last returned.
+      let expected = openedVersion
       try {
         const patch = toUpdateRequest(values, initial)
-        if (Object.keys(patch).length > 0) current = await updateDefect(defect!.id, patch)
+        if (Object.keys(patch).length > 0) {
+          current = await updateDefect(defect!.id, { ...patch, expected_version: expected })
+          expected = current.row_version
+        }
         const { add, remove } = linkDiff(values, initial)
         for (const id of remove) await unlinkTestCase(defect!.id, id)
         for (const id of add) await linkTestCase(defect!.id, id)
         const change = statusChange(values, initial)
-        if (change) current = await updateDefectStatus(defect!.id, { ...change, verification_confirmed: verifyConfirmed })
+        if (change) {
+          current = await updateDefectStatus(defect!.id, {
+            ...change,
+            verification_confirmed: verifyConfirmed,
+            expected_version: expected,
+          })
+        }
       } catch (err) {
-        // Part of the save may have been applied: reload the server's copy as the new baseline so what
-        // still differs (what failed) stays highlighted and nothing is applied twice.
+        // Part of the save may have been applied, or someone else saved: move the unsaved entries
+        // onto the server's copy, so what still differs stays highlighted, nothing is applied twice
+        // and nobody else's change is undone.
         try {
-          setBaseline(valuesFromDefect(await getDefect(defect!.id)))
+          const latest = await getDefect(defect!.id)
+          if (latest.row_version !== openedVersion) {
+            const theirs = valuesFromDefect(latest)
+            const rebased = rebaseValues(values, initial, theirs)
+            setBaseline(theirs)
+            setValues(rebased.values)
+            setOpenedVersion(latest.row_version)
+            if (isStaleWrite(err)) setStaleFields(rebased.bothChanged)
+          }
           void queryClient.invalidateQueries({ queryKey: ['defects'] })
         } catch {
           // keep the old baseline
@@ -261,6 +292,11 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
       navigate(defectPath(savedDefect.project_id, savedDefect.id))
     },
     onError: (err) => {
+      // The notice above the buttons explains an out-of-date save.
+      if (isStaleWrite(err)) {
+        setSubmitted(false)
+        return
+      }
       // Data stays in the form; the API's per-field messages go onto the fields.
       if (err instanceof ApiError && err.fields) {
         const mapped = mapServerFields(err.fields)
@@ -281,6 +317,7 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
 
   function save() {
     setFormError(null)
+    setStaleFields(null)
     setServerErrors({})
     setStepServerErrors({})
     setSubmitted(true)
@@ -831,6 +868,9 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
           />
         </FormSection>
 
+        {staleFields && defect && (
+          <StaleWriteNotice bothChanged={staleFields} savedUrl={defectPath(defect.project_id, defect.id)} />
+        )}
         <FormError>{formError}</FormError>
 
         {/* Sticky action bar: stays on screen however long the form is (phones: above the home indicator). */}

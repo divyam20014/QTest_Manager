@@ -188,6 +188,9 @@ Index: `(project_id)`, `(user_id)` for "projects assigned to me" queries.
 
 ### `test_cases`
 The authoring-level document (ADR-001).
+
+`row_version INTEGER NOT NULL DEFAULT 1` (ADR-136, migration `b1d3f5a7c9e2`) moves once per saved change and is compared with a caller's `expected_version`.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID PK | |
@@ -302,6 +305,9 @@ UNIQUE (test_run_case_id, test_case_version_step_id).
 ## Defect Management (FR-DEF) — traceability per the 5-dimension requirement in the architecture notes
 
 ### `defects`
+
+`row_version INTEGER NOT NULL DEFAULT 1` (ADR-136, migration `b1d3f5a7c9e2`) moves once per saved change and is compared with a caller's `expected_version`.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID PK | |

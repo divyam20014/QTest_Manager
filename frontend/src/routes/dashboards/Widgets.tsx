@@ -323,15 +323,15 @@ function OpenDefects({ pid }: P) {
   )
 }
 
-function ReleaseReadiness({ pid, settings }: P) {
-  const releaseId = settings.release_id ? String(settings.release_id) : undefined
-  const q = useWidgetQuery(['readiness', pid, releaseId], () => fetchReleaseReadiness(pid ?? '', releaseId), !!pid)
+function ReleaseReadiness({ pid }: P) {
+  // ADR-137: a release saved with the widget is ignored; the figures cover the whole project.
+  const q = useWidgetQuery(['readiness', pid], () => fetchReleaseReadiness(pid ?? ''), !!pid)
   return (
     <Shell title="Release readiness">
       <Async q={q}>
         {(r) => (
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">{r.release_name ?? 'Whole project'}</p>
+            <p className="text-sm font-medium">Whole project, not one release</p>
             <div className="grid grid-cols-2 gap-2">
               <Tile label="Execution complete" value={pct(r.execution_completion_percentage)} />
               <Tile label="Run case pass rate" value={pct(r.pass_percentage)} />

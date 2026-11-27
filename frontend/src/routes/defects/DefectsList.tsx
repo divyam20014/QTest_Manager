@@ -377,6 +377,7 @@ export function DefectsList() {
     assigned_to: d.assigned_to,
     reported_by: d.reported_by,
     project_id: d.project_id,
+    row_version: d.row_version,
   })
 
   const rowActions = (d: Defect) => (
