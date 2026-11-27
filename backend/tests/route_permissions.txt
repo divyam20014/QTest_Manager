@@ -32,6 +32,7 @@ DELETE /api/v1/shared-steps/{shared_step_id}  ->  require_permission(testcase.ed
 DELETE /api/v1/task-statuses/{status_id}  ->  require_permission(task_status.manage)
 DELETE /api/v1/tasks/{task_id}  ->  require_resource_permission(task.manage, task)
 DELETE /api/v1/tasks/{task_id}/test-cases/{test_case_id}  ->  require_resource_permission(task.manage, task)
+DELETE /api/v1/teams/{team_id}  ->  require_permission(user.manage)
 DELETE /api/v1/test-cases/{test_case_id}  ->  signed-in
 DELETE /api/v1/test-plans/{plan_id}  ->  require_permission(testrun.create)
 DELETE /api/v1/test-runs/{run_id}  ->  require_permission(testrun.delete)
@@ -186,6 +187,7 @@ GET /api/v1/tasks/{task_id}/history  ->  signed-in
 GET /api/v1/tasks/{task_id}/rollup  ->  signed-in
 GET /api/v1/tasks/{task_id}/test-cases  ->  signed-in
 GET /api/v1/tasks/{task_id}/test-runs  ->  signed-in
+GET /api/v1/teams  ->  require_any_permission(project.members.manage|user.manage)
 GET /api/v1/templates  ->  signed-in
 GET /api/v1/test-cases  ->  signed-in
 GET /api/v1/test-cases/columns  ->  signed-in
@@ -245,6 +247,7 @@ PATCH /api/v1/settings  ->  require_permission(tenant.settings.manage)
 PATCH /api/v1/shared-steps/{shared_step_id}  ->  require_permission(testcase.edit)
 PATCH /api/v1/task-statuses/{status_id}  ->  require_permission(task_status.manage)
 PATCH /api/v1/tasks/{task_id}  ->  require_resource_permission(task.manage, task)
+PATCH /api/v1/teams/{team_id}  ->  require_permission(user.manage)
 PATCH /api/v1/test-cases/{test_case_id}  ->  require_resource_permission(testcase.edit, test_case)
 PATCH /api/v1/test-plans/{plan_id}  ->  require_permission(testrun.create)
 PATCH /api/v1/test-run-cases/{test_run_case_id}/assign  ->  require_permission(testrun.create)
@@ -302,6 +305,7 @@ POST /api/v1/platform/plans  ->  require_platform_admin
 POST /api/v1/platform/tenants  ->  require_platform_admin
 POST /api/v1/platform/tenants/{tenant_id}/clear-ip-allowlist  ->  require_platform_admin
 POST /api/v1/projects  ->  require_permission(project.create)
+POST /api/v1/projects/{project_id}/archive  ->  require_permission(project.delete)
 POST /api/v1/projects/{project_id}/builds  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/builds/bulk  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/members  ->  require_permission(project.members.manage)
@@ -309,8 +313,10 @@ POST /api/v1/projects/{project_id}/modules  ->  require_permission(testcase.edit
 POST /api/v1/projects/{project_id}/releases  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/releases/bulk  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/requirements  ->  require_project_permission(requirement.manage)
+POST /api/v1/projects/{project_id}/restore  ->  require_permission(project.delete)
 POST /api/v1/projects/{project_id}/shared-steps  ->  require_permission(testcase.edit)
 POST /api/v1/projects/{project_id}/tasks  ->  require_project_permission(task.manage)
+POST /api/v1/projects/{project_id}/teams/{team_id}  ->  require_permission(project.members.manage)
 POST /api/v1/projects/{project_id}/templates/import  ->  require_permission(testcase.edit)
 POST /api/v1/projects/{project_id}/test-cases  ->  require_project_permission(testcase.create)
 POST /api/v1/projects/{project_id}/test-plans  ->  require_permission(testrun.create)
@@ -337,6 +343,7 @@ POST /api/v1/tasks/{task_id}/attachments  ->  require_permission(task.transition
 POST /api/v1/tasks/{task_id}/comments  ->  signed-in
 POST /api/v1/tasks/{task_id}/status  ->  require_resource_permission(task.transition, task)
 POST /api/v1/tasks/{task_id}/test-cases  ->  require_resource_permission(task.manage, task)
+POST /api/v1/teams  ->  require_permission(user.manage)
 POST /api/v1/test-cases/bulk-assign-module  ->  require_permission(testcase.edit)
 POST /api/v1/test-cases/bulk-update  ->  signed-in
 POST /api/v1/test-cases/import  ->  require_permission(testcase.bulk_import_export)

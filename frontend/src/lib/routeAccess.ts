@@ -23,6 +23,8 @@ export type AccessRule = { level: AccessLevel } | { permission: string }
  * per-resource checks). */
 export const ROUTE_ACCESS: ReadonlyArray<{ path: string } & AccessRule> = [
   { path: '/admin/users', level: 'admin' },
+  // ADR-141: the API gates changes to teams by `user.manage` (Admin).
+  { path: '/admin/teams', level: 'admin' },
   { path: '/admin/roles', level: 'admin' },
   { path: '/admin/audit-logs', level: 'admin' },
   // Environments is also gated at the API by `environment.manage`, which

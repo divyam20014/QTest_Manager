@@ -505,13 +505,28 @@ anyone whose role can view all projects, including custom roles.
 
 ### Setting up projects
 
-**Projects** lists every project. **New Project** creates one with a name,
-domain, priority, budget and timeline. In a project you manage members on the
+**Projects** lists every active project. **New Project** needs only a name.
+**Domain** and **Priority** are on the form, and **More details (optional)**
+holds the status, manager, dates, budget and region; leave out what you do not
+use. **Copy setup from** starts the new project with another project's visible
+tabs and module folders, and nothing else. In a project you manage members on the
 **Team** tab; builds, releases, suites and plans on **Planning**; and the
 project's own details, visible tabs and deletion in **Project settings** (the
 gear in the project header). Keep releases, builds and environments current:
 defects refer to them. Test runs do not record a build or an environment yet
 (environments are maintained under Admin, see "For Admins").
+
+**Archiving.** **Archive Project** in Project settings retires a project without
+deleting anything. It becomes read-only and its header says so, it leaves the
+project list, project pickers and My Work, and its records stay in reports and
+in lists that cover all projects. To find it, choose **Show: Archived projects**
+in the Projects filters; **Restore Project** makes it editable again. Only a
+project with no test cases, runs, defects, requirements or tasks can be deleted.
+
+**Adding a team.** On a project's **Team** tab, **Add a team** adds everyone
+active in that team who is not on the project yet, each with their own role. It
+adds the people who are in the team at that moment: changing the team later does
+not change the project.
 
 ### Tasks and sub-tasks
 
@@ -854,6 +869,11 @@ manage statuses). A release freeze can include task changes: choose the action
   Close, Delete and Export (under **Access Control**); the built-in Tester role
   cannot assign, close or export.
 - **Security & SSO**: single sign-on and sign-in requirements such as MFA.
+- **Teams** (Admin > Teams): named groups, with an optional lead, that can be
+  added to a project in one step. A team gives no access by itself.
+- **Project domains** (in Settings): the choices for a project's Domain, one per
+  line. Until you change it, it is the built-in insurance list. Leave it empty if
+  you do not use domains. Projects keep a domain you remove.
 - **Integrations**: SCIM and service tokens for connecting other systems.
 - **Data**: **Tester visibility** (limit Testers to assigned cases, hide Reports
   from Testers), AI features, your subscription and seat usage, data export and

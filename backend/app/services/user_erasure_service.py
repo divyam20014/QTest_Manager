@@ -26,6 +26,7 @@ from app.models.identity import MfaChallenge, Role, User
 from app.models.identity import Session as SessionModel
 from app.models.notification import Notification
 from app.models.report_schedule import ReportSchedule
+from app.models.team import Team, TeamMember
 from app.models.user_invite import UserInvite
 from app.schemas.user import UserErasePreview, UserEraseRequest
 
@@ -94,6 +95,9 @@ def _collect(db: Session, tenant_id: UUID, user: User) -> tuple[dict[str, int], 
         ),
         "user_invites_anonymised": len(db.execute(_invites(db, tenant_id, user.email)).all()),
         "report_schedule_recipients_removed": len(_matching_schedules(db, tenant_id, user.email)),
+        "team_memberships_removed": _count(
+            db, select(func.count(TeamMember.id)).where(TeamMember.user_id == user.id)
+        ),
     }
     retained = {
         "audit_logs_as_actor": _count(
@@ -200,6 +204,10 @@ def erase_user(
         ]
         if not schedule.recipient_emails:
             schedule.enabled = False
+
+    # 7. Teams: an erased account belongs to no team and leads none (ADR-141).
+    db.execute(delete(TeamMember).where(TeamMember.user_id == user.id))
+    db.execute(update(Team).where(Team.lead_user_id == user.id).values(lead_user_id=None))
 
     # Audit: ids and counts only. No name, no email, no confirmation text.
     record_audit_event(

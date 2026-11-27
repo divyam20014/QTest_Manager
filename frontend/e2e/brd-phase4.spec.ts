@@ -90,7 +90,7 @@ test('Settings: an Admin sets the domain, and New Project pre-selects it; "Other
   await expect(page.getByText('Organization settings saved')).toBeVisible()
   await page.goto('/projects')
   await page.getByRole('button', { name: /New Project/ }).click()
-  await expect(nativeSelect(page.getByRole('dialog'), /^Domain/)).toHaveValue('Motor')
+  await expect(nativeSelect(page.getByRole('dialog'), /^Domain/)).toHaveValue('')
 })
 
 // ---------------------------------------------------------------- documentation viewer

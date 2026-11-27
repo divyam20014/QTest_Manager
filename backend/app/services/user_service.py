@@ -165,7 +165,8 @@ def update_user(
         action="user.updated",
         entity_type="user",
         entity_id=user.id,
-        metadata=req.model_dump(exclude_unset=True),
+        # JSON mode: a role_id is a UUID, which the audit entry cannot hold as it is.
+        metadata=req.model_dump(mode="json", exclude_unset=True),
     )
     db.commit()
     return user

@@ -40,6 +40,7 @@ from app.models.shared_step import SharedStep
 from app.models.sso_config import SsoConfig
 from app.models.subscription import Plan, Subscription
 from app.models.task import Task, TaskStatus, TaskTestCaseLink
+from app.models.team import Team, TeamMember
 from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import (
@@ -55,6 +56,8 @@ from app.models.test_suite import TestSuite, TestSuiteCase
 from app.models.user_invite import UserInvite
 
 __all__ = [
+    "Team",
+    "TeamMember",
     "Tenant",
     "PlatformAdmin",
     "PlatformAdminRecoveryCode",

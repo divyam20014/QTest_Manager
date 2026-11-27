@@ -1,4 +1,4 @@
-import { KeyRound, Layers, LayoutPanelLeft, ListChecks, ScrollText, Settings as SettingsIcon, Users } from 'lucide-react'
+import { KeyRound, Layers, LayoutPanelLeft, ListChecks, ScrollText, Settings as SettingsIcon, Users, UsersRound } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 import type { MeResponse } from '@/api/auth'
@@ -22,6 +22,7 @@ export interface AdminSection {
 
 export const ADMIN_SECTIONS: AdminSection[] = [
   { to: '/admin/users', label: 'Users & Roles', icon: Users, paths: ['/admin/users'], group: 'People & access' },
+  { to: '/admin/teams', label: 'Teams', icon: UsersRound, paths: ['/admin/teams'], group: 'People & access' },
   {
     to: '/admin/roles',
     label: 'Access Control',

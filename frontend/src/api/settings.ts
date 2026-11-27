@@ -9,6 +9,9 @@ export interface TenantSettings {
   ai_api_key_configured: boolean
   ip_allowlist: string[]
   primary_domain: TenantDomain | null
+  /** ADR-139: the domains projects may use, and whether this is the organization's own list. */
+  project_domains?: string[]
+  project_domains_customised?: boolean
   testers_see_assigned_cases_only: boolean
   reports_hidden_from_testers: boolean
 }
@@ -21,6 +24,8 @@ export interface TenantSettingsUpdateRequest {
   ip_allowlist?: string[]
   // Omit to leave unchanged; null clears it.
   primary_domain?: TenantDomain | null
+  /** Omit to leave unchanged; null returns to the built-in list. */
+  project_domains?: string[] | null
   testers_see_assigned_cases_only?: boolean
   reports_hidden_from_testers?: boolean
 }
@@ -40,6 +45,8 @@ export interface TenantBranding {
   has_logo: boolean
   // Readable by every member: pre-selects the Domain of a new project.
   primary_domain: TenantDomain | null
+  /** ADR-139: the choices for a project's Domain. */
+  project_domains?: string[]
 }
 
 export interface TenantBrandingUpdateRequest {

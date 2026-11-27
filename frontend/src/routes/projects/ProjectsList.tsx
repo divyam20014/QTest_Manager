@@ -40,22 +40,22 @@ import { useIsMobile } from '@/lib/useMediaQuery'
 import { isManagerOrAbove } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { ProjectForm, type ProjectFormValues } from './ProjectForm'
+import { NO_DOMAIN } from '@/api/projects'
 import { PRIORITY_TONE, STATUS_TONE } from './statusDisplay'
 
 const DEFAULT_VALUES: ProjectFormValues = {
   name: '',
-  domain: 'Motor',
+  domain: '',
   priority: 'Medium',
   status: 'On Track',
   manager_name: '',
   manager_user_id: '',
   start_date: '',
   end_date: '',
-  budget: '0',
+  budget: '',
   region: '',
 }
 
-const DOMAINS: Domain[] = ['Motor', 'Health', 'Travel', 'Life', 'Property']
 const STATUSES: ProjectStatus[] = ['On Track', 'At Risk', 'Delayed', 'Completed']
 const PRIORITIES: Priority[] = ['Low', 'Medium', 'High', 'Critical']
 const PAGE_SIZE = 10
@@ -81,11 +81,11 @@ const PROJECT_DETAIL: RowDetailConfig<Project> = {
     </>
   ),
   fields: (p) => [
-    { label: 'Domain', value: p.domain },
-    { label: 'Manager', value: p.manager_name },
-    { label: 'Region', value: p.region },
-    { label: 'Start date', value: p.start_date },
-    { label: 'End date', value: p.end_date },
+    { label: 'Domain', value: p.domain ?? '—' },
+    { label: 'Manager', value: p.manager_name ?? '—' },
+    { label: 'Region', value: p.region ?? '—' },
+    { label: 'Start date', value: p.start_date ?? '—' },
+    { label: 'End date', value: p.end_date ?? '—' },
     { label: 'Test cases', value: `${p.test_case_count} (${p.approved_test_case_count} approved)` },
     { label: 'Test runs', value: p.test_run_count },
     { label: 'Open defects', value: p.open_defect_count },
@@ -134,6 +134,22 @@ export function ProjectsList() {
     )
   }
 
+  // ADR-140: archived projects are listed only on request, also kept in the URL (`?archived=1`).
+  const [archived, setArchivedState] = useState(searchParams.get('archived') === '1')
+  function setArchived(next: boolean) {
+    setArchivedState(next)
+    setPage(1)
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (next) params.set('archived', '1')
+        else params.delete('archived')
+        return params
+      },
+      { replace: true },
+    )
+  }
+
   // Phase 2: the command palette's "Create Project" quick action
   // navigates here with ?action=create -- reuses this existing create
   // dialog rather than inventing a new creation flow.
@@ -155,18 +171,18 @@ export function ProjectsList() {
   // "My projects" fetches the largest page once (without the status tab) and narrows it here, so the
   // status tab counts below stay exact for what the user can see.
   const projectsQuery = useQuery({
-    queryKey: ['projects', { search: debouncedSearch, domain, status: mine ? '' : status, priority, sort, page: mine ? 'mine' : page }],
+    queryKey: ['projects', { search: debouncedSearch, domain, status: mine ? '' : status, priority, sort, archived, page: mine ? 'mine' : page }],
     queryFn: () =>
       mine
-        ? listProjects({ search: debouncedSearch, domain, priority, sort, page: 1, page_size: MINE_FETCH_SIZE })
-        : listProjects({ search: debouncedSearch, domain, status, priority, sort, page, page_size: PAGE_SIZE }),
+        ? listProjects({ search: debouncedSearch, domain, priority, archived, sort, page: 1, page_size: MINE_FETCH_SIZE })
+        : listProjects({ search: debouncedSearch, domain, status, priority, archived, sort, page, page_size: PAGE_SIZE }),
     placeholderData: keepPreviousData,
   })
   const countQueries = useQueries({
     queries: STATUSES.map((s) => ({
-      queryKey: ['projects', 'status-count', { s, search: debouncedSearch, domain, priority }],
+      queryKey: ['projects', 'status-count', { s, search: debouncedSearch, domain, priority, archived }],
       queryFn: () =>
-        listProjects({ search: debouncedSearch, domain, priority, status: s, page: 1, page_size: 1 }).then((r) => r.total),
+        listProjects({ search: debouncedSearch, domain, priority, archived, status: s, page: 1, page_size: 1 }).then((r) => r.total),
       enabled: !mine,
       placeholderData: keepPreviousData,
     })),
@@ -191,12 +207,20 @@ export function ProjectsList() {
   // BRD gap Phase 4 (FR-AUTH-04): the organisation's primary insurance domain
   // pre-selects a new project's Domain. Same query key as the app shell, so
   // it is normally already cached; "Other"/unset keeps the existing default.
-  const brandingQuery = useQuery({ queryKey: ['branding'], queryFn: getBranding, enabled: canCreate })
+  const brandingQuery = useQuery({ queryKey: ['branding'], queryFn: getBranding })
   const tenantDomain = projectDomainFor(brandingQuery.data?.primary_domain)
+  const projectDomains = brandingQuery.data?.project_domains
+  const domains = useMemo(() => projectDomains ?? [], [projectDomains])
   const newProjectDefaults = useMemo<ProjectFormValues>(
-    () => ({ ...DEFAULT_VALUES, domain: tenantDomain ?? DEFAULT_VALUES.domain }),
-    [tenantDomain],
+    () => ({ ...DEFAULT_VALUES, domain: tenantDomain && domains.includes(tenantDomain) ? tenantDomain : '' }),
+    [tenantDomain, domains],
   )
+  // ADR-142: asked for only while the dialog is open.
+  const templatesQuery = useQuery({
+    queryKey: ['projects', 'templates'],
+    queryFn: () => listProjects({ page_size: 100, sort: 'name' }),
+    enabled: canCreate && createOpen,
+  })
   const createError = createMutation.error instanceof ApiError ? createMutation.error.message : null
 
   const isMobile = useIsMobile()
@@ -205,12 +229,13 @@ export function ProjectsList() {
   const myInStatus = status ? myProjects.filter((p) => p.status === status) : myProjects
   const total = mine ? myInStatus.length : (projectsQuery.data?.total ?? 0)
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const filtersActive = Boolean(search || domain || status || priority || mine)
+  const filtersActive = Boolean(search || domain || status || priority || mine || archived)
   // Search and the status tab have their own controls; this clears the filters in the panel.
   function clearFilters() {
     setDomain('')
     setPriority('')
     setMine(false)
+    setArchived(false)
     setPage(1)
   }
   function clearAll() {
@@ -230,11 +255,13 @@ export function ProjectsList() {
   })
   const chips = [
     ...(mine ? [{ key: 'mine', label: 'Projects', value: 'Mine' }] : []),
+    ...(archived ? [{ key: 'archived', label: 'Showing', value: 'Archived' }] : []),
     ...(domain ? [{ key: 'domain', label: 'Domain', value: domain }] : []),
     ...(priority ? [{ key: 'priority', label: 'Priority', value: priority }] : []),
   ]
   function removeChip(key: string) {
     if (key === 'mine') setMine(false)
+    else if (key === 'archived') setArchived(false)
     else if (key === 'domain') resetToFirstPage(setDomain)('')
     else if (key === 'priority') resetToFirstPage(setPriority)('')
   }
@@ -291,7 +318,7 @@ export function ProjectsList() {
         </Link>
       ),
     },
-    { key: 'domain', header: 'Domain', cell: (project) => project.domain },
+    { key: 'domain', header: 'Domain', cell: (project) => project.domain ?? '—' },
     {
       key: 'status',
       header: 'Status',
@@ -306,8 +333,8 @@ export function ProjectsList() {
       card: 'badge',
       cell: (project) => <LevelBadge tone={PRIORITY_TONE[project.priority]}>{project.priority}</LevelBadge>,
     },
-    { key: 'manager_name', header: 'Manager', cell: (project) => project.manager_name },
-    { key: 'region', header: 'Region', cell: (project) => project.region },
+    { key: 'manager_name', header: 'Manager', cell: (project) => project.manager_name ?? '—' },
+    { key: 'region', header: 'Region', cell: (project) => project.region ?? '—' },
     {
       key: 'metrics',
       header: 'Test Cases / Runs / Open Defects',
@@ -375,6 +402,17 @@ export function ProjectsList() {
         }
         filters={
           <>
+            <ListFilterField label="Show">
+              <Select
+                id="filter-archived"
+                aria-label="Show"
+                value={archived ? 'archived' : 'active'}
+                onChange={(e) => setArchived(e.target.value === 'archived')}
+              >
+                <option value="active">Active projects</option>
+                <option value="archived">Archived projects</option>
+              </Select>
+            </ListFilterField>
             <ListFilterField label="Domain">
               <Select
                 id="filter-domain"
@@ -383,7 +421,7 @@ export function ProjectsList() {
                 onChange={(e) => resetToFirstPage(setDomain)(e.target.value as Domain | '')}
               >
                 <option value="">All domains</option>
-                {DOMAINS.map((d) => (
+                {[...domains, NO_DOMAIN].map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>
@@ -501,6 +539,8 @@ export function ProjectsList() {
           isSubmitting={createMutation.isPending}
           serverError={createError}
           users={usersQuery.data ?? []}
+          domains={domains}
+          templates={templatesQuery.data?.items ?? []}
           onSubmit={(values) => createMutation.mutate(values)}
         />
       </Dialog>

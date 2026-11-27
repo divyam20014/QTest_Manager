@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 
-import { isManagerOrAbove } from '@/api/auth'
+import { hasPermission, isManagerOrAbove } from '@/api/auth'
+import { ApiError } from '@/api/client'
+import { addTeamToProject, describeTeamAdd, listTeams } from '@/api/teams'
 import {
   addProjectMember,
   getProject,
@@ -36,10 +38,59 @@ export function ProjectTeam() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Team" description="Who works on this project and which role they hold here." />
-      <div className="max-w-3xl">
+      <div className="flex max-w-3xl flex-col gap-4">
         <TeamMembersCard projectId={projectId} assignedUserIds={projectQuery.data.assigned_user_ids} />
+        {!projectQuery.data.archived_at && <AddTeamCard projectId={projectId} />}
       </div>
     </div>
+  )
+}
+
+/** ADR-141: add everyone in a team at once. Shown to those who may add members, when teams exist. */
+export function AddTeamCard({ projectId }: { projectId: string }) {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+  const { show: showToast } = useToast()
+  const [teamId, setTeamId] = useState('')
+  const canManage = isManagerOrAbove(user) && hasPermission(user, 'project.members.manage')
+  const teams = useQuery({ queryKey: ['teams'], queryFn: listTeams, enabled: canManage })
+
+  const add = useMutation({
+    mutationFn: () => addTeamToProject(projectId, teamId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] })
+      setTeamId('')
+      showToast('success', describeTeamAdd(result))
+    },
+    onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not add that team'),
+  })
+
+  if (!canManage || !teams.data?.length) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Add a team</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <Select aria-label="Team to add to the project" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+            <option value="">Select a team…</option>
+            {teams.data.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.members.length})
+              </option>
+            ))}
+          </Select>
+          <Button size="sm" disabled={!teamId || add.isPending} onClick={() => add.mutate()}>
+            Add team
+          </Button>
+        </div>
+        <p className="text-xs text-[var(--muted-foreground)]">
+          Adds the people in the team now, each with their own role. Later changes to the team do not change this
+          project.
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 

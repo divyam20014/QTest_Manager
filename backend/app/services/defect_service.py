@@ -17,10 +17,10 @@ from rapidfuzz import fuzz
 from sqlalchemy import Select, and_, case, func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
-from app.core.concurrency import bump_row_version, check_row_version
 from app.core import pagination
 from app.core.audit import record_audit_event
 from app.core.audit_diff import audit_diff
+from app.core.concurrency import bump_row_version, check_row_version
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
 from app.core.field_standards import (
@@ -139,6 +139,10 @@ def sweep_sla_breaches(db: Session) -> int:
                     Defect.tenant_id == tenant_id,
                     Defect.status.notin_(_TERMINAL_STATUSES),
                     Defect.sla_breach_notified_at.is_(None),
+                    # ADR-140: archived projects are read-only and need no reminders.
+                    Defect.project_id.not_in(
+                        select(Project.id).where(Project.archived_at.is_not(None))
+                    ),
                 )
             )
             .scalars()

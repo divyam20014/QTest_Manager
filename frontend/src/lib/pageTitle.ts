@@ -18,6 +18,7 @@ const EXACT_TITLES: Record<string, string> = {
   '/reporting/builder': 'Report builder',
   '/reporting/print': 'Compliance Report',
   '/admin/users': 'Admin › Users & Roles',
+  '/admin/teams': 'Admin › Teams',
   '/admin/roles': 'Admin › Access Control',
   '/admin/audit-logs': 'Admin › Audit Logs',
   '/admin/environments': 'Admin › Environments',

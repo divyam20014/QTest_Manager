@@ -14,6 +14,7 @@ from app.schemas.settings import (
     TenantSettingsOut,
     TenantSettingsUpdateRequest,
 )
+from app.services.project_domains import domains_of
 
 
 def _get_tenant_or_404(db: Session, tenant_id: UUID) -> Tenant:
@@ -32,6 +33,8 @@ def to_out(tenant: Tenant) -> TenantSettingsOut:
         ai_api_key_configured=tenant.ai_api_key_encrypted is not None,
         ip_allowlist=tenant.ip_allowlist or [],
         primary_domain=tenant.primary_domain,
+        project_domains=domains_of(tenant),
+        project_domains_customised=tenant.project_domains is not None,
         testers_see_assigned_cases_only=tenant.testers_see_assigned_cases_only,
         reports_hidden_from_testers=tenant.reports_hidden_from_testers,
     )
@@ -94,6 +97,10 @@ def update_settings(
         changes["primary_domain"] = {"from": tenant.primary_domain, "to": req.primary_domain}
         tenant.primary_domain = req.primary_domain
 
+    if "project_domains" in req.model_fields_set and req.project_domains != tenant.project_domains:
+        changes["project_domains"] = {"from": tenant.project_domains, "to": req.project_domains}
+        tenant.project_domains = req.project_domains
+
     changed_visibility = False
     # ADR-093: one `tenant.setting_changed` event per flipped switch (key and
     # new boolean only), in addition to the generic settings_updated event.
@@ -141,6 +148,7 @@ def get_branding(db: Session, tenant_id: UUID) -> TenantBrandingOut:
         primary_color=tenant.brand_primary_color,
         has_logo=tenant.brand_logo_ref is not None,
         primary_domain=tenant.primary_domain,
+        project_domains=domains_of(tenant),
     )
 
 

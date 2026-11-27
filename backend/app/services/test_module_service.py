@@ -3,8 +3,8 @@ from uuid import UUID
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.core.concurrency import bump_row_version
 from app.core.audit import record_audit_event
+from app.core.concurrency import bump_row_version
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError
 from app.models.project import Project

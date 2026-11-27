@@ -24,6 +24,17 @@ The other findings are open, except as noted below.
 - **Added:** tests for tenant isolation of the schema, route guards and export coverage.
 - **F-12 (new, open):** `POST /requirements/{id}/generate-test-cases` checks project access but not `testcase.create`, and it saves test cases. With AI enabled, a role without that permission could create them. **[V] code reading; [U] not reproduced.**
 
+### Phase 1, steps A to D (2026-11-27)
+
+- **1A, F-07 addressed** (ADR-139): a project needs only a name; the domain list belongs to the organization.
+- **1B** (ADR-140): archive and restore; the database makes an archived project read-only.
+- **1C** (ADR-141): teams, added to a project as a copy of their current members.
+- **1D** (ADR-142): a new project can copy another's tabs and module folders. No template tables; task statuses were already organization-wide.
+- **1E** (roles and F-06): **not built.** See [the permission proposal](QTESTHUB_PHASE1E_PERMISSIONS.md), awaiting approval.
+- **Two older defects found and fixed:** saving a project's dates, budget or linked manager answered with a server error (introduced 2026-11-09); so did giving an existing user a custom role.
+- **Test results:** full backend suite 1,647 of 1,650 passed (1 hour 50 minutes). One failure is the known import speed budget (GAP-69). Two were a flaw in the new route-guard test, which counted routes other tests add; it was corrected and passes after those tests. The full suite was not run again after that correction.
+- Migrations `b1d3f5a7c9e2` to `e4a6c8d0f2b3` have not been applied to the development database.
+
 ## How to read these documents
 
 | Mark | Meaning |

@@ -1,3 +1,5 @@
+import { NO_DOMAIN } from '@/api/projects'
+import { useProjectDomains } from '@/lib/useProjectDomains'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -73,7 +75,6 @@ const GROUP_BYS: { value: GroupBy; label: string }[] = [
   { value: 'assignee', label: 'Assignee' },
 ]
 
-const DOMAINS = ['Motor', 'Health', 'Travel', 'Life', 'Property']
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical']
 const TEST_CASE_STATUSES = ['draft', 'ready_for_review', 'approved', 'deprecated']
 
@@ -107,6 +108,7 @@ export function Reporting() {
   const [chartType, setChartType] = useState<'bar' | 'pie' | 'line'>('bar')
   const [projectId, setProjectId] = useState('')
   const [domain, setDomain] = useState('')
+  const projectDomains = useProjectDomains()
   const [assigneeId, setAssigneeId] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -269,7 +271,7 @@ export function Reporting() {
             <ListFilterField label="Domain">
               <Select aria-label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)}>
                 <option value="">All domains</option>
-                {DOMAINS.map((d) => (
+                {[...projectDomains, NO_DOMAIN].map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>

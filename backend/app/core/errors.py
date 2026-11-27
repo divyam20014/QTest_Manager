@@ -53,6 +53,21 @@ class StaleWriteError(AppError):
         super().__init__("stale_write", message, status_code=409)
 
 
+class ProjectArchivedError(AppError):
+    """ADR-140: an archived project is read-only. The database raises the same refusal
+    (SQLSTATE `ARCHIVED_SQLSTATE`) for any write that reaches it."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "project_archived",
+            "This project is archived, so it is read-only. Restore it to make changes.",
+            status_code=409,
+        )
+
+
+ARCHIVED_SQLSTATE = "QT001"
+
+
 class ConfigurationError(AppError):
     """Raised when a feature is enabled by config but its required
     infrastructure (e.g. an SMTP server) isn't configured. Fails loudly

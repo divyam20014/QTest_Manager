@@ -35,6 +35,7 @@ const AuditLogs = lazyRoute(() => import('@/routes/admin/AuditLogs'), 'AuditLogs
 const Environments = lazyRoute(() => import('@/routes/admin/Environments'), 'Environments')
 const RolesPermissions = lazyRoute(() => import('@/routes/admin/RolesPermissions'), 'RolesPermissions')
 const Settings = lazyRoute(() => import('@/routes/admin/Settings'), 'Settings')
+const Teams = lazyRoute(() => import('@/routes/admin/Teams'), 'Teams')
 const TaskStatuses = lazyRoute(() => import('@/routes/admin/TaskStatuses'), 'TaskStatuses')
 const TasksList = lazyRoute(() => import('@/routes/tasks/TasksList'), 'TasksList')
 const TaskDetail = lazyRoute(() => import('@/routes/tasks/TaskDetail'), 'TaskDetail')
@@ -225,6 +226,7 @@ export function App() {
           <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
           <Route element={<AdminLayout />}>
             <Route path="/admin/users" element={<UsersRoles />} />
+            <Route path="/admin/teams" element={<Teams />} />
             <Route path="/admin/roles" element={<RolesPermissions />} />
             <Route path="/admin/audit-logs" element={<AuditLogs />} />
             <Route path="/admin/environments" element={<Environments />} />

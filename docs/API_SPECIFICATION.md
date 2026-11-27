@@ -444,3 +444,20 @@ Additions in ADR-097: the test case list endpoints take `quarantined=any|only|ex
   other requirement endpoint are unchanged; the web app no longer has a Requirements list page.
 
 **Release readiness (ADR-137).** `GET /reports/release-readiness?project_id=` returns figures for the whole project: `scope` is `"project"` and `release_id` / `release_name` are null. An optional `release_id` must be a release of the project (404 otherwise) and does not change the figures.
+
+**Projects (ADR-139 to ADR-142).**
+
+- `POST /projects` needs only `name`. `domain`, `manager_name`, `start_date`, `end_date`, `budget` and `region` are optional and may be null in every response; blank text is stored as null, and `PATCH` with null clears them. `priority` defaults to Medium. `domain` must be in the organization's list (422 on `domain`); a project may be saved again with the domain it already has. `template_project_id` (optional) copies that project's tab layout and module tree; 404 or 403 if the caller cannot open it.
+- `GET /projects?archived=true` lists archived projects; the default lists active ones. `domain=No domain` selects projects without one. Project payloads carry `archived_at`.
+- `POST /projects/{id}/archive` and `/restore` (`project.delete`, Admin or assigned Manager); 409 if already in that state. Any write to an archived project's records answers 409 `project_archived`.
+- `GET /settings` returns `project_domains` and `project_domains_customised`; `PATCH /settings` accepts `project_domains` (at most 30, 60 characters each; null returns to the built-in list). `GET /settings/branding` returns `project_domains`.
+
+**Teams (ADR-141).**
+
+| Method | Path | Notes | Who |
+|---|---|---|---|
+| GET | /teams | teams with their lead and members | `user.manage` or `project.members.manage` |
+| POST | /teams | `{name, lead_user_id?, member_ids?}`; 409 if the name is taken, whatever the case | `user.manage` |
+| PATCH | /teams/{id} | any of the same; `member_ids` replaces the list | `user.manage` |
+| DELETE | /teams/{id} | project memberships stay | `user.manage` |
+| POST | /projects/{id}/teams/{team_id} | adds active members not yet on the project; returns `{added, already_members, skipped_inactive}` | `project.members.manage`, Admin or assigned Manager |

@@ -25,9 +25,6 @@ class Project(Base, TenantScopedMixin):
     __tablename__ = "projects"
     __table_args__ = (
         CheckConstraint(
-            "domain in ('Motor','Health','Travel','Life','Property')", name="ck_projects_domain"
-        ),
-        CheckConstraint(
             "status in ('On Track','At Risk','Delayed','Completed')", name="ck_projects_status"
         ),
         CheckConstraint(
@@ -39,18 +36,20 @@ class Project(Base, TenantScopedMixin):
     )
 
     name: Mapped[str] = mapped_column(String, nullable=False)
-    domain: Mapped[str] = mapped_column(String, nullable=False)
+    # ADR-139: one of the organization's domains, checked by the service. Optional, like
+    # the other details below.
+    domain: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False)
     priority: Mapped[str] = mapped_column(String, nullable=False)
-    manager_name: Mapped[str] = mapped_column(String, nullable=False)
+    manager_name: Mapped[str | None] = mapped_column(String, nullable=True)
     manager_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    budget: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    budget: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
-    region: Mapped[str] = mapped_column(String, nullable=False)
+    region: Mapped[str | None] = mapped_column(String, nullable=True)
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
@@ -59,6 +58,11 @@ class Project(Base, TenantScopedMixin):
     # A caller may pass ProjectUpdateRequest.expected_version to detect a
     # concurrent edit (409) instead of silently losing their write.
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    # ADR-140: set while archived. The database refuses writes to the project's records.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     # ADR-122: optional project-tab order and hidden tabs, `{"order": [...], "hidden": [...]}`,
     # validated against an allowlist by ProjectUpdateRequest. NULL = the default tab set.
     nav_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

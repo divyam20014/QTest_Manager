@@ -491,3 +491,12 @@ CREATE POLICY tenant_isolation ON <table>
   USING (tenant_id = current_setting('app.current_tenant')::uuid);
 ```
 The backend sets `app.current_tenant` from the authenticated session at the start of every request-scoped transaction (ADR-007); it is never taken from client input.
+
+## Changes for ADR-139 to ADR-141
+
+- `projects`: `domain`, `manager_name`, `start_date`, `end_date`, `budget`, `region` are nullable and the domain check is gone (`c2e4a6b8d0f1`). The date-order and non-negative budget checks remain. `archived_at TIMESTAMPTZ`, `archived_by UUID FK users`, partial index `ix_projects_archived` (`d3f5b7a9c1e2`).
+- `tenants.project_domains JSONB NULL`: the organization's domains; NULL = the built-in list.
+- Triggers `archived_guard_<table>_<insert|update|delete>` on 27 tables that hold project records; they raise SQLSTATE `QT001`.
+- `users`: unique `(id, tenant_id)`, so other tables can require a user of the same tenant.
+- `teams(id, tenant_id, name, lead_user_id, created_at)`: unique `(tenant_id, lower(name))`; `(lead_user_id, tenant_id)` references users.
+- `team_members(id, tenant_id, team_id, user_id, created_at)`: unique `(team_id, user_id)`; composite foreign keys to the team and the user of the same tenant. Both tables have forced row-level security.

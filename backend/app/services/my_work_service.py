@@ -57,6 +57,8 @@ def _run_case_query(
         .join(Project, Project.id == TestRun.project_id)
         .join(TestCase, TestCase.id == TestRunCase.test_case_id)
         .where(
+            # ADR-140: nothing in an archived project is pending work.
+            Project.archived_at.is_(None),
             TestRunCase.tenant_id == tenant_id,
             TestRunCase.assigned_to == user_id,
             TestRunCase.status.in_(OPEN_RUN_CASE_STATUSES),
@@ -74,6 +76,8 @@ def _review_query(db: Session, tenant_id: UUID, role_code: str, user_id: UUID) -
         select(TestCase, Project.name)
         .join(Project, Project.id == TestCase.project_id)
         .where(
+            # ADR-140: nothing in an archived project is pending work.
+            Project.archived_at.is_(None),
             TestCase.tenant_id == tenant_id,
             TestCase.status == "ready_for_review",
             TestCase.reviewer_id == user_id,
@@ -91,6 +95,8 @@ def _task_query(tenant_id: UUID, role_code: str, user_id: UUID) -> Select:
         .join(TaskStatus, TaskStatus.id == Task.status_id)
         .join(Project, Project.id == Task.project_id)
         .where(
+            # ADR-140: nothing in an archived project is pending work.
+            Project.archived_at.is_(None),
             Task.tenant_id == tenant_id,
             Task.assignee_id == user_id,
             TaskStatus.category != "done",

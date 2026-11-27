@@ -31,6 +31,7 @@ from app.models.test_data_set import TestDataSet
 from app.models.test_module import TestModule
 from app.models.test_plan import TestPlan
 from app.models.test_suite import TestSuite
+from app.schemas.project import NO_DOMAIN
 from app.schemas.reporting import (
     ActivityEntry,
     AggregateReport,
@@ -81,12 +82,11 @@ from app.schemas.reporting import (
     WorkloadEntry,
     WorkloadSummary,
 )
-from app.services import requirement_service, task_service, tester_visibility
+from app.services import project_domains, requirement_service, task_service, tester_visibility
 from app.services.defect_service import SLA_DAYS_ALL, SLA_DAYS_BY_SEVERITY
 
 COMPLETED_RUN_CASE_STATUSES = ("passed", "failed", "blocked", "ignored")
 
-DOMAINS = ["Motor", "Health", "Travel", "Life", "Property"]
 
 # `defect_service.compute_aging` falls back to this budget for an unknown severity.
 DEFAULT_SLA_DAYS = 10
@@ -298,9 +298,9 @@ def get_domain_distribution(
 
     # ADR-113: one grouped query per measure for ALL domains (was five domains x
     # four queries, the step-verdict one a scan of the whole run/step graph each).
-    project_query = select(Project.id, Project.domain).where(
-        Project.tenant_id == tenant_id, Project.domain.in_(DOMAINS)
-    )
+    # ADR-139: every project is counted; one without a domain is grouped as NO_DOMAIN.
+    domain_label: Any = func.coalesce(Project.domain, NO_DOMAIN)
+    project_query = select(Project.id, domain_label).where(Project.tenant_id == tenant_id)
     if accessible is not None:
         project_query = project_query.where(Project.id.in_(accessible))
     domain_of: dict[UUID, str] = dict(db.execute(project_query).tuples().all())
@@ -319,22 +319,22 @@ def get_domain_distribution(
                 tenant_id,
                 role_code,
                 user_id,
-                select(Project.domain, TestCase.status, func.count())
+                select(domain_label, TestCase.status, func.count())
                 .select_from(TestCase)
                 .join(Project, Project.id == TestCase.project_id)
                 .where(TestCase.project_id.in_(project_ids)),
-            ).group_by(Project.domain, TestCase.status)
+            ).group_by(domain_label, TestCase.status)
         ):
             tc_by_domain.setdefault(dom, {})[tc_status] = n
         open_defects_by_domain = dict(
             db.execute(
-                select(Project.domain, func.count())
+                select(domain_label, func.count())
                 .select_from(Defect)
                 .join(Project, Project.id == Defect.project_id)
                 .where(
                     Defect.project_id.in_(project_ids), Defect.status.notin_(CLOSED_DEFECT_STATUSES)
                 )
-                .group_by(Project.domain)
+                .group_by(domain_label)
             )
             .tuples()
             .all()
@@ -352,8 +352,14 @@ def get_domain_distribution(
             domain_steps = steps_by_domain.setdefault(domain_of[step_project_id], {})
             domain_steps[verdict] = domain_steps.get(verdict, 0) + n
 
+    # The organization's domains first, even when empty; then any a project still has
+    # that has left the list; then the projects without one, if there are any.
+    listed = project_domains.allowed_domains(db, tenant_id)
+    left_over = sorted(set(project_counts) - set(listed) - {NO_DOMAIN})
+    domains = listed + left_over + ([NO_DOMAIN] if NO_DOMAIN in project_counts else [])
+
     entries = []
-    for domain in DOMAINS:
+    for domain in domains:
         if domain not in project_counts:
             entries.append(
                 DomainDistributionEntry(
@@ -649,7 +655,7 @@ def get_aggregate_report(
                 TestRunCase.assigned_to.label("assignee_id"),
                 Project.id.label("project_id"),
                 Project.name.label("project_name"),
-                Project.domain.label("domain"),
+                func.coalesce(Project.domain, NO_DOMAIN).label("domain"),
                 tc_priority_col.label("tc_priority"),
                 tc_status_col.label("tc_status"),
                 TestRun.created_at.label("created_at"),
@@ -668,7 +674,7 @@ def get_aggregate_report(
                 TestCase.assignee_id.label("assignee_id"),
                 Project.id.label("project_id"),
                 Project.name.label("project_name"),
-                Project.domain.label("domain"),
+                func.coalesce(Project.domain, NO_DOMAIN).label("domain"),
                 TestCase.priority.label("tc_priority"),
                 TestCase.status.label("tc_status"),
                 TestCase.created_at.label("created_at"),
@@ -693,7 +699,7 @@ def get_aggregate_report(
                 Defect.reported_by.label("assignee_id"),
                 Project.id.label("project_id"),
                 Project.name.label("project_name"),
-                Project.domain.label("domain"),
+                func.coalesce(Project.domain, NO_DOMAIN).label("domain"),
                 tc_priority_col.label("tc_priority"),
                 tc_status_col.label("tc_status"),
                 Defect.created_at.label("created_at"),
@@ -710,7 +716,9 @@ def get_aggregate_report(
         base = base.where(Project.id.in_(accessible))
     if project_id is not None:
         base = base.where(Project.id == project_id)
-    if domain is not None:
+    if domain == NO_DOMAIN:
+        base = base.where(Project.domain.is_(None))
+    elif domain is not None:
         base = base.where(Project.domain == domain)
 
     subq = base.subquery()
@@ -1429,7 +1437,7 @@ def get_compliance_report(
             ComplianceProjectSection(
                 project_id=project.id,
                 name=project.name,
-                domain=project.domain,
+                domain=project.domain or NO_DOMAIN,
                 total_test_cases=len(test_cases),
                 approved_test_cases=tc_counts.get("approved", 0),
                 draft_test_cases=tc_counts.get("draft", 0),

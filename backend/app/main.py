@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
-from sqlalchemy.exc import DataError
+from sqlalchemy.exc import DataError, DBAPIError
 
 from app.api import (
     access_rules,
@@ -48,6 +48,7 @@ from app.api import (
     shared_steps,
     sso,
     tasks,
+    teams,
     templates,
     test_assets,
     test_cases,
@@ -66,7 +67,7 @@ from app.api import (
 from app.core.auth import client_ip
 from app.core.config import get_settings, validate_for_production
 from app.core.db import engine
-from app.core.errors import AppError
+from app.core.errors import ARCHIVED_SQLSTATE, AppError, ProjectArchivedError
 from app.core.logging import configure_logging, logger, request_id_var
 from app.core.rate_limit import limiter
 from app.core.responses import envelope
@@ -197,6 +198,14 @@ def handle_validation_error(request: Request, exc: RequestValidationError) -> JS
 # ADR-088: a value the database refuses to adapt/cast (e.g. a malformed UUID that
 # slipped past schema typing into a raw query) is a bad request, not a server
 # fault. Never echoes the driver message.
+@app.exception_handler(DBAPIError)
+def handle_db_error(request: Request, exc: DBAPIError) -> JSONResponse:
+    # ADR-140: the database's archived-project guard. Anything else stays unexpected.
+    if getattr(exc.orig, "sqlstate", None) == ARCHIVED_SQLSTATE:
+        return handle_app_error(request, ProjectArchivedError())
+    return handle_unexpected_error(request, exc)
+
+
 @app.exception_handler(DataError)
 def handle_db_data_error(request: Request, exc: DataError) -> JSONResponse:
     logger.warning(
@@ -250,6 +259,7 @@ app.include_router(platform_auth.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
+app.include_router(teams.router, prefix="/api/v1")
 app.include_router(import_export.router, prefix="/api/v1")
 app.include_router(test_cases.router, prefix="/api/v1")
 app.include_router(csv_import.router, prefix="/api/v1")

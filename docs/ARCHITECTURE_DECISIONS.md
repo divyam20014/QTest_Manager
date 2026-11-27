@@ -2021,3 +2021,35 @@ The version is not `version_number`: an edit to a draft keeps that number.
 **Decision.** They are included. `EXCLUDED_TABLES` names every table left out with its reason: credentials, internal working tables and the provider's own data. A test compares both lists with the database. Tables without a tenant column are limited through their parent; shared system roles are included because users refer to them. `ai_api_key_encrypted` joins the columns that never leave. Values are read through mapped attributes: `audit_logs.metadata` made the whole job fail otherwise.
 
 **Consequences.** Archives are larger, mostly because of the audit log, and the job still builds each table in memory; that has not been measured with a large tenant. Attachment file contents are still not in the archive.
+
+## ADR-139: A project needs only a name; domains belong to the organization
+
+**Context.** Creating a project required an insurance domain (one of five, enforced by a database check), a manager's name, two dates, a budget and a region. That does not suit a general software team.
+
+**Decision.** Only the name is required; priority defaults to Medium. Domain, manager, dates, budget and region are nullable (migration `c2e4a6b8d0f1`); blank text means not set, and sending null clears a value. Each organization has its own domain list (`tenants.project_domains`), edited under Settings. NULL means the built-in five, so existing organizations see no change; an empty list means no domains. A project keeps a domain that has left the list and may be saved with it. Reports count every project and group those without a domain as "No domain", which cannot be used as a domain name. Sorting puts missing values last. The downgrade refuses while any project lacks a value or uses its own domain: filling them in would invent data.
+
+**Consequences.** `domain` is no longer one of a fixed set in the API; clients must not assume it. The organization's "primary domain" still pre-selects a new project's domain when it is in the list.
+
+## ADR-140: An archived project is read-only, enforced by the database
+
+**Context.** A project with any history could not be deleted, and there was no way to retire it. Writes reach a project's records through routes, imports, bulk actions, the CI webhook and the worker, so a check in each path would be easy to miss.
+
+**Decision.** `projects.archived_at` / `archived_by` (migration `d3f5b7a9c1e2`). Statement-level triggers on every table whose rows belong to a project refuse inserts, updates and deletes for an archived one with SQLSTATE `QT001`, which the API answers as 409 `project_archived`. Statement-level means a bulk insert is checked once; while nothing is archived the trigger returns after one indexed lookup. Edits of the project row itself are refused in the service. `app.allow_archived_write`, set for one transaction, exempts exactly two actions: deleting an empty project (with its member list) and deleting a custom field (an organization-wide action that removes its values everywhere). Archiving and restoring need the permission and assignment that deleting needs, and are audited. Archived projects leave the project list (`archived=true` lists them), project pickers and My Work, and are skipped by the SLA reminder sweep. Their records remain readable and stay in cross-project lists and reports.
+
+**Consequences.** A new table that belongs to a project needs its triggers; nothing yet fails automatically if they are missing. A write already running when a project is archived can still finish. Personal and default dashboard layouts of an archived project can still change. Screens other than the project header and settings do not hide their edit buttons: the save is refused with the explanation.
+
+## ADR-141: Teams add people; they do not grant access
+
+**Context.** People were added to projects one at a time.
+
+**Decision.** `teams` and `team_members` (migration `e4a6c8d0f2b3`), with forced row-level security and foreign keys that require the team, lead and members to belong to the same organization. Managing teams needs `user.manage`. Adding a team to a project follows the rules for adding a member and adds the team's active members who are not on it, each with their own role. It is a copy at that moment: later changes to the team, or deleting it, change nobody's access. Erasing a user removes them from teams.
+
+**Consequences.** Keeping a project in step with a team takes another "Add team", and removals are done on the project. A live link would make a team edit change access to every linked project at once; it is not built.
+
+## ADR-142: A project can start from another project's setup
+
+**Context.** The roadmap asked for project templates covering tabs, task statuses and modules. Task statuses already belong to the organization.
+
+**Decision.** No template tables. `template_project_id` on creation copies that project's tab layout and module tree, from any project the user may open, archived ones included. Nothing else is copied.
+
+**Consequences.** There is no protected "template" record: changing the source changes what later copies receive.

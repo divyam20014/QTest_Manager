@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { useState } from 'react'
 
 import type { ProjectCreateRequest } from '@/api/projects'
 import { Button } from '@/components/ui/button'
@@ -10,29 +11,46 @@ import { FormError, FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 
-const DOMAINS = ['Motor', 'Health', 'Travel', 'Life', 'Property'] as const
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const
 const STATUSES = ['On Track', 'At Risk', 'Delayed', 'Completed'] as const
 
+// ADR-139: only the name is required. Empty text stands for "not set".
 const schema = z
   .object({
     name: z.string().min(3, 'At least 3 characters'),
-    domain: z.enum(DOMAINS),
+    domain: z.string(),
     priority: z.enum(PRIORITIES),
     status: z.enum(STATUSES),
-    manager_name: z.string().min(1, 'Required'),
+    manager_name: z.string(),
     manager_user_id: z.string().optional(),
-    start_date: z.string().min(1, 'Required'),
-    end_date: z.string().min(1, 'Required'),
+    template_project_id: z.string().optional(),
+    start_date: z.string(),
+    end_date: z.string(),
     budget: z
       .string()
-      .refine((v) => !Number.isNaN(Number(v)) && Number(v) >= 0, 'Must be zero or more'),
-    region: z.string().min(1, 'Required'),
+      .refine((v) => v === '' || (!Number.isNaN(Number(v)) && Number(v) >= 0), 'Must be zero or more'),
+    region: z.string(),
   })
-  .refine((v) => v.end_date >= v.start_date, {
+  .refine((v) => !v.start_date || !v.end_date || v.end_date >= v.start_date, {
     message: 'End date cannot be before start date',
     path: ['end_date'],
   })
+
+/** What the API receives: blank details as null, so saving also clears them. */
+export function toProjectRequest(values: ProjectFormValues): ProjectCreateRequest {
+  const orNull = (v: string | undefined) => v?.trim() || null
+  return {
+    ...values,
+    template_project_id: values.template_project_id || undefined,
+    domain: orNull(values.domain),
+    manager_name: orNull(values.manager_name),
+    manager_user_id: values.manager_user_id || null,
+    start_date: orNull(values.start_date),
+    end_date: orNull(values.end_date),
+    budget: orNull(values.budget),
+    region: orNull(values.region),
+  }
+}
 
 export type ProjectFormValues = z.infer<typeof schema>
 
@@ -43,6 +61,8 @@ export function ProjectForm({
   isSubmitting,
   serverError,
   users = [],
+  domains = [],
+  templates = [],
   inDialog = false,
 }: {
   defaultValues: ProjectFormValues
@@ -51,11 +71,19 @@ export function ProjectForm({
   isSubmitting: boolean
   serverError?: string | null
   users?: { id: string; name: string }[]
+  /** The organization's project domains. */
+  domains?: string[]
+  /** Projects a new one can copy its setup from; pass none when editing. */
+  templates?: { id: string; name: string }[]
   /** Rendered inside a Dialog: pin the submit button in the sheet footer on phones. */
   inDialog?: boolean
 }) {
   const form = useForm<ProjectFormValues>({ resolver: zodResolver(schema), defaultValues })
   const errors = form.formState.errors
+  // A new project opens short; an existing one shows everything it can edit.
+  const [moreOpen, setMoreOpen] = useState(!inDialog)
+  // The project's own domain stays selectable even if it has left the organization's list.
+  const domainChoices = [...new Set([...domains, ...(defaultValues.domain ? [defaultValues.domain] : [])])]
   // Closing the surrounding dialog with unsaved edits asks first.
   useReportDirty(form.formState.isDirty)
 
@@ -63,19 +91,41 @@ export function ProjectForm({
     <form
       className="flex flex-col gap-3"
       noValidate
-      onSubmit={form.handleSubmit((values) =>
-        onSubmit({ ...values, manager_user_id: values.manager_user_id || null }),
+      onSubmit={form.handleSubmit(
+        (values) => onSubmit(toProjectRequest(values)),
+        // A problem inside the folded part must not stay hidden.
+        () => setMoreOpen(true),
       )}
     >
       <FormField id="name" label="Name" required error={errors.name?.message}>
         {(field) => <Input {...field} autoComplete="off" {...form.register('name')} />}
       </FormField>
 
+      {templates.length > 0 && (
+        <FormField
+          id="template_project_id"
+          label="Copy setup from (optional)"
+          helper="Copies that project's visible tabs and module folders. No test cases, people or other work are copied."
+        >
+          {(field) => (
+            <Select {...field} {...form.register('template_project_id')}>
+              <option value="">Start with the defaults</option>
+              {templates.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </FormField>
+      )}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <FormField id="domain" label="Domain" required error={errors.domain?.message}>
+        <FormField id="domain" label="Domain" error={errors.domain?.message}>
           {(field) => (
             <Select {...field} {...form.register('domain')}>
-              {DOMAINS.map((d) => (
+              <option value="">Not set</option>
+              {domainChoices.map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>
@@ -83,7 +133,7 @@ export function ProjectForm({
             </Select>
           )}
         </FormField>
-        <FormField id="priority" label="Priority" required error={errors.priority?.message}>
+        <FormField id="priority" label="Priority" error={errors.priority?.message}>
           {(field) => (
             <Select {...field} {...form.register('priority')}>
               {PRIORITIES.map((p) => (
@@ -96,7 +146,14 @@ export function ProjectForm({
         </FormField>
       </div>
 
-      <FormField id="status" label="Status" required error={errors.status?.message}>
+      <details
+        open={moreOpen}
+        onToggle={(e) => setMoreOpen(e.currentTarget.open)}
+        className="rounded-md border border-[var(--border)] px-3"
+      >
+        <summary className="cursor-pointer py-2 text-sm font-medium max-md:py-3">More details (optional)</summary>
+        <div className="flex flex-col gap-3 pb-3">
+      <FormField id="status" label="Status" error={errors.status?.message}>
         {(field) => (
           <Select {...field} {...form.register('status')}>
             {STATUSES.map((s) => (
@@ -108,7 +165,7 @@ export function ProjectForm({
         )}
       </FormField>
 
-      <FormField id="manager_name" label="Manager name" required error={errors.manager_name?.message}>
+      <FormField id="manager_name" label="Manager name" error={errors.manager_name?.message}>
         {(field) => <Input {...field} autoComplete="off" {...form.register('manager_name')} />}
       </FormField>
 
@@ -132,24 +189,26 @@ export function ProjectForm({
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <FormField id="start_date" label="Start date" required error={errors.start_date?.message}>
+        <FormField id="start_date" label="Start date" error={errors.start_date?.message}>
           {(field) => <Input {...field} type="date" {...form.register('start_date')} />}
         </FormField>
-        <FormField id="end_date" label="End date" required error={errors.end_date?.message}>
+        <FormField id="end_date" label="End date" error={errors.end_date?.message}>
           {(field) => <Input {...field} type="date" {...form.register('end_date')} />}
         </FormField>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <FormField id="budget" label="Budget" required error={errors.budget?.message}>
+        <FormField id="budget" label="Budget" error={errors.budget?.message}>
           {(field) => (
             <Input {...field} type="number" inputMode="decimal" min={0} step="0.01" {...form.register('budget')} />
           )}
         </FormField>
-        <FormField id="region" label="Region" required error={errors.region?.message}>
+        <FormField id="region" label="Region" error={errors.region?.message}>
           {(field) => <Input {...field} {...form.register('region')} />}
         </FormField>
       </div>
+        </div>
+      </details>
 
       <FormError>{serverError}</FormError>
 

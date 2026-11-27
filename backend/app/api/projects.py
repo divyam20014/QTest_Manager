@@ -30,6 +30,7 @@ def list_projects(
     domain: str | None = Query(default=None),
     status: str | None = Query(default=None),
     priority: str | None = Query(default=None),
+    archived: bool = Query(default=False),
     sort: str = Query(default="name"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=project_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
@@ -45,6 +46,7 @@ def list_projects(
         domain=domain,
         status=status,
         priority=priority,
+        archived=archived,
         sort=sort,
         page=page,
         page_size=page_size,
@@ -68,7 +70,9 @@ def create_project(
         ctx.user_id,
         "project.create",
         idempotency_key,
-        create=lambda: project_service.create_project(db, ctx.tenant_id, ctx.user_id, req),
+        create=lambda: project_service.create_project(
+            db, ctx.tenant_id, ctx.user_id, req, ctx.role_code
+        ),
         get_by_id=lambda eid: project_service.get_project(
             db, ctx.tenant_id, ctx.role_code, ctx.user_id, eid
         ),
@@ -108,6 +112,31 @@ def delete_project(
 ) -> dict:
     project_service.delete_project(db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id)
     return envelope({"deleted": True})
+
+
+@router.post("/{project_id}/archive")
+def archive_project(
+    project_id: UUID,
+    ctx: SessionContext = Depends(require_permission("project.delete")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """ADR-140: the project becomes read-only and leaves the active list."""
+    project = project_service.set_archived(
+        db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id, True
+    )
+    return envelope(project_service.to_out(db, project).model_dump(mode="json"))
+
+
+@router.post("/{project_id}/restore")
+def restore_project(
+    project_id: UUID,
+    ctx: SessionContext = Depends(require_permission("project.delete")),
+    db: Session = Depends(get_db),
+) -> dict:
+    project = project_service.set_archived(
+        db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id, False
+    )
+    return envelope(project_service.to_out(db, project).model_dump(mode="json"))
 
 
 @router.post("/{project_id}/members")

@@ -62,6 +62,7 @@ from app.models.shared_step import SharedStep
 from app.models.sso_config import SsoConfig
 from app.models.subscription import Subscription
 from app.models.task import Task, TaskStatus, TaskTestCaseLink
+from app.models.team import Team, TeamMember
 from app.models.tenant import Tenant
 from app.models.test_asset import Build, Environment, Release
 from app.models.test_case import Attachment, TestCase, TestCaseVersion, TestCaseVersionStep
@@ -156,6 +157,9 @@ _EXPORT_MODELS: list[tuple[str, type[DeclarativeBase]]] = [
     ("subscriptions", Subscription),
     ("ai_usage_logs", AIUsageLog),
     ("audit_logs", AuditLog),
+    # ADR-141
+    ("teams", Team),
+    ("team_members", TeamMember),
 ]
 
 

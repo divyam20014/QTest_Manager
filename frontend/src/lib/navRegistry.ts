@@ -88,6 +88,7 @@ export const PALETTE_EXTRA_ENTRIES: { label: string; sublabel: string; path: str
   { label: 'Report builder', sublabel: 'Analytics', path: '/reporting/builder' },
   { label: 'User Guide', sublabel: 'Help', path: '/user-guide' },
   { label: 'Users & Roles', sublabel: 'Administration', path: '/admin/users' },
+  { label: 'Teams', sublabel: 'Administration', path: '/admin/teams' },
   { label: 'Roles & Permissions', sublabel: 'Administration', path: '/admin/roles' },
   { label: 'Access Rules', sublabel: 'Administration', path: '/admin/access-rules' },
   { label: 'Audit Logs', sublabel: 'Administration', path: '/admin/audit-logs' },

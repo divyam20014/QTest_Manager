@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
-from app.core.db import set_tenant_context
+from app.core.db import allow_archived_write, set_tenant_context
 from app.core.errors import NotFoundError, ValidationAppError
 from app.core.field_standards import is_reserved_custom_field_key
 from app.models.field_customization import CustomFieldDefinition, CustomFieldValue
@@ -154,6 +154,8 @@ def delete_definition(
     # Deliberate: deletes the definition's own values too (ON DELETE CASCADE
     # at the DB level) -- this discards metadata an admin chose to remove,
     # not the TestCase/Defect/Requirement rows themselves.
+    # ADR-140: removing a field is organization-wide; its values go in every project.
+    allow_archived_write(db)
     db.delete(definition)
     record_audit_event(
         db,

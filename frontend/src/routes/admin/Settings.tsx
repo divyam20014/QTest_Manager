@@ -658,6 +658,10 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
   const [timezone, setTimezone] = useState(initial.default_timezone)
   const [allowlistText, setAllowlistText] = useState(initial.ip_allowlist.join('\n'))
   const [primaryDomain, setPrimaryDomain] = useState<TenantDomain | ''>(initial.primary_domain ?? '')
+  // ADR-139: sent only when edited, so an organization on the built-in list stays on it.
+  const savedDomains = (initial.project_domains ?? []).join('\n')
+  const [domainsText, setDomainsText] = useState(savedDomains)
+  const [useBuiltInDomains, setUseBuiltInDomains] = useState(false)
   const { show: showToast } = useToast()
 
   const saveMutation = useMutation({
@@ -666,6 +670,11 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
         default_currency_code: currencyCode,
         default_timezone: timezone,
         primary_domain: primaryDomain || null,
+        ...(useBuiltInDomains
+          ? { project_domains: null }
+          : domainsText !== savedDomains
+            ? { project_domains: domainsText.split('\n').map((line) => line.trim()).filter(Boolean) }
+            : {}),
         ip_allowlist: allowlistText
           .split('\n')
           .map((line) => line.trim())
@@ -675,6 +684,8 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
       queryClient.setQueryData(['settings'], data)
       // The branding query carries the domain the New Project form reads.
       queryClient.invalidateQueries({ queryKey: ['branding'] })
+      setDomainsText((data.project_domains ?? []).join('\n'))
+      setUseBuiltInDomains(false)
       showToast('success', 'Organization settings saved')
     },
     // No onError toast -- `serverError` below already renders this inline.
@@ -725,9 +736,34 @@ function SettingsForm({ initial }: { initial: TenantSettings }) {
           ))}
         </Select>
         <p className="text-xs text-[var(--muted-foreground)]">
-          Pre-selects the Domain when someone creates a new project. It never limits which
-          domains your projects can use.
+          Pre-selects the Domain when someone creates a new project, if it is in the list below.
         </p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="project-domains">Project Domains</Label>
+        <Textarea
+          id="project-domains"
+          rows={5}
+          aria-describedby="project-domains-help"
+          value={domainsText}
+          disabled={useBuiltInDomains}
+          onChange={(e) => setDomainsText(e.target.value)}
+        />
+        <p id="project-domains-help" className="text-xs text-[var(--muted-foreground)]">
+          One per line: the choices for a project&apos;s Domain. Leave empty if you do not use
+          domains. Projects keep a domain you remove here until someone changes it.
+        </p>
+        {initial.project_domains_customised && (
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={useBuiltInDomains}
+              onChange={(e) => setUseBuiltInDomains(e.target.checked)}
+            />
+            Go back to the built-in insurance list when saved
+          </label>
+        )}
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="ip-allowlist">IP Allowlist</Label>

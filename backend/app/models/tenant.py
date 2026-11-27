@@ -56,6 +56,8 @@ class Tenant(Base, UUIDPKMixin):
     # new projects' Domain field -- it never restricts which domains a
     # project may use. NULL = not set; 'Other' = another or several domains.
     primary_domain: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ADR-139: the domains this organization's projects may use. NULL = the built-in list.
+    project_domains: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
 
     # Tier 4 / ADR-054: tenant branding (PV-11.4), reusing Phase 1's
     # tenant-settings mechanism rather than inventing a second one.

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
@@ -6,7 +7,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError
+from app.core.db import allow_archived_write
+from app.core.errors import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ProjectArchivedError,
+)
 from app.core.field_standards import CLOSED_DEFECT_STATUSES
 from app.models.defect import Defect
 from app.models.execution import TestRun
@@ -16,8 +23,9 @@ from app.models.requirement import Requirement
 from app.models.task import Task
 from app.models.tenant import Tenant
 from app.models.test_case import TestCase
+from app.models.test_module import TestModule
 from app.schemas.project import (
-    Domain,
+    NO_DOMAIN,
     Priority,
     ProjectCreateRequest,
     ProjectMemberOut,
@@ -25,6 +33,7 @@ from app.schemas.project import (
     ProjectStatus,
     ProjectUpdateRequest,
 )
+from app.services import project_domains
 
 SORTABLE_FIELDS = {
     "name": Project.name,
@@ -127,7 +136,7 @@ def to_out(
     return ProjectOut(
         id=project.id,
         name=project.name,
-        domain=cast(Domain, project.domain),
+        domain=project.domain,
         status=cast(ProjectStatus, project.status),
         priority=cast(Priority, project.priority),
         manager_name=project.manager_name,
@@ -141,6 +150,7 @@ def to_out(
         assigned_user_ids=assigned_user_ids,
         created_at=project.created_at,
         version=project.version,
+        archived_at=project.archived_at,
         nav_config=project.nav_config,  # type: ignore[arg-type]  # dict validated by pydantic
         test_case_count=metrics.test_case_count,
         approved_test_case_count=metrics.approved_test_case_count,
@@ -183,11 +193,16 @@ def list_projects(
     domain: str | None = None,
     status: str | None = None,
     priority: str | None = None,
+    archived: bool = False,
     sort: str = "name",
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
 ) -> tuple[list[Project], int]:
-    query = select(Project).where(Project.tenant_id == tenant_id)
+    query = select(Project).where(
+        Project.tenant_id == tenant_id,
+        # ADR-140: archived projects are listed only when asked for.
+        Project.archived_at.is_not(None) if archived else Project.archived_at.is_(None),
+    )
     if role_code == "tester":
         # FR-PROJ-002: testers only see assigned projects.
         query = query.where(
@@ -198,7 +213,9 @@ def list_projects(
         )
     if search:
         query = query.where(Project.name.ilike(f"%{search}%"))
-    if domain:
+    if domain == NO_DOMAIN:
+        query = query.where(Project.domain.is_(None))
+    elif domain:
         query = query.where(Project.domain == domain)
     if status:
         query = query.where(Project.status == status)
@@ -210,6 +227,8 @@ def list_projects(
     sort_key = sort.lstrip("-")
     sort_field = SORTABLE_FIELDS.get(sort_key, Project.name)
     order_clause = sort_field.desc() if sort.startswith("-") else sort_field.asc()
+    # A project without the value being sorted on comes last in both directions.
+    order_clause = order_clause.nulls_last()
     query = query.order_by(order_clause, Project.id)
 
     page_size = min(max(page_size, 1), MAX_PAGE_SIZE)
@@ -254,9 +273,45 @@ def _validate_manager_user_id(db: Session, tenant_id: UUID, manager_user_id: UUI
         raise NotFoundError("manager_user_id does not refer to a user in this tenant")
 
 
+def _copy_modules(db: Session, tenant_id: UUID, source_id: UUID, target_id: UUID) -> int:
+    """The source's module tree as new modules of the target, parents before children."""
+    modules = db.execute(
+        select(TestModule)
+        .where(TestModule.tenant_id == tenant_id, TestModule.project_id == source_id)
+        .order_by(TestModule.created_at, TestModule.id)
+    ).scalars().all()
+    children: dict[UUID | None, list[TestModule]] = {}
+    for module in modules:
+        children.setdefault(module.parent_id, []).append(module)
+    copied = 0
+    waiting: list[tuple[UUID | None, UUID | None]] = [(None, None)]  # (source, copy)
+    while waiting:
+        source_parent, new_parent = waiting.pop(0)
+        for module in children.get(source_parent, []):
+            copy = TestModule(
+                tenant_id=tenant_id, project_id=target_id, parent_id=new_parent, name=module.name
+            )
+            db.add(copy)
+            db.flush()
+            copied += 1
+            waiting.append((module.id, copy.id))
+    return copied
+
+
 def create_project(
-    db: Session, tenant_id: UUID, actor_user_id: UUID, req: ProjectCreateRequest
+    db: Session,
+    tenant_id: UUID,
+    actor_user_id: UUID,
+    req: ProjectCreateRequest,
+    role_code: str = "admin",
 ) -> Project:
+    # ADR-142: only a project the user may open can be copied from. Checked before
+    # anything is written. Internal callers (sample data) pass no template.
+    template = (
+        get_project(db, tenant_id, role_code, actor_user_id, req.template_project_id)
+        if req.template_project_id is not None
+        else None
+    )
     currency_code = req.currency_code
     if currency_code is None:
         currency_code = db.execute(
@@ -264,6 +319,8 @@ def create_project(
         ).scalar_one()
 
     _validate_manager_user_id(db, tenant_id, req.manager_user_id)
+    if req.domain is not None:
+        project_domains.check_domain(db, tenant_id, req.domain)
 
     project = Project(
         tenant_id=tenant_id,
@@ -279,6 +336,7 @@ def create_project(
         currency_code=currency_code,
         region=req.region,
         owner_id=actor_user_id,
+        nav_config=template.nav_config if template else None,
     )
     db.add(project)
     try:
@@ -291,6 +349,13 @@ def create_project(
     # creates a project can also edit/delete what they just made.
     db.add(ProjectMember(project_id=project.id, user_id=actor_user_id))
 
+    template_details: dict[str, object] = {}
+    if template is not None:
+        template_details = {
+            "template_project_id": str(template.id),
+            "modules_copied": _copy_modules(db, tenant_id, template.id, project.id),
+        }
+
     record_audit_event(
         db,
         tenant_id=tenant_id,
@@ -298,7 +363,7 @@ def create_project(
         action="project.created",
         entity_type="project",
         entity_id=project.id,
-        metadata={"name": project.name, "domain": project.domain},
+        metadata={"name": project.name, "domain": project.domain, **template_details},
     )
     db.commit()
     return project
@@ -314,6 +379,8 @@ def update_project(
 ) -> Project:
     project = _get_project_or_404(db, tenant_id, project_id, for_update=True)
     _require_manager_assigned_or_admin(db, project, role_code, actor_user_id)
+    if project.archived_at is not None:
+        raise ProjectArchivedError()
 
     changes = req.model_dump(exclude_unset=True)
     expected_version = changes.pop("expected_version", None)
@@ -330,6 +397,10 @@ def update_project(
             f"current version {current_version}). Reload and retry."
         )
 
+    new_domain = changes.get("domain")
+    # The domain a project already has stays valid, even if it has left the list.
+    if new_domain is not None and new_domain != project.domain:
+        project_domains.check_domain(db, tenant_id, new_domain)
     if "manager_user_id" in changes:
         _validate_manager_user_id(db, tenant_id, changes["manager_user_id"])
     for field, value in changes.items():
@@ -339,7 +410,7 @@ def update_project(
 
     effective_start = project.start_date
     effective_end = project.end_date
-    if effective_end < effective_start:
+    if effective_start and effective_end and effective_end < effective_start:
         db.rollback()
         raise ConflictError("Start date cannot be after end date.")
 
@@ -356,7 +427,8 @@ def update_project(
         action="project.updated",
         entity_type="project",
         entity_id=project.id,
-        metadata=changes,
+        # JSON mode: dates, money and ids cannot go into the audit entry as they are.
+        metadata=req.model_dump(mode="json", exclude_unset=True, exclude={"expected_version"}),
     )
     db.commit()
     return project
@@ -411,6 +483,8 @@ def delete_project(
             "requirements, or tasks"
         )
 
+    # An empty project may be deleted while archived; its member list goes with it.
+    allow_archived_write(db)
     db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))
     db.delete(project)
 
@@ -423,6 +497,46 @@ def delete_project(
         entity_id=project.id,
     )
     db.commit()
+
+
+def set_archived(
+    db: Session,
+    tenant_id: UUID,
+    actor_user_id: UUID,
+    role_code: str,
+    project_id: UUID,
+    archived: bool,
+) -> Project:
+    """ADR-140: archive or restore. The same people who may delete the project may."""
+    project = _get_project_or_404(db, tenant_id, project_id, for_update=True)
+    _require_manager_assigned_or_admin(db, project, role_code, actor_user_id)
+    if (project.archived_at is not None) == archived:
+        state = "already archived" if archived else "not archived"
+        raise ConflictError(f"This project is {state}")
+
+    project.archived_at = datetime.now(UTC) if archived else None
+    project.archived_by = actor_user_id if archived else None
+    project.version += 1
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="project.archived" if archived else "project.restored",
+        entity_type="project",
+        entity_id=project.id,
+        metadata={"name": project.name},
+    )
+    db.commit()
+    return project
+
+
+def get_project_for_member_change(
+    db: Session, tenant_id: UUID, actor_user_id: UUID, role_code: str, project_id: UUID
+) -> Project:
+    """The project, if this user may change who is on it (ADR-018)."""
+    project = _get_project_or_404(db, tenant_id, project_id)
+    _require_manager_assigned_or_admin(db, project, role_code, actor_user_id)
+    return project
 
 
 def add_member(

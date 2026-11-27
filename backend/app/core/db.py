@@ -86,3 +86,9 @@ def set_tenant_context(db: Session, tenant_id: str) -> None:
         text("SELECT set_config('app.current_tenant', :tenant_id, true)"),
         {"tenant_id": tenant_id},
     )
+
+
+def allow_archived_write(db: Session) -> None:
+    """ADR-140: lets this transaction change records of archived projects. Only for
+    organization-wide actions that are not work on a project."""
+    db.execute(text("SELECT set_config('app.allow_archived_write', 'on', true)"))

@@ -3,6 +3,7 @@ from ipaddress import ip_network
 from pydantic import BaseModel, field_validator
 
 from app.schemas.platform import TenantPrimaryDomain
+from app.schemas.project import DOMAIN_MAX_CHARS, MAX_PROJECT_DOMAINS, NO_DOMAIN
 
 
 class TenantSettingsOut(BaseModel):
@@ -13,6 +14,9 @@ class TenantSettingsOut(BaseModel):
     ai_api_key_configured: bool
     ip_allowlist: list[str]
     primary_domain: str | None = None
+    # ADR-139: the domains projects may use, and whether this is the organization's own list.
+    project_domains: list[str] = []
+    project_domains_customised: bool = False
     testers_see_assigned_cases_only: bool = False
     reports_hidden_from_testers: bool = False
 
@@ -30,6 +34,8 @@ class TenantSettingsUpdateRequest(BaseModel):
     # BRD gap Phase 4 / ADR-073: send the field to set it, send null to clear
     # it, omit it to leave it unchanged (distinguished via model_fields_set).
     primary_domain: TenantPrimaryDomain | None = None
+    # ADR-139: replaces the list; send null to return to the built-in one, [] for none.
+    project_domains: list[str] | None = None
     # ADR-093: Tester visibility switches (Admin only via tenant.settings.manage).
     testers_see_assigned_cases_only: bool | None = None
     reports_hidden_from_testers: bool | None = None
@@ -54,6 +60,23 @@ class TenantSettingsUpdateRequest(BaseModel):
             raise ValueError("default_timezone must not be empty")
         return v
 
+    @field_validator("project_domains")
+    @classmethod
+    def _domains_valid(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        cleaned: dict[str, str] = {}
+        for entry in v:
+            name = " ".join(entry.split())
+            if not name or len(name) > DOMAIN_MAX_CHARS:
+                raise ValueError(f"A domain needs 1 to {DOMAIN_MAX_CHARS} characters")
+            if name.lower() == NO_DOMAIN.lower():
+                raise ValueError(f"'{NO_DOMAIN}' is what reports call a project without one")
+            cleaned.setdefault(name.lower(), name)
+        if len(cleaned) > MAX_PROJECT_DOMAINS:
+            raise ValueError(f"At most {MAX_PROJECT_DOMAINS} domains")
+        return list(cleaned.values())
+
     @field_validator("ip_allowlist")
     @classmethod
     def _cidrs_valid(cls, v: list[str] | None) -> list[str] | None:
@@ -77,6 +100,8 @@ class TenantBrandingOut(BaseModel):
     # Readable by every tenant member (the shell and the new-project form need
     # it) -- it is a non-sensitive organisation label, like the display name.
     primary_domain: str | None = None
+    # ADR-139: the new-project form needs the choices.
+    project_domains: list[str] = []
 
 
 class TenantBrandingUpdateRequest(BaseModel):

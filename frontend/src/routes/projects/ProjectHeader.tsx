@@ -140,6 +140,11 @@ export function ProjectHeader({
           {project.name}
         </Name>
         <ProjectSwitcher projectId={project.id} projectName={project.name} tabKey={tabKey} />
+        {project.archived_at && (
+          <span className="shrink-0" data-testid="project-archived">
+            <StatusBadge tone="warning">Archived: read-only</StatusBadge>
+          </span>
+        )}
         {!compact && (
           <span className={details ? 'contents max-md:hidden' : 'contents'}>
             <RecordPin type="project" id={project.id} title={project.name} url={`/projects/${project.id}`} />
@@ -151,9 +156,11 @@ export function ProjectHeader({
       <div className={cn('flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[var(--muted-foreground)]', density !== 'full' && 'max-md:shrink-0', compact && 'shrink-0')}>
         {!compact && (
           <>
-            <span data-testid="project-owner" className={details}>
-              Owner: <span className="text-[var(--foreground)]">{project.manager_name}</span>
-            </span>
+            {project.manager_name && (
+              <span data-testid="project-owner" className={details}>
+                Owner: <span className="text-[var(--foreground)]">{project.manager_name}</span>
+              </span>
+            )}
             <span data-testid="project-progress" className={cn('flex items-center gap-2', details)}>
               <ProjectProgress project={project} />
             </span>
