@@ -136,5 +136,5 @@ Complexity **High**: it touches most write paths.
 ## 8. As built
 
 - The decision is made once per request instead of moving each service rule (section 6, steps 3 and 4). Routes that name the project outside the address ask explicitly.
-- R-8 covers recording a retest result. **Open:** a Developer can still set a defect to Verified through the status workflow, which needs only `defect.change_status`. Closing that needs a further decision.
+- R-8 covered only recording a retest result, which left a Developer able to set a defect to Verified through the status workflow. **R-9, approved afterwards:** marking a defect Verified, by status change or import, also needs `testcase.execute`.
 - The interface still chooses buttons from the organization role; the server applies the project role.

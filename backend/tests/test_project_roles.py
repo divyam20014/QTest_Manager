@@ -475,3 +475,68 @@ def test_the_older_csv_import_applies_the_project_role(w: World, path: str, head
     assert response.status_code == 200, response.text
     assert "does not allow this import" in response.text
     assert response.json()["data"]["created_count"] == 0
+
+
+def _fixed_defect(w: World) -> str:
+    defect = w.defect(w.a)
+    for status in ("Open", "Fixed"):
+        _ok(w.admin.patch(f"{API}/defects/{defect}/status", json={"status": status}))
+    return defect
+
+
+def test_a_developer_cannot_mark_a_defect_verified(w: World) -> None:
+    defect = _fixed_defect(w)
+    user = w.user("dee", "developer")
+    w.member(w.a, user)
+    dee = w.sign_in("dee")
+
+    response = dee.patch(f"{API}/defects/{defect}/status", json={"status": "Verified"})
+
+    _refused(response)
+    assert "testcase.execute" in response.text
+    assert _ok(dee.get(f"{API}/defects/{defect}"))["status"] == "Fixed"
+    # The rest of the fix workflow is still theirs.
+    assert _ok(dee.patch(f"{API}/defects/{defect}/status", json={"status": "Retest"}))
+
+
+@pytest.mark.parametrize("role", ["tester", "manager", "qa_lead"])
+def test_people_who_run_tests_can_still_mark_a_defect_verified(w: World, role: str) -> None:
+    defect = _fixed_defect(w)
+    user = w.user("val", role)
+    w.member(w.a, user)
+
+    response = w.sign_in("val").patch(f"{API}/defects/{defect}/status", json={"status": "Verified"})
+
+    assert response.status_code == 200, response.text
+
+
+def test_an_import_cannot_create_a_defect_already_verified_without_that_permission(
+    w: World,
+) -> None:
+    user = w.user("dee", "developer")
+    w.member(w.a, user)
+    template = _ok_text(w.admin.get(f"{API}/defects/import-template.csv")).decode("utf-8-sig")
+    columns = next(csv.reader(io.StringIO(template)))
+    values = {
+        "Title": "Imported as verified",
+        "Description": "Broken",
+        "Steps to Reproduce": "Open it",
+        "Expected Result": "Works",
+        "Actual Result": "Fails",
+        "Environment": "QA",
+        "Severity": "Major",
+        "Priority": "Medium",
+        "Status": "Verified",
+    }
+    assert "Status" in columns
+    rows = io.StringIO()
+    csv.writer(rows).writerows([columns, [values.get(c, "") for c in columns]])
+
+    preview = w.sign_in("dee").post(
+        f"{API}/defects/import/preview",
+        data={"project_id": w.a},
+        files={"file": ("rows.csv", rows.getvalue().encode(), "text/csv")},
+    )
+
+    assert preview.status_code == 200, preview.text
+    assert "not allowed to import verified defects" in preview.text

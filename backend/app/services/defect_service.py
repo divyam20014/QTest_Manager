@@ -254,6 +254,11 @@ def can_close(role_code: str, permissions: Collection[str] | None) -> bool:
     return _has_permission(role_code, permissions, "defect.close", tiers=("admin", "manager"))
 
 
+def can_verify(permissions: Collection[str] | None) -> bool:
+    """`permissions=None` is an internal caller, which has already decided."""
+    return permissions is None or "testcase.execute" in permissions
+
+
 def can_assign(role_code: str, permissions: Collection[str] | None) -> bool:
     """`defect.assign`; the seeded `defect.close` (its parent code) also satisfies it."""
     return _has_permission(role_code, permissions, "defect.assign", "defect.close")
@@ -1689,6 +1694,10 @@ def update_status(
         # sequence.
         if not verification_confirmed:
             raise ValidationAppError("Closing a defect requires explicit verification confirmation")
+    elif new_status == "Verified" and not can_verify(permissions):
+        # ADR-143 (R-9): saying a fix works is a test result, so whoever cannot run tests
+        # cannot verify, their own fix included.
+        raise ForbiddenError("Missing permission: testcase.execute")
     elif new_status == "Reopened" and not can_close(role_code, permissions):
         raise ForbiddenError("Only Admin/Manager can reopen a defect")
     problem = transition_error(defect.status, new_status)

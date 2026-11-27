@@ -120,6 +120,7 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
   const canChangeStatus =
     hasPermission(user, 'defect.change_status') || hasPermission(user, 'defect.create') || hasPermission(user, 'defect.close')
   const canClose = hasPermission(user, 'defect.close') || isManagerOrAbove(user)
+  const canVerify = hasPermission(user, 'testcase.execute')
   const canListUsers = useCanListUsers()
 
   // The baseline is what "unchanged" means: the saved defect (refreshed after a partly applied save) or a blank form.
@@ -719,9 +720,16 @@ function DefectFormPage({ mode, defect }: { mode: 'create' | 'edit'; defect?: De
                 >
                   {statusChoices.map((s) => {
                     const needsClose = mode === 'edit' && s !== initial.status && planTransition(initial.status, s as Defect['status']).needsClosePermission
+                    // ADR-143: verifying a fix is a test result.
+                    const blocked =
+                      needsClose && !canClose
+                        ? 'needs close permission'
+                        : mode === 'edit' && s !== initial.status && s === 'Verified' && !canVerify
+                          ? 'needs permission to run tests'
+                          : null
                     return (
-                      <option key={s} value={s} disabled={needsClose && !canClose}>
-                        {s === initial.status && mode === 'edit' ? `${s} (current)` : needsClose && !canClose ? `${s} (needs close permission)` : s}
+                      <option key={s} value={s} disabled={blocked !== null}>
+                        {s === initial.status && mode === 'edit' ? `${s} (current)` : blocked ? `${s} (${blocked})` : s}
                       </option>
                     )
                   })}

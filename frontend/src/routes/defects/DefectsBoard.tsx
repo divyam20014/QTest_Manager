@@ -151,6 +151,6 @@ function toCard(
     ],
     assignee: d.assigned_to_name,
     meta: `${d.project_name} · ${d.sla_breached ? 'SLA breached' : `${d.age_days}d old`}`,
-    targets: options.map((o) => ({ column: o.status, label: o.status, disabledReason: o.disabledReason ? 'needs close permission' : undefined })),
+    targets: options.map((o) => ({ column: o.status, label: o.status, disabledReason: o.shortReason })),
   }
 }

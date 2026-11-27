@@ -339,7 +339,7 @@ export function DefectDetail() {
               <DropdownMenu
                 label="Change status"
                 items={menu.map((o) => ({
-                  label: o.disabledReason ? `${o.status} (needs close permission)` : o.status,
+                  label: o.shortReason ? `${o.status} (${o.shortReason})` : o.status,
                   disabled: !!o.disabledReason,
                   onSelect: () => setStatusDialog({ target: o.status }),
                 }))}

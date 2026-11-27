@@ -139,7 +139,7 @@ function StatusChangeForm({ defect, initialTarget, onClose }: { defect: ActionDe
               >
                 {options.map((o) => (
                   <option key={o.status} value={o.status} disabled={!!o.disabledReason}>
-                    {o.disabledReason ? `${o.status} (needs close permission)` : o.status}
+                    {o.shortReason ? `${o.status} (${o.shortReason})` : o.status}
                   </option>
                 ))}
               </Select>

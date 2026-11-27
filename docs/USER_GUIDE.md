@@ -872,7 +872,7 @@ manage statuses). A release freeze can include task changes: choose the action
 - **Roles.** Admin, Manager, Tester, **QA Lead** (works on every project:
   requirements, tests, approvals and defects, without creating, editing or
   staffing projects), **Developer** (their projects: works on tasks and updates
-  defects; cannot run tests or close defects) and **Viewer** (their projects:
+  defects; cannot run tests, mark a defect Verified or close it) and **Viewer** (their projects:
   reads only), plus your own custom roles. Give a custom role
   **record.contribute** if its people should comment and attach files.
 - **Project roles.** On a project's **Team** tab you can give a member a

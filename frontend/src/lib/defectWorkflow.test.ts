@@ -167,3 +167,18 @@ describe('status groups and tabs', () => {
     expect(sumStatusCounts(counts, statusesForTab('open'))).toBe(1)
   })
 })
+
+describe('verifying needs permission to run tests (ADR-143)', () => {
+  const developer = { canChangeStatus: true, canClose: false, canVerify: false }
+
+  it('shows Verified as unavailable, with its own reason, to someone who cannot run tests', () => {
+    const verified = transitionMenu('Fixed', developer).find((o) => o.status === 'Verified')
+    expect(verified?.shortReason).toBe('needs permission to run tests')
+    expect(transitionMenu('Fixed', developer).find((o) => o.status === 'Retest')?.disabledReason).toBeUndefined()
+  })
+
+  it('leaves it available to someone who can', () => {
+    const verified = transitionMenu('Fixed', { ...developer, canVerify: true }).find((o) => o.status === 'Verified')
+    expect(verified?.disabledReason).toBeUndefined()
+  })
+})

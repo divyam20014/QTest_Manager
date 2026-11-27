@@ -88,7 +88,7 @@ def main() -> int:
             state = "on" if row["ai_enabled"] else "off"
             lost.append(f"AI test case generation (AI is {state} for this organization)")
         if row["loses_retest_result"]:
-            lost.append("recording a retest result")
+            lost.append("recording a retest result and marking a defect Verified")
         print(
             f"  {row['organization']} / {row['role']} ({row['people']} active): "
             f"loses {'; '.join(lost)}"

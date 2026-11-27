@@ -120,6 +120,8 @@ export interface StatusPermissions {
   canChangeStatus: boolean
   /** defect.close or the Admin / Manager tier. */
   canClose: boolean
+  /** `testcase.execute`; left out means not restricted here (the API still decides). */
+  canVerify?: boolean
 }
 
 export interface TransitionOption {
@@ -127,6 +129,8 @@ export interface TransitionOption {
   plan: TransitionPlan
   /** Why the option cannot be used by this user (shown disabled with the reason). */
   disabledReason?: string
+  /** The same, in a few words for a menu item. */
+  shortReason?: string
 }
 
 /**
@@ -138,9 +142,24 @@ export function transitionMenu(current: string, perms: StatusPermissions, catalo
   if (!perms.canChangeStatus && !perms.canClose) return []
   return allowedNextStatuses(current, catalog).map((status) => {
     const plan = planTransition(current, status)
-    const disabledReason =
-      plan.needsClosePermission && !perms.canClose ? `Only a manager or someone who can close defects can set ${status}` : undefined
-    return { status, plan, disabledReason }
+    if (plan.needsClosePermission && !perms.canClose) {
+      return {
+        status,
+        plan,
+        disabledReason: `Only a manager or someone who can close defects can set ${status}`,
+        shortReason: 'needs close permission',
+      }
+    }
+    // ADR-143: verifying a fix is a test result.
+    if (status === 'Verified' && perms.canVerify === false) {
+      return {
+        status,
+        plan,
+        disabledReason: 'Only someone who can run tests can mark a defect Verified',
+        shortReason: 'needs permission to run tests',
+      }
+    }
+    return { status, plan }
   })
 }
 

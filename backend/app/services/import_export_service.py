@@ -960,6 +960,14 @@ def validate_defects(
             problem = resolution_error(status, resolution)
             if problem:
                 out.errors.append(Issue(header["resolution"], problem))
+        if status == "Verified" and not defect_service.can_verify(actor.permissions):
+            out.errors.append(
+                Issue(
+                    header["status"],
+                    "You are not allowed to import verified defects (that needs permission "
+                    "to run tests).",
+                )
+            )
         closing = status in CLOSED_DEFECT_STATUSES
         if (closing and not can_close) or (
             status not in CREATE_DEFECT_STATUSES and not closing and not can_move

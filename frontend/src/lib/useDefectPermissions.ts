@@ -12,6 +12,7 @@ export function useDefectPermissions() {
     canChangeStatus:
       hasPermission(user, 'defect.change_status') || hasPermission(user, 'defect.create') || hasPermission(user, 'defect.close'),
     canClose,
+    canVerify: hasPermission(user, 'testcase.execute'),
     canDelete: hasPermission(user, 'defect.delete'),
     canExport: hasPermission(user, 'defect.export'),
     canImport: hasPermission(user, 'defect.import') || hasPermission(user, 'defect.create'),
