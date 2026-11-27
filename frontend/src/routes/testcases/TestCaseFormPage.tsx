@@ -307,6 +307,13 @@ function TestCaseFormPage({
           This test case is Approved. Saving changes to its steps or content returns it to Draft for a new review.
         </p>
       )}
+      {testCase?.status === 'deprecated' && (
+        <p className="rounded-md border border-[var(--status-warning)]/30 bg-[var(--status-warning-bg)] px-3 py-2 text-sm">
+          This test case is Deprecated. Its steps and content can&apos;t be changed, so past results keep the text they were
+          run against. You can still change details such as priority and module. To change the content, duplicate the test
+          case.
+        </p>
+      )}
 
       <form
         className="flex flex-col gap-4"

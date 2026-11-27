@@ -1987,3 +1987,11 @@ Filters saved by the old control lived only in the browser. Each user's first vi
 Migrations set the passwords of the database roles, which are shared by the whole Postgres server. The runner reads the real ones from Docker's resolved configuration and migrates with them, so a test run cannot lock the development app out of its database. It also sets mail, error reporting and file storage to local or off, whatever the shell or a `.env` file says.
 
 **Consequences.** Running the tests no longer needs a Docker rebuild. `npx playwright test` on its own, including from an editor extension, stops with an explanation. The checks stop mistakes, not someone deliberately working round them. The backend tests (`pytest`) already use their own database, but migrate it with the default role passwords, which would change the passwords of a server that uses others.
+
+## ADR-135: A version with results is never edited in place
+
+**Context.** Runs point to a test case version, so that version is the record of what was tested. Only edits to an approved case created a new version. Deprecating an executed case left its current version editable: changing the title or expected result rewrote what finished results showed, and changing the steps failed with a database error.
+
+**Decision.** `update_test_case` applies two rules. A content change to a deprecated case is refused with 409; deprecated is the end of a case's life, and Duplicate is the way to continue from it. A content change to any other version that a run points to, including a deleted run, creates a new version and leaves the review status as it was. No known API path reaches the second rule; it holds the guarantee if one appears. Details held on the case and not on the version, such as priority and module, can still change.
+
+**Consequences.** The rule is in the service, not the database, so SQL run directly against the tables can still change a version. A database trigger would close that and is not built. Records already rewritten before this change cannot be restored from the version; the audit log's old and new values are the only trace, and they are cut at 300 characters.

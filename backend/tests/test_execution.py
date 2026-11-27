@@ -1,7 +1,9 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 
 def _bootstrap_tenant(client: TestClient, platform_admin: dict) -> dict:
@@ -614,3 +616,90 @@ def test_admin_and_manager_execute_without_assignment(
     # Unassigned run case -- Manager can still execute it directly.
     allowed = manager_client.post(f"/api/v1/execution-steps/{steps[0]['id']}/open")
     assert allowed.status_code == 200, allowed.text
+
+
+# F-01: the version a result points to must never change.
+
+
+def _execute_then_deprecate(client: TestClient, platform_admin: dict) -> tuple[dict, str]:
+    """An approved case with one executed step, deprecated afterwards."""
+    _, project, case = _setup_admin_project_and_case(client, platform_admin)
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={"name": "History Run", "run_type": "Regression", "test_case_ids": [case["id"]]},
+    ).json()["data"]
+    run_case_id = run["cases"][0]["id"]
+    steps = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+    client.post(f"/api/v1/execution-steps/{steps[0]['id']}/verdict", json={"verdict": "pass"})
+    response = client.post(f"/api/v1/test-cases/{case['id']}/deprecate")
+    assert response.status_code == 200, response.text
+    return response.json()["data"], run_case_id
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"title": "Rewritten after execution"},
+        {"description": "Rewritten after execution"},
+        {"expected_result": "Rewritten after execution"},
+        {"preconditions": "Rewritten after execution"},
+        {"steps": [{"action": "A different step", "expected": "A different result"}]},
+    ],
+    ids=lambda change: next(iter(change)),
+)
+def test_deprecated_case_content_cannot_change_executed_history(
+    client: TestClient, platform_admin: dict, change: dict
+) -> None:
+    case, run_case_id = _execute_then_deprecate(client, platform_admin)
+    versions_before = client.get(f"/api/v1/test-cases/{case['id']}").json()["data"]
+    steps_before = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+
+    response = client.patch(f"/api/v1/test-cases/{case['id']}", json=change)
+
+    assert response.status_code == 409, response.text
+    assert "deprecated" in response.text.lower()
+    after = client.get(f"/api/v1/test-cases/{case['id']}").json()["data"]
+    for key in ("title", "description", "expected_result", "preconditions", "steps"):
+        assert after[key] == versions_before[key], key
+    assert after["version_number"] == versions_before["version_number"]
+    assert client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"] == steps_before
+
+
+def test_deprecated_case_metadata_can_still_change(
+    client: TestClient, platform_admin: dict
+) -> None:
+    case, _ = _execute_then_deprecate(client, platform_admin)
+
+    # A form re-sends unchanged content along with the new priority.
+    response = client.patch(
+        f"/api/v1/test-cases/{case['id']}", json={"title": case["title"], "priority": "Low"}
+    )
+
+    assert response.status_code == 200, response.text
+    updated = response.json()["data"]
+    assert updated["priority"] == "Low"
+    assert updated["status"] == "deprecated"
+    assert updated["version_number"] == case["version_number"]
+
+
+def test_edit_never_overwrites_a_version_that_has_results(
+    client: TestClient, platform_admin: dict, owner_engine
+) -> None:
+    case, run_case_id = _execute_then_deprecate(client, platform_admin)
+    # No API path leaves an executed version editable. This forces one, to prove
+    # that such an edit would still keep the executed text.
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE test_cases SET status = 'draft' WHERE id = :id"), {"id": case["id"]}
+        )
+    steps_before = client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"]
+
+    response = client.patch(
+        f"/api/v1/test-cases/{case['id']}",
+        json={"steps": [{"action": "A different step", "expected": "A different result"}]},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["version_number"] == case["version_number"] + 1
+    assert response.json()["data"]["status"] == "draft"
+    assert client.get(f"/api/v1/test-run-cases/{run_case_id}/steps").json()["data"] == steps_before

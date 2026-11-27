@@ -1175,6 +1175,16 @@ _CONTENT_KEYS = (
 )
 
 
+def _has_run_results(db: Session, version_id: UUID) -> bool:
+    """Whether any run, including a deleted one, points to this version."""
+    return (
+        db.execute(
+            select(TestRunCase.id).where(TestRunCase.test_case_version_id == version_id).limit(1)
+        ).first()
+        is not None
+    )
+
+
 def update_test_case(
     db: Session,
     tenant_id: UUID,
@@ -1271,6 +1281,16 @@ def update_test_case(
         or [(st.action, st.expected, st.test_data) for st in new_steps] != current_steps
     )
     was_approved = case.status == "approved" and content_changed
+    # ADR-135: a version a run points to is history. It is never edited in place.
+    if content_changed and case.status == "deprecated":
+        raise ConflictError(
+            "This test case is deprecated, so its steps and content can no longer change. "
+            "Past results keep the text they were run against. Duplicate it to continue "
+            "from a copy."
+        )
+    needs_new_version = content_changed and (
+        was_approved or _has_run_results(db, current_version.id)
+    )
 
     if "priority" in changes:
         field_option_service.validate_code(db, tenant_id, "test_case_priority", changes["priority"])
@@ -1287,10 +1307,11 @@ def update_test_case(
 
     if not content_changed:
         pass  # metadata-only edit: nothing to version (rule A, see above)
-    elif was_approved:
+    elif needs_new_version:
         # ADR-020: any content edit to an approved case forks a new version and
         # reverts to draft, pending re-approval. The previous version row and its
-        # steps are left untouched (immutable snapshots, ADR-003).
+        # steps are left untouched (immutable snapshots, ADR-003). The same
+        # happens to any other version that has results (ADR-135).
         _write_version(
             db,
             tenant_id,
@@ -1306,10 +1327,11 @@ def update_test_case(
             new_postconditions,
             new_expected_result,
         )
-        case.status = "draft"
+        if was_approved:
+            case.status = "draft"
     else:
         # ADR-020: draft/ready_for_review edits mutate the current version
-        # in place -- nothing has been approved or executed against it yet.
+        # in place -- no run points to it (checked above).
         current_version.title = new_title
         current_version.description = new_description
         current_version.scenario_id = new_scenario_id

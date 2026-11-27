@@ -217,7 +217,10 @@ has a generated ID (`TC_000001`), is versioned (editing the steps or content
 creates a new version and the earlier ones stay viewable) and moves through a
 **Review Status**: Draft, Ready for Review, Approved or Deprecated. How a case
 last *ran* is a separate thing, its **Execution Status** (Pass, Fail, Blocked,
-Skipped or Not Run), taken from the most recent run.
+Skipped or Not Run), taken from the most recent run. A result always keeps the
+text it was run against. For that reason the steps and content of a
+**Deprecated** test case cannot be changed. You can still change details such as
+priority and module; to change the content, duplicate the test case.
 
 Writing a test case:
 
