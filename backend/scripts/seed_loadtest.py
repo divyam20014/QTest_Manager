@@ -73,6 +73,18 @@ def drop(conn) -> None:
         ).fetchall()
     ]
     conn.execute("set session_replication_role = replica")  # skip FK/immutability triggers
+    # These two have no tenant_id, so the loop below would leave them behind, and with the
+    # foreign key checks off nothing would object. They go first, while their parents exist.
+    for table, column, parent in (
+        ("project_members", "project_id", "projects"),
+        ("role_permissions", "role_id", "roles"),
+    ):
+        n = conn.execute(
+            f"delete from {table} where {column} in (select id from {parent} where tenant_id = %s)",
+            (tid,),
+        ).rowcount
+        if n:
+            print(f"  {table}: {n}")
     for t in tabs:
         n = conn.execute(f'delete from "{t}" where tenant_id = %s', (tid,)).rowcount
         if n:
