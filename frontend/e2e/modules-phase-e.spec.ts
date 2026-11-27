@@ -7,7 +7,7 @@ import { bootstrapTenant, loginViaUi } from './fixtures'
 // (nothing silently cut off), and the Execution Console verdict shortcuts not
 // firing while typing in a text field.
 
-// Mocked replies are cross-origin (page :5173, API :8000): same CORS headers
+// Mocked replies are cross-origin (page and API on different ports): same CORS headers
 // the real API sends, including for the preflight.
 async function fulfillCors(route: Route, json: unknown) {
   const req = route.request()

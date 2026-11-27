@@ -1,6 +1,6 @@
 import type { BrowserContext } from '@playwright/test'
 
-import { FIXTURE_USER_AGENT, getPlatformSessionToken } from './fixtures'
+import { API_BASE_URL, FIXTURE_USER_AGENT, getPlatformSessionToken } from './fixtures'
 
 // ADR-114: the full documentation is read inside the platform console. The
 // session is the shared dev platform admin's, obtained through the real
@@ -12,7 +12,7 @@ export const PLATFORM_DOCS_USER_AGENT = FIXTURE_USER_AGENT
 
 export async function signInPlatformBrowser(context: BrowserContext): Promise<void> {
   const token = await getPlatformSessionToken()
-  const api = new URL(process.env.E2E_API_BASE_URL ?? 'http://localhost:8000/api/v1')
+  const api = new URL(API_BASE_URL)
   await context.addCookies([
     {
       name: 'qth_platform_session',

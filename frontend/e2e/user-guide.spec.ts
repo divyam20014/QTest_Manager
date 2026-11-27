@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { axeFindings, formatFindings } from './a11y'
-import { loginViaUi } from './fixtures'
+import { API_BASE_URL, loginViaUi } from './fixtures'
 import { PLATFORM_DOCS_USER_AGENT, signInPlatformBrowser } from './platformDocs'
 import { seedRoleTenant, type RoleTenant } from './roleTenant'
 
@@ -75,14 +75,13 @@ test('User Guide: old /brd links redirect, the API serves no documents to tenant
     await page.goto(old)
     await expect(page).toHaveURL(/\/user-guide/)
   }
-  const status = await page.evaluate(async () => {
-    const base = (window as unknown as { __API__?: string }).__API__ ?? 'http://localhost:8000/api/v1'
+  const status = await page.evaluate(async (base) => {
     const out: number[] = []
     for (const path of ['/docs', '/docs/administrator-guide', '/platform/docs']) {
       out.push((await fetch(`${base}${path}`, { credentials: 'include' })).status)
     }
     return out
-  })
+  }, API_BASE_URL)
   for (const s of status) expect([401, 403, 404]).toContain(s)
 })
 

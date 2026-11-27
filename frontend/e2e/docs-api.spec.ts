@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext } from '@playwright/test'
 
 import { API_BASE_URL, bootstrapTenant, loginViaUi, platformAuthHeaders, getPlatformSessionToken } from './fixtures'
 import { PLATFORM_DOCS_USER_AGENT, signInPlatformBrowser } from './platformDocs'
+import { WEB_URL } from './target'
 
 // ADR-089 / ADR-114: documents are served by the API and never bundled into the
 // web app; the full set is readable only with a platform session, tenant users
@@ -106,7 +107,7 @@ test.describe('platform console', () => {
     page.on('response', (res) => {
       const type = res.headers()['content-type'] ?? ''
       if (/javascript|typescript|text\/plain/.test(type) || /\.(m?js|tsx?)(\?|$)/.test(res.url())) {
-        if (res.url().startsWith('http://localhost:5173')) scripts.push(res.url())
+        if (res.url().startsWith(WEB_URL)) scripts.push(res.url())
       }
     })
     await page.goto('/platform-admin/docs/administrator-guide')

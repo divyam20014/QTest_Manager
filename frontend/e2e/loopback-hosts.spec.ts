@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { bootstrapTenant, loginViaUi } from './fixtures'
+import { LOOPBACK_WEB_URL } from './target'
 
 // `localhost` and `127.0.0.1` are different sites to a browser, so a page on one
 // calling an API on the other loses SameSite session cookies (the Platform Admin
@@ -8,16 +9,16 @@ import { bootstrapTenant, loginViaUi } from './fixtures'
 // the page. This spec opens the app on 127.0.0.1 -- the OTHER name from the one
 // the API address is configured with.
 
-test.use({ baseURL: 'http://127.0.0.1:5173' })
+test.use({ baseURL: LOOPBACK_WEB_URL })
 
-test('a tenant user can sign in on http://127.0.0.1:5173', async ({ page, request }) => {
+test('a tenant user can sign in on 127.0.0.1', async ({ page, request }) => {
   const tenant = await bootstrapTenant(request, 'LoopbackTenant')
   await loginViaUi(page, tenant.tenantId, tenant.adminEmail, tenant.adminPassword)
   await expect(page.getByRole('link', { name: 'Test Cases' }).first()).toBeVisible()
   expect(new URL(page.url()).hostname).toBe('127.0.0.1')
 })
 
-test('Platform Admin keeps its session cookie on http://127.0.0.1:5173', async ({ page }) => {
+test('Platform Admin keeps its session cookie on 127.0.0.1', async ({ page }) => {
   await page.goto('/platform-admin')
   await page.getByLabel('Email').fill(process.env.E2E_PLATFORM_ADMIN_EMAIL ?? 'owner@qtesthub.local')
   await page

@@ -48,10 +48,10 @@ Standing checks on every change:
 - `npm run test -- --run` (component/unit tests, Vitest)
 - `npm run build`
 
-Then, after a Docker rebuild (`docker compose up --build -d` — the `web` service
-has no source volume mount, so this step is mandatory, not optional):
-- **Playwright E2E** (`frontend/e2e/`) against the rebuilt stack and the real
-  persistent demo tenant (never a freshly-created one) — journeys covering
+Then the browser tests, from `frontend/` with `npm run test:e2e` (see
+`frontend/e2e/README.md`). They run against a throwaway database and servers built from the
+working tree, never the development stack (ADR-134), so no rebuild is needed:
+- **Playwright E2E** (`frontend/e2e/`) on freshly created tenants: journeys covering
   authentication/MFA, test authoring, execution, defect creation, reporting, and
   reliability scenarios (refresh/network-interruption/concurrent-edit).
 - **Accessibility** (`accessibility.spec.ts`, `@axe-core/playwright`): WCAG 2.1 A/AA

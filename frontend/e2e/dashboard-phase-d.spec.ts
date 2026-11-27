@@ -6,7 +6,7 @@ import { bootstrapTenant, loginViaUi } from './fixtures'
 // chart panels with a table alternative and a trend range control, charts that
 // follow the app's light/dark toggle, and honest empty / error states.
 
-// Mocked API replies are cross-origin (page :5173, API :8000), so they need the
+// Mocked API replies are cross-origin (page and API on different ports), so they need the
 // same CORS headers the real API sends, including for the preflight.
 async function fulfillCors(route: import('@playwright/test').Route, status: number, json: unknown) {
   const req = route.request()

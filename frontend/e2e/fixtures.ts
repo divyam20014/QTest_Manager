@@ -7,16 +7,18 @@ import { join } from 'node:path'
 import { request as pwRequest } from '@playwright/test'
 import type { APIRequestContext, Locator, Page } from '@playwright/test'
 
-export const API_BASE_URL = process.env.E2E_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+import { API_BASE_URL, DB_NAME, assertIsolatedTarget } from './target'
+
+// Checked here as well as in playwright.config.ts, so another config cannot skip it.
+assertIsolatedTarget()
+
+export { API_BASE_URL }
 
 // Platform-admin provisioning is deliberately out-of-band (not exposed over
-// HTTP, see backend/scripts/seed_platform_admin.py) -- before running this
-// suite, seed one with a KNOWN dev/test TOTP secret (ADR-074: Platform Admin
-// sign-in is password + authenticator code; --totp-secret is refused in
-// production):
-//   docker compose exec api python -m scripts.seed_platform_admin \
-//     --email owner@qtesthub.local --password Sup3rSecret1Pass \
-//     --totp-secret JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+// HTTP, see backend/scripts/seed_platform_admin.py). scripts/run_e2e.py seeds one
+// with the KNOWN test TOTP secret below, in its throwaway database only (ADR-074:
+// Platform Admin sign-in is password + authenticator code; --totp-secret is refused
+// in production).
 export const PLATFORM_ADMIN_EMAIL = process.env.E2E_PLATFORM_ADMIN_EMAIL ?? 'owner@qtesthub.local'
 export const PLATFORM_ADMIN_PASSWORD = process.env.E2E_PLATFORM_ADMIN_PASSWORD ?? 'Sup3rSecret1Pass'
 export const PLATFORM_ADMIN_TOTP_SECRET =
@@ -57,7 +59,7 @@ export function totpCodeForStep(secret: string, step: number): string {
 // so every sign-in with the shared dev admin must use a strictly newer step
 // than the last one any spec used. The last used step is shared between
 // Playwright worker processes through a small file in the OS temp dir.
-const STATE_FILE = join(tmpdir(), 'qth-e2e-platform-state.json')
+const STATE_FILE = join(tmpdir(), `qth-e2e-platform-state-${DB_NAME}.json`)
 
 interface SharedState {
   lastStep?: number
@@ -362,7 +364,7 @@ export async function loginViaUi(
 }
 
 // ADR-083 test hooks: there is deliberately NO production switch for these, so
-// the specs reach into the dev database to make a session look stale.
+// the specs reach into the throwaway test database to make a session look stale.
 function psqlForAdminSessions(email: string, setClause: string): void {
   if (!/^[a-z0-9@._-]+$/i.test(email)) throw new Error(`Unexpected admin email: ${email}`)
   const sql =
@@ -370,7 +372,7 @@ function psqlForAdminSessions(email: string, setClause: string): void {
     `WHERE admin_id IN (SELECT id FROM platform_admins WHERE email = '${email}')`
   execFileSync(
     'docker',
-    ['compose', 'exec', '-T', 'db', 'psql', '-U', 'qtesthub', '-d', 'qtesthub', '-c', sql],
+    ['compose', 'exec', '-T', 'db', 'psql', '-U', 'qtesthub', '-d', DB_NAME, '-c', sql],
     { cwd: join(process.cwd(), '..'), stdio: 'pipe' },
   )
 }
