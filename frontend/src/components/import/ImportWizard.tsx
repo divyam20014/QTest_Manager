@@ -143,6 +143,10 @@ export function ImportWizard({
     void queryClient.invalidateQueries({ queryKey: ['test-cases'] })
     void queryClient.invalidateQueries({ queryKey: ['defects'] })
     void queryClient.invalidateQueries({ queryKey: ['test-modules'] })
+    void queryClient.invalidateQueries({ queryKey: ['requirements'] })
+    void queryClient.invalidateQueries({ queryKey: ['requirements-coverage'] })
+    void queryClient.invalidateQueries({ queryKey: ['traceability-matrix'] })
+    void queryClient.invalidateQueries({ queryKey: ['tasks'] })
   }
 
   const previewMutation = useMutation({

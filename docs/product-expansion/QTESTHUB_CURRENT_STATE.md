@@ -52,6 +52,20 @@ Approved choices: one active sprint per project; estimates in hours; an unfinish
 - **At the agreed scale:** the board loads each status in pages and the backlog and flat list are paged. No Phase 2 test creates more than 2,000 tasks, so behaviour above the tree's 2,000-task limit is not verified by a test.
 - **Migration rehearsal** on a temporary copy of the development database: the four migrations upgraded, downgraded and upgraded again; existing records were unchanged; every task got a type and a unique backlog position; only Admin, Manager and QA Lead received `planning.manage` (there were no custom roles with task management); no broken foreign keys. The development database itself is still at `f5b7d9e1a3c4`.
 
+### Phase 3: requirements management and traceability (2026-11-28)
+
+Approved choices: a Requirements view inside Tasks (amends ADR-128; no separate section); types Functional, Non-functional, Business rule and priorities Critical, High, Medium, Low, edited per organization; fixed statuses Draft, Approved, Retired; a test link needs review when a requirement's title, description or acceptance criteria change, and older links say "version not recorded"; import only creates; deleting keeps history.
+
+- **3A** (ADR-148): requirement numbers (REQ_000001), type, status, priority, owner, stale-save protection, and deletion that keeps history. Migration `e2a4c6d8f0b1`.
+- **3B** (ADR-149): acceptance criteria saved per version, and the project-wide Requirements view with filters. Migration `f3b5d7e9a1c2`.
+- **3C** (ADR-150): links record the version they cover; "needs review" flags in lists, the requirement page, the test case page and the matrix; retired requirements left out of coverage. Migration `a4c6e8f0b2d3`.
+- **3D** (ADR-151): requirement import through the standard import. Migration `b5d7f9a1c3e4`.
+- **Older defect found and fixed:** the standard import checked project membership only for the role named `tester`, so Developer and custom roles could import into projects they did not belong to. This also affected test case and defect imports.
+- **Not built:** reading requirements out of Word or PDF files, update-by-ID on import, restoring deleted requirements, acceptance criteria in AI features.
+- **Test results:** full backend suite 1,805 of 1,808 passed (2 h 37 min). One failure is the known import speed budget (GAP-69). One rate-limit test failed once and passed when rerun. One older test expected the old matrix CSV columns and was updated. The matrix and Requirements view were tested with 3,000 requirements.
+- **Migration rehearsal** on a temporary copy of the development database: all nine Phase 2 and 3 migrations upgraded, downgraded and upgraded again; existing records unchanged; every requirement numbered uniquely; no broken foreign keys. The development database is still at `f5b7d9e1a3c4`.
+- **Not run:** the browser suite.
+
 ## How to read these documents
 
 | Mark | Meaning |

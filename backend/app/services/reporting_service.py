@@ -82,7 +82,13 @@ from app.schemas.reporting import (
     WorkloadEntry,
     WorkloadSummary,
 )
-from app.services import project_domains, requirement_service, task_service, tester_visibility
+from app.services import (
+    project_domains,
+    requirement_links,
+    requirement_service,
+    task_service,
+    tester_visibility,
+)
 from app.services.defect_service import SLA_DAYS_ALL, SLA_DAYS_BY_SEVERITY
 
 COMPLETED_RUN_CASE_STATUSES = ("passed", "failed", "blocked", "ignored")
@@ -1327,6 +1333,7 @@ def get_traceability_matrix(
         for test_case_id, status, *_rest in ordered:
             latest_status[test_case_id] = status  # last write wins == most recent
 
+    reviews = requirement_links.review_counts(db, requirement_ids)
     entries = []
     for req in requirements:
         case_ids = req_to_cases.get(req.id, [])
@@ -1345,7 +1352,10 @@ def get_traceability_matrix(
         entries.append(
             TraceabilityMatrixEntry(
                 requirement_id=req.id,
+                display_id=req.display_id,
                 requirement_title=req.title,
+                status=req.status,
+                review_count=reviews.get(req.id, 0),
                 task_id=req.task_id,
                 task_display_id=task_labels.get(req.task_id),
                 linked_test_case_count=total,
@@ -1360,6 +1370,7 @@ def get_traceability_matrix(
     return TraceabilityMatrixReport(
         project_id=project_id,
         total_requirements=len(requirements),
+        retired_requirements=overall_coverage.retired_requirements,
         overall_requirement_coverage_percentage=overall_coverage.coverage_percentage,
         entries=entries,
     )
@@ -1370,9 +1381,12 @@ def traceability_matrix_to_csv(report: TraceabilityMatrixReport) -> str:
     writer = csv.writer(buf)
     writer.writerow(
         [
+            "ID",
             "Requirement",
+            "Status",
             "Task",
             "Linked Test Cases",
+            "Needs Review",
             "Passed",
             "Failed",
             "Blocked",
@@ -1383,9 +1397,12 @@ def traceability_matrix_to_csv(report: TraceabilityMatrixReport) -> str:
     for e in report.entries:
         writer.writerow(
             [
+                e.display_id or "",
                 e.requirement_title,
+                e.status.capitalize(),
                 e.task_display_id or "",
                 e.linked_test_case_count,
+                e.review_count,
                 e.passed_count,
                 e.failed_count,
                 e.blocked_count,
@@ -1840,9 +1857,12 @@ def traceability_matrix_to_xlsx(report: TraceabilityMatrixReport) -> bytes:
             SheetSpec(
                 "Traceability",
                 [
+                    "ID",
                     "Requirement",
+                    "Status",
                     "Task",
                     "Linked Test Cases",
+                    "Needs Review",
                     "Passed",
                     "Failed",
                     "Blocked",
@@ -1851,9 +1871,12 @@ def traceability_matrix_to_xlsx(report: TraceabilityMatrixReport) -> bytes:
                 ],
                 [
                     (
+                        e.display_id or "",
                         e.requirement_title,
+                        e.status.capitalize(),
                         e.task_display_id or "",
                         e.linked_test_case_count,
+                        e.review_count,
                         e.passed_count,
                         e.failed_count,
                         e.blocked_count,
@@ -1865,6 +1888,7 @@ def traceability_matrix_to_xlsx(report: TraceabilityMatrixReport) -> bytes:
                 title="QTestHub Requirements Traceability Matrix",
                 notes=[
                     ("Total requirements", report.total_requirements),
+                    ("Retired (not in coverage)", report.retired_requirements),
                     ("Overall coverage %", report.overall_requirement_coverage_percentage),
                 ],
             )

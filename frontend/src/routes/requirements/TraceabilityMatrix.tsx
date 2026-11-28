@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { TaskPicker } from '@/components/TaskPicker'
 import { useUrlFilters } from '@/lib/useUrlFilters'
+import { REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE } from '@/lib/requirements'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { CARD_LINK_CLASS, ResponsiveTable, type ResponsiveColumn } from '@/components/table/ResponsiveTable'
 import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
@@ -28,6 +29,7 @@ import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePre
 // behavior is introduced here.
 const MATRIX_COLUMNS: TableColumnDef[] = [
   { key: 'requirement', label: 'Requirement', alwaysVisible: true, defaultWidth: 320 },
+  { key: 'status', label: 'Status', defaultWidth: 110 },
   { key: 'task', label: 'Task', defaultWidth: 110 },
   { key: 'linked', label: 'Test Cases', defaultWidth: 110 },
   { key: 'passed', label: 'Passed', defaultWidth: 90 },
@@ -46,12 +48,18 @@ const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
     tdClassName: 'font-medium',
     cell: (e) => (
       <>
+        <span className="mr-2 font-mono text-xs font-normal text-[var(--muted-foreground)]">{e.display_id}</span>
         <Link to={`../requirements/${e.requirement_id}`} className="underline-offset-2 hover:underline">
           {e.requirement_title}
         </Link>
-        {e.linked_test_case_count === 0 && (
+        {e.linked_test_case_count === 0 && e.status !== 'retired' && (
           <Badge tone="warning" className="ml-2">
             Uncovered
+          </Badge>
+        )}
+        {e.review_count > 0 && (
+          <Badge tone="warning" className="ml-2">
+            {e.review_count} to review
           </Badge>
         )}
       </>
@@ -61,6 +69,11 @@ const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
         {e.requirement_title}
       </Link>
     ),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    cell: (e) => <Badge tone={REQUIREMENT_STATUS_TONE[e.status]}>{REQUIREMENT_STATUS_LABEL[e.status]}</Badge>,
   },
   {
     key: 'task',
@@ -106,9 +119,14 @@ const columns: ResponsiveColumn<TraceabilityMatrixEntry>[] = [
     cardCell: (e) => (
       <>
         <Badge tone={e.coverage_percentage === 100 ? 'positive' : 'neutral'}>{e.coverage_percentage}% coverage</Badge>
-        {e.linked_test_case_count === 0 && (
+        {e.linked_test_case_count === 0 && e.status !== 'retired' && (
           <Badge tone="warning" className="ml-1.5">
             Uncovered
+          </Badge>
+        )}
+        {e.review_count > 0 && (
+          <Badge tone="warning" className="ml-1.5">
+            {e.review_count} to review
           </Badge>
         )}
       </>
@@ -178,6 +196,7 @@ export function TraceabilityMatrix() {
           <CardContent className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
             <span>
               {report.total_requirements} requirement{report.total_requirements === 1 ? '' : 's'} total
+              {report.retired_requirements > 0 && ` (${report.retired_requirements} retired, not counted)`}
             </span>
             <Badge tone={report.overall_requirement_coverage_percentage === 100 ? 'positive' : 'neutral'}>
               {report.overall_requirement_coverage_percentage}% have at least one linked test case

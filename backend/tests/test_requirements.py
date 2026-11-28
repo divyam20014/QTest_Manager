@@ -320,4 +320,12 @@ def test_test_case_lists_its_linked_requirements(client: TestClient, platform_ad
     ).json()["data"]
     client.post(f"/api/v1/requirements/{req['id']}/test-cases", json={"test_case_id": case["id"]})
     listed = client.get(f"/api/v1/test-cases/{case['id']}/requirements").json()["data"]
-    assert listed == [{"id": req["id"], "title": "Linked requirement alpha"}]
+    assert listed == [
+        {
+            "id": req["id"],
+            "display_id": req["display_id"],
+            "title": "Linked requirement alpha",
+            "status": "draft",
+            "needs_review": False,
+        }
+    ]

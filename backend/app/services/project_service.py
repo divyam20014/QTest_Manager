@@ -478,7 +478,11 @@ def delete_project(
         .execution_options(include_deleted=True)
     ).first()
     has_requirements = db.execute(
-        select(Requirement.id).where(Requirement.project_id == project.id).limit(1)
+        select(Requirement.id)
+        .where(Requirement.project_id == project.id)
+        .limit(1)
+        # ADR-148: deleted requirements are kept, and still reference the project (FK).
+        .execution_options(include_deleted=True)
     ).first()
     if has_test_cases or has_test_runs or has_defects or has_tasks or has_requirements:
         raise ConflictError(

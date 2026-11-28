@@ -16,9 +16,14 @@ from typing import Final, Literal
 
 # --- display ids (TC_000001 / BUG_000001) ------------------------------------
 
-DisplayKind = Literal["test_case", "defect", "task"]
-DISPLAY_ID_KINDS: Final[tuple[DisplayKind, ...]] = ("test_case", "defect", "task")
-DISPLAY_ID_PREFIX: Final[dict[str, str]] = {"test_case": "TC_", "defect": "BUG_", "task": "TASK_"}
+DisplayKind = Literal["test_case", "defect", "task", "requirement"]
+DISPLAY_ID_KINDS: Final[tuple[DisplayKind, ...]] = ("test_case", "defect", "task", "requirement")
+DISPLAY_ID_PREFIX: Final[dict[str, str]] = {
+    "test_case": "TC_",
+    "defect": "BUG_",
+    "task": "TASK_",
+    "requirement": "REQ_",
+}
 
 # --- Task / sub-task (ADR-127) -------------------------------------------------
 
@@ -30,6 +35,16 @@ DEFAULT_TASK_PRIORITY: Final[str] = "Medium"
 # 'task_type' field_options defaults (ADR-144, tenant-configurable).
 TASK_TYPE_DEFAULTS: Final[tuple[str, ...]] = ("Task", "Story", "Chore")
 DEFAULT_TASK_TYPE: Final[str] = "Task"
+# --- Requirements (ADR-148) --------------------------------------------------------------
+# 'requirement_type' and 'requirement_priority' field_options defaults (tenant-configurable).
+REQUIREMENT_TYPE_DEFAULTS: Final[tuple[str, ...]] = (
+    "Functional",
+    "Non-functional",
+    "Business rule",
+)
+DEFAULT_REQUIREMENT_TYPE: Final[str] = "Functional"
+REQUIREMENT_PRIORITY_DEFAULTS: Final[tuple[str, ...]] = ("Critical", "High", "Medium", "Low")
+DEFAULT_REQUIREMENT_PRIORITY: Final[str] = "Medium"
 # (code, label, category, color). ``category`` is the fixed meaning; the rest is tenant-editable.
 TASK_STATUS_DEFAULTS: Final[tuple[tuple[str, str, str, str], ...]] = (
     ("todo", "To Do", "todo", "#64748b"),

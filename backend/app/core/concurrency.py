@@ -11,10 +11,11 @@ from app.core.errors import StaleWriteError
 
 if TYPE_CHECKING:
     from app.models.defect import Defect
+    from app.models.requirement import Requirement
     from app.models.test_case import TestCase
 
     # The records that carry a `row_version`.
-    Versioned = TestCase | Defect
+    Versioned = TestCase | Defect | Requirement
 
 
 def check_row_version(record: "Versioned", expected: int | None, noun: str) -> None:

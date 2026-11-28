@@ -123,7 +123,7 @@ export function App() {
             <Route path="tasks" element={<TasksList />} />
             <Route path="tasks/:taskId" element={<TaskDetail />} />
             {/* ADR-128: the Requirements list is gone; requirements live in tasks. */}
-            <Route path="requirements" element={<Navigate to="../tasks" replace />} />
+            <Route path="requirements" element={<Navigate to="../tasks?view=requirements" replace />} />
             <Route
               path="requirements/:requirementId"
               element={

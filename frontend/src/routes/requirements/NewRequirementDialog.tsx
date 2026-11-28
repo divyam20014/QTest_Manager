@@ -1,7 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/client'
+import { listFieldOptions } from '@/api/fieldCustomization'
 import { createRequirement, type Requirement } from '@/api/requirements'
 import { TaskPicker } from '@/components/TaskPicker'
 import { Button } from '@/components/ui/button'
@@ -9,8 +10,11 @@ import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { ReportDirty } from '@/components/ui/dirtyForm'
 import { FormError, FormField } from '@/components/ui/form-field'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { cleanCriteria } from '@/lib/requirements'
 import { useToast } from '@/lib/toast'
+import { CriteriaEditor } from '@/routes/requirements/CriteriaEditor'
 
 /**
  * Create a requirement (ADR-128: requirements live in tasks). With `taskId` it is created in that
@@ -36,6 +40,20 @@ export function NewRequirementDialog({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [pickedTask, setPickedTask] = useState('')
+  const [criteria, setCriteria] = useState<string[]>([])
+  // '' leaves the choice to the server's default.
+  const [type, setType] = useState('')
+  const [priority, setPriority] = useState('')
+  const types = useQuery({
+    queryKey: ['field-options', 'requirement_type'],
+    queryFn: () => listFieldOptions('requirement_type'),
+    enabled: open,
+  })
+  const priorities = useQuery({
+    queryKey: ['field-options', 'requirement_priority'],
+    queryFn: () => listFieldOptions('requirement_priority'),
+    enabled: open,
+  })
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -43,6 +61,9 @@ export function NewRequirementDialog({
         title,
         description,
         ...(taskId || pickedTask ? { task_id: taskId || pickedTask } : {}),
+        ...(type ? { requirement_type: type } : {}),
+        ...(priority ? { priority } : {}),
+        acceptance_criteria: cleanCriteria(criteria),
       }),
     onSuccess: (requirement) => {
       void queryClient.invalidateQueries({ queryKey: ['requirements'] })
@@ -52,6 +73,9 @@ export function NewRequirementDialog({
       setTitle('')
       setDescription('')
       setPickedTask('')
+      setType('')
+      setPriority('')
+      setCriteria([])
       showToast('success', 'Requirement created')
       onCreated?.(requirement)
       onClose()
@@ -63,13 +87,40 @@ export function NewRequirementDialog({
   return (
     <Dialog open={open} onClose={onClose} title="New Requirement">
       <div className="flex flex-col gap-3 text-sm">
-        <ReportDirty dirty={title !== '' || description !== '' || pickedTask !== ''} />
+        <ReportDirty dirty={title !== '' || description !== '' || pickedTask !== '' || type !== '' || priority !== '' || criteria.length > 0} />
         <FormField id="requirement-title" label="Title" required helper="At least 5 characters." error={error?.fields?.title}>
           {(field) => <Input {...field} value={title} onChange={(e) => setTitle(e.target.value)} />}
         </FormField>
         <FormField id="requirement-description" label="Description">
           {(field) => <Textarea {...field} value={description} onChange={(e) => setDescription(e.target.value)} />}
         </FormField>
+        <CriteriaEditor value={criteria} onChange={setCriteria} error={error?.fields?.acceptance_criteria} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormField id="requirement-type" label="Type" error={error?.fields?.requirement_type}>
+            {(field) => (
+              <Select {...field} value={type} onChange={(e) => setType(e.target.value)}>
+                <option value="">Default</option>
+                {(types.data ?? []).map((o) => (
+                  <option key={o.code} value={o.code}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </FormField>
+          <FormField id="requirement-priority" label="Priority" error={error?.fields?.priority}>
+            {(field) => (
+              <Select {...field} value={priority} onChange={(e) => setPriority(e.target.value)}>
+                <option value="">Default</option>
+                {(priorities.data ?? []).map((o) => (
+                  <option key={o.code} value={o.code}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </FormField>
+        </div>
         {!taskId && (
           <FormField
             id="requirement-task"

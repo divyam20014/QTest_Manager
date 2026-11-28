@@ -324,7 +324,11 @@ export function bulkUpdateTestCases(req: {
 
 export interface LinkedRequirement {
   id: string
+  display_id: string | null
   title: string
+  status: 'draft' | 'approved' | 'retired'
+  /** ADR-150: reworded since this case was last agreed to cover it. */
+  needs_review: boolean
 }
 
 export function listLinkedRequirements(testCaseId: string): Promise<LinkedRequirement[]> {

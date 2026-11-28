@@ -107,8 +107,8 @@ def test_coverage_and_traceability_can_be_scoped_to_a_task(env: dict) -> None:  
         f"{matrix}/export", params={"project_id": project_id, "task_id": parent["id"]}
     )
     lines = exported.text.strip().splitlines()
-    assert lines[0].split(",")[:2] == ["Requirement", "Task"]
-    assert lines[1].startswith(f"Parent requirement,{parent['display_id']},")
+    assert lines[0].split(",")[:4] == ["ID", "Requirement", "Status", "Task"]
+    assert f"Parent requirement,Draft,{parent['display_id']}," in lines[1]
     assert len(lines) == 2
 
 

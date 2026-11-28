@@ -2103,3 +2103,37 @@ Deleting an empty project now also deletes its milestones and sprints.
 **Decision.** `task_dependencies` links a task to another task of the same project that should finish first (composite foreign keys). An unfinished earlier task is shown as a warning on the task, and as "Waiting on N" in lists, the backlog and the board; no status change is refused. Circles are refused with 409: the service checks while holding a per-project advisory lock, and a database trigger takes the same lock and checks again, so neither simultaneous requests nor a direct write can make one. A task and its own ancestor or sub-task cannot be linked, because a parent already waits for its sub-tasks. Deleting a task deletes its links. Adding and removing links needs `task.manage`. The table is exported and read-only when the project is archived. Migration `d9f1b3c5e7a8`.
 
 **Consequences.** Only finish-to-start is modelled, with no lag, dates are not recalculated, and there is no Gantt view or critical path. Moving a task under another one it is linked to is not checked; the link stays and can be removed.
+
+## ADR-148: Requirement details, and deletion that keeps history
+
+**Context.** A requirement had only a title and a description. It could not be referred to by number, owned or approved. Deleting it destroyed its versions, and two people editing it could overwrite each other.
+
+**Decision.** Requirements get an immutable `display_id` (REQ_000001, numbered per tenant), a type and a priority from the organization's lists (Functional, Non-functional, Business rule; Critical, High, Medium, Low), a fixed status (draft, approved, retired) and an optional owner who must be an active member of the project. All are changed with `requirement.manage`; there is no separate approval permission. A new version is made only when the wording really changes, and new wording on an approved requirement returns it to draft, even if the same request sends "approved" (retiring it is respected). Changes to details make no version. `row_version` with `expected_version` refuses stale saves (ADR-136), under a row lock. Deleting sets `deleted_at`: the central soft-delete filter hides the requirement from every list, count, report and search, while its versions, links and attachments are kept. Existing requirements were numbered in creation order and are drafts. Migration `e2a4c6d8f0b1`; its downgrade refuses while deleted requirements exist.
+
+**Consequences.** A deleted requirement cannot be restored from the app, and its number is not reused. Retired is the way to keep one visible. The requirement page's controls now follow `requirement.manage`, as the server does, not the access tier.
+
+## ADR-149: Acceptance criteria and a project-wide requirements view
+
+**Context.** A requirement could not say how to tell it was met, and since ADR-128 there was no way to see all of a project's requirements together.
+
+**Decision.** `requirement_acceptance_criteria` holds an ordered list (at most 50, up to 2,000 characters each) for each **version**, so history is kept: a changed list, including a changed order, makes a new version. The Tasks tab gets a **Requirements** view, paged on the server and filtered by text in the title or number, status, type, priority, owner and test cases (has some, has none, needs review). This amends ADR-128: there is still no separate Requirements section, and every requirement still belongs to a task. `/projects/:id/requirements` now opens the view. The new table has no project column; its archive guard finds the project through the version's requirement. Migration `f3b5d7e9a1c2`.
+
+**Consequences.** The AI features still read only the title and description, not the criteria, so "Analyze change impact" does not see a change to criteria alone.
+
+## ADR-150: Links record the wording they cover
+
+**Context.** A test case stayed "covering" a requirement however much the requirement was rewritten.
+
+**Decision.** A link stores the requirement version it was agreed to cover (a composite foreign key keeps it a version of that requirement). When that is no longer the current version the link **needs review**; changes to details or the task make no version and mark nothing. Someone with `requirement.manage` confirms the case still covers it, naming the version they read, and is refused with 409 if the wording has moved on. Links made before this have no version and are shown as "version not recorded": none is guessed. For those the migration stores, separately, the version that was current when recording began, so a later rewording still marks them. Retired requirements ask for no review and are left out of coverage percentages and task roll-up requirement counts; the matrix lists them, with their status, and says how many are not counted. The matrix and its CSV and Excel exports add the number, status and links to review. Migration `a4c6e8f0b2d3`.
+
+**Consequences.** Coverage figures can rise when requirements are retired. "Needs review" says the wording changed, not that the test is now wrong.
+
+## ADR-151: Requirements are imported through the standard import
+
+**Context.** Teams keep requirements in spreadsheets. Test cases and defects already had a preview-then-commit import; requirements had none.
+
+**Decision.** `requirement` is a third kind of the standard import (ADR-120), with the same template, preview, token, all-or-nothing or skip-invalid modes, and background job above the size threshold. It needs `requirement.manage` on the chosen project. Columns: Requirement ID, Title (required), Description, Type, Priority, Status, Owner Email, Acceptance Criteria (one per line, list markers removed) and Task. Import only creates: a kept ID must look like REQ_000123 and be unused, including by deleted requirements, otherwise the next number is given with a warning, and an existing requirement is never changed. Type and priority default as when created by hand, status to Draft, and a row without a task goes to "Unassigned requirements". The owner must be an active project member. Documents (Word, PDF) are not read. Migration `b5d7f9a1c3e4` only widens the preview table's kind check.
+
+The importer's project check used the role's name, so only the role code `tester` had to be assigned to the project; QA Lead without `project.view.all`, Developer and custom roles could import into projects they did not belong to. It now uses the access tier, as the rest of the app does. This also corrects test case and defect imports.
+
+**Consequences.** Re-importing a file creates duplicates (the preview warns about matching titles). There is no update-by-ID.

@@ -526,3 +526,16 @@ Both tables have forced row-level security and archive guard triggers.
 ## Changes for ADR-147
 
 Migration `d9f1b3c5e7a8`: `task_dependencies(id, tenant_id, project_id, task_id, depends_on_task_id, created_by, created_at)`: unique `(task_id, depends_on_task_id)`, check that they differ, both composite foreign keys include `project_id`, forced row-level security, archive guard triggers. Trigger `task_dependencies_no_cycle` takes the advisory lock `dependencies:{project_id}` and raises SQLSTATE `QT002` for a circle.
+
+## Changes for ADR-148
+
+Migration `e2a4c6d8f0b1`: `requirements` adds `display_seq`, `display_id` (unique per tenant, immutable by trigger), `requirement_type`, `status` (check: draft, approved, retired), `priority`, `owner_id` (references users), `row_version` and `deleted_at`. `entity_counters` allows the kind `requirement`; `field_options` allows `requirement_type` and `requirement_priority`, seeded for every tenant. Existing requirements are numbered by creation time.
+
+## Changes for ADR-149 and ADR-150
+
+- `f3b5d7e9a1c2`: `requirement_acceptance_criteria(id, tenant_id, requirement_version_id, position, text)`: unique `(requirement_version_id, position)`, text of 1 to 2000 characters, forced row-level security, archive guard triggers through the version's requirement.
+- `a4c6e8f0b2d3`: `requirement_versions` gets unique `(id, requirement_id)`; `requirement_test_case_links` gets `requirement_version_id` and `unrecorded_baseline_version_id`, each with a composite foreign key `(column, requirement_id)` to it. The migration fills only the second, for links that already exist.
+
+## Changes for ADR-151
+
+Migration `b5d7f9a1c3e4`: the check on `import_sessions.kind` allows `requirement`. The downgrade deletes requirement previews first.

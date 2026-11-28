@@ -49,6 +49,12 @@ def allowed_values(db: Session, tenant_id: UUID, kind: str) -> dict[str, list[st
     def opts(key: str) -> list[str]:
         return [o.code for o in field_option_service.list_options(db, tenant_id, key)]
 
+    if kind == "requirement":
+        return {
+            "Type": opts("requirement_type"),
+            "Priority": opts("requirement_priority"),
+            "Status": ["Draft", "Approved", "Retired"],
+        }
     if kind == "test_case":
         return {
             "Test Type": opts("test_type") or list(TEST_TYPE_DEFAULTS),
@@ -70,8 +76,12 @@ def _columns(kind: str) -> list[ImportColumn]:
     return list(COLUMNS_BY_KIND[kind])
 
 
+_NOUNS = {"test_case": "test case", "defect": "defect", "requirement": "requirement"}
+_SHEETS = {"test_case": "Test Cases", "defect": "Defects", "requirement": "Requirements"}
+
+
 def _sheet_title(kind: str) -> str:
-    return "Test Cases" if kind == "test_case" else "Defects"
+    return _SHEETS[kind]
 
 
 def build_csv(kind: str) -> str:
@@ -84,7 +94,9 @@ def build_csv(kind: str) -> str:
 
 
 def _instruction_rows(kind: str, enums: dict[str, list[str]]) -> list[list[str]]:
-    noun = "test case" if kind == "test_case" else "defect"
+    noun = _NOUNS[kind]
+    if kind == "requirement":
+        return _requirement_instructions(enums)
     rows: list[list[str]] = [
         [f"How to import {noun}s"],
         [
@@ -146,7 +158,43 @@ def _instruction_rows(kind: str, enums: dict[str, list[str]]) -> list[list[str]]
             ],
             ["Linked Issues / Test Case ID: test case ids of the same project separated by ';'."],
         ]
-    rows += [[], ["Columns"], ["Column", "Required", "Allowed values / format", "Notes"]]
+    return rows + _column_rows(kind, enums)
+
+
+def _requirement_instructions(enums: dict[str, list[str]]) -> list[list[str]]:
+    rows: list[list[str]] = [
+        ["How to import requirements"],
+        ["1. Fill one row per requirement on the first sheet. Keep the header row as it is."],
+        ["2. Delete the example row (or leave it: it is skipped)."],
+        ["3. In the application choose Import, pick the project and upload the file."],
+        ["4. Review the preview; fix rows with errors, or import only the valid rows."],
+        [],
+        ["Rules"],
+        [
+            "Importing only creates requirements. An ID already used in your workspace gets a "
+            "new one, with a warning; the existing requirement is not changed."
+        ],
+        ["Acceptance criteria: one per line in one cell (Alt+Enter in Excel), at most 50."],
+        [
+            "Task: one task id of the project. A row without one goes to 'Unassigned "
+            "requirements'."
+        ],
+        [
+            "Allowed file types: .xlsx and .csv (UTF-8; comma, semicolon or tab). Formulas, macros "
+            f"and external links are not accepted. At most {settings.import_max_rows:,} rows and "
+            f"{settings.import_file_max_bytes // (1024 * 1024)} MB per file."
+        ],
+        ["Word and PDF documents are not read: attach them to a requirement instead."],
+    ]
+    return rows + _column_rows("requirement", enums)
+
+
+def _column_rows(kind: str, enums: dict[str, list[str]]) -> list[list[str]]:
+    rows: list[list[str]] = [
+        [],
+        ["Columns"],
+        ["Column", "Required", "Allowed values / format", "Notes"],
+    ]
     for col in _columns(kind):
         values = enums.get(col.enum or "")
         fmt = ", ".join(values) if values else "Text"
@@ -236,7 +284,8 @@ def build_xlsx(db: Session, tenant_id: UUID, kind: str) -> bytes:
         elif col.readonly:
             data.write_comment(0, index, "Ignored on import (derived by the application)")
         data.write_string(1, index, safe_cell(col.example), cell_fmt)
-        width = 60 if col.key in ("steps", "repro_steps") else max(14, min(len(col.header) + 4, 34))
+        wide = col.key in ("steps", "repro_steps", "criteria", "description", "title")
+        width = 60 if wide else max(14, min(len(col.header) + 4, 34))
         data.set_column(index, index, width)
         if col.enum and col.enum in ranges and not col.readonly:
             data.data_validation(
@@ -278,8 +327,7 @@ def build_xlsx(db: Session, tenant_id: UUID, kind: str) -> bytes:
 
 
 def template_filename(kind: str, fmt: str) -> str:
-    base = "test_case_import_template" if kind == "test_case" else "defect_import_template"
-    return f"{base}.{fmt}"
+    return f"{kind}_import_template.{fmt}"
 
 
 __all__ = [

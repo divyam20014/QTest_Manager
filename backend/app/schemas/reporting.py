@@ -259,7 +259,11 @@ class TraceabilityMatrixEntry(BaseModel):
     for the latter), since they answer different questions a QA manager asks."""
 
     requirement_id: UUID
+    display_id: str | None = None
     requirement_title: str
+    status: str = "draft"
+    # ADR-150: linked cases to look at again since the wording changed.
+    review_count: int = 0
     # ADR-127: the task the requirement belongs to, if any.
     task_id: UUID | None = None
     task_display_id: str | None = None
@@ -274,6 +278,8 @@ class TraceabilityMatrixEntry(BaseModel):
 class TraceabilityMatrixReport(BaseModel):
     project_id: UUID
     total_requirements: int
+    # Listed, but not counted in the coverage percentage.
+    retired_requirements: int = 0
     overall_requirement_coverage_percentage: float
     entries: list[TraceabilityMatrixEntry]
 

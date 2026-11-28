@@ -262,9 +262,69 @@ DEFECT_COLUMNS: Final[tuple[ImportColumn, ...]] = tuple(
     ),
 )
 
+# --- Requirement (ADR-151) --------------------------------------------------------------
+
+REQUIREMENT_EXAMPLE_TITLE: Final[str] = "Example: a settlement is explained to the customer"
+
+REQUIREMENT_COLUMNS: Final[tuple[ImportColumn, ...]] = (
+    ImportColumn(
+        "display_id",
+        "Requirement ID",
+        aliases=("ID",),
+        note="Optional. Kept when it looks like REQ_000123 and is not already used; otherwise "
+        "the next id is assigned. Importing never changes an existing requirement.",
+    ),
+    ImportColumn(
+        "title",
+        "Title",
+        mandatory=True,
+        note="At least 5 characters.",
+        example=REQUIREMENT_EXAMPLE_TITLE,
+    ),
+    ImportColumn(
+        "description",
+        "Description",
+        note="Optional. Markdown.",
+        example="The customer can see how the amount was worked out.",
+    ),
+    ImportColumn(
+        "requirement_type",
+        "Type",
+        aliases=("Requirement Type",),
+        enum="Type",
+        note="Optional.",
+        example="Functional",
+    ),
+    ImportColumn("priority", "Priority", enum="Priority", note="Optional.", example="Medium"),
+    ImportColumn(
+        "status", "Status", enum="Status", note="Optional. Draft by default.", example="Draft"
+    ),
+    ImportColumn(
+        "owner",
+        "Owner Email",
+        aliases=("Owner",),
+        note="Optional. The email of an active project member.",
+    ),
+    ImportColumn(
+        "criteria",
+        "Acceptance Criteria",
+        aliases=("Criteria",),
+        note="Optional. One per line in the cell (Alt+Enter in Excel).",
+        example="Shows each deduction\nCan be downloaded",
+    ),
+    ImportColumn(
+        "task",
+        "Task",
+        aliases=("Task ID",),
+        note="Optional. The id of one task of this project, e.g. TASK_000001. Without it the "
+        "requirement goes to 'Unassigned requirements'.",
+    ),
+)
+
 COLUMNS_BY_KIND: Final[dict[str, tuple[ImportColumn, ...]]] = {
     "test_case": TEST_CASE_COLUMNS,
     "defect": DEFECT_COLUMNS,
+    "requirement": REQUIREMENT_COLUMNS,
 }
 
 

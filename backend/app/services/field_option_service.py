@@ -8,6 +8,8 @@ from app.core.audit import record_audit_event
 from app.core.errors import ConflictError, NotFoundError, ValidationAppError
 from app.core.field_standards import (
     DEFECT_SEVERITY_ADDITIONS,
+    REQUIREMENT_PRIORITY_DEFAULTS,
+    REQUIREMENT_TYPE_DEFAULTS,
     TASK_PRIORITY_DEFAULTS,
     TASK_TYPE_DEFAULTS,
     TEST_CASE_SEVERITY_DEFAULTS,
@@ -15,6 +17,7 @@ from app.core.field_standards import (
 )
 from app.models.defect import Defect
 from app.models.field_customization import FieldOption
+from app.models.requirement import Requirement
 from app.models.task import Task
 from app.models.test_case import TestCase
 from app.schemas.field_customization import (
@@ -58,6 +61,8 @@ def seed_defaults_for_tenant(db: Session, tenant_id: UUID) -> None:
         "test_type": list(TEST_TYPE_DEFAULTS),
         "task_priority": list(TASK_PRIORITY_DEFAULTS),
         "task_type": list(TASK_TYPE_DEFAULTS),
+        "requirement_type": list(REQUIREMENT_TYPE_DEFAULTS),
+        "requirement_priority": list(REQUIREMENT_PRIORITY_DEFAULTS),
     }
     for field_key, codes in option_sets.items():
         for order, code in enumerate(codes):
@@ -192,6 +197,8 @@ def delete_option(db: Session, tenant_id: UUID, actor_user_id: UUID, option_id: 
         "test_type": TestCase.test_type,
         "task_priority": Task.priority,
         "task_type": Task.task_type,
+        "requirement_type": Requirement.requirement_type,
+        "requirement_priority": Requirement.priority,
     }[option.field_key]
     in_use_model = in_use_column.class_
     in_use = (

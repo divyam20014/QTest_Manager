@@ -16,7 +16,9 @@ class ImportSession(Base, TenantScopedMixin):
 
     __tablename__ = "import_sessions"
     __table_args__ = (
-        CheckConstraint("kind in ('test_case','defect')", name="ck_import_sessions_kind"),
+        CheckConstraint(
+            "kind in ('test_case','defect','requirement')", name="ck_import_sessions_kind"
+        ),
         CheckConstraint(
             "status in ('pending','queued','committed')", name="ck_import_sessions_status"
         ),

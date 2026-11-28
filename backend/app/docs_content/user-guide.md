@@ -624,6 +624,44 @@ features are enabled you can generate draft test cases from a requirement's text
 The result is always a draft: a person reviews and accepts it before it becomes a
 real test case.
 
+**Details.** Each requirement has a number such as `REQ_000001`, a **Type**
+and a **Priority** (your organisation's lists, under Settings > Fields), a
+**Status** and, if you choose, an **Owner** from the project's members. The
+statuses are **Draft**, **Approved** and **Retired**. Changing the wording of an
+approved requirement returns it to Draft; approve it again once the new wording
+is agreed. If someone else saved the requirement while you were editing, nothing
+of yours is lost: the form shows their changes with your entries, and you save
+again.
+
+**Deleting** a requirement removes it from lists, coverage and traceability. Its
+history is kept, but you cannot restore it. To keep a requirement visible when it
+no longer applies, set it to **Retired**.
+
+**Acceptance criteria** are the ways to tell a requirement is met. Add them one
+by one when you create or edit it, and move them into order. They are saved with
+the version, so the version history shows what they were.
+
+**All of a project's requirements** are in the **Requirements** view of the Tasks
+tab. Search by title or number, and filter by status, type, priority, owner, or
+by test cases: with, without, or needing review.
+
+**Tests to review.** Each linked test case shows which version of the
+requirement it covers. When the title, description or acceptance criteria
+change, the link is marked **Needs review** (also in lists, the traceability
+matrix and on the test case). Check the test case; if it is still right, choose
+**Still covers it**, otherwise update the case first or unlink it. Links made
+before this feature say **Version not recorded**. Retired requirements are not
+counted in coverage and ask for no review.
+
+**Importing requirements.** In the **Requirements** view choose **Import
+requirements**. Download the template, fill one row per requirement (put
+acceptance criteria one per line in their cell) and upload it as .xlsx or .csv.
+You see a preview before anything is saved, and can import all rows or only the
+valid ones. Importing only creates requirements: an ID that is already used gets a
+new one, and existing requirements are never changed. Rows without a task go to
+**Unassigned requirements**. Word and PDF documents are not read; attach them to a
+requirement instead.
+
 **Unassigned requirements.** Every requirement belongs to a task. A requirement
 created without one, or whose task is deleted, goes to the project's **Unassigned
 requirements** task, marked *Default for requirements* in the Tasks list. It is a

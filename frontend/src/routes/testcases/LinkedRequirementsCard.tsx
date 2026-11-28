@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 
 import { ApiError } from '@/api/client'
 import { linkTestCase, listRequirements, unlinkTestCase } from '@/api/requirements'
@@ -59,6 +60,22 @@ export function LinkedRequirementsCard({
             busy={optionsQuery.isLoading || link.isPending || unlink.isPending}
             emptyText="No matching requirements"
           />
+        )}
+        {linked.some((r) => r.needs_review) && (
+          <div role="note" className="rounded-md bg-[var(--status-warning-bg)] px-3 py-2">
+            <p>Reworded since this test case was last agreed to cover them:</p>
+            <ul className="list-disc pl-5">
+              {linked
+                .filter((r) => r.needs_review)
+                .map((r) => (
+                  <li key={r.id}>
+                    <Link to={requirementPath(projectId, r.id)} className="underline underline-offset-2">
+                      {r.display_id} {r.title}
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+          </div>
         )}
         <FormError>{err?.message}</FormError>
       </CardContent>

@@ -295,7 +295,10 @@ export function fetchFlakyTests(projectId: string, limit?: number): Promise<Flak
 
 export interface TraceabilityMatrixEntry {
   requirement_id: string
+  display_id: string | null
   requirement_title: string
+  status: 'draft' | 'approved' | 'retired'
+  review_count: number
   /** ADR-127: the task the requirement belongs to, if any. */
   task_id: string | null
   task_display_id: string | null
@@ -310,6 +313,8 @@ export interface TraceabilityMatrixEntry {
 export interface TraceabilityMatrixReport {
   project_id: string
   total_requirements: number
+  /** Listed, but not counted in the coverage percentage. */
+  retired_requirements: number
   overall_requirement_coverage_percentage: number
   entries: TraceabilityMatrixEntry[]
 }

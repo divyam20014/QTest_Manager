@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '@/api/client'
 import { analyzeRequirementChange, generateTestCases } from '@/api/ai'
 import {
+  confirmRequirementLink,
   deleteRequirement,
   getRequirement,
   getRequirementHistory,
@@ -30,17 +31,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
 import { useAuth } from '@/lib/auth'
-import { isManagerOrAbove } from '@/api/auth'
+import { hasPermission } from '@/api/auth'
 import { useToast } from '@/lib/toast'
 import { FormError } from '@/components/ui/form-field'
 import { requirementPath, testCasePath } from '@/lib/entityRoutes'
+import { REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE } from '@/lib/requirements'
+import { EditRequirementDialog } from '@/routes/requirements/EditRequirementDialog'
 
 const REQUIREMENT_HISTORY_ACTION_LABEL: Record<string, string> = {
   'requirement.created': 'Requirement created',
   'requirement.updated': 'Updated (new version)',
+  'requirement.details_changed': 'Details changed',
+  'requirement.task_changed': 'Moved to another task',
+  'requirement.link_confirmed': 'Test case confirmed against new wording',
   'requirement.deleted': 'Deleted',
   'requirement.linked': 'Test case linked',
   'requirement.unlinked': 'Test case unlinked',
@@ -51,7 +55,7 @@ const REQUIREMENT_HISTORY_ACTION_LABEL: Record<string, string> = {
 export function RequirementDetail() {
   const { requirementId } = useParams<{ requirementId: string }>()
   const { user } = useAuth()
-  const canManage = isManagerOrAbove(user)
+  const canManage = hasPermission(user, 'requirement.manage')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
@@ -88,6 +92,20 @@ export function RequirementDetail() {
       showToast('error', err instanceof ApiError ? err.message : 'Could not unlink that test case'),
   })
 
+  const confirmMutation = useMutation({
+    mutationFn: ({ testCaseId, version }: { testCaseId: string; version: number }) =>
+      confirmRequirementLink(requirementId!, testCaseId, version),
+    onSuccess: () => {
+      invalidate()
+      showToast('success', 'Marked as reviewed')
+    },
+    onError: (err) => {
+      // The wording may have moved on: show what it says now.
+      invalidate()
+      showToast('error', err instanceof ApiError ? err.message : 'Could not confirm the link')
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteRequirement(requirementId!),
     onSuccess: () => {
@@ -113,7 +131,13 @@ export function RequirementDetail() {
         meta={
           <>
             <RecordPin type="requirement" id={req.id} title={req.title} url={requirementPath(req.project_id, req.id)} />
+            <span className="font-mono text-xs text-[var(--muted-foreground)]">{req.display_id}</span>
+            <Badge tone={REQUIREMENT_STATUS_TONE[req.status]}>{REQUIREMENT_STATUS_LABEL[req.status]}</Badge>
             <Badge tone="neutral">v{req.version_number}</Badge>
+            <Badge tone="info">{req.requirement_type}</Badge>
+            <span className="text-xs text-[var(--muted-foreground)]">
+              {req.priority} priority · {req.owner_name ? `Owner: ${req.owner_name}` : 'No owner'}
+            </span>
           </>
         }
         actions={
@@ -136,7 +160,7 @@ export function RequirementDetail() {
                 onClick={() =>
                   ask({
                     title: 'Delete this requirement?',
-                    description: `“${req.title}” is permanently deleted along with its version history and its ${req.linked_test_cases.length} link${req.linked_test_cases.length === 1 ? '' : 's'} to test cases. The test cases themselves are kept, but traceability coverage for them changes. This cannot be undone.`,
+                    description: `“${req.title}” is removed from lists, coverage and traceability, including its ${req.linked_test_cases.length} link${req.linked_test_cases.length === 1 ? '' : 's'} to test cases. Its history is kept, but it cannot be restored here. To keep it visible, set its status to Retired instead.`,
                     confirmLabel: 'Delete requirement',
                     run: () => deleteMutation.mutateAsync(),
                   })
@@ -164,6 +188,25 @@ export function RequirementDetail() {
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle>Acceptance criteria</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm">
+          {req.acceptance_criteria.length === 0 ? (
+            <p className="text-[var(--muted-foreground)]">None written yet.</p>
+          ) : (
+            <ol aria-label="Acceptance criteria" className="list-decimal space-y-1 pl-5">
+              {req.acceptance_criteria.map((criterion, index) => (
+                <li key={index} className="whitespace-pre-wrap">
+                  {criterion}
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle>Linked Test Cases ({req.linked_test_cases.length})</CardTitle>
           <div className="flex flex-wrap gap-2">
@@ -178,6 +221,12 @@ export function RequirementDetail() {
           </div>
         </CardHeader>
         <CardContent>
+          {req.review_count > 0 && (
+            <p role="note" className="mb-3 rounded-md bg-[var(--status-warning-bg)] px-3 py-2 text-sm">
+              The wording has changed since {req.review_count === 1 ? 'a linked test case was' : `${req.review_count} linked test cases were`}{' '}
+              last agreed to cover it. Check {req.review_count === 1 ? 'it' : 'them'} against version {req.version_number}.
+            </p>
+          )}
           {req.linked_test_cases.length === 0 ? (
             <p className="text-sm text-[var(--muted-foreground)]">
               No test cases linked yet — this requirement is not covered.
@@ -198,8 +247,28 @@ export function RequirementDetail() {
                     <td className="py-2">
                       <Badge tone="neutral">{lt.test_case_status}</Badge>
                     </td>
+                    <td className="py-2">
+                      <span className="flex flex-wrap items-center gap-1">
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          {lt.covers_version_number === null ? 'Version not recorded' : `Covers v${lt.covers_version_number}`}
+                        </span>
+                        {lt.needs_review && <Badge tone="warning">Needs review</Badge>}
+                      </span>
+                    </td>
                     {canManage && (
                       <td className="py-2 text-right">
+                        {req.status !== 'retired' && (lt.needs_review || lt.covers_version_number === null) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mr-2"
+                            aria-label={`${lt.test_case_title} still covers version ${req.version_number}`}
+                            disabled={confirmMutation.isPending}
+                            onClick={() => confirmMutation.mutate({ testCaseId: lt.test_case_id, version: req.version_number })}
+                          >
+                            Still covers it
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -226,14 +295,7 @@ export function RequirementDetail() {
       />
       <ActivityTimelineCard entries={historyQuery.data} actionLabels={REQUIREMENT_HISTORY_ACTION_LABEL} />
 
-      <EditRequirementDialog
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        requirementId={req.id}
-        initialTitle={req.title}
-        initialDescription={req.description}
-        onSaved={invalidate}
-      />
+      <EditRequirementDialog open={editOpen} onClose={() => setEditOpen(false)} requirement={req} onSaved={invalidate} />
       <LinkTestCaseDialog
         open={linkOpen}
         onClose={() => setLinkOpen(false)}
@@ -475,72 +537,6 @@ function RequirementTaskCard({
   )
 }
 
-function EditRequirementDialog({
-  open,
-  onClose,
-  requirementId,
-  initialTitle,
-  initialDescription,
-  onSaved,
-}: {
-  open: boolean
-  onClose: () => void
-  requirementId: string
-  initialTitle: string
-  initialDescription: string
-  onSaved: () => void
-}) {
-  const [title, setTitle] = useState(initialTitle)
-  const [description, setDescription] = useState(initialDescription)
-
-  const { show: showToast } = useToast()
-  const saveMutation = useMutation({
-    mutationFn: () => updateRequirement(requirementId, { title, description }),
-    onSuccess: () => {
-      onSaved()
-      onClose()
-      showToast('success', 'Requirement saved as a new version')
-    },
-  })
-
-  const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null
-
-  return (
-    <Dialog open={open} onClose={onClose} title="Edit Requirement">
-      <div className="flex flex-col gap-3 text-sm">
-        <p className="text-xs text-[var(--muted-foreground)]">
-          Saving creates a new version — the previous wording is preserved in version history.
-        </p>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="edit-requirement-title">Title</Label>
-          <Input id="edit-requirement-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="edit-requirement-description">Description</Label>
-          <Textarea
-            id="edit-requirement-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-        <FormError>{serverError}</FormError>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            disabled={saveMutation.isPending || title.length < 5}
-            onClick={() => saveMutation.mutate()}
-          >
-            {saveMutation.isPending ? 'Saving…' : 'Save as New Version'}
-          </Button>
-        </DialogFooter>
-      </div>
-    </Dialog>
-  )
-}
-
 function LinkTestCaseDialog({
   open,
   onClose,
@@ -641,6 +637,15 @@ function VersionHistoryDialog({
             </div>
             <p className="mt-1 font-medium">{v.title}</p>
             <p className="mt-1 whitespace-pre-wrap text-[var(--muted-foreground)]">{v.description || '—'}</p>
+            {v.acceptance_criteria.length > 0 && (
+              <ol aria-label={`Acceptance criteria of version ${v.version_number}`} className="mt-2 list-decimal pl-5">
+                {v.acceptance_criteria.map((criterion, index) => (
+                  <li key={index} className="whitespace-pre-wrap">
+                    {criterion}
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         ))}
       </div>

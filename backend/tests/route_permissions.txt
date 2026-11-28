@@ -162,6 +162,10 @@ GET /api/v1/reports/traceability-matrix/export  ->  require_permission(report.vi
 GET /api/v1/reports/traceability-matrix/export.xlsx  ->  require_permission(report.view), require_reports_not_hidden
 GET /api/v1/reports/upcoming-milestones  ->  require_permission(report.view)
 GET /api/v1/reports/workload  ->  require_permission(report.view), require_reports_not_hidden
+GET /api/v1/requirements/import-template.csv  ->  require_any_permission(requirement.manage)
+GET /api/v1/requirements/import-template.xlsx  ->  require_any_permission(requirement.manage)
+GET /api/v1/requirements/import/preview/{token}/rows  ->  require_any_permission(requirement.manage)
+GET /api/v1/requirements/import/status/{job_id}  ->  require_any_permission(requirement.manage)
 GET /api/v1/requirements/{requirement_id}  ->  signed-in
 GET /api/v1/requirements/{requirement_id}/attachments  ->  signed-in
 GET /api/v1/requirements/{requirement_id}/history  ->  signed-in
@@ -338,10 +342,13 @@ POST /api/v1/report-builder/preview  ->  require_permission(report.view), requir
 POST /api/v1/report-builder/reports  ->  require_permission(report.view), require_reports_not_hidden
 POST /api/v1/report-builder/reports/{report_id}/run  ->  require_permission(report.view), require_reports_not_hidden
 POST /api/v1/report-schedules  ->  require_permission(report.schedule_manage)
+POST /api/v1/requirements/import/commit  ->  require_any_permission(requirement.manage)
+POST /api/v1/requirements/import/preview  ->  require_any_permission(requirement.manage)
 POST /api/v1/requirements/{requirement_id}/analyze-change  ->  require_permission(record.contribute)
 POST /api/v1/requirements/{requirement_id}/attachments  ->  require_permission(requirement.manage)
 POST /api/v1/requirements/{requirement_id}/generate-test-cases  ->  require_permission(record.contribute), require_permission(testcase.create)
 POST /api/v1/requirements/{requirement_id}/test-cases  ->  require_permission(requirement.manage)
+POST /api/v1/requirements/{requirement_id}/test-cases/{test_case_id}/confirm  ->  require_permission(requirement.manage)
 POST /api/v1/roles  ->  require_permission(user.manage)
 POST /api/v1/saved-views  ->  signed-in
 POST /api/v1/scim-tokens  ->  require_permission(sso.manage)

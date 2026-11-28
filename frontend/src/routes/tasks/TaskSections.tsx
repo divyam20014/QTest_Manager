@@ -28,6 +28,7 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { FormError } from '@/components/ui/form-field'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
+import { REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE } from '@/lib/requirements'
 import { NewRequirementDialog } from '@/routes/requirements/NewRequirementDialog'
 import { caseSource, resultLabel, resultTone } from '@/lib/taskRollup'
 import { subTaskProgress } from '@/lib/taskTree'
@@ -162,18 +163,27 @@ export function RequirementsSection({ task, includeSubTasks }: { task: TaskDetai
   return (
     <div className="flex flex-col gap-3">
       {addButton}
-    <SectionTable label="Requirements of this task" head={['Title', 'Task', 'Version', 'Linked test cases']}>
+    <SectionTable label="Requirements of this task" head={['ID', 'Title', 'Status', 'Task', 'Version', 'Linked test cases']}>
       {items.map((r) => (
         <tr key={r.id}>
+          <td className={`${TD} font-mono text-xs`}>{r.display_id}</td>
           <td className={`${TD} font-medium`}>
             <Link to={requirementPath(task.project_id, r.id)} className={LINK}>
               {r.title}
             </Link>
           </td>
+          <td className={TD}>
+            <Badge tone={REQUIREMENT_STATUS_TONE[r.status]}>{REQUIREMENT_STATUS_LABEL[r.status]}</Badge>
+          </td>
           <td className={`${TD} font-mono text-xs`}>{r.task_display_id ?? '—'}</td>
           <td className={TD}>v{r.version_number}</td>
           <td className={TD}>
             <Badge tone={r.linked_test_case_count > 0 ? 'positive' : 'warning'}>{r.linked_test_case_count}</Badge>
+            {r.review_count > 0 && (
+              <Badge tone="warning" className="ml-1">
+                {r.review_count} to review
+              </Badge>
+            )}
           </td>
         </tr>
       ))}

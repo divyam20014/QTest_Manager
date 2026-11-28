@@ -39,6 +39,8 @@ from app.core.field_standards import (
     CONTENT_TEXT_MAX,
     CREATE_DEFECT_STATUSES,
     DEFAULT_AUTOMATION_STATUS,
+    DEFAULT_REQUIREMENT_PRIORITY,
+    DEFAULT_REQUIREMENT_TYPE,
     DEFECT_STATUSES,
     DESCRIPTION_MAX,
     FIX_VERSION_MAX,
@@ -53,28 +55,37 @@ from app.core.field_standards import (
 from app.core.import_columns import (
     COLUMNS_BY_KIND,
     DEFECT_EXAMPLE_TITLE,
+    REQUIREMENT_EXAMPLE_TITLE,
     TC_EXAMPLE_TITLE,
     TC_IMPORT_ONLY,
     ImportColumn,
     build_header_index,
 )
 from app.core.import_steps import ParsedStep, parse_steps
-from app.core.project_access import access_for_project
+from app.core.project_access import access_for_project, tier_of
 from app.core.text_sanitize import clean_plain, sanitize_markdown
 from app.models.defect import Defect, DefectLink
 from app.models.identity import User
 from app.models.import_session import ImportSession
 from app.models.project import Project, ProjectMember
+from app.models.requirement import (
+    Requirement,
+    RequirementAcceptanceCriterion,
+    RequirementVersion,
+)
 from app.models.task import Task, TaskTestCaseLink
 from app.models.test_case import TestCase, TestCaseVersion, TestCaseVersionStep
 from app.models.test_module import TestModule
 from app.schemas.defect import ReproStepIn, normalise_labels
+from app.schemas.requirement import MAX_CRITERIA
 from app.services import (
     defect_service,
     display_id_service,
     field_option_service,
     job_service,
+    requirement_service,
     status_label_service,
+    task_service,
     tester_visibility,
 )
 from app.services.import_file_service import read_upload
@@ -82,7 +93,7 @@ from app.services.project_service import is_assigned
 
 settings = get_settings()
 
-KINDS = ("test_case", "defect")
+KINDS = ("test_case", "defect", "requirement")
 MODES = ("all_or_nothing", "skip_invalid")
 PREVIEW_ROWS = 200
 MAX_LISTED_ISSUES = 5000
@@ -92,7 +103,12 @@ COMMIT_JOB_TYPE = "standard_import_commit"
 
 _TC_ID_RE = re.compile(r"^TC_(\d{6,})$")
 _BUG_ID_RE = re.compile(r"^BUG_(\d{6,})$")
-_ID_RE = {"test_case": _TC_ID_RE, "defect": _BUG_ID_RE}
+_REQ_ID_RE = re.compile(r"^REQ_(\d{6,})$")
+_ID_RE = {"test_case": _TC_ID_RE, "defect": _BUG_ID_RE, "requirement": _REQ_ID_RE}
+_REQUIREMENT_STATUS_LABEL = {"draft": "Draft", "approved": "Approved", "retired": "Retired"}
+# A list marker typed before a criterion; a number needs a space after it ("2.5 s" is text).
+_LIST_MARKER_RE = re.compile(r"^(?:\d{1,3}[.)]|[-*\u2022])\s+")
+_DESCRIPTION_MAX = 20000
 _DISPLAY_SEQ_MAX = 2_000_000_000
 _REVIEW_STATUS = {
     "draft": "draft",
@@ -144,6 +160,16 @@ PREVIEW_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("steps", "Steps to Reproduce"),
         ("assignee", "Assignee"),
         ("linked_issues", "Linked Test Cases"),
+        ("task", "Task"),
+    ],
+    "requirement": [
+        ("display_id", "Requirement ID"),
+        ("title", "Title"),
+        ("requirement_type", "Type"),
+        ("priority", "Priority"),
+        ("status", "Status"),
+        ("owner", "Owner"),
+        ("criteria", "Acceptance Criteria"),
         ("task", "Task"),
     ],
 }
@@ -231,6 +257,13 @@ def _columns(kind: str) -> dict[str, ImportColumn]:
     return cols
 
 
+_EXAMPLE_TITLES = {
+    "test_case": TC_EXAMPLE_TITLE,
+    "defect": DEFECT_EXAMPLE_TITLE,
+    "requirement": REQUIREMENT_EXAMPLE_TITLE,
+}
+
+
 def map_file(kind: str, filename: str | None, raw: bytes) -> MappedFile:
     parsed = read_upload(filename, raw)
     index = build_header_index(kind)
@@ -270,7 +303,7 @@ def map_file(kind: str, filename: str | None, raw: bytes) -> MappedFile:
     if unknown:
         warnings.append("Unknown column(s) ignored: " + ", ".join(unknown))
     rows: list[tuple[int, dict[str, str]]] = []
-    example_title = TC_EXAMPLE_TITLE if kind == "test_case" else DEFECT_EXAMPLE_TITLE
+    example_title = _EXAMPLE_TITLES[kind]
     skipped_example = False
     for number, cells in parsed.rows:
         mapped: dict[str, str] = {}
@@ -432,6 +465,7 @@ def _load_people(db: Session, tenant_id: UUID) -> _People:
 _IMPORT_PERMISSIONS = {  # one entry for each of KINDS
     "test_case": ("testcase.bulk_import_export", "testcase.create"),
     "defect": ("defect.create", "defect.import"),
+    "requirement": ("requirement.manage",),
 }
 
 
@@ -452,7 +486,11 @@ def load_project(db: Session, actor: Actor, project_id: UUID) -> Project:
     ).scalar_one_or_none()
     if project is None:
         raise NotFoundError("Project not found")
-    if actor.role_code == "tester" and not is_assigned(db, project, actor.user_id):
+    # The access tier, not the role's name: QA Lead, Developer and custom roles are limited to
+    # their own projects like a Tester unless they may see every project.
+    if tier_of(actor.role_code, actor.permissions) not in ("admin", "manager") and not is_assigned(
+        db, project, actor.user_id
+    ):
         raise ForbiddenError("You are not assigned to this project")
     return project
 
@@ -1049,12 +1087,139 @@ def validate_defects(
     return Outcome("defect", results, modules.paths_to_create(), modules)
 
 
+# --- requirement validation (ADR-151) ------------------------------------------------------
+
+
+def _criteria(out: RowOutcome, header: str, raw: str) -> list[str]:
+    lines = (_LIST_MARKER_RE.sub("", line.strip()) for line in raw.splitlines())
+    criteria = [cleaned for cleaned in (clean_plain(line) for line in lines) if cleaned]
+    if len(criteria) > MAX_CRITERIA:
+        out.errors.append(Issue(header, f"At most {MAX_CRITERIA} acceptance criteria."))
+    if any(len(c) > 2000 for c in criteria):
+        out.errors.append(Issue(header, "A criterion must be at most 2000 characters."))
+    return criteria
+
+
+def validate_requirements(
+    db: Session, actor: Actor, project: Project, rows: list[tuple[int, dict[str, str]]]
+) -> Outcome:
+    columns = _columns("requirement")
+    header = {k: c.header for k, c in columns.items()}
+    people = _load_people(db, actor.tenant_id)
+    member_ids = set(
+        db.execute(
+            select(ProjectMember.user_id).where(ProjectMember.project_id == project.id)
+        ).scalars()
+    )
+    member_ids.add(project.owner_id)
+    types = _options(db, actor.tenant_id, "requirement_type", "Type")
+    priorities = _options(db, actor.tenant_id, "requirement_priority", "Priority")
+    statuses = _EnumSet("Status", list(_REQUIREMENT_STATUS_LABEL.items()))
+    default_type = requirement_service.default_option(
+        db, actor.tenant_id, "requirement_type", DEFAULT_REQUIREMENT_TYPE
+    )
+    default_priority = requirement_service.default_option(
+        db, actor.tenant_id, "requirement_priority", DEFAULT_REQUIREMENT_PRIORITY
+    )
+    existing_ids = _existing_display_ids(db, actor.tenant_id, Requirement, rows)
+    titles_in_project = {
+        t.lower()
+        for t in db.execute(
+            select(Requirement.title).where(
+                Requirement.tenant_id == actor.tenant_id, Requirement.project_id == project.id
+            )
+        ).scalars()
+    }
+    tasks = _project_tasks(db, actor.tenant_id, project.id)
+    seen_ids: dict[str, int] = {}
+    seen_titles: dict[str, int] = {}
+    results: list[RowOutcome] = []
+
+    for number, cells in rows:
+        out = RowOutcome(number)
+        plan = out.plan
+        results.append(out)
+        _check_display_id(
+            "requirement",
+            _cell(cells, "display_id"),
+            header["display_id"],
+            out,
+            seen_ids,
+            existing_ids,
+        )
+        title = _title(out, header["title"], _cell(cells, "title"))
+        plan["title"] = title
+        if title:
+            key = title.lower()
+            if key in seen_titles:
+                out.warnings.append(
+                    Issue(header["title"], f"Same title as row {seen_titles[key]}.")
+                )
+            elif key in titles_in_project:
+                out.warnings.append(
+                    Issue(
+                        header["title"],
+                        f"A requirement titled '{title}' already exists in this project.",
+                    )
+                )
+            seen_titles.setdefault(key, number)
+        plan["description"] = (
+            _text_field(out, header["description"], _cell(cells, "description"), _DESCRIPTION_MAX)
+            or ""
+        )
+        for name, values, default in (
+            ("requirement_type", types, default_type),
+            ("priority", priorities, default_priority),
+            ("status", statuses, "draft"),
+        ):
+            chosen = _enum(out, header[name], _cell(cells, name), values, required=False)
+            plan[name] = chosen or default
+
+        owner_raw = _cell(cells, "owner")
+        plan["owner_id"] = None
+        if owner_raw:
+            user = people.find(owner_raw)
+            if user is None:
+                out.errors.append(
+                    Issue(header["owner"], f"'{owner_raw}' is not an active user's email.")
+                )
+            elif user.id not in member_ids:
+                out.errors.append(
+                    Issue(header["owner"], f"'{owner_raw}' is not a member of this project.")
+                )
+            else:
+                plan["owner_id"] = user.id
+
+        plan["criteria"] = _criteria(out, header["criteria"], _cell(cells, "criteria"))
+        task_ids, task_labels = _task_refs(out, header["task"], _cell(cells, "task"), tasks)
+        if len(task_ids) > 1:
+            out.errors.append(Issue(header["task"], "A requirement belongs to only one task."))
+        plan["task_id"] = task_ids[0] if task_ids else None
+
+        count = len(plan["criteria"])
+        out.data = {
+            "display_id": plan.get("display_id") or _cell(cells, "display_id"),
+            "title": title or _cell(cells, "title"),
+            "requirement_type": plan["requirement_type"],
+            "priority": plan["priority"],
+            "status": _REQUIREMENT_STATUS_LABEL[plan["status"]],
+            "owner": owner_raw,
+            "criteria": f"{count} criteri{'on' if count == 1 else 'a'}",
+            "task": "; ".join(task_labels) or _cell(cells, "task") or "Unassigned requirements",
+        }
+    # Requirements have no modules.
+    return Outcome("requirement", results, [], ModulePlan(db, actor.tenant_id, project.id))
+
+
 def validate(
     db: Session, actor: Actor, kind: str, project: Project, rows: list[tuple[int, dict[str, str]]]
 ) -> Outcome:
-    if kind == "test_case":
-        return validate_test_cases(db, actor, project, rows)
-    return validate_defects(db, actor, project, rows)
+    validators = {
+        "test_case": validate_test_cases,
+        "defect": validate_defects,
+        "requirement": validate_requirements,
+    }
+    return validators[kind](db, actor, project, rows)
 
 
 # --- sessions ----------------------------------------------------------------------------
@@ -1413,6 +1578,78 @@ def _insert_defects(
     return created
 
 
+def _insert_requirements(
+    db: Session,
+    actor: Actor,
+    project: Project,
+    plans: list[dict[str, Any]],
+) -> list[tuple[UUID, dict[str, Any]]]:
+    home: UUID | None = None
+    if any(plan["task_id"] is None for plan in plans):
+        home = task_service.get_or_create_requirements_home(
+            db, actor.tenant_id, project.id, actor.user_id
+        ).id
+    requirement_rows: list[dict] = []
+    version_rows: list[dict] = []
+    criteria_rows: list[dict] = []
+    created: list[tuple[UUID, dict[str, Any]]] = []
+    for plan in plans:
+        requirement_id, version_id = uuid4(), uuid4()
+        created.append((requirement_id, plan))
+        requirement_rows.append(
+            {
+                "id": requirement_id,
+                "tenant_id": actor.tenant_id,
+                "project_id": project.id,
+                "task_id": plan["task_id"] or home,
+                "title": plan["title"],
+                "requirement_type": plan["requirement_type"],
+                "priority": plan["priority"],
+                "status": plan["status"],
+                "owner_id": plan["owner_id"],
+                "created_by": actor.user_id,
+                "display_seq": plan["display_seq"],
+                "display_id": plan["display_id"],
+            }
+        )
+        version_rows.append(
+            {
+                "id": version_id,
+                "tenant_id": actor.tenant_id,
+                "requirement_id": requirement_id,
+                "version_number": 1,
+                "title": plan["title"],
+                "description": plan["description"],
+                "created_by": actor.user_id,
+            }
+        )
+        criteria_rows.extend(
+            {
+                "tenant_id": actor.tenant_id,
+                "requirement_version_id": version_id,
+                "position": position,
+                "text": criterion,
+            }
+            for position, criterion in enumerate(plan["criteria"])
+        )
+    _insert_chunks(db, Requirement, requirement_rows)
+    _insert_chunks(db, RequirementVersion, version_rows)
+    _insert_chunks(db, RequirementAcceptanceCriterion, criteria_rows)
+    stmt = text(
+        """
+        UPDATE requirements r
+        SET current_version_id = v.id
+        FROM requirement_versions v
+        WHERE v.requirement_id = r.id
+          AND v.version_number = 1
+          AND r.tenant_id = :tenant_id
+          AND r.id = ANY(:ids)
+        """
+    ).bindparams(bindparam("ids", type_=postgresql.ARRAY(postgresql.UUID(as_uuid=True))))
+    db.execute(stmt, {"tenant_id": str(actor.tenant_id), "ids": [rid for rid, _ in created]})
+    return created
+
+
 def _run_commit(db: Session, actor: Actor, session: ImportSession, mode: str) -> dict[str, Any]:
     """Validate again and insert in the caller's transaction (no commit here)."""
     kind = session.kind
@@ -1438,12 +1675,14 @@ def _run_commit(db: Session, actor: Actor, session: ImportSession, mode: str) ->
     _assign_display_ids(db, actor.tenant_id, kind, plans)
     if kind == "test_case":
         created = _insert_test_cases(db, actor, project, plans, outcome.module_plan.ids)
-    else:
+    elif kind == "defect":
         created = _insert_defects(db, actor, project, plans, outcome.module_plan.ids)
+    else:
+        created = _insert_requirements(db, actor, project, plans)
 
     batch_id = uuid4()
-    prefix = "testcase" if kind == "test_case" else "defect"
-    entity = "test_case" if kind == "test_case" else "defect"
+    prefix = "testcase" if kind == "test_case" else kind
+    entity = kind
     events: list[tuple[str, str, UUID, dict | None]] = [
         (
             f"{prefix}.bulk_imported",

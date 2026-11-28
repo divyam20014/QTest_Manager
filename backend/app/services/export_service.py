@@ -56,7 +56,12 @@ from app.models.notification import Notification
 from app.models.planning import Milestone, Sprint, SprintTaskHistory, TaskDependency
 from app.models.project import Project, ProjectMember
 from app.models.report_schedule import ReportSchedule
-from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.requirement import (
+    Requirement,
+    RequirementAcceptanceCriterion,
+    RequirementTestCaseLink,
+    RequirementVersion,
+)
 from app.models.saved_report import SavedReport
 from app.models.saved_view import SavedView
 from app.models.shared_step import SharedStep
@@ -120,6 +125,8 @@ _EXPORT_MODELS: list[tuple[str, type[DeclarativeBase]]] = [
     ("attachments", Attachment),
     ("requirements", Requirement),
     ("requirement_versions", RequirementVersion),
+    # ADR-149
+    ("requirement_acceptance_criteria", RequirementAcceptanceCriterion),
     ("requirement_test_case_links", RequirementTestCaseLink),
     ("test_runs", TestRun),
     ("test_run_cases", TestRunCase),

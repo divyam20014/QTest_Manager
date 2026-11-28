@@ -499,3 +499,15 @@ Additions in ADR-097: the test case list endpoints take `quarantined=any|only|ex
 |---|---|---|---|
 | POST | /tasks/{id}/dependencies | `{depends_on_task_id}`; adding an existing link changes nothing; 422 for itself or another project's task; 409 for a circle or an ancestor / sub-task; returns the task detail | `task.manage` |
 | DELETE | /tasks/{id}/dependencies/{depends_on_task_id} | 404 if there is no such link; returns the task detail | `task.manage` |
+
+**Requirement details (ADR-148).** Requirement payloads add `display_id`, `requirement_type`, `priority`, `status` (`draft`, `approved`, `retired`), `owner_id`, `owner_name` and `row_version`. Create and update accept `requirement_type`, `priority`, `status` and `owner_id` (422 for a value not on the organization's list or an owner who is not an active project member). `PATCH /requirements/{id}` accepts `expected_version` (409 `stale_write`), makes a new version only when the wording differs, and returns an approved requirement to `draft` when its wording changes unless the request retires it. `DELETE /requirements/{id}` keeps the record's history; afterwards every requirement endpoint answers 404 for it. `field_options` has the keys `requirement_type` and `requirement_priority`.
+
+**Acceptance criteria and the project list (ADR-149).** Requirement and version payloads carry `acceptance_criteria` (strings, in order). Create accepts it; update replaces the whole list when sent (`[]` removes them) and keeps it otherwise; 422 for a blank or over-long entry or more than 50. `GET /projects/{id}/requirements` also filters by `q` (text in the title or number), `status`, `requirement_type`, `priority`, `owner_id`, `covered` and `needs_review`.
+
+**Links and review (ADR-150).** Requirement payloads add `review_count`; each linked test case adds `covers_version_number` (null: linked before versions were recorded) and `needs_review`. `GET /test-cases/{id}/requirements` adds `display_id`, `status` and `needs_review`. Coverage reports leave retired requirements out and add `retired_requirements` and `requirements_needing_review`; matrix entries add `display_id`, `status` and `review_count`, and the report `retired_requirements`.
+
+| Method | Path | Notes | Who |
+|---|---|---|---|
+| POST | /requirements/{id}/test-cases/{test_case_id}/confirm | `{version_number}`: the case covers the current wording; 409 `stale_write` if that is not the current version, 404 if not linked; returns the requirement | `requirement.manage` |
+
+**Requirement import (ADR-151).** The standard import endpoints exist for requirements too, with the same behaviour and responses as for test cases and defects: `GET /requirements/import-template.xlsx`, `GET /requirements/import-template.csv`, `POST /requirements/import/preview` (multipart `file` and `project_id`), `GET /requirements/import/preview/{token}/rows`, `POST /requirements/import/commit` (`{token, mode}`) and `GET /requirements/import/status/{job_id}`. All need `requirement.manage` on the project. Test case, defect and requirement imports now refuse a project the person may not see (403) by access tier, not by role name.

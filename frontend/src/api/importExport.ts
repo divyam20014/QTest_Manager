@@ -2,7 +2,7 @@ import { apiFetch } from '@/api/client'
 
 /** ADR-120: standard import (template, preview, commit) for test cases and defects. */
 
-export type ImportKind = 'test_case' | 'defect'
+export type ImportKind = 'test_case' | 'defect' | 'requirement'
 export type ImportMode = 'all_or_nothing' | 'skip_invalid'
 export type RowStatus = 'valid' | 'warning' | 'error'
 
@@ -86,14 +86,14 @@ export interface ImportJob {
   result: (Omit<CommitSummary, 'async'> & { async: true }) | null
 }
 
-const BASE: Record<ImportKind, string> = { test_case: '/test-cases', defect: '/defects' }
+const BASE: Record<ImportKind, string> = { test_case: '/test-cases', defect: '/defects', requirement: '/requirements' }
 
 export function templatePath(kind: ImportKind, format: 'xlsx' | 'csv'): string {
   return `${BASE[kind]}/import-template.${format}`
 }
 
 export function templateFallbackName(kind: ImportKind, format: 'xlsx' | 'csv'): string {
-  return `${kind === 'test_case' ? 'test_case' : 'defect'}_import_template.${format}`
+  return `${kind}_import_template.${format}`
 }
 
 export function previewImport(kind: ImportKind, projectId: string, file: File): Promise<ImportPreview> {

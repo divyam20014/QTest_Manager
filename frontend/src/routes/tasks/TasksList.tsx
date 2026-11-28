@@ -26,6 +26,7 @@ import { TaskDialog } from '@/routes/tasks/TaskDialog'
 import { TasksBoard } from '@/routes/tasks/TasksBoard'
 import { Backlog } from '@/routes/tasks/Backlog'
 import { listMilestones, listSprints } from '@/api/planning'
+import { RequirementsView } from '@/routes/tasks/RequirementsView'
 import { Sprints } from '@/routes/tasks/Sprints'
 import { formatHours, waitingLabel } from '@/lib/planning'
 
@@ -93,7 +94,8 @@ export function TasksList() {
   // The sprints view uses `sprint` to say which sprint is open; elsewhere it filters by it.
   const sprintsView = v.view === 'sprints'
   // The backlog and sprints views list their own tasks, so the filters do not apply to them.
-  const ownView = backlog || sprintsView
+  const requirementsView = v.view === 'requirements'
+  const ownView = backlog || sprintsView || requirementsView
   // The board filters by search, assignee and sprint only: its columns are the statuses.
   const filtered =
     debouncedSearch !== '' || v.assignee !== '' || (!board && (v.status !== '' || v.milestone !== '' || v.sprint !== ''))
@@ -326,6 +328,7 @@ export function TasksList() {
             { value: 'board', label: 'Board' },
             { value: 'backlog', label: 'Backlog' },
             { value: 'sprints', label: 'Sprints' },
+            { value: 'requirements', label: 'Requirements' },
           ]}
         />
         {!board && !ownView && (
@@ -371,6 +374,8 @@ export function TasksList() {
 
       {backlog ? (
         <Backlog projectId={projectId} canReorder={canManage && !projectQuery.data?.archived_at} canPlan={canPlan} />
+      ) : requirementsView ? (
+        <RequirementsView projectId={projectId} canImport={canCreateRequirement && !projectQuery.data?.archived_at} />
       ) : sprintsView ? (
         <Sprints projectId={projectId} canPlan={canPlan} selectedId={v.sprint} onSelect={(id) => setFilter('sprint', id)} />
       ) : board ? (

@@ -116,7 +116,12 @@ def get_rollup(
 
     # --- requirements ---
     requirement_ids = list(
-        db.execute(select(Requirement.id).where(Requirement.task_id.in_(ids))).scalars()
+        db.execute(
+            # ADR-150: retired requirements need no coverage, here as in the coverage report.
+            select(Requirement.id).where(
+                Requirement.task_id.in_(ids), Requirement.status != "retired"
+            )
+        ).scalars()
     )
     covered = 0
     if requirement_ids:

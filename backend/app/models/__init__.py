@@ -32,7 +32,12 @@ from app.models.planning import Milestone, Sprint, SprintTaskHistory, TaskDepend
 from app.models.platform_audit import PlatformAuditEvent
 from app.models.project import Project, ProjectMember
 from app.models.report_schedule import ReportSchedule
-from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
+from app.models.requirement import (
+    Requirement,
+    RequirementAcceptanceCriterion,
+    RequirementTestCaseLink,
+    RequirementVersion,
+)
 from app.models.saved_report import SavedReport
 from app.models.saved_view import SavedView
 from app.models.scim_token import ScimToken
@@ -89,6 +94,7 @@ __all__ = [
     "AuditLog",
     "IdempotencyKey",
     "Requirement",
+    "RequirementAcceptanceCriterion",
     "RequirementVersion",
     "RequirementTestCaseLink",
     "AIUsageLog",

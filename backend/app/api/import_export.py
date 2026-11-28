@@ -1,8 +1,9 @@
-"""ADR-120: standard import (template, preview, commit) for test cases and defects.
+"""ADR-120: standard import (template, preview, commit) for test cases, defects and requirements.
 
 Registered before the test case and defect routers so the static `/import...` paths are not
 read as an id. Permissions: test cases `testcase.bulk_import_export` or `testcase.create`,
-defects `defect.import` or `defect.create`; the project is checked in the service.
+defects `defect.import` or `defect.create`, requirements `requirement.manage` (ADR-151); the
+project is checked in the service.
 """
 
 from typing import Literal
@@ -122,3 +123,4 @@ def _register(kind: str, prefix: str, codes: tuple[str, ...]) -> None:
 
 _register("test_case", "/test-cases", ("testcase.bulk_import_export", "testcase.create"))
 _register("defect", "/defects", ("defect.import", "defect.create"))
+_register("requirement", "/requirements", ("requirement.manage",))

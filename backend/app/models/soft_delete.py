@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.models.defect import Defect
 from app.models.execution import TestRun
+from app.models.requirement import Requirement
 from app.models.task import Task
 from app.models.test_case import TestCase
 
@@ -29,4 +30,5 @@ def _exclude_soft_deleted(state) -> None:  # type: ignore[no-untyped-def]
         with_loader_criteria(TestRun, TestRun.deleted_at.is_(None), include_aliases=True),
         with_loader_criteria(TestCase, TestCase.deleted_at.is_(None), include_aliases=True),
         with_loader_criteria(Task, Task.deleted_at.is_(None), include_aliases=True),
+        with_loader_criteria(Requirement, Requirement.deleted_at.is_(None), include_aliases=True),
     )

@@ -8,6 +8,8 @@ export type FieldKey =
   | 'test_case_severity'
   | 'task_priority'
   | 'task_type'
+  | 'requirement_type'
+  | 'requirement_priority'
 export type StatusEntityType = 'test_case' | 'defect'
 export type CustomFieldEntityType = 'test_case' | 'defect' | 'requirement'
 export type CustomFieldType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'multi_select'

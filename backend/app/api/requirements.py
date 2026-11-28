@@ -12,9 +12,11 @@ from app.core.auth import (
 from app.core.db import get_db
 from app.core.responses import envelope
 from app.schemas.requirement import (
+    ConfirmLinkRequest,
     LinkTestCaseRequest,
     RequirementCreateRequest,
     RequirementListResponse,
+    RequirementStatus,
     RequirementUpdateRequest,
 )
 from app.services import requirement_service
@@ -29,12 +31,33 @@ def list_requirements(
     page_size: int = Query(default=requirement_service.DEFAULT_PAGE_SIZE, ge=1, le=100),
     task_id: UUID | None = Query(default=None, description="Only this task's requirements."),
     include_sub_tasks: bool = Query(default=False, description="With task_id: its sub-tasks too."),
+    q: str | None = Query(default=None, max_length=200, description="In the title or id."),
+    requirement_type: str | None = Query(default=None, max_length=64),
+    status: RequirementStatus | None = None,
+    priority: str | None = Query(default=None, max_length=64),
+    owner_id: UUID | None = None,
+    covered: bool | None = Query(default=None, description="Has at least one test case."),
+    needs_review: bool | None = Query(default=None, description="Has a test case to review."),
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
     items, total = requirement_service.list_requirements(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, project_id, page, page_size,
-        task_id=task_id, include_sub_tasks=include_sub_tasks,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        project_id,
+        page,
+        page_size,
+        task_id=task_id,
+        include_sub_tasks=include_sub_tasks,
+        q=q,
+        requirement_type=requirement_type,
+        status=status,
+        priority=priority,
+        owner_id=owner_id,
+        covered=covered,
+        needs_review=needs_review,
     )
     out = requirement_service.to_out_many(db, items)
     return envelope(RequirementListResponse(items=out, total=total).model_dump(mode="json"))
@@ -84,9 +107,11 @@ def get_requirement(
     requirement = requirement_service.get_requirement(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id
     )
-    return envelope(requirement_service.to_detail_out(
-            db, requirement, (ctx.role_code, ctx.user_id)
-        ).model_dump(mode="json"))
+    return envelope(
+        requirement_service.to_detail_out(db, requirement, (ctx.role_code, ctx.user_id)).model_dump(
+            mode="json"
+        )
+    )
 
 
 @router.get("/requirements/{requirement_id}/history")
@@ -148,9 +173,32 @@ def link_test_case(
     requirement = requirement_service.link_test_case(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id, req.test_case_id
     )
-    return envelope(requirement_service.to_detail_out(
-            db, requirement, (ctx.role_code, ctx.user_id)
-        ).model_dump(mode="json"))
+    return envelope(
+        requirement_service.to_detail_out(db, requirement, (ctx.role_code, ctx.user_id)).model_dump(
+            mode="json"
+        )
+    )
+
+
+@router.post("/requirements/{requirement_id}/test-cases/{test_case_id}/confirm")
+def confirm_link(
+    requirement_id: UUID,
+    test_case_id: UUID,
+    req: ConfirmLinkRequest,
+    ctx: SessionContext = Depends(require_permission("requirement.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    requirement = requirement_service.confirm_link(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        requirement_id,
+        test_case_id,
+        req.version_number,
+    )
+    detail = requirement_service.to_detail_out(db, requirement, (ctx.role_code, ctx.user_id))
+    return envelope(detail.model_dump(mode="json"))
 
 
 @router.delete("/requirements/{requirement_id}/test-cases/{test_case_id}")
@@ -163,6 +211,8 @@ def unlink_test_case(
     requirement = requirement_service.unlink_test_case(
         db, ctx.tenant_id, ctx.role_code, ctx.user_id, requirement_id, test_case_id
     )
-    return envelope(requirement_service.to_detail_out(
-            db, requirement, (ctx.role_code, ctx.user_id)
-        ).model_dump(mode="json"))
+    return envelope(
+        requirement_service.to_detail_out(db, requirement, (ctx.role_code, ctx.user_id)).model_dump(
+            mode="json"
+        )
+    )

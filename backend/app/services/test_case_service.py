@@ -65,6 +65,7 @@ from app.services import (
     field_option_service,
     lookups,
     notification_service,
+    requirement_links,
     status_label_service,
     tester_visibility,
 )
@@ -758,7 +759,13 @@ def list_linked_requirements(
     RTM, so the case detail can show and edit its links without N+1 reads."""
     case = get_test_case(db, tenant_id, role_code, user_id, test_case_id)
     rows = db.execute(
-        select(Requirement.id, Requirement.title)
+        select(
+            Requirement.id,
+            Requirement.display_id,
+            Requirement.title,
+            Requirement.status,
+            requirement_links.NEEDS_REVIEW.label("needs_review"),
+        )
         .join(RequirementTestCaseLink, RequirementTestCaseLink.requirement_id == Requirement.id)
         .where(
             RequirementTestCaseLink.tenant_id == tenant_id,
@@ -766,7 +773,17 @@ def list_linked_requirements(
         )
         .order_by(Requirement.title)
     ).all()
-    return [{"id": str(r.id), "title": r.title} for r in rows]
+    return [
+        {
+            "id": str(r.id),
+            "display_id": r.display_id,
+            "title": r.title,
+            "status": r.status,
+            # Null (a link with no version at all) counts as nothing to review.
+            "needs_review": bool(r.needs_review),
+        }
+        for r in rows
+    ]
 
 
 def get_test_case_history(
