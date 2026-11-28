@@ -16,11 +16,11 @@ from tests.test_project_role_scoping import _create_project
 from tests.test_tester_visibility import _as, _set, _setup
 
 API = "/api/v1"
-TODAY = datetime.now(UTC).date()
 
 
 def _d(offset: int) -> str:
-    return (TODAY + timedelta(days=offset)).isoformat()
+    # Read when called, not when the file is imported: a long run can cross midnight (UTC).
+    return (datetime.now(UTC).date() + timedelta(days=offset)).isoformat()
 
 
 def _module(client: TestClient, project_id: str, name: str) -> str:

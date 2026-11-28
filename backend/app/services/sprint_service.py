@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, func, insert, literal, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,7 @@ from app.schemas.planning import (
     SprintUpdateRequest,
 )
 from app.services import lookups, task_service, task_status_service
-from app.services.sprint_membership import history_row, join, leave, lock_sprints
+from app.services.sprint_membership import join, leave, lock_sprints
 
 _NAME_TAKEN = "This project already has a sprint with that name"
 _TRACKED = ("name", "goal", "start_date", "end_date")
@@ -343,20 +343,28 @@ def start_sprint(
         raise ConflictError(f"Close the active sprint “{running}” before starting another")
     sprint.state = "active"
     sprint.started_at = datetime.now(UTC)
-    tasks = list(db.execute(select(Task).where(Task.sprint_id == sprint.id)).scalars())
-    db.add_all(
-        SprintTaskHistory(
-            tenant_id=tenant_id,
-            project_id=sprint.project_id,
-            sprint_id=sprint.id,
-            task_id=task.id,
-            added_after_start=False,
-            estimate_at_add=task.estimate_hours,
+    # One INSERT ... SELECT, however many tasks the sprint holds.
+    inserted = db.execute(
+        insert(SprintTaskHistory).from_select(
+            [
+                "tenant_id",
+                "project_id",
+                "sprint_id",
+                "task_id",
+                "added_after_start",
+                "estimate_at_add",
+            ],
+            select(
+                Task.tenant_id,
+                Task.project_id,
+                Task.sprint_id,
+                Task.id,
+                literal(False),
+                Task.estimate_hours,
+            ).where(Task.sprint_id == sprint.id),
         )
-        for task in tasks
     )
-    db.flush()
-    _audit(db, sprint, actor_user_id, "sprint.started", {"task_count": len(tasks)})
+    _audit(db, sprint, actor_user_id, "sprint.started", {"task_count": inserted.rowcount})
     out = _detail(db, sprint)
     db.commit()
     return out
@@ -398,9 +406,15 @@ def close_sprint(
         .execution_options(populate_existing=True)
     ).all()
     unfinished: list[UUID] = []
+    # One query for every task's history row, not one per task.
+    history = {
+        row.task_id: row
+        for row in db.execute(
+            select(SprintTaskHistory).where(SprintTaskHistory.sprint_id == sprint.id)
+        ).scalars()
+    }
     for task, category in members:
-        row = history_row(db, sprint.id, task.id)
-        assert row is not None
+        row = history[task.id]
         row.done_at_close = category == "done"
         row.estimate_at_end = task.estimate_hours
         if category != "done":
