@@ -9,6 +9,7 @@ from app.core.responses import envelope
 from app.schemas.test_asset import (
     BuildBulkCreateRequest,
     BuildCreateRequest,
+    BuildUpdateRequest,
     EnvironmentCreateRequest,
     EnvironmentUpdateRequest,
     ReleaseBulkCreateRequest,
@@ -90,6 +91,17 @@ def bulk_create_builds(
 ) -> dict:
     builds = test_asset_service.bulk_create_builds(db, ctx.tenant_id, ctx.user_id, project_id, req)
     return envelope([b.model_dump(mode="json") for b in builds])
+
+
+@router.patch("/builds/{build_id}")
+def update_build(
+    build_id: UUID,
+    req: BuildUpdateRequest,
+    ctx: SessionContext = Depends(require_permission("environment.manage")),
+    db: Session = Depends(get_db),
+) -> dict:
+    build = test_asset_service.update_build(db, ctx.tenant_id, ctx.user_id, build_id, req)
+    return envelope(build.model_dump(mode="json"))
 
 
 @router.delete("/builds/{build_id}")

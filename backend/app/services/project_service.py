@@ -278,11 +278,15 @@ def _validate_manager_user_id(db: Session, tenant_id: UUID, manager_user_id: UUI
 
 def _copy_modules(db: Session, tenant_id: UUID, source_id: UUID, target_id: UUID) -> int:
     """The source's module tree as new modules of the target, parents before children."""
-    modules = db.execute(
-        select(TestModule)
-        .where(TestModule.tenant_id == tenant_id, TestModule.project_id == source_id)
-        .order_by(TestModule.created_at, TestModule.id)
-    ).scalars().all()
+    modules = (
+        db.execute(
+            select(TestModule)
+            .where(TestModule.tenant_id == tenant_id, TestModule.project_id == source_id)
+            .order_by(TestModule.created_at, TestModule.id)
+        )
+        .scalars()
+        .all()
+    )
     children: dict[UUID | None, list[TestModule]] = {}
     for module in modules:
         children.setdefault(module.parent_id, []).append(module)

@@ -103,8 +103,13 @@ def create_execution_step_comment(
     db: Session = Depends(get_db),
 ) -> dict:
     comment = comment_service.create_comment(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_EXECUTION_STEP,
-        execution_step_id, req,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_EXECUTION_STEP,
+        execution_step_id,
+        req,
     )
     return envelope(comment.model_dump(mode="json"))
 

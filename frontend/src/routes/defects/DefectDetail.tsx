@@ -757,7 +757,7 @@ function RetestsTab({
 
 /** Run case status as the execution-status words (passed -> Pass ...), reusing the execution pill. */
 function runCaseLabel(status: string): string {
-  const map: Record<string, string> = { passed: 'Pass', failed: 'Fail', blocked: 'Blocked', ignored: 'Skipped' }
+  const map: Record<string, string> = { passed: 'Pass', failed: 'Fail', blocked: 'Blocked', ignored: 'N/A' }
   return map[status] ?? 'Not Run'
 }
 

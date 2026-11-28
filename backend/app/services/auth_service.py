@@ -59,9 +59,7 @@ def start_login(
     ).scalar_one_or_none()
 
     if user is None or not verify_password(password, user.password_hash):
-        logger.warning(
-            "security_event=login_failed tenant_id=%s email=%s", tenant_id, email
-        )
+        logger.warning("security_event=login_failed tenant_id=%s email=%s", tenant_id, email)
         raise UnauthorizedError(_GENERIC_LOGIN_ERROR)
 
     _require_approved_tenant(db, tenant_id)
@@ -140,18 +138,14 @@ def verify_mfa(db: Session, session_id: UUID, code: str) -> SessionModel:
     if challenge.attempt_count >= MAX_MFA_ATTEMPTS:
         session_row.revoked_at = datetime.now(UTC)
         db.commit()
-        logger.warning(
-            "security_event=mfa_locked_out user_id=%s", session_row.user_id
-        )
+        logger.warning("security_event=mfa_locked_out user_id=%s", session_row.user_id)
         raise UnauthorizedError("Too many attempts; please log in again")
 
     if not verify_password(code, challenge.code_hash):
         challenge.attempt_count += 1
         if challenge.attempt_count >= MAX_MFA_ATTEMPTS:
             session_row.revoked_at = datetime.now(UTC)
-            logger.warning(
-                "security_event=mfa_locked_out user_id=%s", session_row.user_id
-            )
+            logger.warning("security_event=mfa_locked_out user_id=%s", session_row.user_id)
         db.commit()
         raise UnauthorizedError("Incorrect verification code")
 

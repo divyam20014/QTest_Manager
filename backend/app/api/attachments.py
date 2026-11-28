@@ -27,7 +27,11 @@ def list_attachments(
     db: Session = Depends(get_db),
 ) -> dict:
     attachments = attachment_service.list_attachments(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TEST_CASE,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_TEST_CASE,
         test_case_id,
     )
     return envelope([a.model_dump(mode="json") for a in attachments])
@@ -43,8 +47,13 @@ def upload_attachment(
     db: Session = Depends(get_db),
 ) -> dict:
     attachment = attachment_service.upload_attachment(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_TEST_CASE,
-        test_case_id, file,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_TEST_CASE,
+        test_case_id,
+        file,
     )
     return envelope(attachment.model_dump(mode="json"))
 
@@ -56,7 +65,11 @@ def list_defect_attachments(
     db: Session = Depends(get_db),
 ) -> dict:
     attachments = attachment_service.list_attachments(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_DEFECT,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_DEFECT,
         defect_id,
     )
     return envelope([a.model_dump(mode="json") for a in attachments])
@@ -81,8 +94,13 @@ def upload_defect_attachment(
     # (update_status/add_link/update_root_cause), enforced inside the
     # service via _authorize_owner_access.
     attachment = attachment_service.upload_attachment(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_DEFECT,
-        defect_id, file,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_DEFECT,
+        defect_id,
+        file,
     )
     return envelope(attachment.model_dump(mode="json"))
 
@@ -94,8 +112,12 @@ def list_execution_step_attachments(
     db: Session = Depends(get_db),
 ) -> dict:
     attachments = attachment_service.list_attachments(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id,
-        OWNER_TYPE_EXECUTION_STEP, execution_step_id,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_EXECUTION_STEP,
+        execution_step_id,
     )
     return envelope([a.model_dump(mode="json") for a in attachments])
 
@@ -110,8 +132,13 @@ def upload_execution_step_attachment(
     db: Session = Depends(get_db),
 ) -> dict:
     attachment = attachment_service.upload_attachment(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id,
-        OWNER_TYPE_EXECUTION_STEP, execution_step_id, file,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_EXECUTION_STEP,
+        execution_step_id,
+        file,
     )
     return envelope(attachment.model_dump(mode="json"))
 
@@ -123,7 +150,11 @@ def list_requirement_attachments(
     db: Session = Depends(get_db),
 ) -> dict:
     attachments = attachment_service.list_attachments(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_REQUIREMENT,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_REQUIREMENT,
         requirement_id,
     )
     return envelope([a.model_dump(mode="json") for a in attachments])
@@ -139,8 +170,13 @@ def upload_requirement_attachment(
     db: Session = Depends(get_db),
 ) -> dict:
     attachment = attachment_service.upload_attachment(
-        db, ctx.tenant_id, ctx.role_code, ctx.user_id, OWNER_TYPE_REQUIREMENT,
-        requirement_id, file,
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        OWNER_TYPE_REQUIREMENT,
+        requirement_id,
+        file,
     )
     return envelope(attachment.model_dump(mode="json"))
 

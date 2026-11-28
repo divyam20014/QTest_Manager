@@ -35,10 +35,44 @@ from app.services import (
 )
 
 _STOPWORDS = {
-    "the", "a", "an", "is", "are", "was", "were", "what", "which", "who",
-    "how", "many", "much", "for", "of", "in", "on", "to", "do", "does",
-    "did", "i", "my", "our", "show", "me", "and", "or", "about", "with",
-    "list", "all", "any", "there", "have", "has", "can", "you",
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "what",
+    "which",
+    "who",
+    "how",
+    "many",
+    "much",
+    "for",
+    "of",
+    "in",
+    "on",
+    "to",
+    "do",
+    "does",
+    "did",
+    "i",
+    "my",
+    "our",
+    "show",
+    "me",
+    "and",
+    "or",
+    "about",
+    "with",
+    "list",
+    "all",
+    "any",
+    "there",
+    "have",
+    "has",
+    "can",
+    "you",
 }
 _ROOT_CAUSE_TAXONOMY = [
     "requirements_gap",
@@ -231,7 +265,15 @@ def review_test_case(
         )
     except AIProviderError as exc:
         _record_usage(
-            db, tenant_id, actor_user_id, tenant.ai_provider, "review_test_case", None, 0, 0, 0,
+            db,
+            tenant_id,
+            actor_user_id,
+            tenant.ai_provider,
+            "review_test_case",
+            None,
+            0,
+            0,
+            0,
             success=False,
         )
         db.commit()
@@ -530,7 +572,15 @@ def answer_assistant_question(
         result = provider.answer_question(api_key=api_key, question=question, context=context)
     except AIProviderError as exc:
         _record_usage(
-            db, tenant_id, actor_user_id, tenant.ai_provider, "assistant_query", None, 0, 0, 0,
+            db,
+            tenant_id,
+            actor_user_id,
+            tenant.ai_provider,
+            "assistant_query",
+            None,
+            0,
+            0,
+            0,
             success=False,
         )
         db.commit()
@@ -603,8 +653,16 @@ def suggest_defect_root_cause(
         )
     except AIProviderError as exc:
         _record_usage(
-            db, tenant_id, actor_user_id, tenant.ai_provider, "defect_root_cause_suggested",
-            None, 0, 0, 0, success=False,
+            db,
+            tenant_id,
+            actor_user_id,
+            tenant.ai_provider,
+            "defect_root_cause_suggested",
+            None,
+            0,
+            0,
+            0,
+            success=False,
         )
         db.commit()
         raise ConflictError(f"AI provider request failed: {exc}") from exc

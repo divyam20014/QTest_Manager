@@ -104,9 +104,7 @@ def list_notifications(
     )
     if unread_only:
         query = query.where(Notification.read_at.is_(None))
-    rows = db.execute(
-        query.order_by(Notification.created_at.desc()).limit(MAX_LISTED)
-    ).scalars()
+    rows = db.execute(query.order_by(Notification.created_at.desc()).limit(MAX_LISTED)).scalars()
     return [_to_out(n) for n in rows]
 
 

@@ -52,6 +52,7 @@ def test_admin_can_read_and_update_settings(client: TestClient, platform_admin: 
         "project_domains": ["Motor", "Health", "Travel", "Life", "Property"],
         "project_domains_customised": False,
         "reports_hidden_from_testers": False,
+        "require_run_environment_build": False,
         "testers_see_assigned_cases_only": False,
     }
 

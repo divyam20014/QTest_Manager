@@ -171,9 +171,7 @@ def exchange_code_and_provision(
         select(User).where(User.tenant_id == tenant_id, User.email == email)
     ).scalar_one_or_none()
     if user is None:
-        role_id = db.execute(
-            select(Role.id).where(Role.code == cfg.default_role_code)
-        ).scalar_one()
+        role_id = db.execute(select(Role.id).where(Role.code == cfg.default_role_code)).scalar_one()
         # SSO-provisioned users authenticate only via the IdP -- the
         # password hash is an unguessable random value, never usable for
         # password login, mirroring how this codebase never stores a

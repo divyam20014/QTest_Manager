@@ -14,6 +14,13 @@ export interface TestRunSummary {
   finished_at: string | null
   paused_at: string | null
   case_count: number
+  /** ADR-152: what the run was run against; null for a run made before this was recorded. */
+  environment_id?: string | null
+  environment_name?: string | null
+  build_id?: string | null
+  build_name?: string | null
+  release_id?: string | null
+  release_name?: string | null
 }
 
 export interface TestRunCase {
@@ -44,6 +51,13 @@ export interface TestRun {
   finished_at: string | null
   paused_at: string | null
   original_run_id?: string | null
+  /** ADR-152: what the run was run against; null for a run made before this was recorded. */
+  environment_id?: string | null
+  environment_name?: string | null
+  build_id?: string | null
+  build_name?: string | null
+  release_id?: string | null
+  release_name?: string | null
   cases: TestRunCase[]
 }
 
@@ -89,11 +103,18 @@ export interface TestRunCreateRequest {
   exclude_quarantined?: boolean
   /** ADR-123: due date (YYYY-MM-DD) applied to every case bundled. */
   due_date?: string | null
+  environment_id?: string | null
+  build_id?: string | null
+  release_id?: string | null
 }
 
 export interface TestRunUpdateRequest {
   name?: string
   run_type?: RunType
+  /** Send null to clear; allowed until the run is finished. */
+  environment_id?: string | null
+  build_id?: string | null
+  release_id?: string | null
 }
 
 export function listTestRuns(projectId: string): Promise<TestRunSummary[]> {
@@ -143,6 +164,18 @@ export function assignRunCase(
     method: 'PATCH',
     body: JSON.stringify(body),
   })
+}
+
+/** ADR-154: assignee and/or due date for many cases of one run. `undefined` leaves one alone, `null` clears it. */
+export function bulkAssignRunCases(
+  runId: string,
+  testRunCaseIds: string[],
+  change: { assignedTo?: string | null; dueDate?: string | null },
+): Promise<{ updated: number }> {
+  const body: Record<string, unknown> = { test_run_case_ids: testRunCaseIds }
+  if (change.assignedTo !== undefined) body.assigned_to = change.assignedTo
+  if (change.dueDate !== undefined) body.due_date = change.dueDate
+  return apiFetch(`/test-runs/${runId}/cases/assign`, { method: 'POST', body: JSON.stringify(body) })
 }
 
 export function pauseTestRun(runId: string): Promise<TestRun> {

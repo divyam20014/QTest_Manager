@@ -50,6 +50,13 @@ class TestRun(Base, TenantScopedMixin):
     original_run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("test_runs.id"), nullable=True
     )
+    # ADR-152: what the run was run against. Empty for a run made before this was recorded;
+    # the database keeps the build and release in the run's own project.
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True
+    )
+    build_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    release_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class TestRunCase(Base, TenantScopedMixin):

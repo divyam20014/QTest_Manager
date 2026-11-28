@@ -155,9 +155,7 @@ def list_plans_for_tenant(db: Session) -> list[PlanOut]:
     """Tenant-facing plan catalog (Pass 2: self-serve plan browsing). Same
     underlying table as the platform-admin `list_plans` -- active plans
     only, since an inactive plan shouldn't be self-selectable."""
-    plans = db.execute(
-        select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.name)
-    ).scalars()
+    plans = db.execute(select(Plan).where(Plan.is_active.is_(True)).order_by(Plan.name)).scalars()
     return [PlanOut.model_validate(p) for p in plans]
 
 
@@ -228,9 +226,7 @@ def switch_plan(db: Session, tenant_id: UUID, user_id: UUID, plan_code: str) -> 
 
     if new_plan.seat_limit is not None:
         active_seats = db.execute(
-            select(func.count(User.id)).where(
-                User.tenant_id == tenant_id, User.is_active.is_(True)
-            )
+            select(func.count(User.id)).where(User.tenant_id == tenant_id, User.is_active.is_(True))
         ).scalar_one()
         if active_seats > new_plan.seat_limit:
             raise ConflictError(

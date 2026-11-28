@@ -236,6 +236,7 @@ class DefectUpdateRequest(BaseModel):
     @classmethod
     def _steps(cls, v: list[ReproStepIn] | None) -> list[ReproStepIn] | None:
         return _check_step_count(v)
+
     # ADR-136: the `row_version` the caller read. Omit to skip the check.
     expected_version: int | None = None
 

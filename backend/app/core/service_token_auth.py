@@ -16,9 +16,7 @@ def require_service_token(scope: str):
     (same shape as the SCIM routes it mirrors), so it is always known
     before the token lookup runs -- never a cross-tenant scan."""
 
-    def _checker(
-        tenant_id: UUID, request: Request, db: Session = Depends(get_db)
-    ) -> ServiceToken:
+    def _checker(tenant_id: UUID, request: Request, db: Session = Depends(get_db)) -> ServiceToken:
         auth_header = request.headers.get("authorization", "")
         if not auth_header.lower().startswith("bearer "):
             raise UnauthorizedError("A service-token bearer token is required")

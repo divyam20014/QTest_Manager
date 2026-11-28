@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ADR-118: 'Retest' can be chosen when creating or updating a run (the defect retest
 # endpoint creates such runs too).
@@ -30,6 +30,11 @@ class TestRunCreateRequest(BaseModel):
     exclude_quarantined: bool = False
     # ADR-123: optional due date applied to every case bundled by this request.
     due_date: date | None = None
+    # ADR-152: what the run is run against. Required only when the organization says so.
+    environment_id: UUID | None = None
+    build_id: UUID | None = None
+    # Taken from the build when the build belongs to a release.
+    release_id: UUID | None = None
 
     _v_due = field_validator("due_date")(_check_due_date)
 
@@ -37,6 +42,10 @@ class TestRunCreateRequest(BaseModel):
 class TestRunUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=3)
     run_type: RunTypeInput | None = None
+    # ADR-152: send null to clear. Allowed until the run is finished.
+    environment_id: UUID | None = None
+    build_id: UUID | None = None
+    release_id: UUID | None = None
 
 
 class TestRunCaseAddRequest(BaseModel):
@@ -61,6 +70,22 @@ class TestRunCaseAssignRequest(BaseModel):
     due_date: date | None = None
 
     _v_due = field_validator("due_date")(_check_due_date)
+
+
+class TestRunCaseBulkAssignRequest(BaseModel):
+    """ADR-154: the same rules as assigning one case. Only what is sent is changed; null clears."""
+
+    test_run_case_ids: list[UUID] = Field(min_length=1, max_length=500)
+    assigned_to: UUID | None = None
+    due_date: date | None = None
+
+    _v_due = field_validator("due_date")(_check_due_date)
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> "TestRunCaseBulkAssignRequest":
+        if not ({"assigned_to", "due_date"} & self.model_fields_set):
+            raise ValueError("Send assigned_to, due_date or both")
+        return self
 
 
 class VerdictRequest(BaseModel):
@@ -121,6 +146,12 @@ class TestRunOut(BaseModel):
     finished_at: datetime | None
     paused_at: datetime | None
     original_run_id: UUID | None = None
+    environment_id: UUID | None = None
+    environment_name: str | None = None
+    build_id: UUID | None = None
+    build_name: str | None = None
+    release_id: UUID | None = None
+    release_name: str | None = None
     cases: list[TestRunCaseOut]
 
 
@@ -137,6 +168,12 @@ class TestRunSummaryOut(BaseModel):
     finished_at: datetime | None
     paused_at: datetime | None
     case_count: int
+    environment_id: UUID | None = None
+    environment_name: str | None = None
+    build_id: UUID | None = None
+    build_name: str | None = None
+    release_id: UUID | None = None
+    release_name: str | None = None
 
 
 class RunCaseContextOut(BaseModel):

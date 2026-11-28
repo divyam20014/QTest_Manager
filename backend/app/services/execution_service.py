@@ -29,7 +29,7 @@ from app.schemas.execution import (
     TestRunUpdateRequest,
     Verdict,
 )
-from app.services import notification_service
+from app.services import notification_service, run_context
 from app.services.project_service import is_assigned
 
 settings = get_settings()
@@ -326,12 +326,22 @@ def create_test_run(
         if not cases:
             raise ValidationAppError("Every selected test case is quarantined")
 
+    context = run_context.resolve(
+        db,
+        tenant_id,
+        project_id,
+        run_context.RunContext(req.environment_id, req.build_id, req.release_id),
+        must_be_complete=run_context.required(db, tenant_id),
+    )
     run = TestRun(
         tenant_id=tenant_id,
         project_id=project_id,
         name=req.name,
         run_type=req.run_type,
         executed_by=actor_user_id,
+        environment_id=context.environment_id,
+        build_id=context.build_id,
+        release_id=context.release_id,
     )
     db.add(run)
     db.flush()
@@ -350,6 +360,9 @@ def create_test_run(
             "name": run.name,
             "case_count": len(cases),
             "excluded_quarantined": excluded_quarantined,
+            "environment_id": str(context.environment_id) if context.environment_id else None,
+            "build_id": str(context.build_id) if context.build_id else None,
+            "release_id": str(context.release_id) if context.release_id else None,
             **({"due_date": req.due_date.isoformat()} if req.due_date else {}),
         },
     )
@@ -370,19 +383,42 @@ def update_test_run(
     if run.finished_at is not None:
         raise ConflictError("Cannot edit a finished test run")
 
-    any_started = db.execute(
-        select(TestRunCase).where(
-            TestRunCase.test_run_id == run.id, TestRunCase.started_at.is_not(None)
-        )
-    ).first()
-    if any_started is not None:
-        raise ConflictError("Cannot edit run details after execution has started")
-
     changes = req.model_dump(exclude_unset=True)
+    context_keys = ("environment_id", "build_id", "release_id")
+    wording = {k: v for k, v in changes.items() if k not in context_keys}
+    if wording:
+        any_started = db.execute(
+            select(TestRunCase).where(
+                TestRunCase.test_run_id == run.id, TestRunCase.started_at.is_not(None)
+            )
+        ).first()
+        if any_started is not None:
+            raise ConflictError("Cannot edit run details after execution has started")
+
     if "name" in changes:
         run.name = changes["name"]
     if "run_type" in changes:
         run.run_type = changes["run_type"]
+    # What the run is run against can be recorded, or corrected, until it is finished.
+    if any(key in changes for key in context_keys):
+        merged = {key: changes.get(key, getattr(run, key)) for key in context_keys}
+        if "build_id" in changes and "release_id" not in changes:
+            merged["release_id"] = None  # follows the new build's release, if it has one
+        context = run_context.resolve(
+            db,
+            tenant_id,
+            run.project_id,
+            run_context.RunContext(**merged),
+            must_be_complete=run_context.required(db, tenant_id)
+            and any(changes.get(key, 1) is None for key in ("environment_id", "build_id")),
+        )
+        run.environment_id = context.environment_id
+        run.build_id = context.build_id
+        run.release_id = context.release_id
+        changes = {
+            **wording,
+            **{key: str(merged[key]) if merged[key] else None for key in context_keys},
+        }
 
     record_audit_event(
         db,
@@ -584,6 +620,79 @@ def assign_run_case(
     return run_case
 
 
+def bulk_assign_run_cases(
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    run_id: UUID,
+    run_case_ids: list[UUID],
+    assigned_to: UUID | None,
+    *,
+    update_assignee: bool,
+    due_date: date | None,
+    update_due_date: bool,
+) -> int:
+    """ADR-154: assignee and/or due date for many cases of one run, all or nothing."""
+    run = _get_run_or_404(db, tenant_id, run_id)
+    _authorize_run_access(db, tenant_id, role_code, actor_user_id, run)
+    if run.finished_at is not None:
+        raise ConflictError("Cannot reassign cases on a finished test run")
+    wanted = list(dict.fromkeys(run_case_ids))
+    cases = list(
+        db.execute(
+            select(TestRunCase).where(TestRunCase.test_run_id == run.id, TestRunCase.id.in_(wanted))
+        ).scalars()
+    )
+    if len(cases) != len(wanted):
+        raise ValidationAppError(
+            "Some of those cases are not part of this run",
+            fields={"test_run_case_ids": "Some of those cases are not part of this run"},
+        )
+    assignee: User | None = None
+    if update_assignee and assigned_to is not None:
+        assignee = db.execute(
+            select(User).where(User.tenant_id == tenant_id, User.id == assigned_to)
+        ).scalar_one_or_none()
+        if assignee is None:
+            raise NotFoundError("Assignee not found in this tenant")
+    for run_case in cases:
+        if update_assignee:
+            run_case.assigned_to = assigned_to
+        if update_due_date:
+            run_case.due_date = due_date
+    metadata: dict[str, object] = {"case_count": len(cases)}
+    if update_assignee:
+        metadata["assigned_to"] = str(assigned_to) if assigned_to else None
+    if update_due_date:
+        metadata["due_date"] = due_date.isoformat() if due_date else None
+    record_audit_event(
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="testrun.cases_bulk_assigned",
+        entity_type="test_run",
+        entity_id=run.id,
+        metadata=metadata,
+    )
+    if assignee is not None:
+        # One message, not one per case.
+        notification_service.notify(
+            db,
+            tenant_id,
+            actor_user_id,
+            assignee.id,
+            assignee.email,
+            "run_case_assigned",
+            "Test case executions were assigned to you",
+            f'{len(cases)} test case(s) in run "{run.name}" were assigned to you to execute.',
+            "test_run",
+            run.id,
+        )
+    db.commit()
+    return len(cases)
+
+
 def pause_test_run(db: Session, tenant_id: UUID, actor_user_id: UUID, run_id: UUID) -> TestRun:
     """Caller must already hold testrun.finish (admin/manager only)."""
     run = _get_run_or_404(db, tenant_id, run_id)
@@ -645,6 +754,7 @@ def _run_summaries(db: Session, runs: list[TestRun]) -> list[TestRunSummaryOut]:
         .tuples()
         .all()
     )
+    names = run_context.names_for(db, runs)
     return [
         TestRunSummaryOut(
             id=run.id,
@@ -656,6 +766,7 @@ def _run_summaries(db: Session, runs: list[TestRun]) -> list[TestRunSummaryOut]:
             finished_at=run.finished_at,
             paused_at=run.paused_at,
             case_count=case_counts.get(run.id, 0),
+            **names.of(run),  # type: ignore[arg-type]
         )
         for run in runs
     ]
@@ -808,6 +919,7 @@ def to_out(db: Session, run: TestRun) -> TestRunOut:
         paused_at=run.paused_at,
         original_run_id=run.original_run_id,
         cases=case_outs,
+        **run_context.names_for(db, [run]).of(run),  # type: ignore[arg-type]
     )
 
 
@@ -1104,6 +1216,9 @@ def record_ci_result(
     test_run_case_id: UUID,
     ci_status: str,
     service_token_id: UUID,
+    *,
+    environment: str | None = None,
+    build: str | None = None,
 ) -> TestRunCase:
     # Re-assert tenant context: this project's recurring bug class (the RLS
     # GUC resets on COMMIT, not just ROLLBACK) -- the auth dependency's own
@@ -1119,6 +1234,9 @@ def record_ci_result(
     if run.paused_at is not None:
         raise ConflictError("Test run is paused")
     _require_not_blocked(run_case)
+    run_context.apply_ci_context(
+        db, tenant_id, run, environment, build, service_token_id=service_token_id
+    )
 
     # Same row lock record_verdict takes (GAP-49) -- concurrent webhook
     # deliveries for sibling steps of the same run case must serialize
@@ -1409,6 +1527,10 @@ def rerun_failed(
         run_type=source.run_type,
         executed_by=actor_user_id,
         original_run_id=source.id,
+        # The same environment, build and release as the run it repeats.
+        environment_id=source.environment_id,
+        build_id=source.build_id,
+        release_id=source.release_id,
     )
     db.add(run)
     db.flush()

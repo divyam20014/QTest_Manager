@@ -270,3 +270,79 @@ def test_webhook_cannot_be_used_against_another_tenants_run_case(
         json={"results": [{"test_run_case_id": run_case_b_id, "status": "passed"}]},
     )
     assert cross_tenant.status_code == 401
+
+
+# -- Environment and build from CI (ADR-155) -------------------------------
+
+
+def _ci_post(client: TestClient, tenant_id: str, token: str, run_case_id: str, **extra):
+    return client.post(
+        f"/api/v1/ci/{tenant_id}/webhooks/test-results",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"results": [{"test_run_case_id": run_case_id, "status": "passed"}], **extra},
+    )
+
+
+def test_ci_can_name_the_environment_and_build_of_a_run_that_has_none(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project, run = _setup_tenant_with_run(client, platform_admin)
+    token = client.post("/api/v1/service-tokens", json={"name": "CI"}).json()["data"]["raw_value"]
+    client.post("/api/v1/environments", json={"name": "Staging"})
+    client.post(f"/api/v1/projects/{project['id']}/builds", json={"name": "build-42"})
+    case_id = run["cases"][0]["id"]
+
+    response = _ci_post(client, tenant_id, token, case_id, environment="staging", build="BUILD-42")
+
+    assert response.json()["data"]["accepted_count"] == 1, response.text
+    recorded = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
+    assert (recorded["environment_name"], recorded["build_name"]) == ("Staging", "build-42")
+
+
+def test_ci_never_replaces_what_a_run_already_records(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, project, _ = _setup_tenant_with_run(client, platform_admin)
+    token = client.post("/api/v1/service-tokens", json={"name": "CI"}).json()["data"]["raw_value"]
+    env = client.post("/api/v1/environments", json={"name": "Staging"}).json()["data"]
+    client.post("/api/v1/environments", json={"name": "Production"})
+    case = _create_approved_case(client, project["id"], "Another case")
+    run = client.post(
+        f"/api/v1/projects/{project['id']}/test-runs",
+        json={
+            "name": "Already recorded",
+            "run_type": "Smoke",
+            "test_case_ids": [case["id"]],
+            "environment_id": env["id"],
+        },
+    ).json()["data"]
+
+    _ci_post(client, tenant_id, token, run["cases"][0]["id"], environment="Production")
+
+    after = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
+    assert after["environment_name"] == "Staging"
+
+
+def test_an_unknown_name_refuses_that_result_only(client: TestClient, platform_admin: dict) -> None:
+    tenant_id, project, run = _setup_tenant_with_run(client, platform_admin)
+    token = client.post("/api/v1/service-tokens", json={"name": "CI"}).json()["data"]["raw_value"]
+    case_id = run["cases"][0]["id"]
+
+    response = _ci_post(client, tenant_id, token, case_id, build="no-such-build")
+
+    body = response.json()["data"]
+    assert (body["accepted_count"], body["rejected_count"]) == (0, 1)
+    assert "no-such-build" in body["outcomes"][0]["detail"]
+    after = client.get(f"/api/v1/test-runs/{run['id']}").json()["data"]
+    assert after["cases"][0]["status"] == "pending"
+
+
+def test_existing_ci_payloads_without_the_new_fields_still_work(
+    client: TestClient, platform_admin: dict
+) -> None:
+    tenant_id, _, run = _setup_tenant_with_run(client, platform_admin)
+    token = client.post("/api/v1/service-tokens", json={"name": "CI"}).json()["data"]["raw_value"]
+
+    response = _ci_post(client, tenant_id, token, run["cases"][0]["id"])
+
+    assert response.json()["data"]["accepted_count"] == 1

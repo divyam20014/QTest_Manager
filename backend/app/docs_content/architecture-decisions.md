@@ -2137,3 +2137,25 @@ Deleting an empty project now also deletes its milestones and sprints.
 The importer's project check used the role's name, so only the role code `tester` had to be assigned to the project; QA Lead without `project.view.all`, Developer and custom roles could import into projects they did not belong to. It now uses the access tier, as the rest of the app does. This also corrects test case and defect imports.
 
 **Consequences.** Re-importing a file creates duplicates (the preview warns about matching titles). There is no update-by-ID.
+
+## ADR-152: A run records its environment, build and release
+
+**Context.** A test result did not say where or against what it was obtained.
+
+**Decision.** `test_runs` gets optional `environment_id`, `build_id` and `release_id`; `builds` gets `release_id`. Builds and releases are of one project and a run's build and release are of the run's own project (composite foreign keys). A build that belongs to a release brings it to the run, and naming a different release is refused. An organization setting, off by default, makes an environment and a build required on **new** runs. Existing runs are left empty and shown as "Not recorded"; nothing was guessed. They, and any unfinished run, can be filled in or corrected later, even after execution started, which is the one thing that can change then. A rerun of failed cases keeps the original's three values. A build cannot move to another release, and a build, release or environment cannot be deleted, once runs refer to it. Deleting a release leaves its builds without one. Migration `c6e8a0b2d4f5`. The pickers are searchable.
+
+**Consequences.** A build used by a run is part of that run's history.
+
+## ADR-153: Test plan owner, dates, status and exit criteria
+
+**Decision.** A plan gets an optional owner (an active member of the project), start and end dates (the end not before the start), a status (draft, active, complete) and exit criteria as free text. Nothing checks the criteria yet or changes the status automatically; release sign-off (Phase 6) is expected to use them. Migration `d7f9b1c3e5a6`.
+
+## ADR-154: Bulk assignment in a run, and "N/A"
+
+**Decision.** `POST /test-runs/{id}/cases/assign` gives many cases of one open run an assignee, a due date, or both, all or nothing, with the permission single assignment needs (`testrun.create`); it audits once for the batch and sends the assignee one notification. The result `ignored` is shown as **N/A** (the console buttons, the run's case status and the defect page); the stored value, the API and reports are unchanged, and a test case's execution status filter still says "Skipped". N/A keeps being left out of pass rates. Pressing N, or I as before, records it.
+
+**Not built.** Attempt history for re-recorded results: a verdict recorded again still replaces the earlier one. The audit log records each change with who and when, but the results screens do not show earlier attempts.
+
+## ADR-155: CI results can name the environment and build
+
+**Decision.** The CI webhook accepts optional `environment` and `build` names (case-insensitive; the build is looked for in the run's project). They fill in a run that does not record them yet and never replace what it does. An unknown name refuses that result and no other, the same way an unknown run case does. The change is audited against the service token. Payloads without the new fields behave exactly as before.

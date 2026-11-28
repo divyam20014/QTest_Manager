@@ -168,9 +168,7 @@ def export_audit_logs_csv(
     ).order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
     # Chunked server-side fetch: rows are written straight into the CSV buffer
     # instead of materialising up to EXPORT_ROW_CAP ORM rows first (ADR-113).
-    rows = db.execute(
-        query.limit(EXPORT_ROW_CAP).execution_options(yield_per=VERIFY_BATCH_SIZE)
-    )
+    rows = db.execute(query.limit(EXPORT_ROW_CAP).execution_options(yield_per=VERIFY_BATCH_SIZE))
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)

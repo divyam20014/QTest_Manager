@@ -78,9 +78,7 @@ def get_subscription_history(
     ctx: SessionContext = Depends(require_permission("tenant.settings.manage")),
     db: Session = Depends(get_db),
 ) -> dict:
-    logs = audit_service.list_audit_logs(
-        db, ctx.tenant_id, entity_type="subscription", limit=50
-    )
+    logs = audit_service.list_audit_logs(db, ctx.tenant_id, entity_type="subscription", limit=50)
     return envelope([log.model_dump(mode="json") for log in logs])
 
 

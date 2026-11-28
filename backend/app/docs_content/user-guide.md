@@ -1017,3 +1017,32 @@ own history under Profile.
 6. Under **Settings > Data**, choose whether Testers see only assigned cases and
    whether Reports are hidden from them.
 7. Use **Access rules** to schedule release freezes when needed.
+
+### Environment and build on test runs
+
+When you create a test run you can choose the **Environment**, the **Build** and
+the **Release** it is run against (the pickers are searchable). A build that
+belongs to a release brings that release. Builds are put in a release under
+**Planning > Releases & builds**. An Admin can make the environment and build
+required for every new run under **Settings > Fields > Test Runs**.
+
+Runs made before this was available say **Not recorded**. Until a run is
+finished you can **Edit** it and record them, even after execution started. A
+rerun of failed cases keeps the original run's environment and build. A build,
+release or environment that runs used cannot be deleted.
+
+CI jobs can send an optional `environment` and `build` name with their results;
+they fill in a run that has none and never replace what a run already records.
+
+### Test plans
+
+Edit a plan under **Planning** to give it an **Owner**, **start and end dates**, a
+**status** (Draft, Active, Complete) and **exit criteria**: a note of what must be
+true to call the plan complete. Nothing checks the criteria automatically.
+
+### Several test cases in a run at once
+
+On an open run, tick test cases and use **Assign** or **Set due date** to change
+all of them in one step. The result called "ignored" is now shown as **N/A**
+(press N, or I, in the execution console). It is still left out of pass rates.
+Recording a result again replaces the earlier one; the activity log keeps the history.

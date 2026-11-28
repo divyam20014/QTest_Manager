@@ -19,6 +19,8 @@ class TenantSettingsOut(BaseModel):
     project_domains_customised: bool = False
     testers_see_assigned_cases_only: bool = False
     reports_hidden_from_testers: bool = False
+    # ADR-152
+    require_run_environment_build: bool = False
 
 
 class TenantSettingsUpdateRequest(BaseModel):
@@ -39,6 +41,8 @@ class TenantSettingsUpdateRequest(BaseModel):
     # ADR-093: Tester visibility switches (Admin only via tenant.settings.manage).
     testers_see_assigned_cases_only: bool | None = None
     reports_hidden_from_testers: bool | None = None
+    # ADR-152: new test runs must name an environment and a build.
+    require_run_environment_build: bool | None = None
 
     @field_validator("default_currency_code")
     @classmethod

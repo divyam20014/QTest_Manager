@@ -26,6 +26,13 @@ class BuildCreateRequest(BaseModel):
     name: str = Field(min_length=1)
     built_at: date | None = None
     notes: str | None = None
+    # ADR-152
+    release_id: UUID | None = None
+
+
+class BuildUpdateRequest(BaseModel):
+    # Send null to take the build out of its release.
+    release_id: UUID | None
 
 
 class BuildOut(BaseModel):
@@ -35,6 +42,7 @@ class BuildOut(BaseModel):
     built_at: date | None
     notes: str | None
     created_at: datetime
+    release_id: UUID | None = None
 
 
 class BuildBulkCreateRequest(BaseModel):

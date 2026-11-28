@@ -37,6 +37,7 @@ def to_out(tenant: Tenant) -> TenantSettingsOut:
         project_domains_customised=tenant.project_domains is not None,
         testers_see_assigned_cases_only=tenant.testers_see_assigned_cases_only,
         reports_hidden_from_testers=tenant.reports_hidden_from_testers,
+        require_run_environment_build=tenant.require_run_environment_build,
     )
 
 
@@ -104,7 +105,11 @@ def update_settings(
     changed_visibility = False
     # ADR-093: one `tenant.setting_changed` event per flipped switch (key and
     # new boolean only), in addition to the generic settings_updated event.
-    for key in ("testers_see_assigned_cases_only", "reports_hidden_from_testers"):
+    for key in (
+        "testers_see_assigned_cases_only",
+        "reports_hidden_from_testers",
+        "require_run_environment_build",
+    ):
         new_value = getattr(req, key)
         if new_value is not None and new_value != getattr(tenant, key):
             setattr(tenant, key, new_value)

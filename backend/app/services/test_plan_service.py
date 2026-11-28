@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -8,6 +9,7 @@ from app.core.db import set_tenant_context
 from app.core.errors import ForbiddenError, NotFoundError, ValidationAppError
 from app.models.defect import Defect
 from app.models.execution import TestRun, TestRunCase
+from app.models.identity import User
 from app.models.project import Project
 from app.models.test_asset import Release
 from app.models.test_plan import TestPlan, TestPlanRun
@@ -52,15 +54,32 @@ def _validate_run_ids(db: Session, tenant_id: UUID, project_id: UUID, run_ids: l
     found = set(
         db.execute(
             select(TestRun.id).where(
-                TestRun.tenant_id == tenant_id, TestRun.project_id == project_id,
+                TestRun.tenant_id == tenant_id,
+                TestRun.project_id == project_id,
                 TestRun.id.in_(run_ids),
             )
         ).scalars()
     )
     missing = set(run_ids) - found
     if missing:
-        missing_str = ', '.join(str(m) for m in missing)
+        missing_str = ", ".join(str(m) for m in missing)
         raise ValidationAppError(f"Unknown test run id(s) for this project: {missing_str}")
+
+
+def _check_details(
+    db: Session, project: Project, owner_id: UUID | None, start: date | None, end: date | None
+) -> None:
+    errors: dict[str, str] = {}
+    if start is not None and end is not None and start > end:
+        errors["end_date"] = "end_date cannot be before start_date"
+    if owner_id is not None:
+        owner = db.execute(select(User).where(User.id == owner_id)).scalar_one_or_none()
+        if owner is None or owner.tenant_id != project.tenant_id or not owner.is_active:
+            errors["owner_id"] = "owner_id must be an active user in this tenant"
+        elif not is_assigned(db, project, owner_id):
+            errors["owner_id"] = "owner_id must be a member of this project"
+    if errors:
+        raise ValidationAppError("Invalid fields: " + ", ".join(errors), fields=errors)
 
 
 def _to_out(db: Session, plan: TestPlan) -> TestPlanOut:
@@ -70,8 +89,23 @@ def _to_out(db: Session, plan: TestPlan) -> TestPlanOut:
         ).scalars()
     )
     return TestPlanOut(
-        id=plan.id, project_id=plan.project_id, release_id=plan.release_id, name=plan.name,
-        description=plan.description, created_at=plan.created_at, test_run_ids=run_ids,
+        id=plan.id,
+        project_id=plan.project_id,
+        release_id=plan.release_id,
+        name=plan.name,
+        description=plan.description,
+        created_at=plan.created_at,
+        test_run_ids=run_ids,
+        owner_id=plan.owner_id,
+        owner_name=db.execute(
+            select(User.name).where(User.id == plan.owner_id)
+        ).scalar_one_or_none()
+        if plan.owner_id
+        else None,
+        start_date=plan.start_date,
+        end_date=plan.end_date,
+        status=plan.status,  # type: ignore[arg-type]
+        exit_criteria=plan.exit_criteria,
     )
 
 
@@ -89,7 +123,11 @@ def list_plans(
 
 
 def create_plan(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, project_id: UUID,
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    project_id: UUID,
     req: TestPlanCreateRequest,
 ) -> TestPlanOut:
     project = _get_project_or_404(db, tenant_id, project_id)
@@ -97,17 +135,27 @@ def create_plan(
     if req.release_id is not None:
         release = db.execute(
             select(Release).where(
-                Release.tenant_id == tenant_id, Release.id == req.release_id,
+                Release.tenant_id == tenant_id,
+                Release.id == req.release_id,
                 Release.project_id == project_id,
             )
         ).scalar_one_or_none()
         if release is None:
             raise ValidationAppError("Release not found for this project")
     _validate_run_ids(db, tenant_id, project_id, req.test_run_ids)
+    _check_details(db, project, req.owner_id, req.start_date, req.end_date)
 
     plan = TestPlan(
-        tenant_id=tenant_id, project_id=project_id, release_id=req.release_id, name=req.name,
+        tenant_id=tenant_id,
+        project_id=project_id,
+        release_id=req.release_id,
+        name=req.name,
         description=req.description,
+        owner_id=req.owner_id,
+        start_date=req.start_date,
+        end_date=req.end_date,
+        status=req.status,
+        exit_criteria=req.exit_criteria,
     )
     db.add(plan)
     db.flush()
@@ -115,8 +163,12 @@ def create_plan(
         db.add(TestPlanRun(tenant_id=tenant_id, test_plan_id=plan.id, test_run_id=run_id))
 
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_plan.created",
-        entity_type="test_plan", entity_id=plan.id,
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_plan.created",
+        entity_type="test_plan",
+        entity_id=plan.id,
         metadata={"name": req.name, "run_count": len(req.test_run_ids)},
     )
     db.commit()
@@ -125,7 +177,11 @@ def create_plan(
 
 
 def update_plan(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, plan_id: UUID,
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    plan_id: UUID,
     req: TestPlanUpdateRequest,
 ) -> TestPlanOut:
     plan = _get_plan_or_404(db, tenant_id, plan_id)
@@ -138,10 +194,32 @@ def update_plan(
         plan.description = req.description
     if "release_id" in req.model_fields_set:
         plan.release_id = req.release_id
+    sent = req.model_fields_set
+    owner_id = req.owner_id if "owner_id" in sent else plan.owner_id
+    start = req.start_date if "start_date" in sent else plan.start_date
+    end = req.end_date if "end_date" in sent else plan.end_date
+    if {"owner_id", "start_date", "end_date"} & sent:
+        _check_details(db, project, owner_id if "owner_id" in sent else None, start, end)
+    if "status" in sent and req.status is None:
+        raise ValidationAppError(
+            "Invalid fields: status", fields={"status": "status cannot be cleared"}
+        )
+    changed = {
+        key: getattr(req, key)
+        for key in ("owner_id", "start_date", "end_date", "status", "exit_criteria")
+        if key in sent
+    }
+    for key, value in changed.items():
+        setattr(plan, key, value)
 
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_plan.updated",
-        entity_type="test_plan", entity_id=plan.id,
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_plan.updated",
+        entity_type="test_plan",
+        entity_id=plan.id,
+        metadata={"fields": sorted(sent)},
     )
     db.commit()
     set_tenant_context(db, str(tenant_id))
@@ -149,7 +227,11 @@ def update_plan(
 
 
 def set_plan_runs(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, plan_id: UUID,
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    plan_id: UUID,
     req: TestPlanRunSetRequest,
 ) -> TestPlanOut:
     plan = _get_plan_or_404(db, tenant_id, plan_id)
@@ -162,8 +244,13 @@ def set_plan_runs(
         db.add(TestPlanRun(tenant_id=tenant_id, test_plan_id=plan.id, test_run_id=run_id))
 
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_plan.runs_set",
-        entity_type="test_plan", entity_id=plan.id, metadata={"run_count": len(req.test_run_ids)},
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_plan.runs_set",
+        entity_type="test_plan",
+        entity_id=plan.id,
+        metadata={"run_count": len(req.test_run_ids)},
     )
     db.commit()
     set_tenant_context(db, str(tenant_id))
@@ -179,8 +266,12 @@ def delete_plan(
 
     db.query(TestPlanRun).filter(TestPlanRun.test_plan_id == plan.id).delete()
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_plan.deleted",
-        entity_type="test_plan", entity_id=plan.id,
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_plan.deleted",
+        entity_type="test_plan",
+        entity_id=plan.id,
     )
     db.delete(plan)
     db.commit()
@@ -204,14 +295,15 @@ def get_plan_rollup(
     )
     if not run_ids:
         return TestPlanRollup(
-            test_plan_id=plan.id, total_test_cases=0, execution_completion_percentage=0.0,
-            pass_percentage=0.0, open_defects_by_severity={},
+            test_plan_id=plan.id,
+            total_test_cases=0,
+            execution_completion_percentage=0.0,
+            pass_percentage=0.0,
+            open_defects_by_severity={},
         )
 
     run_case_statuses = list(
-        db.execute(
-            select(TestRunCase.status).where(TestRunCase.test_run_id.in_(run_ids))
-        ).scalars()
+        db.execute(select(TestRunCase.status).where(TestRunCase.test_run_id.in_(run_ids))).scalars()
     )
     total = len(run_case_statuses)
     completed = sum(1 for s in run_case_statuses if s in COMPLETED_RUN_CASE_STATUSES)
@@ -222,7 +314,8 @@ def get_plan_rollup(
     open_defects = db.execute(
         select(Defect.severity, func.count())
         .where(
-            Defect.tenant_id == tenant_id, Defect.test_run_id.in_(run_ids),
+            Defect.tenant_id == tenant_id,
+            Defect.test_run_id.in_(run_ids),
             Defect.status.in_(OPEN_DEFECT_STATUSES),
         )
         .group_by(Defect.severity)

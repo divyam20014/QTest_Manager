@@ -19,12 +19,15 @@ export interface Build {
   built_at: string | null
   notes: string | null
   created_at: string
+  /** ADR-152 */
+  release_id?: string | null
 }
 
 export interface BuildCreateRequest {
   name: string
   built_at?: string | null
   notes?: string | null
+  release_id?: string | null
 }
 
 export interface Release {
@@ -75,6 +78,11 @@ export function createBuild(projectId: string, req: BuildCreateRequest): Promise
 
 export function deleteBuild(id: string): Promise<{ deleted: boolean }> {
   return apiFetch<{ deleted: boolean }>(`/builds/${id}`, { method: 'DELETE' })
+}
+
+/** Puts the build in a release, or takes it out with null. */
+export function updateBuild(id: string, req: { release_id: string | null }): Promise<Build> {
+  return apiFetch<Build>(`/builds/${id}`, { method: 'PATCH', body: JSON.stringify(req) })
 }
 
 export function listReleases(projectId: string): Promise<Release[]> {

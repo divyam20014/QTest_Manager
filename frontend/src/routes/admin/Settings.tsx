@@ -145,6 +145,7 @@ export function Settings() {
             content: (
               <div className="flex flex-col gap-4">
                 <TesterVisibilityCard />
+                <TestRunRulesCard />
                 <AISettingsCard />
                 <SubscriptionCard />
                 <ExportCard />
@@ -808,6 +809,51 @@ export function AISettingsCard() {
   }
 
   return <AISettingsForm initial={settingsQuery.data} />
+}
+
+// ADR-152: whether a new test run must say which environment and build it runs against.
+function TestRunRulesCard() {
+  const queryClient = useQueryClient()
+  const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings })
+  const { show: showToast } = useToast()
+  const saveMutation = useMutation({
+    mutationFn: (required: boolean) => updateSettings({ require_run_environment_build: required }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['settings'], data)
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      showToast('success', 'Test run rules saved')
+    },
+  })
+  const serverError = saveMutation.error instanceof ApiError ? saveMutation.error.message : null
+  const initial = settingsQuery.data
+  if (!initial) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Test Runs</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex max-w-xl flex-col gap-3 text-sm">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={!!initial.require_run_environment_build}
+              disabled={saveMutation.isPending}
+              onChange={(e) => saveMutation.mutate(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Require an environment and a build on every new test run</span>
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                Runs already created are not changed; they show “Not recorded” until someone fills them in.
+              </span>
+            </span>
+          </label>
+          <FormError>{serverError}</FormError>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 // ADR-093: two per-tenant switches (both off by default) that narrow what Testers see.

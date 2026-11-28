@@ -11,6 +11,7 @@ import {
   deleteTestPlan,
   getTestPlanRollup,
   listTestPlans,
+  type TestPlan,
 } from '@/api/testPlans'
 import {
   createRunFromSuite,
@@ -18,6 +19,7 @@ import {
   deleteTestSuite,
   listTestSuites,
 } from '@/api/testSuites'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -25,9 +27,11 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Tabs } from '@/components/ui/tabs'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { useAuth } from '@/lib/auth'
+import { PLAN_STATUS_LABEL, PLAN_STATUS_TONE } from '@/lib/testPlans'
 import { useToast } from '@/lib/toast'
 
 import { MilestonesCard } from './ProjectMilestones'
+import { PlanEditDialog } from './PlanEditDialog'
 import { BuildsReleasesCard } from './ProjectReleases'
 
 // ADR-122 / ADR-131: the Planning tab, in two sections: test suites and plans, and the releases
@@ -245,6 +249,7 @@ export function TestPlansCard({ projectId, canManage }: { projectId: string; can
   const { ask, dialog: confirmDialog } = useConfirm()
   const [planName, setPlanName] = useState('')
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([])
+  const [editingPlan, setEditingPlan] = useState<TestPlan | null>(null)
 
   const plansQuery = useQuery({
     queryKey: ['test-plans', projectId],
@@ -284,6 +289,7 @@ export function TestPlansCard({ projectId, canManage }: { projectId: string; can
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
         {confirmDialog}
+        <PlanEditDialog plan={editingPlan} projectId={projectId} onClose={() => setEditingPlan(null)} />
         <ul className="flex flex-col gap-2">
           {(plansQuery.data ?? []).length === 0 && (
             <li className="text-[var(--muted-foreground)]">No test plans yet.</li>
@@ -293,6 +299,7 @@ export function TestPlansCard({ projectId, canManage }: { projectId: string; can
               key={plan.id}
               plan={plan}
               canManage={canManage}
+              onEdit={() => setEditingPlan(plan)}
               onDelete={() =>
                 ask({
                   title: `Delete plan “${plan.name}”?`,
@@ -345,10 +352,12 @@ export function TestPlansCard({ projectId, canManage }: { projectId: string; can
 function PlanRow({
   plan,
   canManage,
+  onEdit,
   onDelete,
 }: {
-  plan: { id: string; name: string; test_run_ids: string[] }
+  plan: TestPlan
   canManage: boolean
+  onEdit: () => void
   onDelete: () => void
 }) {
   const rollupQuery = useQuery({
@@ -366,11 +375,22 @@ function PlanRow({
           </span>
         </span>
         {canManage && (
-          <Button variant="ghost" size="sm" onClick={onDelete}>
-            Delete
-          </Button>
+          <span className="flex gap-1">
+            <Button variant="ghost" size="sm" aria-label={`Edit plan ${plan.name}`} onClick={onEdit}>
+              Edit
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onDelete}>
+              Delete
+            </Button>
+          </span>
         )}
       </div>
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted-foreground)]">
+        <Badge tone={PLAN_STATUS_TONE[plan.status]}>{PLAN_STATUS_LABEL[plan.status]}</Badge>
+        <span>Owner: {plan.owner_name ?? 'none'}</span>
+        <span>{plan.start_date || plan.end_date ? `${plan.start_date ?? '…'} to ${plan.end_date ?? '…'}` : 'No dates'}</span>
+      </p>
+      {plan.exit_criteria && <p className="mt-1 whitespace-pre-wrap text-xs">Exit criteria: {plan.exit_criteria}</p>}
       {rollupQuery.data && (
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
           {rollupQuery.data.execution_completion_percentage}% complete &middot;{' '}

@@ -13,6 +13,8 @@ import {
   type TestRunSummary,
 } from '@/api/execution'
 import { getProject } from '@/api/projects'
+import { getSettings } from '@/api/settings'
+import { NO_CONTEXT, RunContextFields, type RunContext } from '@/components/RunContextFields'
 import { listTestCases } from '@/api/testCases'
 import { ColumnVisibilityMenu } from '@/components/table/ColumnVisibilityMenu'
 import { useColumnPrefs, type TableColumnDef } from '@/components/table/tablePrefs'
@@ -52,6 +54,8 @@ const RUN_COLUMN_DEFS: TableColumnDef[] = [
   { key: 'name', label: 'Name', alwaysVisible: true },
   { key: 'status', label: 'Status', alwaysVisible: true },
   { key: 'type', label: 'Type' },
+  { key: 'environment', label: 'Environment' },
+  { key: 'build', label: 'Build' },
   { key: 'cases', label: 'Cases' },
   { key: 'created', label: 'Created' },
 ]
@@ -81,6 +85,8 @@ const RUN_COLUMNS: ResponsiveColumn<TestRunSummary>[] = [
     ),
   },
   { key: 'type', header: 'Type', cell: (run) => run.run_type },
+  { key: 'environment', header: 'Environment', cell: (run) => run.environment_name ?? 'Not recorded' },
+  { key: 'build', header: 'Build', cell: (run) => run.build_name ?? 'Not recorded' },
   { key: 'cases', header: 'Cases', cell: (run) => run.case_count },
   { key: 'created', header: 'Created', cell: (run) => new Date(run.created_at).toLocaleDateString() },
 ]
@@ -94,6 +100,9 @@ const RUN_DETAIL: RowDetailConfig<TestRunSummary> = {
   fields: (run) => [
     { label: 'ID', value: <span className="font-mono text-xs">{run.id.slice(0, 8)}</span> },
     { label: 'Type', value: run.run_type },
+    { label: 'Environment', value: run.environment_name ?? 'Not recorded' },
+    { label: 'Build', value: run.build_name ?? 'Not recorded' },
+    { label: 'Release', value: run.release_name ?? 'Not recorded' },
     { label: 'Cases', value: run.case_count },
     { label: 'Created', value: new Date(run.created_at).toLocaleDateString() },
     { label: 'Finished', value: run.finished_at ? new Date(run.finished_at).toLocaleDateString() : '—' },
@@ -125,6 +134,9 @@ export function TestRunsList() {
   const [name, setName] = useState('')
   // ADR-123: optional due date given to every case of the new run.
   const [dueDate, setDueDate] = useState('')
+  const [context, setContext] = useState<RunContext>(NO_CONTEXT)
+  const settingsQuery = useQuery({ queryKey: ['settings'], queryFn: getSettings, retry: false })
+  const contextRequired = !!settingsQuery.data?.require_run_environment_build
   const { user } = useAuth()
   // ADR-106: remember the last chosen run type per user.
   const typeKey = `qth:last-run-type:${user?.user_id ?? 'anon'}`
@@ -198,6 +210,9 @@ export function TestRunsList() {
       test_case_ids: selectedCaseIds,
       exclude_quarantined: skipQuarantined && quarantinedCount > 0,
       ...(dueDate ? { due_date: dueDate } : {}),
+      ...(context.environment_id ? { environment_id: context.environment_id } : {}),
+      ...(context.build_id ? { build_id: context.build_id } : {}),
+      ...(!context.build_id && context.release_id ? { release_id: context.release_id } : {}),
     })
   }
 
@@ -371,6 +386,13 @@ export function TestRunsList() {
               ))}
             </Select>
           </div>
+          <RunContextFields
+            projectId={projectId!}
+            value={context}
+            onChange={setContext}
+            required={contextRequired}
+            errors={createMutation.error instanceof ApiError ? createMutation.error.fields : undefined}
+          />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="run-due">Due date (optional)</Label>
             <Input id="run-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />

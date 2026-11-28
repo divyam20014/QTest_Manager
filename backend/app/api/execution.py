@@ -20,6 +20,7 @@ from app.schemas.execution import (
     BlockRunCaseRequest,
     TestRunCaseAddRequest,
     TestRunCaseAssignRequest,
+    TestRunCaseBulkAssignRequest,
     TestRunCreateRequest,
     TestRunSummaryListResponse,
     TestRunUpdateRequest,
@@ -176,6 +177,29 @@ def assign_run_case(
             "due_date": run_case.due_date.isoformat() if run_case.due_date else None,
         }
     )
+
+
+@router.post("/test-runs/{run_id}/cases/assign")
+def bulk_assign_run_cases(
+    run_id: UUID,
+    req: TestRunCaseBulkAssignRequest,
+    ctx: SessionContext = Depends(require_permission("testrun.create")),
+    db: Session = Depends(get_db),
+) -> dict:
+    sent = req.model_fields_set
+    updated = execution_service.bulk_assign_run_cases(
+        db,
+        ctx.tenant_id,
+        ctx.role_code,
+        ctx.user_id,
+        run_id,
+        req.test_run_case_ids,
+        req.assigned_to,
+        update_assignee="assigned_to" in sent,
+        due_date=req.due_date,
+        update_due_date="due_date" in sent,
+    )
+    return envelope({"updated": updated})
 
 
 @router.post("/test-runs/{run_id}/pause")

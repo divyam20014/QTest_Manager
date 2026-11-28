@@ -66,6 +66,19 @@ Approved choices: a Requirements view inside Tasks (amends ADR-128; no separate 
 - **Migration rehearsal** on a temporary copy of the development database: all nine Phase 2 and 3 migrations upgraded, downgraded and upgraded again; existing records unchanged; every requirement numbered uniquely; no broken foreign keys. The development database is still at `f5b7d9e1a3c4`.
 - **Not run:** the browser suite.
 
+### Phase 4: test management enhancement (2026-11-28)
+
+Approved choices: environment, build and release on runs, optional unless the organization requires them; a build belongs to at most one release; "ignored" shown as N/A; plan owner, dates, status and exit criteria as a note; bulk assign and due date in a run; no attempt history; CI may name the environment and build; searchable pickers.
+
+- **4A** (ADR-152): runs record environment, build and release; existing runs say "Not recorded". Migration `c6e8a0b2d4f5`.
+- **4B** (ADR-153): plan owner, dates, status, exit criteria. Migration `d7f9b1c3e5a6`.
+- **4C** (ADR-154): bulk assign and due date in a run; N/A label (stored value, API and reports unchanged).
+- **4D** (ADR-155): the CI webhook accepts optional `environment` and `build` names.
+- **Not built (decision F-10):** earlier attempts at a result are not kept in the results screens; the audit log has them.
+- **Not changed:** the test case "Skipped" execution filter still uses its old name.
+- **Test results:** full backend suite 1,832 of 1,834 passed (1 h 31 min). One failure is the known import speed budget (GAP-69). One test listing all settings needed the new setting and was updated (its file passes). **Browser suite not run.**
+- **Migration rehearsal** on a temporary copy of the development database: both migrations upgraded, downgraded and upgraded again; existing records unchanged; the existing run is "not recorded"; no broken foreign keys. The development database is at `b5d7f9a1c3e4`.
+
 ## How to read these documents
 
 | Mark | Meaning |

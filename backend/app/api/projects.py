@@ -168,9 +168,7 @@ def remove_member(
 @router.get("/{project_id}/members")
 def list_members(
     project_id: UUID,
-    ctx: SessionContext = Depends(
-        require_any_permission("project.members.manage", "user.manage")
-    ),
+    ctx: SessionContext = Depends(require_any_permission("project.members.manage", "user.manage")),
     db: Session = Depends(get_db),
 ) -> dict:
     members = project_service.list_members_with_roles(db, ctx.tenant_id, project_id)
@@ -186,8 +184,14 @@ def set_member_role(
     db: Session = Depends(get_db),
 ) -> dict:
     project = project_service.set_member_role(
-        db, ctx.tenant_id, ctx.user_id, ctx.role_code, project_id, user_id, req.role_id,
+        db,
+        ctx.tenant_id,
+        ctx.user_id,
+        ctx.role_code,
+        project_id,
+        user_id,
+        req.role_id,
         actor_permissions=ctx.permissions,
-        actor_is_org_admin=ctx.org_role_code == "admin"
+        actor_is_org_admin=ctx.org_role_code == "admin",
     )
     return envelope(project_service.to_out(db, project).model_dump(mode="json"))

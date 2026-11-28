@@ -250,7 +250,7 @@ export function ExecutionConsole() {
     })
   }
 
-  // Keyboard shortcuts: P/F/I act on the current step. Disabled while the
+  // Keyboard shortcuts: P/F/N (or I) act on the current step. Disabled while the
   // defect dialog is open (it has its own text inputs) or the run is
   // locked (finished/paused).
   useEffect(() => {
@@ -269,7 +269,7 @@ export function ExecutionConsole() {
       const key = e.key.toLowerCase()
       if (key === 'p') submitVerdict('pass')
       else if (key === 'f') submitVerdict('fail')
-      else if (key === 'i') submitVerdict('ignore')
+      else if (key === 'i' || key === 'n') submitVerdict('ignore')
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -565,7 +565,7 @@ export function ExecutionConsole() {
                   Fail <kbd className="ml-1 opacity-60 max-md:hidden">F</kbd>
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => submitVerdict('ignore')} disabled={verdictMutation.isPending}>
-                  Ignore <kbd className="ml-1 opacity-60 max-md:hidden">I</kbd>
+                  N/A <kbd className="ml-1 opacity-60 max-md:hidden">N</kbd>
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setBlockOpen(true)} disabled={verdictMutation.isPending}>
                   <Ban className="size-4" aria-hidden="true" />
@@ -931,7 +931,7 @@ function ReverdictControl({
           Fail
         </Button>
         <Button size="sm" variant="outline" onClick={() => submit('ignore')} disabled={isSubmitting}>
-          Ignore
+          N/A
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={isSubmitting}>
           Cancel

@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,10 +27,13 @@ class Build(Base, TenantScopedMixin):
     Defect.found_in_build_id."""
 
     __tablename__ = "builds"
+    __table_args__ = (UniqueConstraint("id", "project_id", name="uq_builds_id_project"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False
     )
+    # ADR-152: the release this build is part of (same project, enforced by the database).
+    release_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     built_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -42,6 +45,7 @@ class Release(Base, TenantScopedMixin):
     Defect.fixed_in_release_id."""
 
     __tablename__ = "releases"
+    __table_args__ = (UniqueConstraint("id", "project_id", name="uq_releases_id_project"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False

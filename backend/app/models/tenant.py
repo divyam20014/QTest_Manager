@@ -49,6 +49,10 @@ class Tenant(Base, UUIDPKMixin):
     reports_hidden_from_testers: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # ADR-152: new test runs must name an environment and a build.
+    require_run_environment_build: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # BRD gap Phase 4 / ADR-073 (FR-AUTH-04): the organisation's primary

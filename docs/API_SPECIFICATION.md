@@ -511,3 +511,13 @@ Additions in ADR-097: the test case list endpoints take `quarantined=any|only|ex
 | POST | /requirements/{id}/test-cases/{test_case_id}/confirm | `{version_number}`: the case covers the current wording; 409 `stale_write` if that is not the current version, 404 if not linked; returns the requirement | `requirement.manage` |
 
 **Requirement import (ADR-151).** The standard import endpoints exist for requirements too, with the same behaviour and responses as for test cases and defects: `GET /requirements/import-template.xlsx`, `GET /requirements/import-template.csv`, `POST /requirements/import/preview` (multipart `file` and `project_id`), `GET /requirements/import/preview/{token}/rows`, `POST /requirements/import/commit` (`{token, mode}`) and `GET /requirements/import/status/{job_id}`. All need `requirement.manage` on the project. Test case, defect and requirement imports now refuse a project the person may not see (403) by access tier, not by role name.
+
+**Run context (ADR-152).** Test run payloads (`TestRun`, list items) carry `environment_id`, `environment_name`, `build_id`, `build_name`, `release_id` and `release_name` (null when not recorded). `POST /projects/{id}/test-runs` accepts `environment_id`, `build_id` and `release_id` (422 when not found in the tenant or project, or when the release differs from the build's; required `environment_id` and `build_id` when the organization requires them). `PATCH /test-runs/{id}` accepts the same, null clearing, until the run is finished, including after execution has started; `name` and `run_type` stay locked then. Builds carry `release_id`; `POST /projects/{id}/builds` accepts it and `PATCH /builds/{id}` `{release_id}` changes it (409 once runs used the build). Deleting a build, release or environment that runs used answers 409. `GET`/`PATCH /settings` carry `require_run_environment_build`.
+
+**Plans (ADR-153).** Plan payloads and create / update requests carry `owner_id` (and `owner_name`), `start_date`, `end_date`, `status` (`draft`, `active`, `complete`) and `exit_criteria`; 422 for a backwards range or an owner who is not an active project member.
+
+| Method | Path | Notes | Who |
+|---|---|---|---|
+| POST | /test-runs/{id}/cases/assign | `{test_run_case_ids (1 to 500), assigned_to?, due_date?}`: only what is sent changes, null clears; all or nothing; 409 on a finished run, 422 if a case is not in the run | `testrun.create` |
+
+**CI (ADR-155).** `POST /ci/{tenant_id}/webhooks/test-results` accepts optional `environment` and `build` (names); an unknown name rejects that result with a detail, others in the batch are unaffected.

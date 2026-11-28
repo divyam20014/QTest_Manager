@@ -229,6 +229,7 @@ GET /api/v1/user-guide  ->  signed-in
 GET /api/v1/users  ->  require_any_permission(project.members.manage|user.manage)
 GET /api/v1/users/me/history  ->  signed-in
 PATCH /api/v1/access-rules/{rule_id}  ->  require_permission(access_rule.manage)
+PATCH /api/v1/builds/{build_id}  ->  require_permission(environment.manage)
 PATCH /api/v1/custom-fields/definitions/{definition_id}  ->  require_permission(field_customization.manage)
 PATCH /api/v1/dashboards/{dashboard_id}  ->  signed-in
 PATCH /api/v1/defects/{defect_id}  ->  require_defect_permission(defect.create|defect.edit), require_policy(resource_not_locked)
@@ -392,6 +393,7 @@ POST /api/v1/test-run-cases/{test_run_case_id}/block  ->  require_execute_permis
 POST /api/v1/test-run-cases/{test_run_case_id}/defects/{defect_id}  ->  require_any_permission(defect.create|defect.edit)
 POST /api/v1/test-run-cases/{test_run_case_id}/unblock  ->  require_execute_permission
 POST /api/v1/test-runs/{run_id}/cases  ->  require_permission(testrun.create)
+POST /api/v1/test-runs/{run_id}/cases/assign  ->  require_permission(testrun.create)
 POST /api/v1/test-runs/{run_id}/finish  ->  require_permission(testrun.finish)
 POST /api/v1/test-runs/{run_id}/pause  ->  require_permission(testrun.finish)
 POST /api/v1/test-runs/{run_id}/reopen  ->  require_permission(testrun.finish)

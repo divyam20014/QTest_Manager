@@ -27,6 +27,10 @@ class CiTestResult(BaseModel):
 
 class CiWebhookRequest(BaseModel):
     results: list[CiTestResult] = Field(min_length=1, max_length=500)
+    # ADR-155: optional. Names of an environment of the organization and of a build of the
+    # run's project; applied to a run that has none yet, never over what a run already records.
+    environment: str | None = Field(default=None, max_length=200)
+    build: str | None = Field(default=None, max_length=200)
 
 
 class CiResultOutcome(BaseModel):

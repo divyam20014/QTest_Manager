@@ -139,11 +139,15 @@ def run_due_schedules(db: Session) -> int:
     for tenant_id in tenant_ids:
         set_tenant_context(db, str(tenant_id))
         tenant = db.execute(select(Tenant).where(Tenant.id == tenant_id)).scalar_one()
-        schedules = db.execute(
-            select(ReportSchedule).where(
-                ReportSchedule.tenant_id == tenant_id, ReportSchedule.enabled.is_(True)
+        schedules = (
+            db.execute(
+                select(ReportSchedule).where(
+                    ReportSchedule.tenant_id == tenant_id, ReportSchedule.enabled.is_(True)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for schedule in schedules:
             interval = _CADENCE_INTERVALS[schedule.cadence]
             if schedule.last_run_at is not None and now - schedule.last_run_at < interval:

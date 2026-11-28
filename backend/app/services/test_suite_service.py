@@ -55,8 +55,12 @@ def _to_out(db: Session, suite: TestSuite) -> TestSuiteOut:
         ).scalars()
     )
     return TestSuiteOut(
-        id=suite.id, project_id=suite.project_id, name=suite.name, description=suite.description,
-        created_at=suite.created_at, test_case_ids=case_ids,
+        id=suite.id,
+        project_id=suite.project_id,
+        name=suite.name,
+        description=suite.description,
+        created_at=suite.created_at,
+        test_case_ids=case_ids,
     )
 
 
@@ -66,14 +70,15 @@ def _validate_case_ids(
     found = set(
         db.execute(
             select(TestCase.id).where(
-                TestCase.tenant_id == tenant_id, TestCase.project_id == project_id,
+                TestCase.tenant_id == tenant_id,
+                TestCase.project_id == project_id,
                 TestCase.id.in_(case_ids),
             )
         ).scalars()
     )
     missing = set(case_ids) - found
     if missing:
-        missing_str = ', '.join(str(m) for m in missing)
+        missing_str = ", ".join(str(m) for m in missing)
         raise ValidationAppError(f"Unknown test case id(s) for this project: {missing_str}")
 
 
@@ -91,7 +96,11 @@ def list_suites(
 
 
 def create_suite(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, project_id: UUID,
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    project_id: UUID,
     req: TestSuiteCreateRequest,
 ) -> TestSuiteOut:
     project = _get_project_or_404(db, tenant_id, project_id)
@@ -99,7 +108,10 @@ def create_suite(
     _validate_case_ids(db, tenant_id, project_id, req.test_case_ids)
 
     suite = TestSuite(
-        tenant_id=tenant_id, project_id=project_id, name=req.name, description=req.description,
+        tenant_id=tenant_id,
+        project_id=project_id,
+        name=req.name,
+        description=req.description,
     )
     db.add(suite)
     db.flush()
@@ -107,8 +119,12 @@ def create_suite(
         db.add(TestSuiteCase(tenant_id=tenant_id, test_suite_id=suite.id, test_case_id=case_id))
 
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_suite.created",
-        entity_type="test_suite", entity_id=suite.id,
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_suite.created",
+        entity_type="test_suite",
+        entity_id=suite.id,
         metadata={"name": req.name, "case_count": len(req.test_case_ids)},
     )
     db.commit()
@@ -117,7 +133,11 @@ def create_suite(
 
 
 def update_suite(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, suite_id: UUID,
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    suite_id: UUID,
     req: TestSuiteUpdateRequest,
 ) -> TestSuiteOut:
     suite = _get_suite_or_404(db, tenant_id, suite_id)
@@ -130,8 +150,12 @@ def update_suite(
         suite.description = req.description
 
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_suite.updated",
-        entity_type="test_suite", entity_id=suite.id,
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_suite.updated",
+        entity_type="test_suite",
+        entity_id=suite.id,
     )
     db.commit()
     set_tenant_context(db, str(tenant_id))
@@ -139,7 +163,11 @@ def update_suite(
 
 
 def set_suite_cases(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, suite_id: UUID,
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    suite_id: UUID,
     req: TestSuiteCaseSetRequest,
 ) -> TestSuiteOut:
     suite = _get_suite_or_404(db, tenant_id, suite_id)
@@ -152,8 +180,12 @@ def set_suite_cases(
         db.add(TestSuiteCase(tenant_id=tenant_id, test_suite_id=suite.id, test_case_id=case_id))
 
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_suite.cases_set",
-        entity_type="test_suite", entity_id=suite.id,
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_suite.cases_set",
+        entity_type="test_suite",
+        entity_id=suite.id,
         metadata={"case_count": len(req.test_case_ids)},
     )
     db.commit()
@@ -170,15 +202,23 @@ def delete_suite(
 
     db.query(TestSuiteCase).filter(TestSuiteCase.test_suite_id == suite.id).delete()
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_suite.deleted",
-        entity_type="test_suite", entity_id=suite.id,
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_suite.deleted",
+        entity_type="test_suite",
+        entity_id=suite.id,
     )
     db.delete(suite)
     db.commit()
 
 
 def create_run_from_suite(
-    db: Session, tenant_id: UUID, role_code: str, actor_user_id: UUID, suite_id: UUID,
+    db: Session,
+    tenant_id: UUID,
+    role_code: str,
+    actor_user_id: UUID,
+    suite_id: UUID,
     req: CreateRunFromSuiteRequest,
 ) -> TestRun:
     """Reuses execution_service.create_test_run's existing bundling/
@@ -208,8 +248,13 @@ def create_run_from_suite(
     # (this codebase's recurring bug class, e.g. ADR-...'s fixes elsewhere).
     set_tenant_context(db, str(tenant_id))
     record_audit_event(
-        db, tenant_id=tenant_id, user_id=actor_user_id, action="test_suite.run_created",
-        entity_type="test_suite", entity_id=suite.id, metadata={"test_run_id": str(run.id)},
+        db,
+        tenant_id=tenant_id,
+        user_id=actor_user_id,
+        action="test_suite.run_created",
+        entity_type="test_suite",
+        entity_id=suite.id,
+        metadata={"test_run_id": str(run.id)},
     )
     db.commit()
     return run

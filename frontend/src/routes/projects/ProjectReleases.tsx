@@ -15,6 +15,7 @@ import {
   type ReleaseStatus,
 } from '@/api/testAssets'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { FormError, FormField } from '@/components/ui/form-field'
@@ -116,6 +117,7 @@ function ReleaseEditForm({
 export function BuildsReleasesCard({ projectId, canManage }: { projectId: string; canManage: boolean }) {
   const queryClient = useQueryClient()
   const [buildName, setBuildName] = useState('')
+  const [buildRelease, setBuildRelease] = useState('')
   const [releaseName, setReleaseName] = useState('')
   const [editing, setEditing] = useState<Release | null>(null)
   const { show: showToast } = useToast()
@@ -131,9 +133,10 @@ export function BuildsReleasesCard({ projectId, canManage }: { projectId: string
   })
 
   const createBuildMutation = useMutation({
-    mutationFn: () => createBuild(projectId, { name: buildName }),
+    mutationFn: () => createBuild(projectId, { name: buildName, release_id: buildRelease || null }),
     onSuccess: () => {
       setBuildName('')
+      setBuildRelease('')
       queryClient.invalidateQueries({ queryKey: ['builds', projectId] })
       showToast('success', 'Build added')
     },
@@ -181,7 +184,12 @@ export function BuildsReleasesCard({ projectId, canManage }: { projectId: string
             )}
             {buildsQuery.data?.map((b) => (
               <li key={b.id} className="flex items-center justify-between">
-                <span>{b.name}</span>
+                <span>
+                  {b.name}
+                  <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                    {releasesQuery.data?.find((r) => r.id === b.release_id)?.name ?? 'No release'}
+                  </span>
+                </span>
                 {canManage && (
                   <Button
                     variant="ghost"
@@ -211,6 +219,17 @@ export function BuildsReleasesCard({ projectId, canManage }: { projectId: string
                 value={buildName}
                 onChange={(e) => setBuildName(e.target.value)}
               />
+              <div className="w-44">
+                <Combobox
+                  id="new-build-release"
+                  aria-label="Release of the new build"
+                  searchable
+                  value={buildRelease}
+                  onChange={setBuildRelease}
+                  placeholder="No release"
+                  options={[{ value: '', label: 'No release' }, ...(releasesQuery.data ?? []).map((r) => ({ value: r.id, label: r.name }))]}
+                />
+              </div>
               <Button
                 size="sm"
                 disabled={!buildName || createBuildMutation.isPending}

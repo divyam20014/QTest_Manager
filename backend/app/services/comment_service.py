@@ -67,9 +67,7 @@ def create_comment(
     if req.mentioned_user_ids:
         mentioned_users = list(
             db.execute(
-                select(User).where(
-                    User.tenant_id == tenant_id, User.id.in_(req.mentioned_user_ids)
-                )
+                select(User).where(User.tenant_id == tenant_id, User.id.in_(req.mentioned_user_ids))
             )
             .scalars()
             .all()
@@ -80,9 +78,7 @@ def create_comment(
             names = ", ".join(str(m) for m in missing)
             raise ValidationAppError(f"Unknown mentioned user(s): {names}")
 
-    author_name = db.execute(
-        select(User.name).where(User.id == actor_user_id)
-    ).scalar_one_or_none()
+    author_name = db.execute(select(User.name).where(User.id == actor_user_id)).scalar_one_or_none()
 
     comment = Comment(
         tenant_id=tenant_id,

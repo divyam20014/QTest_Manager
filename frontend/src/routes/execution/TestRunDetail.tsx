@@ -8,6 +8,7 @@ import { DefectStatusBadge } from '@/routes/defects/DefectStatusBadge'
 import {
   addTestRunCases,
   assignRunCase,
+  bulkAssignRunCases,
   deleteTestRun,
   finishTestRun,
   reopenTestRun,
@@ -18,6 +19,7 @@ import {
   resumeTestRun,
   updateTestRun,
   type RunType,
+  type TestRunUpdateRequest,
   type TestRun,
 } from '@/api/execution'
 import { listTestCases } from '@/api/testCases'
@@ -36,6 +38,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { Dialog, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RunContextFields, type RunContext } from '@/components/RunContextFields'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth'
 import { hasPermission, isManagerOrAbove } from '@/api/auth'
@@ -169,6 +172,23 @@ export function TestRunDetail() {
     onError: () => showToast('error', 'Could not update the due date'),
   })
 
+  // ADR-154: choose several cases, then give them an assignee and/or a due date in one step.
+  const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set())
+  const [bulkUser, setBulkUser] = useState('')
+  const [bulkDue, setBulkDue] = useState('')
+  const bulkMutation = useMutation({
+    mutationFn: (change: { assignedTo?: string | null; dueDate?: string | null }) =>
+      bulkAssignRunCases(runId!, [...selectedCases], change),
+    onSuccess: (result) => {
+      invalidate()
+      setSelectedCases(new Set())
+      setBulkUser('')
+      setBulkDue('')
+      showToast('success', `${result.updated} test case${result.updated === 1 ? '' : 's'} updated`)
+    },
+    onError: (err) => showToast('error', err instanceof ApiError ? err.message : 'Could not update those test cases'),
+  })
+
   const run = runQuery.data
   if (runQuery.isLoading) return <DetailSkeleton />
   if (runQuery.isError) return <ErrorState message="Could not load this test run." error={runQuery.error} onRetry={() => runQuery.refetch()} />
@@ -206,7 +226,7 @@ export function TestRunDetail() {
       card: 'badge',
       cell: (rc) => (
         <div className="flex flex-col items-start gap-1">
-          <StatusBadge tone={RUN_CASE_STATUS_TONE[rc.status]}>{humanizeKey(rc.status)}</StatusBadge>
+          <StatusBadge tone={RUN_CASE_STATUS_TONE[rc.status]}>{rc.status === 'ignored' ? 'N/A' : humanizeKey(rc.status)}</StatusBadge>
           {rc.status === 'blocked' && rc.blocked_reason && (
             <span className="max-w-xs break-words text-xs text-[var(--muted-foreground)]">{rc.blocked_reason}</span>
           )}
@@ -292,6 +312,10 @@ export function TestRunDetail() {
             <Badge tone="neutral">{run.run_type}</Badge>
             <Badge tone={run.finished_at ? 'neutral' : 'positive'}>{run.finished_at ? 'Finished' : 'Active'}</Badge>
             {run.paused_at && <Badge tone="warning">Paused</Badge>}
+            <span className="text-xs text-[var(--muted-foreground)]">
+              Environment: {run.environment_name ?? 'Not recorded'} · Build: {run.build_name ?? 'Not recorded'} · Release:{' '}
+              {run.release_name ?? 'Not recorded'}
+            </span>
           </>
         }
         actionsClassName="max-md:[&>button]:flex-1"
@@ -395,11 +419,74 @@ export function TestRunDetail() {
       <FormError>{finishError}</FormError>
       <FormError>{rerunError}</FormError>
 
+      {canManage && !run.finished_at && selectedCases.size > 0 && (
+        <div role="region" aria-label="Change the selected test cases" className="flex flex-wrap items-end gap-2 rounded-xl border border-[var(--border)] p-3 text-sm">
+          <span className="font-medium">{selectedCases.size} selected</span>
+          <div className="w-48">
+            <Label htmlFor="bulk-assignee" className="sr-only">
+              Assign the selected test cases to
+            </Label>
+            <Select id="bulk-assignee" value={bulkUser} onChange={(e) => setBulkUser(e.target.value)}>
+              <option value="">Assign to…</option>
+              <option value="none">Unassigned</option>
+              {(usersQuery.data ?? []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!bulkUser || bulkMutation.isPending}
+            onClick={() => bulkMutation.mutate({ assignedTo: bulkUser === 'none' ? null : bulkUser })}
+          >
+            Assign
+          </Button>
+          <div>
+            <Label htmlFor="bulk-due" className="sr-only">
+              Due date for the selected test cases
+            </Label>
+            <Input id="bulk-due" type="date" value={bulkDue} onChange={(e) => setBulkDue(e.target.value)} />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!bulkDue || bulkMutation.isPending}
+            onClick={() => bulkMutation.mutate({ dueDate: bulkDue })}
+          >
+            Set due date
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedCases(new Set())}>
+            Clear selection
+          </Button>
+        </div>
+      )}
       <ResponsiveTable
         label="Test cases in this run"
         rows={run.cases}
         rowKey={(rc) => rc.id}
         columns={caseColumns}
+        selection={
+          canManage && !run.finished_at
+            ? {
+                selected: selectedCases,
+                onToggle: (id) =>
+                  setSelectedCases((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(id)) next.delete(id)
+                    else next.add(id)
+                    return next
+                  }),
+                onToggleAll: () =>
+                  setSelectedCases((prev) =>
+                    run.cases.every((rc) => prev.has(rc.id)) ? new Set() : new Set(run.cases.map((rc) => rc.id)),
+                  ),
+                label: (rc) => `Select ${rc.title}`,
+              }
+            : undefined
+        }
         rowActions={(rc) => (
           <div className="flex items-center justify-end gap-3">
             {canManage && !run.finished_at && !rc.started_at && (
@@ -431,7 +518,16 @@ export function TestRunDetail() {
 
       <LinkedDefectsCard runId={run.id} />
 
-      <EditRunDialog open={editOpen} onClose={() => setEditOpen(false)} runId={run.id} name={run.name} runType={run.run_type} />
+      <EditRunDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        runId={run.id}
+        projectId={run.project_id}
+        name={run.name}
+        runType={run.run_type}
+        context={{ environment_id: run.environment_id ?? '', build_id: run.build_id ?? '', release_id: run.release_id ?? '' }}
+        locked={run.cases.some((c) => c.started_at !== null)}
+      />
       <AddCasesDialog
         open={addCasesOpen}
         onClose={() => setAddCasesOpen(false)}
@@ -447,22 +543,40 @@ function EditRunDialog({
   open,
   onClose,
   runId,
+  projectId,
   name: initialName,
   runType: initialRunType,
+  context: initialContext,
+  locked,
 }: {
   open: boolean
   onClose: () => void
   runId: string
+  projectId: string
   name: string
   runType: RunType
+  context: RunContext
+  /** Execution has started: the name and type are fixed, what it ran against can still be recorded. */
+  locked: boolean
 }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(initialName)
   const [runType, setRunType] = useState<RunType>(initialRunType)
+  const [context, setContext] = useState<RunContext>(initialContext)
   const { show: showToast } = useToast()
 
   const updateMutation = useMutation({
-    mutationFn: () => updateTestRun(runId, { name, run_type: runType }),
+    mutationFn: () => {
+      const req: TestRunUpdateRequest = {}
+      if (!locked) {
+        req.name = name
+        req.run_type = runType
+      }
+      if (context.environment_id !== initialContext.environment_id) req.environment_id = context.environment_id || null
+      if (context.build_id !== initialContext.build_id) req.build_id = context.build_id || null
+      if (!context.build_id && context.release_id !== initialContext.release_id) req.release_id = context.release_id || null
+      return updateTestRun(runId, req)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['test-runs', 'detail', runId] })
       onClose()
@@ -476,13 +590,18 @@ function EditRunDialog({
   return (
     <Dialog open={open} onClose={onClose} title="Edit Run">
       <div className="flex flex-col gap-3 text-sm">
+        {locked && (
+          <p className="text-xs text-[var(--muted-foreground)]">
+            Execution has started, so the name and type are fixed. You can still record what the run was run against.
+          </p>
+        )}
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="run-name">Name</Label>
-          <Input id="run-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id="run-name" value={name} disabled={locked} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="run-type">Run Type</Label>
-          <Select id="run-type" value={runType} onChange={(e) => setRunType(e.target.value as RunType)}>
+          <Select id="run-type" value={runType} disabled={locked} onChange={(e) => setRunType(e.target.value as RunType)}>
             {RUN_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -490,6 +609,12 @@ function EditRunDialog({
             ))}
           </Select>
         </div>
+        <RunContextFields
+          projectId={projectId}
+          value={context}
+          onChange={setContext}
+          errors={updateMutation.error instanceof ApiError ? updateMutation.error.fields : undefined}
+        />
         <FormError>{serverError}</FormError>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>

@@ -33,7 +33,13 @@ def ingest_test_results(
     for result in req.results:
         try:
             execution_service.record_ci_result(
-                db, tenant_id, result.test_run_case_id, result.status, token.id
+                db,
+                tenant_id,
+                result.test_run_case_id,
+                result.status,
+                token.id,
+                environment=req.environment,
+                build=req.build,
             )
             outcomes.append(
                 CiResultOutcome(test_run_case_id=result.test_run_case_id, accepted=True)

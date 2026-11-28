@@ -19,16 +19,52 @@ from datetime import date, timedelta
 FieldType = str  # name | email | phone | address | ssn_like | date | number
 
 _FIRST_NAMES = [
-    "Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Avery", "Quinn",
-    "Jamie", "Drew", "Reese", "Sawyer", "Rowan", "Skyler", "Hayden", "Emerson",
+    "Alex",
+    "Jordan",
+    "Taylor",
+    "Morgan",
+    "Casey",
+    "Riley",
+    "Avery",
+    "Quinn",
+    "Jamie",
+    "Drew",
+    "Reese",
+    "Sawyer",
+    "Rowan",
+    "Skyler",
+    "Hayden",
+    "Emerson",
 ]
 _LAST_NAMES = [
-    "Nguyen", "Smith", "Garcia", "Patel", "Kim", "Johnson", "Brown", "Clark",
-    "Davis", "Martinez", "Lopez", "Walker", "Young", "Allen", "Scott", "Hill",
+    "Nguyen",
+    "Smith",
+    "Garcia",
+    "Patel",
+    "Kim",
+    "Johnson",
+    "Brown",
+    "Clark",
+    "Davis",
+    "Martinez",
+    "Lopez",
+    "Walker",
+    "Young",
+    "Allen",
+    "Scott",
+    "Hill",
 ]
 _STREET_NAMES = [
-    "Maple St", "Oak Ave", "Cedar Ln", "River Rd", "Elm St", "Birch Way",
-    "Highland Dr", "Sunset Blvd", "Lakeview Ct", "Pine St",
+    "Maple St",
+    "Oak Ave",
+    "Cedar Ln",
+    "River Rd",
+    "Elm St",
+    "Birch Way",
+    "Highland Dr",
+    "Sunset Blvd",
+    "Lakeview Ct",
+    "Pine St",
 ]
 _CITIES = ["Springfield", "Riverside", "Fairview", "Clinton", "Franklin", "Greenville"]
 _STATES = ["CA", "TX", "NY", "FL", "IL", "OH", "PA", "GA"]

@@ -5,7 +5,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit_event
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, NotFoundError, ValidationAppError
+from app.models.execution import TestRun
 from app.models.project import Project
 from app.models.task import Task
 from app.models.test_asset import Build, Environment, Release
@@ -13,6 +14,7 @@ from app.schemas.test_asset import (
     BuildBulkCreateRequest,
     BuildCreateRequest,
     BuildOut,
+    BuildUpdateRequest,
     EnvironmentCreateRequest,
     EnvironmentOut,
     EnvironmentUpdateRequest,
@@ -107,6 +109,8 @@ def delete_environment(
     ).scalar_one_or_none()
     if env is None:
         raise NotFoundError("Environment not found")
+    if db.execute(select(TestRun.id).where(TestRun.environment_id == environment_id)).first():
+        raise ConflictError("Test runs were run in this environment, so it cannot be deleted")
 
     db.delete(env)
     record_audit_event(
@@ -138,6 +142,7 @@ def _build_to_out(build: Build) -> BuildOut:
         built_at=build.built_at,
         notes=build.notes,
         created_at=build.created_at,
+        release_id=build.release_id,
     )
 
 
@@ -151,16 +156,70 @@ def list_builds(db: Session, tenant_id: UUID, project_id: UUID) -> list[BuildOut
     return [_build_to_out(b) for b in rows]
 
 
+def _check_release_of_project(
+    db: Session, tenant_id: UUID, project_id: UUID, release_id: UUID | None
+) -> None:
+    if release_id is None:
+        return
+    found = db.execute(
+        select(Release.id).where(
+            Release.tenant_id == tenant_id,
+            Release.project_id == project_id,
+            Release.id == release_id,
+        )
+    ).scalar_one_or_none()
+    if found is None:
+        raise ValidationAppError(
+            "release_id was not found in this project",
+            fields={"release_id": "release_id was not found in this project"},
+        )
+
+
+def update_build(
+    db: Session, tenant_id: UUID, actor_user_id: UUID, build_id: UUID, req: BuildUpdateRequest
+) -> BuildOut:
+    build = db.execute(
+        select(Build).where(Build.tenant_id == tenant_id, Build.id == build_id)
+    ).scalar_one_or_none()
+    if build is None:
+        raise NotFoundError("Build not found")
+    _check_release_of_project(db, tenant_id, build.project_id, req.release_id)
+    if req.release_id != build.release_id:
+        # Runs on this build keep telling the truth about the release they were run for.
+        if db.execute(select(TestRun.id).where(TestRun.build_id == build.id)).first():
+            raise ConflictError(
+                "Test runs were already run on this build, so it cannot move to another release"
+            )
+        before = build.release_id
+        build.release_id = req.release_id
+        record_audit_event(
+            db,
+            tenant_id=tenant_id,
+            user_id=actor_user_id,
+            action="build.release_changed",
+            entity_type="build",
+            entity_id=build.id,
+            metadata={
+                "from": str(before) if before else None,
+                "to": str(req.release_id) if req.release_id else None,
+            },
+        )
+    db.commit()
+    return _build_to_out(build)
+
+
 def create_build(
     db: Session, tenant_id: UUID, actor_user_id: UUID, project_id: UUID, req: BuildCreateRequest
 ) -> BuildOut:
     _get_project_or_404(db, tenant_id, project_id)
+    _check_release_of_project(db, tenant_id, project_id, req.release_id)
     build = Build(
         tenant_id=tenant_id,
         project_id=project_id,
         name=req.name,
         built_at=req.built_at,
         notes=req.notes,
+        release_id=req.release_id,
     )
     db.add(build)
     db.flush()
@@ -187,7 +246,10 @@ def bulk_create_builds(
     created: list[Build] = []
     for row in req.builds:
         build = Build(
-            tenant_id=tenant_id, project_id=project_id, name=row.name, built_at=row.built_at,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            name=row.name,
+            built_at=row.built_at,
             notes=row.notes,
         )
         db.add(build)
@@ -213,6 +275,8 @@ def delete_build(db: Session, tenant_id: UUID, actor_user_id: UUID, build_id: UU
     ).scalar_one_or_none()
     if build is None:
         raise NotFoundError("Build not found")
+    if db.execute(select(TestRun.id).where(TestRun.build_id == build_id)).first():
+        raise ConflictError("Test runs were run on this build, so it cannot be deleted")
     db.delete(build)
     record_audit_event(
         db,
@@ -286,8 +350,12 @@ def bulk_create_releases(
     created: list[Release] = []
     for row in req.releases:
         release = Release(
-            tenant_id=tenant_id, project_id=project_id, name=row.name,
-            release_date=row.release_date, notes=row.notes, status=row.status,
+            tenant_id=tenant_id,
+            project_id=project_id,
+            name=row.name,
+            release_date=row.release_date,
+            notes=row.notes,
+            status=row.status,
         )
         db.add(release)
         created.append(release)
@@ -356,6 +424,10 @@ def delete_release(db: Session, tenant_id: UUID, actor_user_id: UUID, release_id
     ).scalar_one_or_none()
     if release is None:
         raise NotFoundError("Release not found")
+    if db.execute(select(TestRun.id).where(TestRun.release_id == release_id)).first():
+        raise ConflictError("Test runs were run for this release, so it cannot be deleted")
+    # Its builds stay, in no release.
+    db.execute(update(Build).where(Build.release_id == release_id).values(release_id=None))
     # ADR-127: tasks planned for the release stay, without a release.
     db.execute(
         update(Task)

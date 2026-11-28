@@ -23,9 +23,7 @@ def to_out(db: Session, user: User) -> UserOut:
     # repeatedly elsewhere in this codebase: GAP-17, GAP-49, and every
     # `_to_out` added since Tier 4).
     set_tenant_context(db, str(user.tenant_id))
-    role_row = db.execute(
-        select(Role.code, Role.name).where(Role.id == user.role_id)
-    ).one()
+    role_row = db.execute(select(Role.code, Role.name).where(Role.id == user.role_id)).one()
     last_login_at = db.execute(
         select(func.max(SessionModel.last_seen_at)).where(SessionModel.user_id == user.id)
     ).scalar_one_or_none()

@@ -14,6 +14,8 @@ export interface TenantSettings {
   project_domains_customised?: boolean
   testers_see_assigned_cases_only: boolean
   reports_hidden_from_testers: boolean
+  /** ADR-152 */
+  require_run_environment_build?: boolean
 }
 
 export interface TenantSettingsUpdateRequest {
@@ -28,6 +30,7 @@ export interface TenantSettingsUpdateRequest {
   project_domains?: string[] | null
   testers_see_assigned_cases_only?: boolean
   reports_hidden_from_testers?: boolean
+  require_run_environment_build?: boolean
 }
 
 export function getSettings(): Promise<TenantSettings> {

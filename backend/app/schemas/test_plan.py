@@ -1,7 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+PlanStatus = Literal["draft", "active", "complete"]
 
 
 class TestPlanCreateRequest(BaseModel):
@@ -9,12 +12,24 @@ class TestPlanCreateRequest(BaseModel):
     description: str | None = None
     release_id: UUID | None = None
     test_run_ids: list[UUID] = Field(default_factory=list)
+    # ADR-153
+    owner_id: UUID | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    status: PlanStatus = "draft"
+    exit_criteria: str | None = Field(default=None, max_length=5000)
 
 
 class TestPlanUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     description: str | None = None
     release_id: UUID | None = None
+    # Send null to clear the owner, a date or the exit criteria.
+    owner_id: UUID | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    status: PlanStatus | None = None
+    exit_criteria: str | None = Field(default=None, max_length=5000)
 
 
 class TestPlanRunSetRequest(BaseModel):
@@ -29,6 +44,12 @@ class TestPlanOut(BaseModel):
     description: str | None
     created_at: datetime
     test_run_ids: list[UUID] = Field(default_factory=list)
+    owner_id: UUID | None = None
+    owner_name: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    status: PlanStatus = "draft"
+    exit_criteria: str | None = None
 
 
 class TestPlanRollup(BaseModel):

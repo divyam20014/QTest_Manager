@@ -8,6 +8,30 @@ export interface TestPlan {
   description: string | null
   created_at: string
   test_run_ids: string[]
+  /** ADR-153 */
+  owner_id: string | null
+  owner_name: string | null
+  start_date: string | null
+  end_date: string | null
+  status: PlanStatus
+  exit_criteria: string | null
+}
+
+export type PlanStatus = 'draft' | 'active' | 'complete'
+
+export interface TestPlanUpdate {
+  name?: string
+  description?: string | null
+  release_id?: string | null
+  owner_id?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  status?: PlanStatus
+  exit_criteria?: string | null
+}
+
+export function updateTestPlan(planId: string, req: TestPlanUpdate): Promise<TestPlan> {
+  return apiFetch<TestPlan>(`/test-plans/${planId}`, { method: 'PATCH', body: JSON.stringify(req) })
 }
 
 export interface TestPlanRollup {

@@ -22,9 +22,7 @@ def list_roles(
 
 @router.get("/assignable")
 def list_assignable_roles(
-    ctx: SessionContext = Depends(
-        require_any_permission("user.manage", "project.members.manage")
-    ),
+    ctx: SessionContext = Depends(require_any_permission("user.manage", "project.members.manage")),
     db: Session = Depends(get_db),
 ) -> dict:
     """RBAC Phase 1: same list as GET /roles, but gated by the lighter

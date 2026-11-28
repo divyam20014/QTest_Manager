@@ -539,3 +539,8 @@ Migration `e2a4c6d8f0b1`: `requirements` adds `display_seq`, `display_id` (uniqu
 ## Changes for ADR-151
 
 Migration `b5d7f9a1c3e4`: the check on `import_sessions.kind` allows `requirement`. The downgrade deletes requirement previews first.
+
+## Changes for ADR-152 to ADR-153
+
+- `c6e8a0b2d4f5`: unique `(id, project_id)` on `releases` and `builds`; `builds.release_id`; `test_runs.environment_id`, `build_id`, `release_id` (build and release by composite key with `project_id`); `tenants.require_run_environment_build` (default false). No existing row is filled.
+- `d7f9b1c3e5a6`: `test_plans.owner_id`, `start_date`, `end_date`, `status` (check: draft, active, complete; default draft), `exit_criteria`; check that the start is not after the end.

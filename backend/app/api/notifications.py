@@ -17,9 +17,7 @@ def list_notifications(
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    items = notification_service.list_notifications(
-        db, ctx.tenant_id, ctx.user_id, unread_only
-    )
+    items = notification_service.list_notifications(db, ctx.tenant_id, ctx.user_id, unread_only)
     return envelope([i.model_dump(mode="json") for i in items])
 
 
@@ -38,9 +36,7 @@ def mark_read(
     ctx: SessionContext = Depends(get_current_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    notification = notification_service.mark_read(
-        db, ctx.tenant_id, ctx.user_id, notification_id
-    )
+    notification = notification_service.mark_read(db, ctx.tenant_id, ctx.user_id, notification_id)
     return envelope(notification.model_dump(mode="json"))
 
 
