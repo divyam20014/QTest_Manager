@@ -29,9 +29,21 @@ export interface Task {
   description: string | null
   status: TaskStatusRef
   priority: string
+  /** ADR-144: one of the organization's task types. */
+  task_type?: string
+  /** Hours, as a decimal string; null when not estimated. */
+  estimate_hours?: string | null
   assignee_id: string | null
   assignee_name: string | null
   release_id: string | null
+  /** ADR-145 */
+  milestone_id?: string | null
+  milestone_name?: string | null
+  /** ADR-146; set through its own endpoint (api/planning.ts). */
+  sprint_id?: string | null
+  sprint_name?: string | null
+  /** ADR-147: tasks this one depends on that are not done. */
+  open_dependency_count?: number
   start_date: string | null
   due_date: string | null
   completed_at: string | null
@@ -64,7 +76,17 @@ export interface TaskLinkedTestCase {
   linked_at: string
 }
 
+/** ADR-147: the task at the other end of a dependency. */
+export interface TaskDependency {
+  task_id: string
+  display_id: string | null
+  title: string
+  status: TaskStatusRef
+}
+
 export interface TaskDetail extends Task {
+  depends_on?: TaskDependency[]
+  blocks?: TaskDependency[]
   ancestors: TaskRef[]
   sub_tasks: Task[]
   test_cases: TaskLinkedTestCase[]
@@ -81,8 +103,11 @@ export interface TaskCreateRequest {
   parent_task_id?: string | null
   status_id?: string | null
   priority?: string | null
+  task_type?: string | null
+  estimate_hours?: string | null
   assignee_id?: string | null
   release_id?: string | null
+  milestone_id?: string | null
   start_date?: string | null
   due_date?: string | null
 }
@@ -99,6 +124,8 @@ export interface TaskListParams {
   parent_task_id?: string
   root_only?: boolean
   release_id?: string
+  milestone_id?: string
+  sprint_id?: string
   overdue?: boolean
   q?: string
 }
@@ -171,6 +198,18 @@ export function changeTaskStatus(id: string, statusId: string): Promise<Task> {
 /** `cascade` also deletes every sub-task; without it a task that has sub-tasks is refused (409). */
 export function deleteTask(id: string, cascade = false): Promise<{ deleted: number }> {
   return apiFetch<{ deleted: number }>(`/tasks/${id}${cascade ? '?cascade=true' : ''}`, { method: 'DELETE' })
+}
+
+/** `id` will wait for `dependsOnTaskId`. */
+export function addTaskDependency(id: string, dependsOnTaskId: string): Promise<TaskDetail> {
+  return apiFetch<TaskDetail>(`/tasks/${id}/dependencies`, {
+    method: 'POST',
+    body: JSON.stringify({ depends_on_task_id: dependsOnTaskId }),
+  })
+}
+
+export function removeTaskDependency(id: string, dependsOnTaskId: string): Promise<TaskDetail> {
+  return apiFetch<TaskDetail>(`/tasks/${id}/dependencies/${dependsOnTaskId}`, { method: 'DELETE' })
 }
 
 export function linkTaskTestCase(id: string, testCaseId: string): Promise<TaskDetail> {

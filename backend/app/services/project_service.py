@@ -20,6 +20,7 @@ from app.core.project_access import ORGANIZATION_PERMISSIONS, permissions_of_rol
 from app.models.defect import Defect
 from app.models.execution import TestRun
 from app.models.identity import Role, User
+from app.models.planning import Milestone, Sprint
 from app.models.project import Project, ProjectMember
 from app.models.requirement import Requirement
 from app.models.task import Task
@@ -488,6 +489,9 @@ def delete_project(
     # An empty project may be deleted while archived; its member list goes with it.
     allow_archived_write(db)
     db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id))
+    # With no tasks, a milestone or sprint holds nothing and no sprint has history.
+    db.execute(delete(Milestone).where(Milestone.project_id == project.id))
+    db.execute(delete(Sprint).where(Sprint.project_id == project.id))
     db.delete(project)
 
     record_audit_event(

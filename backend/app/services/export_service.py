@@ -53,6 +53,7 @@ from app.models.field_customization import (
 )
 from app.models.identity import Permission, Role, RolePermission, User
 from app.models.notification import Notification
+from app.models.planning import Milestone, Sprint, SprintTaskHistory, TaskDependency
 from app.models.project import Project, ProjectMember
 from app.models.report_schedule import ReportSchedule
 from app.models.requirement import Requirement, RequirementTestCaseLink, RequirementVersion
@@ -160,6 +161,13 @@ _EXPORT_MODELS: list[tuple[str, type[DeclarativeBase]]] = [
     # ADR-141
     ("teams", Team),
     ("team_members", TeamMember),
+    # ADR-145
+    ("milestones", Milestone),
+    # ADR-146
+    ("sprints", Sprint),
+    ("sprint_task_history", SprintTaskHistory),
+    # ADR-147
+    ("task_dependencies", TaskDependency),
 ]
 
 

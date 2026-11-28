@@ -463,3 +463,39 @@ Additions in ADR-097: the test case list endpoints take `quarantined=any|only|ex
 | POST | /projects/{id}/teams/{team_id} | adds active members not yet on the project; returns `{added, already_members, skipped_inactive}` | `project.members.manage`, Admin or assigned Manager |
 
 **Project roles (ADR-143).** For any request about a project record, the caller's project role there (if set) supplies the permissions and the access tier; organization permissions come from the organization role; an Admin is unaffected. `PATCH /projects/{id}/members/{user_id}/role` refuses Admin (422), a change to one's own role, and a role with permissions the caller lacks on the project (403); `DELETE .../members/{user_id}` refuses removing oneself while holding a project role. Both exceptions do not apply to an organization Admin. `record.contribute` is needed for `POST .../comments`, `DELETE /comments/{id}`, `POST /defects/{id}/attachments`, `DELETE /attachments/{id}`, `PUT /custom-fields/values/...` and the AI actions on records; `generate-test-cases` also needs `testcase.create`; `POST /defects/{id}/retest-result` also needs `testcase.execute`, as do `PATCH /defects/{id}/status` to `Verified` and importing a defect as Verified. `POST /defects`, `POST /test-cases/bulk-update`, `POST /test-cases/bulk-assign-module` and imports check the role on each project they name. System roles: `admin`, `manager`, `tester`, `qa_lead`, `developer`, `viewer`.
+
+**Task planning (ADR-144).** Task payloads and create / update requests carry `task_type` (an organization `task_type` option; cannot be cleared) and `estimate_hours` (decimal string or null).
+
+| Method | Path | Notes | Who |
+|---|---|---|---|
+| GET | /projects/{id}/backlog | open tasks in backlog order; `limit` (default 200, at most 500), `offset`; `{items, total}` | anyone who can open the project |
+| POST | /tasks/{id}/rank | `{before_task_id}`: place the task immediately before that one, or at the end with null | `task.manage` |
+
+**Milestones (ADR-145).** Task payloads carry `milestone_id` and `milestone_name`; create / update accept `milestone_id` (null clears it; 422 for another project's milestone or for joining a completed one) and `GET /tasks` filters by it.
+
+| Method | Path | Notes | Who |
+|---|---|---|---|
+| GET | /projects/{id}/milestones | by due date, undated last; each with `task_count`, `done_count`, `estimate_hours`, `done_estimate_hours` | anyone who can open the project |
+| POST | /projects/{id}/milestones | `{name, description?, due_date?}`; 409 if the name is taken | `planning.manage` |
+| PATCH | /milestones/{id} | any of the same, and `completed` (boolean) | `planning.manage` |
+| DELETE | /milestones/{id} | its tasks stay, in no milestone | `planning.manage` |
+
+**Sprints (ADR-146).** Task payloads carry `sprint_id` and `sprint_name` (create and update do not accept them), `GET /projects/{id}/tasks` filters by `sprint_id`, and the backlog leaves out tasks in a planned or active sprint.
+
+| Method | Path | Notes | Who |
+|---|---|---|---|
+| GET | /projects/{id}/sprints | active, then planned by start date, then closed latest first; each with `task_count`, `done_count`, `estimate_hours`, `done_estimate_hours` | anyone who can open the project |
+| GET | /sprints/{id} | the same plus `totals` (`planned`, `added`, `removed`, `completed`, `unfinished`, each `{count, hours}`) and `tasks` | anyone who can open the project |
+| POST | /projects/{id}/sprints | `{name, goal?, start_date, end_date}` | `planning.manage` |
+| PATCH | /sprints/{id} | any of the same; 409 once closed | `planning.manage` |
+| DELETE | /sprints/{id} | planned only (409 otherwise); its tasks return to the backlog | `planning.manage` |
+| POST | /sprints/{id}/start | 409 if not planned, or another sprint is active | `planning.manage` |
+| POST | /sprints/{id}/close | `{move_unfinished_to}` (required): a planned sprint of the project, or null for the backlog; 409 unless active | `planning.manage` |
+| PUT | /tasks/{id}/sprint | `{sprint_id}` or null; 422 for a finished task, a closed sprint or another project's; 409 removing a task from a closed sprint | `planning.manage` |
+
+**Dependencies (ADR-147).** Task payloads carry `open_dependency_count` (tasks it depends on that are not done); the task detail adds `depends_on` and `blocks`, each `{task_id, display_id, title, status}`. No status change is refused because of a dependency.
+
+| Method | Path | Notes | Who |
+|---|---|---|---|
+| POST | /tasks/{id}/dependencies | `{depends_on_task_id}`; adding an existing link changes nothing; 422 for itself or another project's task; 409 for a circle or an ancestor / sub-task; returns the task detail | `task.manage` |
+| DELETE | /tasks/{id}/dependencies/{depends_on_task_id} | 404 if there is no such link; returns the task detail | `task.manage` |

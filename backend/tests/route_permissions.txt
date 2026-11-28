@@ -12,6 +12,7 @@ DELETE /api/v1/defects/{defect_id}/links/{link_id}  ->  require_defect_permissio
 DELETE /api/v1/defects/{defect_id}/test-cases/{test_case_id}  ->  require_defect_permission(defect.create|defect.edit)
 DELETE /api/v1/environments/{environment_id}  ->  require_permission(environment.manage)
 DELETE /api/v1/field-options/{option_id}  ->  require_permission(field_customization.manage)
+DELETE /api/v1/milestones/{milestone_id}  ->  require_permission(planning.manage)
 DELETE /api/v1/modules/{module_id}  ->  require_permission(testcase.edit)
 DELETE /api/v1/platform/auth/sessions/{session_id}  ->  full_session
 DELETE /api/v1/projects/{project_id}  ->  require_permission(project.delete)
@@ -29,8 +30,10 @@ DELETE /api/v1/scim-tokens/{token_id}  ->  require_permission(sso.manage)
 DELETE /api/v1/scim/v2/{tenant_id}/Users/{user_id}  ->  require_scim_token
 DELETE /api/v1/service-tokens/{token_id}  ->  require_permission(integration.manage)
 DELETE /api/v1/shared-steps/{shared_step_id}  ->  require_permission(testcase.edit)
+DELETE /api/v1/sprints/{sprint_id}  ->  require_permission(planning.manage)
 DELETE /api/v1/task-statuses/{status_id}  ->  require_permission(task_status.manage)
 DELETE /api/v1/tasks/{task_id}  ->  require_resource_permission(task.manage, task)
+DELETE /api/v1/tasks/{task_id}/dependencies/{depends_on_task_id}  ->  require_resource_permission(task.manage, task)
 DELETE /api/v1/tasks/{task_id}/test-cases/{test_case_id}  ->  require_resource_permission(task.manage, task)
 DELETE /api/v1/teams/{team_id}  ->  require_permission(user.manage)
 DELETE /api/v1/test-cases/{test_case_id}  ->  signed-in
@@ -107,14 +110,17 @@ GET /api/v1/platform/tenants  ->  require_platform_admin
 GET /api/v1/platform/tenants/{tenant_id}/subscription  ->  require_platform_admin
 GET /api/v1/projects  ->  signed-in
 GET /api/v1/projects/{project_id}  ->  signed-in
+GET /api/v1/projects/{project_id}/backlog  ->  signed-in
 GET /api/v1/projects/{project_id}/builds  ->  signed-in
 GET /api/v1/projects/{project_id}/dashboard  ->  signed-in
 GET /api/v1/projects/{project_id}/members  ->  require_any_permission(project.members.manage|user.manage)
+GET /api/v1/projects/{project_id}/milestones  ->  signed-in
 GET /api/v1/projects/{project_id}/modules  ->  signed-in
 GET /api/v1/projects/{project_id}/releases  ->  signed-in
 GET /api/v1/projects/{project_id}/requirements  ->  signed-in
 GET /api/v1/projects/{project_id}/requirements/coverage  ->  signed-in
 GET /api/v1/projects/{project_id}/shared-steps  ->  signed-in
+GET /api/v1/projects/{project_id}/sprints  ->  signed-in
 GET /api/v1/projects/{project_id}/tasks  ->  signed-in
 GET /api/v1/projects/{project_id}/tasks/summary  ->  signed-in
 GET /api/v1/projects/{project_id}/tasks/tree  ->  signed-in
@@ -177,6 +183,7 @@ GET /api/v1/settings/subscription/history  ->  require_permission(tenant.setting
 GET /api/v1/settings/subscription/plans  ->  signed-in
 GET /api/v1/settings/subscription/usage  ->  require_permission(tenant.settings.manage)
 GET /api/v1/settings/workspace  ->  signed-in
+GET /api/v1/sprints/{sprint_id}  ->  signed-in
 GET /api/v1/sso/config  ->  require_permission(sso.manage)
 GET /api/v1/status-labels  ->  signed-in
 GET /api/v1/task-statuses  ->  signed-in
@@ -227,6 +234,7 @@ PATCH /api/v1/defects/{defect_id}/root-cause  ->  require_defect_permission(defe
 PATCH /api/v1/defects/{defect_id}/status  ->  require_defect_permission(defect.change_status|defect.close|defect.create)
 PATCH /api/v1/environments/{environment_id}  ->  require_permission(environment.manage)
 PATCH /api/v1/field-options/{option_id}  ->  require_permission(field_customization.manage)
+PATCH /api/v1/milestones/{milestone_id}  ->  require_permission(planning.manage)
 PATCH /api/v1/modules/{module_id}  ->  require_permission(testcase.edit)
 PATCH /api/v1/notifications/{notification_id}/read  ->  signed-in
 PATCH /api/v1/platform/admins/{admin_id}  ->  require_platform_admin
@@ -245,6 +253,7 @@ PATCH /api/v1/saved-views/{view_id}  ->  signed-in
 PATCH /api/v1/scim/v2/{tenant_id}/Users/{user_id}  ->  require_scim_token
 PATCH /api/v1/settings  ->  require_permission(tenant.settings.manage)
 PATCH /api/v1/shared-steps/{shared_step_id}  ->  require_permission(testcase.edit)
+PATCH /api/v1/sprints/{sprint_id}  ->  require_permission(planning.manage)
 PATCH /api/v1/task-statuses/{status_id}  ->  require_permission(task_status.manage)
 PATCH /api/v1/tasks/{task_id}  ->  require_resource_permission(task.manage, task)
 PATCH /api/v1/teams/{team_id}  ->  require_permission(user.manage)
@@ -309,12 +318,14 @@ POST /api/v1/projects/{project_id}/archive  ->  require_permission(project.delet
 POST /api/v1/projects/{project_id}/builds  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/builds/bulk  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/members  ->  require_permission(project.members.manage)
+POST /api/v1/projects/{project_id}/milestones  ->  require_project_permission(planning.manage)
 POST /api/v1/projects/{project_id}/modules  ->  require_permission(testcase.edit)
 POST /api/v1/projects/{project_id}/releases  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/releases/bulk  ->  require_permission(environment.manage)
 POST /api/v1/projects/{project_id}/requirements  ->  require_project_permission(requirement.manage)
 POST /api/v1/projects/{project_id}/restore  ->  require_permission(project.delete)
 POST /api/v1/projects/{project_id}/shared-steps  ->  require_permission(testcase.edit)
+POST /api/v1/projects/{project_id}/sprints  ->  require_project_permission(planning.manage)
 POST /api/v1/projects/{project_id}/tasks  ->  require_project_permission(task.manage)
 POST /api/v1/projects/{project_id}/teams/{team_id}  ->  require_permission(project.members.manage)
 POST /api/v1/projects/{project_id}/templates/import  ->  require_permission(testcase.edit)
@@ -338,9 +349,13 @@ POST /api/v1/scim/v2/{tenant_id}/Users  ->  require_scim_token
 POST /api/v1/service-tokens  ->  require_permission(integration.manage)
 POST /api/v1/settings/branding/logo  ->  require_permission(tenant.settings.manage)
 POST /api/v1/settings/subscription/switch-plan  ->  require_permission(tenant.settings.manage)
+POST /api/v1/sprints/{sprint_id}/close  ->  require_permission(planning.manage)
+POST /api/v1/sprints/{sprint_id}/start  ->  require_permission(planning.manage)
 POST /api/v1/task-statuses  ->  require_permission(task_status.manage)
 POST /api/v1/tasks/{task_id}/attachments  ->  require_permission(task.transition)
 POST /api/v1/tasks/{task_id}/comments  ->  require_permission(record.contribute)
+POST /api/v1/tasks/{task_id}/dependencies  ->  require_resource_permission(task.manage, task)
+POST /api/v1/tasks/{task_id}/rank  ->  require_resource_permission(task.manage, task)
 POST /api/v1/tasks/{task_id}/status  ->  require_resource_permission(task.transition, task)
 POST /api/v1/tasks/{task_id}/test-cases  ->  require_resource_permission(task.manage, task)
 POST /api/v1/teams  ->  require_permission(user.manage)
@@ -391,5 +406,6 @@ PUT /api/v1/settings/branding  ->  require_permission(tenant.settings.manage)
 PUT /api/v1/settings/workspace  ->  require_permission(tenant.settings.manage)
 PUT /api/v1/sso/config  ->  require_permission(sso.manage)
 PUT /api/v1/status-labels  ->  require_permission(field_customization.manage)
+PUT /api/v1/tasks/{task_id}/sprint  ->  require_resource_permission(planning.manage, task)
 PUT /api/v1/test-plans/{plan_id}/runs  ->  require_permission(testrun.create)
 PUT /api/v1/test-suites/{suite_id}/cases  ->  require_permission(testrun.create)

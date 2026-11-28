@@ -13,6 +13,7 @@ composite FK); test cases are shared across tasks through ``task_test_case_links
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -22,6 +23,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -73,6 +75,7 @@ class Task(Base, TenantScopedMixin):
             "start_date is null or due_date is null or start_date <= due_date",
             name="ck_tasks_date_order",
         ),
+        CheckConstraint("estimate_hours between 0 and 10000", name="ck_tasks_estimate_range"),
         UniqueConstraint("id", "project_id", name="uq_tasks_id_project"),
         ForeignKeyConstraint(
             ["parent_task_id", "project_id"],
@@ -96,8 +99,21 @@ class Task(Base, TenantScopedMixin):
     )
     # field_options key 'task_priority' (tenant-configurable), validated in the service.
     priority: Mapped[str] = mapped_column(String, nullable=False, server_default="Medium")
+    # ADR-144: field_options key 'task_type' (tenant-configurable), validated in the service.
+    task_type: Mapped[str] = mapped_column(String, nullable=False, server_default="Task")
+    estimate_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    # The position in the project's one backlog order (services/backlog_rank.py).
+    backlog_rank: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    # ADR-145: the database also requires the milestone to be of the same project.
+    milestone_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("milestones.id"), nullable=True
+    )
+    # ADR-146: same project, enforced by the database. A closed sprint keeps its finished tasks.
+    sprint_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sprints.id"), nullable=True
     )
     release_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("releases.id"), nullable=True

@@ -530,6 +530,45 @@ not change the project.
 
 ### Tasks and sub-tasks
 
+A task has a **Type** (Task, Story or Chore, or the types your organization
+lists under Settings > Fields) and an optional **Estimate** in hours. The
+**Backlog** view of the Tasks tab lists the project's open tasks in one order
+that everyone shares. If you may manage tasks, move one to the top, up or down
+with the buttons beside it.
+
+**Milestones** are dated goals for a project, under **Planning > Milestones**.
+Each shows how many of its tasks are done and how many estimated hours. Choose a
+task's **Milestone** when you create or edit it; **View tasks** lists them.
+Creating, completing, editing and deleting milestones needs the planning
+permission, which Admins, Managers, QA Leads and custom roles that could already
+manage tasks have. A completed milestone takes no new tasks until it is
+reopened. Deleting a milestone keeps its tasks.
+
+**Sprints** are short, dated sets of tasks, in the **Sprints** view of the Tasks
+tab. With the planning permission:
+
+1. **New sprint**: give it a name, dates and, if you like, a goal.
+2. In the **Backlog** view, use **Add to sprint** beside a task. Only unfinished
+   tasks can be added.
+3. **Start sprint.** A project has one active sprint at a time. **Open board**
+   shows the sprint's tasks by status. You can still add and remove tasks, and
+   the sprint remembers which were added or removed after it started.
+4. **Close sprint.** Choose whether unfinished tasks go to the backlog or to a
+   planned sprint.
+
+A closed sprint keeps what was planned, added, removed and done, with the hours
+estimated at the time. Later changes to a task do not change those totals. It
+cannot be reopened, changed or deleted; a sprint that never started can be
+deleted.
+
+**Dependencies.** On a task's page, under **Dependencies**, search for a task
+that must finish first and choose **Add**. While it is unfinished the page shows
+a warning, and lists, the backlog and the board show **Waiting on** with the
+number of such tasks. It is a reminder only: you can still start or finish the
+waiting task. QTestHub refuses links that would go round in a circle, and links
+between a task and its own sub-tasks. Adding and removing dependencies needs
+permission to manage tasks.
+
 Use a project's **Tasks** tab to group the work. **New Task** creates a task;
 open a task and choose **Add sub-task** to break it down (up to five levels).
 Give a task an assignee, a priority, a release and start and due dates. A

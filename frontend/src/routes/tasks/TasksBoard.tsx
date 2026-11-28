@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client'
 import { changeTaskStatus, listTasks, type Task, type TaskStatus } from '@/api/tasks'
 import { BoardView, type BoardCardData, type MoveOutcome } from '@/components/list/BoardView'
 import { useBoardColumns, type BoardColumnState } from '@/lib/board'
+import { waitingLabel } from '@/lib/planning'
 import { levelTone } from '@/lib/statusTones'
 import { subTaskProgress } from '@/lib/taskTree'
 
@@ -27,7 +28,7 @@ export function TasksBoard({
   projectId: string
   statuses: TaskStatus[]
   /** The list's filters except the status. */
-  scope: { q?: string; assignee_id?: string }
+  scope: { q?: string; assignee_id?: string; sprint_id?: string }
   canManage: boolean
   canTransition: boolean
   userId: string | undefined
@@ -92,13 +93,17 @@ function toCard(
   movable: boolean,
 ): BoardCardData {
   const progress = subTaskProgress(t)
+  const waiting = waitingLabel(t)
+  const badges: NonNullable<BoardCardData['badges']> = []
+  if (waiting) badges.push({ label: waiting, tone: 'warning' })
+  if (progress) badges.push({ label: `${progress} sub-tasks done` })
   return {
     id: t.id,
     displayId: t.display_id,
     title: t.title,
     href: `/projects/${t.project_id}/tasks/${t.id}`,
     levels: [{ label: `${t.priority} priority`, tone: levelTone(t.priority) }],
-    badges: progress ? [{ label: `${progress} sub-tasks done` }] : undefined,
+    badges: badges.length > 0 ? badges : undefined,
     assignee: t.assignee_name,
     due: t.due_date ? { iso: t.due_date, overdue: t.is_overdue } : null,
     meta: t.depth > 0 ? 'Sub-task' : null,

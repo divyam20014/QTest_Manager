@@ -38,6 +38,20 @@ The other findings are open, except as noted below.
 - **Development database upgraded (2026-11-28)** to `f5b7d9e1a3c4`. A rehearsal first found that 880 of 884 project memberships pointed to projects and users that no longer existed, so a strict restore failed. Cause: `seed_loadtest.py --drop` deleted only tables with a `tenant_id`, with foreign key checks off. With the owner's approval the 880 rows were removed (a copy was kept), every foreign key was checked, a strict restore of a new backup succeeded, and then the upgrade ran. The cleanup was fixed and tested on a temporary database.
 - **Open:** `seed_loadtest.py` can no longer create its data: it inserts requirements without a task, which the database has refused since ADR-128.
 
+### Phase 2: tasks, boards, milestones and sprints (2026-11-28)
+
+Approved choices: one active sprint per project; estimates in hours; an unfinished earlier task warns and does not block; at sprint close the user chooses the backlog or a planned sprint; task types start as Task, Story and Chore and each organization edits the list; a new `planning.manage` permission for Admin, Manager, QA Lead and custom roles that could already manage tasks.
+
+- **2A** (ADR-144): task types, estimates and one shared backlog order. Migration `a6c8e0f2b4d5`.
+- **2B** (ADR-145): milestones, under Planning. Migration `b7d9f1a3c5e6`.
+- **2C** (ADR-146): sprints, with a record of what was planned, added, removed and done. The board can show one sprint. Migration `c8e0a2b4d6f7`.
+- **2D** (ADR-147): finish-to-start dependencies that warn; the database also refuses circles. Migration `d9f1b3c5e7a8`.
+- **Not built:** Gantt view, time logging, capacity planning, burndown or velocity charts, drag-and-drop backlog ordering.
+- **Older defect found and fixed:** deleting a task priority answered with a server error.
+- **Test results:** full backend suite 1,755 of 1,758 passed (1 hour 26 minutes). One failure is the known import speed budget (GAP-69; 2.92 s against 2.5 s). Two were in `test_project_dashboard.py`, which fixes "today" when the run starts: this run crossed midnight UTC, and the file passes when run again (17 of 17). All 660 frontend tests, type check, lint and build passed. **The browser suite was not run.**
+- **At the agreed scale:** the board loads each status in pages and the backlog and flat list are paged. No Phase 2 test creates more than 2,000 tasks, so behaviour above the tree's 2,000-task limit is not verified by a test.
+- **Migration rehearsal** on a temporary copy of the development database: the four migrations upgraded, downgraded and upgraded again; existing records were unchanged; every task got a type and a unique backlog position; only Admin, Manager and QA Lead received `planning.manage` (there were no custom roles with task management); no broken foreign keys. The development database itself is still at `f5b7d9e1a3c4`.
+
 ## How to read these documents
 
 | Mark | Meaning |

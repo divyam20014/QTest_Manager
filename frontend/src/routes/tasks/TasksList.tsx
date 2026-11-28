@@ -24,6 +24,10 @@ import { useUrlFilters } from '@/lib/useUrlFilters'
 import { NewRequirementDialog } from '@/routes/requirements/NewRequirementDialog'
 import { TaskDialog } from '@/routes/tasks/TaskDialog'
 import { TasksBoard } from '@/routes/tasks/TasksBoard'
+import { Backlog } from '@/routes/tasks/Backlog'
+import { listMilestones, listSprints } from '@/api/planning'
+import { Sprints } from '@/routes/tasks/Sprints'
+import { formatHours, waitingLabel } from '@/lib/planning'
 
 const PAGE_SIZE = 25
 
@@ -32,13 +36,15 @@ const TASK_COLUMNS: TableColumnDef[] = [
   { key: 'title', label: 'Title', alwaysVisible: true },
   { key: 'status', label: 'Status' },
   { key: 'priority', label: 'Priority' },
+  { key: 'type', label: 'Type', defaultHidden: true },
+  { key: 'estimate', label: 'Estimate', defaultHidden: true },
   { key: 'assignee', label: 'Assignee' },
   { key: 'due', label: 'Due' },
   { key: 'progress', label: 'Sub-tasks' },
   { key: 'links', label: 'Linked items' },
 ]
 
-const FILTER_DEFAULTS = { q: '', status: '', assignee: '', view: 'tree', page: '1', task: '', action: '' }
+const FILTER_DEFAULTS = { q: '', status: '', assignee: '', milestone: '', sprint: '', view: 'tree', page: '1', task: '', action: '' }
 
 /** The project's Tasks tab (ADR-127): the hierarchy of tasks and sub-tasks, or a filtered flat list. */
 export function TasksList() {
@@ -73,6 +79,7 @@ export function TasksList() {
     queryFn: () => getProject(projectId),
     enabled: !!projectId,
   })
+  const canPlan = hasPermission(user, 'planning.manage') && !projectQuery.data?.archived_at
   const statusesQuery = useQuery({ queryKey: ['task-statuses'], queryFn: listTaskStatuses })
   const membersQuery = useQuery({
     queryKey: ['project-members', projectId],
@@ -81,17 +88,24 @@ export function TasksList() {
   })
 
   const board = v.view === 'board'
-  // The board filters by search and assignee only: its columns are the statuses.
-  const filtered = debouncedSearch !== '' || v.assignee !== '' || (!board && v.status !== '')
-  const flat = !board && (filtered || v.view === 'flat')
+  // The backlog has its own order and shows every open task, so the filters do not apply to it.
+  const backlog = v.view === 'backlog'
+  // The sprints view uses `sprint` to say which sprint is open; elsewhere it filters by it.
+  const sprintsView = v.view === 'sprints'
+  // The backlog and sprints views list their own tasks, so the filters do not apply to them.
+  const ownView = backlog || sprintsView
+  // The board filters by search, assignee and sprint only: its columns are the statuses.
+  const filtered =
+    debouncedSearch !== '' || v.assignee !== '' || (!board && (v.status !== '' || v.milestone !== '' || v.sprint !== ''))
+  const flat = !board && !ownView && (filtered || v.view === 'flat')
 
   const treeQuery = useQuery({
     queryKey: ['tasks', 'tree', projectId],
     queryFn: () => getProjectTaskTree(projectId),
-    enabled: !!projectId && !flat && !board,
+    enabled: !!projectId && !flat && !board && !ownView,
   })
   const listQuery = useQuery({
-    queryKey: ['tasks', 'list', projectId, debouncedSearch, v.status, v.assignee, page],
+    queryKey: ['tasks', 'list', projectId, debouncedSearch, v.status, v.assignee, v.milestone, v.sprint, page],
     queryFn: () =>
       listTasks(projectId, {
         page,
@@ -99,10 +113,25 @@ export function TasksList() {
         q: debouncedSearch || undefined,
         status_id: v.status || undefined,
         assignee_id: v.assignee || undefined,
+        milestone_id: v.milestone || undefined,
+        sprint_id: v.sprint || undefined,
       }),
     enabled: !!projectId && flat && !board,
   })
   const query = flat ? listQuery : treeQuery
+  // Only to name the milestone a "View tasks" link filtered by.
+  const milestonesQuery = useQuery({
+    queryKey: ['milestones', projectId],
+    queryFn: () => listMilestones(projectId),
+    enabled: !!projectId && v.milestone !== '',
+  })
+  const milestoneName = milestonesQuery.data?.find((m) => m.id === v.milestone)?.name
+  const sprintsQuery = useQuery({
+    queryKey: ['sprints', projectId],
+    queryFn: () => listSprints(projectId),
+    enabled: !!projectId && v.sprint !== '' && !ownView,
+  })
+  const sprintName = sprintsQuery.data?.find((s) => s.id === v.sprint)?.name
 
   const rows = useMemo(() => {
     if (flat) return listQuery.data?.items ?? []
@@ -111,7 +140,7 @@ export function TasksList() {
   const total = flat ? (listQuery.data?.total ?? 0) : (treeQuery.data?.total ?? 0)
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   // The hierarchy holds the first tasks only when the project has more than the API sends in one go.
-  const treeCapped = !flat && !board && (treeQuery.data?.total ?? 0) > (treeQuery.data?.items.length ?? 0)
+  const treeCapped = !flat && !board && !ownView && (treeQuery.data?.total ?? 0) > (treeQuery.data?.items.length ?? 0)
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -154,6 +183,11 @@ export function TasksList() {
           <Link to={`/projects/${projectId}/tasks/${t.id}`} className="underline-offset-2 hover:underline">
             {t.title}
           </Link>
+          {waitingLabel(t) && (
+            <Badge tone="warning" className="ml-1 shrink-0">
+              {waitingLabel(t)}
+            </Badge>
+          )}
           {t.is_requirements_home && (
             <Badge tone="info" className="ml-1 shrink-0">
               Default for requirements
@@ -170,6 +204,8 @@ export function TasksList() {
     },
     { key: 'status', header: 'Status', card: 'badge', cell: (t) => <TaskStatusBadge status={t.status} /> },
     { key: 'priority', header: 'Priority', cell: (t) => t.priority },
+    { key: 'type', header: 'Type', cell: (t) => t.task_type ?? '—' },
+    { key: 'estimate', header: 'Estimate', cell: (t) => formatHours(t.estimate_hours) },
     { key: 'assignee', header: 'Assignee', cell: (t) => t.assignee_name ?? '—' },
     {
       key: 'due',
@@ -233,6 +269,7 @@ export function TasksList() {
       />
 
       <div className="flex flex-wrap items-end gap-3">
+        {!ownView && (
         <div className="flex min-w-48 flex-1 flex-col gap-1.5">
           <label htmlFor="task-search" className="text-xs font-medium text-[var(--muted-foreground)]">
             Search
@@ -247,7 +284,8 @@ export function TasksList() {
             }}
           />
         </div>
-        {!board && (
+        )}
+        {!board && !ownView && (
         <div className="flex min-w-40 flex-col gap-1.5">
           <label htmlFor="task-filter-status" className="text-xs font-medium text-[var(--muted-foreground)]">
             Status
@@ -262,7 +300,7 @@ export function TasksList() {
           </Select>
         </div>
         )}
-        {canManage && (
+        {canManage && !ownView && (
           <div className="flex min-w-40 flex-col gap-1.5">
             <label htmlFor="task-filter-assignee" className="text-xs font-medium text-[var(--muted-foreground)]">
               Assignee
@@ -279,15 +317,18 @@ export function TasksList() {
         )}
         <SegmentedToggle
           label="Task view"
-          value={v.view === 'flat' ? 'flat' : v.view === 'board' ? 'board' : 'tree'}
-          onChange={(value) => urlFilters.setFilters({ view: value, page: '1' })}
+          value={v.view === 'flat' || v.view === 'board' || ownView ? v.view : 'tree'}
+          // Choosing a view starts it without a sprint or milestone filter.
+          onChange={(value) => urlFilters.setFilters({ view: value, page: '1', sprint: '', milestone: '' })}
           options={[
             { value: 'tree', label: 'Hierarchy' },
             { value: 'flat', label: 'Flat list' },
             { value: 'board', label: 'Board' },
+            { value: 'backlog', label: 'Backlog' },
+            { value: 'sprints', label: 'Sprints' },
           ]}
         />
-        {!board && (
+        {!board && !ownView && (
           // Phones show cards, which ignore column choices (as on the other lists).
           <div className="max-md:hidden">
             <ColumnVisibilityMenu
@@ -301,22 +342,42 @@ export function TasksList() {
           </div>
         )}
       </div>
+      {v.milestone !== '' && !board && !ownView && (
+        <p role="note" className="flex flex-wrap items-center gap-2 text-sm">
+          Showing tasks in milestone {milestoneName ? `“${milestoneName}”` : '…'}
+          <Button variant="outline" size="sm" onClick={() => urlFilters.setFilters({ milestone: '', page: '1' })}>
+            Show all tasks
+          </Button>
+        </p>
+      )}
+      {v.sprint !== '' && !ownView && (
+        <p role="note" className="flex flex-wrap items-center gap-2 text-sm">
+          Showing tasks in sprint {sprintName ? `“${sprintName}”` : '…'}
+          <Button variant="outline" size="sm" onClick={() => urlFilters.setFilters({ sprint: '', page: '1' })}>
+            Show all tasks
+          </Button>
+        </p>
+      )}
       {treeCapped && (
         <p role="note" className="text-xs text-[var(--muted-foreground)]">
           Showing the first {treeQuery.data?.items.length} of {treeQuery.data?.total} tasks. Search or filter to find the rest.
         </p>
       )}
-      {filtered && !flat && !board && (
+      {filtered && !flat && !board && !ownView && (
         <p className="text-xs text-[var(--muted-foreground)]">
           Filters show matching tasks as a flat list. Clear them to return to the hierarchy.
         </p>
       )}
 
-      {board ? (
+      {backlog ? (
+        <Backlog projectId={projectId} canReorder={canManage && !projectQuery.data?.archived_at} canPlan={canPlan} />
+      ) : sprintsView ? (
+        <Sprints projectId={projectId} canPlan={canPlan} selectedId={v.sprint} onSelect={(id) => setFilter('sprint', id)} />
+      ) : board ? (
         <TasksBoard
           projectId={projectId}
           statuses={statusesQuery.data ?? []}
-          scope={{ q: debouncedSearch || undefined, assignee_id: v.assignee || undefined }}
+          scope={{ q: debouncedSearch || undefined, assignee_id: v.assignee || undefined, sprint_id: v.sprint || undefined }}
           canManage={canManage}
           canTransition={canTransition}
           userId={user?.user_id}

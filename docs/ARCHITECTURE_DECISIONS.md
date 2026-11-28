@@ -2065,3 +2065,41 @@ Organization permissions are never changed by a project role, and an organizatio
 New permission `record.contribute` covers comments, attachments, custom values and AI actions on records; the migration (`f5b7d9e1a3c4`) gives it to every existing role. AI generation also needs `testcase.create`. Recording a retest result, and marking a defect Verified by a status change or an import, need `testcase.execute`: both say a fix works, so whoever cannot run tests cannot verify, their own fix included (added after approval of the matrix, as R-9). New system roles: QA Lead (Manager tier), Developer and Viewer (Tester tier). `python -m scripts.report_role_changes` lists who an upgrade affects. The matrix is in `docs/product-expansion/QTESTHUB_PHASE1E_PERMISSIONS.md`.
 
 **Consequences.** A custom role created from now on must be given `record.contribute` to comment. Lists and reports that span all projects use the organization role; filtered to one project (`?project_id=`), they use that project's role. The interface still decides which buttons to show from the organization role, so a button may be shown that the server refuses, or hidden although a project role allows it.
+
+## ADR-144: Task types, estimates and one backlog order
+
+**Context.** A task had no type, no estimate and no order, so a team could not plan from it.
+
+**Decision.** `tasks.task_type` is one of the organization's `task_type` options (Task, Story, Chore to begin with), handled like priorities. `estimate_hours` is optional, 0 to 10,000 to two places. `backlog_rank` is an unlimited numeric giving each project one order: a new task takes the end, and a moved task the exact midpoint of its new neighbours, so a move rewrites one row. Every choice of rank holds a per-project advisory lock. Reordering needs `task.manage`. The backlog is the project's open tasks, without the "Unassigned requirements" holder; existing tasks were ranked in the order they were created. Migration `a6c8e0f2b4d5`.
+
+Deleting a task priority answered 500, because the in-use check did not know about task fields; it now covers priorities and types.
+
+**Consequences.** Ranks gain a digit each time the same gap is halved. That is cheap at realistic numbers of moves, and nothing renumbers them. The backlog view shows up to 500 tasks. Drag and drop is not built: tasks move with buttons, which also work from a keyboard.
+
+## ADR-145: Milestones and the planning permission
+
+**Context.** Work could be grouped by release, which is tied to builds and testing, but not by a dated project goal.
+
+**Decision.** `milestones` holds a name (unique in the project, whatever the case), an optional description and due date, and `completed_at`. A task belongs to at most one, through `tasks.milestone_id`; a composite foreign key keeps both in one project. Choosing a task's milestone is part of editing the task (`task.manage`). Creating, changing, completing and deleting milestones needs the new `planning.manage`, granted by the migration to every role that held `task.manage`, custom roles included; project roles (ADR-143) apply. A completed milestone takes no new tasks, though a task already in it can be saved. Completing does not require its tasks to be done. Deleting a milestone keeps its tasks. Progress counts tasks and estimates in a "Done" status. Migration `b7d9f1a3c5e6`.
+
+**Consequences.** A role given `task.manage` after this does not get `planning.manage` by itself; an Admin grants it. Downgrading loses milestones.
+
+## ADR-146: Sprints and their history
+
+**Context.** A team could order a backlog but could not commit to a set of work, and nothing remembered what had been committed to.
+
+**Decision.** `sprints` have a name (unique in the project, whatever the case), an optional goal, a start and end date, and a state: planned, then active, then closed. A project has at most one active sprint, enforced by a partial unique index. `tasks.sprint_id` says where a task is now. Starting a sprint writes a `sprint_task_history` row for each task in it; after that, joining and leaving are recorded there, with the estimate when the task was planned or added and again when it left or the sprint closed. Closing records which tasks were done; finished ones stay with the sprint, and the person closing chooses whether the rest go to the backlog or to a planned sprint, with no default. A closed sprint cannot be changed, and only a sprint that never started can be deleted. A task that leaves and returns counts as planned or added the way it first did. Only open tasks can join. A deleted task leaves a planned or active sprint and stays in its history. The backlog is the open tasks not in a planned or active sprint, so an unfinished or reopened task of a closed sprint is in it.
+
+Sprint management and membership need `planning.manage` (ADR-145); membership has its own endpoint, so editing a task cannot change it. Every change to a sprint or its membership holds a per-project advisory lock. Both tables are exported and read-only when the project is archived. Migration `c8e0a2b4d6f7`.
+
+Deleting an empty project now also deletes its milestones and sprints.
+
+**Consequences.** The history keeps numbers, not copies of tasks: a closed sprint's list shows each task's present title and status, labelled as such. There are no burndown or velocity charts, capacity or time logging. Downgrading loses sprints and their history.
+
+## ADR-147: Task dependencies warn, they do not block
+
+**Context.** A team could not say that one task has to finish before another starts.
+
+**Decision.** `task_dependencies` links a task to another task of the same project that should finish first (composite foreign keys). An unfinished earlier task is shown as a warning on the task, and as "Waiting on N" in lists, the backlog and the board; no status change is refused. Circles are refused with 409: the service checks while holding a per-project advisory lock, and a database trigger takes the same lock and checks again, so neither simultaneous requests nor a direct write can make one. A task and its own ancestor or sub-task cannot be linked, because a parent already waits for its sub-tasks. Deleting a task deletes its links. Adding and removing links needs `task.manage`. The table is exported and read-only when the project is archived. Migration `d9f1b3c5e7a8`.
+
+**Consequences.** Only finish-to-start is modelled, with no lag, dates are not recalculated, and there is no Gantt view or critical path. Moving a task under another one it is linked to is not checked; the link stays and can be removed.

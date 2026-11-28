@@ -83,6 +83,8 @@ def list_tasks(
     parent_task_id: UUID | None = None,
     root_only: bool = False,
     release_id: UUID | None = None,
+    milestone_id: UUID | None = None,
+    sprint_id: UUID | None = None,
     overdue: bool = False,
     q: str | None = Query(default=None, max_length=100),
     ctx: SessionContext = Depends(get_current_context),
@@ -102,6 +104,8 @@ def list_tasks(
         parent_task_id=parent_task_id,
         root_only=root_only,
         release_id=release_id,
+        milestone_id=milestone_id,
+        sprint_id=sprint_id,
         overdue=overdue,
         q=q,
     )

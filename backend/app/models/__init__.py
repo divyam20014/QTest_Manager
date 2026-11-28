@@ -28,6 +28,7 @@ from app.models.identity import (
 from app.models.import_session import ImportSession
 from app.models.marketing import MarketingLead
 from app.models.notification import Notification
+from app.models.planning import Milestone, Sprint, SprintTaskHistory, TaskDependency
 from app.models.platform_audit import PlatformAuditEvent
 from app.models.project import Project, ProjectMember
 from app.models.report_schedule import ReportSchedule
@@ -56,6 +57,10 @@ from app.models.test_suite import TestSuite, TestSuiteCase
 from app.models.user_invite import UserInvite
 
 __all__ = [
+    "Milestone",
+    "Sprint",
+    "SprintTaskHistory",
+    "TaskDependency",
     "Team",
     "TeamMember",
     "Tenant",

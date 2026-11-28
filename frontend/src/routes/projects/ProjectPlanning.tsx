@@ -27,6 +27,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 
+import { MilestonesCard } from './ProjectMilestones'
 import { BuildsReleasesCard } from './ProjectReleases'
 
 // ADR-122 / ADR-131: the Planning tab, in two sections: test suites and plans, and the releases
@@ -36,10 +37,11 @@ export function ProjectPlanning() {
   const [params] = useSearchParams()
   const { user } = useAuth()
   const canManage = isManagerOrAbove(user)
-  const section = params.get('section') === 'releases' ? 'releases' : 'suites'
+  const asked = params.get('section')
+  const section = asked === 'releases' || asked === 'milestones' ? asked : 'suites'
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Planning" description="Test suites and plans, and the releases and builds this project tracks." />
+      <PageHeader title="Planning" description="Milestones, test suites and plans, and the releases and builds this project tracks." />
       {/* Keyed so that a link to the other section switches to it while the page is open. */}
       <Tabs
         key={section}
@@ -52,6 +54,15 @@ export function ProjectPlanning() {
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <TestSuitesCard projectId={projectId} canManage={canManage} />
                 <TestPlansCard projectId={projectId} canManage={canManage} />
+              </div>
+            ),
+          },
+          {
+            key: 'milestones',
+            label: 'Milestones',
+            content: (
+              <div className="max-w-3xl">
+                <MilestonesCard projectId={projectId} />
               </div>
             ),
           },

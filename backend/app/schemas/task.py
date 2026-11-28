@@ -1,14 +1,23 @@
 """ADR-127: request / response models for tasks, sub-tasks and tenant task statuses."""
 
 from datetime import date, datetime
-from typing import Literal
+from decimal import Decimal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 TaskStatusCategory = Literal["todo", "in_progress", "done"]
 HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 STATUS_CODE = r"^[a-z][a-z0-9_]{1,39}$"
+
+# ADR-144: effort in hours, to two places.
+EstimateHours = Annotated[
+    Decimal,
+    Field(ge=0, le=10000, max_digits=7, decimal_places=2),
+    # As the database returns it, so a save answers "2.50" as a later read does.
+    AfterValidator(lambda hours: hours.quantize(Decimal("0.01"))),
+]
 
 
 # --- statuses ----------------------------------------------------------------------------
@@ -60,6 +69,19 @@ class TaskRef(BaseModel):
     depth: int
 
 
+class TaskDependencyRef(BaseModel):
+    """The task at the other end of a dependency."""
+
+    task_id: UUID
+    display_id: str | None
+    title: str
+    status: TaskStatusRef
+
+
+class TaskDependencyRequest(BaseModel):
+    depends_on_task_id: UUID
+
+
 class TaskCreateRequest(BaseModel):
     title: str = Field(min_length=3, max_length=255)
     description: str | None = Field(default=None, max_length=20000)
@@ -67,8 +89,11 @@ class TaskCreateRequest(BaseModel):
     parent_task_id: UUID | None = None
     status_id: UUID | None = None
     priority: str | None = Field(default=None, max_length=40)
+    task_type: str | None = Field(default=None, max_length=64)
+    estimate_hours: EstimateHours | None = None
     assignee_id: UUID | None = None
     release_id: UUID | None = None
+    milestone_id: UUID | None = None
     start_date: date | None = None
     due_date: date | None = None
 
@@ -81,8 +106,11 @@ class TaskUpdateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=20000)
     parent_task_id: UUID | None = None
     priority: str | None = Field(default=None, max_length=40)
+    task_type: str | None = Field(default=None, max_length=64)
+    estimate_hours: EstimateHours | None = None
     assignee_id: UUID | None = None
     release_id: UUID | None = None
+    milestone_id: UUID | None = None
     start_date: date | None = None
     due_date: date | None = None
 
@@ -105,9 +133,15 @@ class TaskOut(BaseModel):
     description: str | None
     status: TaskStatusRef
     priority: str
+    task_type: str
+    estimate_hours: Decimal | None
     assignee_id: UUID | None
     assignee_name: str | None
     release_id: UUID | None
+    milestone_id: UUID | None
+    milestone_name: str | None
+    sprint_id: UUID | None
+    sprint_name: str | None
     start_date: date | None
     due_date: date | None
     completed_at: datetime | None
@@ -123,6 +157,8 @@ class TaskOut(BaseModel):
     requirement_count: int = 0
     defect_count: int = 0
     test_case_count: int = 0
+    # ADR-147: tasks this one depends on that are not done.
+    open_dependency_count: int = 0
 
 
 class TaskLinkedTestCaseOut(BaseModel):
@@ -138,6 +174,9 @@ class TaskDetailOut(TaskOut):
     ancestors: list[TaskRef] = []
     sub_tasks: list[TaskOut] = []
     test_cases: list[TaskLinkedTestCaseOut] = []
+    # ADR-147: what should finish before this task, and what waits for it.
+    depends_on: list[TaskDependencyRef] = []
+    blocks: list[TaskDependencyRef] = []
 
 
 class TaskListResponse(BaseModel):

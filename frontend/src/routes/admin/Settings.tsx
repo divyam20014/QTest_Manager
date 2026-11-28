@@ -113,6 +113,7 @@ export function Settings() {
                 <FieldOptionsCard fieldKey="defect_severity" title="Defect Severities" />
                 <FieldOptionsCard fieldKey="defect_priority" title="Defect Priorities" />
                 <FieldOptionsCard fieldKey="test_case_priority" title="Test Case Priorities" />
+                <FieldOptionsCard fieldKey="task_type" title="Task Types" />
                 <StatusLabelsCard entityType="defect" title="Defect Status Labels" />
                 <StatusLabelsCard entityType="test_case" title="Test Case Status Labels" />
                 <CustomFieldsCard entityType="test_case" title="Test Case Custom Fields" />

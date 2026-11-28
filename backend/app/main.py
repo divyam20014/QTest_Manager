@@ -32,6 +32,7 @@ from app.api import (
     marketing,
     my_work,
     notifications,
+    planning,
     platform,
     platform_auth,
     project_dashboards,
@@ -260,6 +261,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(teams.router, prefix="/api/v1")
+app.include_router(planning.router, prefix="/api/v1")
 app.include_router(import_export.router, prefix="/api/v1")
 app.include_router(test_cases.router, prefix="/api/v1")
 app.include_router(csv_import.router, prefix="/api/v1")

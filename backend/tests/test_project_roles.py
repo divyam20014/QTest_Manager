@@ -330,6 +330,7 @@ def test_a_retest_result_needs_permission_to_execute_tests(w: World) -> None:
 # --- the new roles ---------------------------------------------------------------------------
 
 QA_LEAD = {
+    "planning.manage",  # ADR-145: it can manage tasks
     "project.view.all",
     "task.manage",
     "task.transition",

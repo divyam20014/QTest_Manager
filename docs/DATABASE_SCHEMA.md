@@ -504,3 +504,25 @@ The backend sets `app.current_tenant` from the authenticated session at the star
 ## Changes for ADR-143
 
 Migration `f5b7d9e1a3c4`: permission `record.contribute`, granted to every existing role, and the system roles `qa_lead`, `developer` and `viewer` (`tenant_id` NULL) with their grants. No table changes. The downgrade refuses while a user, invitation or project member holds one of the new roles.
+
+## Changes for ADR-144
+
+Migration `a6c8e0f2b4d5`: `tasks.task_type TEXT NOT NULL DEFAULT 'Task'`, `estimate_hours NUMERIC(7,2)` (0 to 10000), `backlog_rank NUMERIC`, index `ix_tasks_project_backlog (project_id, backlog_rank, id)`; `task_type` added to `field_options` keys and seeded for every tenant. Existing tasks are ranked by creation time.
+
+## Changes for ADR-145
+
+Migration `b7d9f1a3c5e6`: `milestones(id, tenant_id, project_id, name, description, due_date, completed_at, created_at)`: unique `(id, project_id)` and `(project_id, lower(name))`, name of at least 2 characters, forced row-level security, archive guard triggers. `tasks.milestone_id` with `(milestone_id, project_id)` referencing `milestones(id, project_id)`. Permission `planning.manage`, granted to every role holding `task.manage`.
+
+## Changes for ADR-146
+
+Migration `c8e0a2b4d6f7`:
+
+- `sprints(id, tenant_id, project_id, name, goal, start_date, end_date, state, started_at, closed_at, created_at)`: unique `(id, project_id)` and `(project_id, lower(name))`; partial unique `(project_id) WHERE state = 'active'`; checks `start_date <= end_date` and `state in ('planned','active','closed')`.
+- `sprint_task_history(id, tenant_id, project_id, sprint_id, task_id, added_after_start, added_at, removed_at, estimate_at_add, estimate_at_end, done_at_close)`: unique `(sprint_id, task_id)`; both composite foreign keys include `project_id`.
+- `tasks.sprint_id` with `(sprint_id, project_id)` referencing `sprints(id, project_id)`.
+
+Both tables have forced row-level security and archive guard triggers.
+
+## Changes for ADR-147
+
+Migration `d9f1b3c5e7a8`: `task_dependencies(id, tenant_id, project_id, task_id, depends_on_task_id, created_by, created_at)`: unique `(task_id, depends_on_task_id)`, check that they differ, both composite foreign keys include `project_id`, forced row-level security, archive guard triggers. Trigger `task_dependencies_no_cycle` takes the advisory lock `dependencies:{project_id}` and raises SQLSTATE `QT002` for a circle.

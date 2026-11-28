@@ -27,6 +27,9 @@ MAX_TASK_DEPTH: Final[int] = 4
 # 'task_priority' field_options defaults (tenant-configurable).
 TASK_PRIORITY_DEFAULTS: Final[tuple[str, ...]] = ("High", "Medium", "Low")
 DEFAULT_TASK_PRIORITY: Final[str] = "Medium"
+# 'task_type' field_options defaults (ADR-144, tenant-configurable).
+TASK_TYPE_DEFAULTS: Final[tuple[str, ...]] = ("Task", "Story", "Chore")
+DEFAULT_TASK_TYPE: Final[str] = "Task"
 # (code, label, category, color). ``category`` is the fixed meaning; the rest is tenant-editable.
 TASK_STATUS_DEFAULTS: Final[tuple[tuple[str, str, str, str], ...]] = (
     ("todo", "To Do", "todo", "#64748b"),

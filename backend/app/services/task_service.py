@@ -26,10 +26,11 @@ from app.core.audit import record_audit_event
 from app.core.audit_diff import audit_diff
 from app.core.db import set_tenant_context
 from app.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationAppError
-from app.core.field_standards import DEFAULT_TASK_PRIORITY, MAX_TASK_DEPTH
+from app.core.field_standards import DEFAULT_TASK_PRIORITY, DEFAULT_TASK_TYPE, MAX_TASK_DEPTH
 from app.models.audit import AuditLog
 from app.models.defect import Defect
 from app.models.identity import User
+from app.models.planning import Milestone, Sprint
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.task import Task, TaskStatus, TaskTestCaseLink
@@ -47,7 +48,15 @@ from app.schemas.task import (
     TaskSummaryStatus,
     TaskUpdateRequest,
 )
-from app.services import display_id_service, field_option_service, lookups, task_status_service
+from app.services import (
+    backlog_rank,
+    dependency_links,
+    display_id_service,
+    field_option_service,
+    lookups,
+    sprint_membership,
+    task_status_service,
+)
 from app.services.project_service import is_assigned
 
 DEFAULT_PAGE_SIZE = 25
@@ -57,8 +66,11 @@ _TRACKED = (
     "description",
     "parent_task_id",
     "priority",
+    "task_type",
+    "estimate_hours",
     "assignee_id",
     "release_id",
+    "milestone_id",
     "start_date",
     "due_date",
 )
@@ -216,6 +228,46 @@ def _check_priority(db: Session, tenant_id: UUID, value: str, errors: dict[str, 
         errors["priority"] = exc.message
 
 
+def _check_type(db: Session, tenant_id: UUID, value: str, errors: dict[str, str]) -> None:
+    try:
+        field_option_service.validate_code(db, tenant_id, "task_type", value)
+    except ValidationAppError as exc:
+        errors["task_type"] = exc.message
+
+
+def _default_type(db: Session, tenant_id: UUID) -> str:
+    """ "Task", or the organization's first type if it has removed that one."""
+    codes = [o.code for o in field_option_service.list_options(db, tenant_id, "task_type")]
+    return DEFAULT_TASK_TYPE if DEFAULT_TASK_TYPE in codes or not codes else codes[0]
+
+
+def check_project_access(
+    db: Session, tenant_id: UUID, role_code: str, user_id: UUID, project_id: UUID
+) -> None:
+    """404 / 403 unless this user may see the project's tasks."""
+    project = _get_project_or_404(db, tenant_id, project_id)
+    _require_project_access(db, project, role_code, user_id)
+
+
+def _check_milestone(
+    db: Session, tenant_id: UUID, project_id: UUID, value: UUID | None, errors: dict[str, str]
+) -> None:
+    """A task may join an open milestone of its own project."""
+    if value is None:
+        return
+    milestone = db.execute(
+        select(Milestone).where(
+            Milestone.tenant_id == tenant_id,
+            Milestone.id == value,
+            Milestone.project_id == project_id,
+        )
+    ).scalar_one_or_none()
+    if milestone is None:
+        errors["milestone_id"] = "milestone_id is not a milestone of this project"
+    elif milestone.completed_at is not None:
+        errors["milestone_id"] = "That milestone is completed; reopen it to add tasks"
+
+
 def _check_assignee(
     db: Session, project: Project, assignee_id: UUID | None, errors: dict[str, str]
 ) -> None:
@@ -313,6 +365,8 @@ def get_or_create_requirements_home(
         description=REQUIREMENTS_HOME_DESCRIPTION,
         status_id=status.id,
         priority=DEFAULT_TASK_PRIORITY,
+        task_type=_default_type(db, tenant_id),
+        backlog_rank=backlog_rank.new_task_rank(db, project_id),
         created_by=actor_user_id,
         is_requirements_home=True,
     )
@@ -403,6 +457,23 @@ def to_out_many(db: Session, tasks: list[Task]) -> list[TaskOut]:
 
     today = datetime.now(UTC).date()
     out: list[TaskOut] = []
+    milestone_ids = {t.milestone_id for t in tasks if t.milestone_id}
+    milestone_names: dict[UUID, str] = {}
+    if milestone_ids:
+        milestone_names = dict(
+            db.execute(select(Milestone.id, Milestone.name).where(Milestone.id.in_(milestone_ids)))
+            .tuples()
+            .all()
+        )
+    sprint_ids = {t.sprint_id for t in tasks if t.sprint_id}
+    sprint_names: dict[UUID, str] = {}
+    if sprint_ids:
+        sprint_names = dict(
+            db.execute(select(Sprint.id, Sprint.name).where(Sprint.id.in_(sprint_ids)))
+            .tuples()
+            .all()
+        )
+    waiting = dependency_links.open_counts(db, ids)
     for task in tasks:
         status = statuses[task.status_id]
         total, done = children.get(task.id, (0, 0))
@@ -417,9 +488,17 @@ def to_out_many(db: Session, tasks: list[Task]) -> list[TaskOut]:
                 description=task.description,
                 status=task_status_service.to_ref(status),
                 priority=task.priority,
+                task_type=task.task_type,
+                estimate_hours=task.estimate_hours,
                 assignee_id=task.assignee_id,
                 assignee_name=names.get(task.assignee_id),
                 release_id=task.release_id,
+                milestone_id=task.milestone_id,
+                milestone_name=(
+                    milestone_names.get(task.milestone_id) if task.milestone_id else None
+                ),
+                sprint_id=task.sprint_id,
+                sprint_name=sprint_names.get(task.sprint_id) if task.sprint_id else None,
                 start_date=task.start_date,
                 due_date=task.due_date,
                 completed_at=task.completed_at,
@@ -437,6 +516,7 @@ def to_out_many(db: Session, tasks: list[Task]) -> list[TaskOut]:
                 requirement_count=requirements.get(task.id, 0),
                 defect_count=defects.get(task.id, 0),
                 test_case_count=cases.get(task.id, 0),
+                open_dependency_count=waiting.get(task.id, 0),
             )
         )
     return out
@@ -465,6 +545,8 @@ def to_detail_out(db: Session, task: Task) -> TaskDetailOut:
         **base.model_dump(),
         ancestors=ancestors,
         sub_tasks=to_out_many(db, sub_tasks),
+        depends_on=dependency_links.depends_on(db, task.id),
+        blocks=dependency_links.blocks(db, task.id),
         test_cases=[
             TaskLinkedTestCaseOut(
                 test_case_id=case.id,
@@ -497,6 +579,8 @@ def list_tasks(
     parent_task_id: UUID | None = None,
     root_only: bool = False,
     release_id: UUID | None = None,
+    milestone_id: UUID | None = None,
+    sprint_id: UUID | None = None,
     overdue: bool = False,
     q: str | None = None,
 ) -> TaskListResponse:
@@ -518,6 +602,10 @@ def list_tasks(
         query = query.where(Task.parent_task_id.is_(None))
     if release_id is not None:
         query = query.where(Task.release_id == release_id)
+    if milestone_id is not None:
+        query = query.where(Task.milestone_id == milestone_id)
+    if sprint_id is not None:
+        query = query.where(Task.sprint_id == sprint_id)
     if overdue:
         done_ids = select(TaskStatus.id).where(TaskStatus.category == "done")
         query = query.where(
@@ -675,8 +763,11 @@ def create_task(
 
     priority = req.priority or DEFAULT_TASK_PRIORITY
     _check_priority(db, tenant_id, priority, errors)
+    task_type = req.task_type or _default_type(db, tenant_id)
+    _check_type(db, tenant_id, task_type, errors)
     _check_assignee(db, project, req.assignee_id, errors)
     _check_release(db, tenant_id, project_id, req.release_id, errors)
+    _check_milestone(db, tenant_id, project_id, req.milestone_id, errors)
     _check_dates(req.start_date, req.due_date, parent, errors)
     if errors:
         raise _fields_error(errors)
@@ -694,8 +785,12 @@ def create_task(
         description=req.description,
         status_id=status.id,
         priority=priority,
+        task_type=task_type,
+        estimate_hours=req.estimate_hours,
+        backlog_rank=backlog_rank.new_task_rank(db, project_id),
         assignee_id=req.assignee_id,
         release_id=req.release_id,
+        milestone_id=req.milestone_id,
         start_date=req.start_date,
         due_date=req.due_date,
         completed_at=datetime.now(UTC) if status.category == "done" else None,
@@ -784,10 +879,24 @@ def update_task(
             _check_priority(db, tenant_id, req.priority, errors)
             if "priority" not in errors:
                 task.priority = req.priority
+    if "task_type" in changes:
+        if req.task_type is None:
+            errors["task_type"] = "Type cannot be cleared"
+        elif req.task_type != task.task_type:
+            _check_type(db, tenant_id, req.task_type, errors)
+            if "task_type" not in errors:
+                task.task_type = req.task_type
+    if "estimate_hours" in changes:
+        task.estimate_hours = req.estimate_hours
     if "assignee_id" in changes:
         _check_assignee(db, project, req.assignee_id, errors)
         if "assignee_id" not in errors:
             task.assignee_id = req.assignee_id
+    # Saving the milestone a task already has is never refused.
+    if "milestone_id" in changes and req.milestone_id != task.milestone_id:
+        _check_milestone(db, tenant_id, task.project_id, req.milestone_id, errors)
+        if "milestone_id" not in errors:
+            task.milestone_id = req.milestone_id
     if "release_id" in changes:
         _check_release(db, tenant_id, task.project_id, req.release_id, errors)
         if "release_id" not in errors:
@@ -945,6 +1054,8 @@ def delete_task(
             f"This task has {len(live_children)} sub-task(s); delete them too with cascade=true"
         )
     removed_ids = [task.id, *[d_id for d_id, _ in live_children]]
+    sprint_membership.release_deleted(db, task.project_id, removed_ids)
+    dependency_links.remove_all(db, task.project_id, removed_ids)
     now = datetime.now(UTC)
     # Requirements and defects stay. A defect just loses its task; a requirement always has one,
     # so it moves to the project's "Unassigned requirements" task.

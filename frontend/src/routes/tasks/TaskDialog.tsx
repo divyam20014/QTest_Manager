@@ -16,6 +16,7 @@ import {
   type TaskDetail,
   type TaskUpdateRequest,
 } from '@/api/tasks'
+import { listMilestones } from '@/api/planning'
 import { listReleases } from '@/api/testAssets'
 import { TaskPicker } from '@/components/TaskPicker'
 import { TaskStatusBadge } from '@/components/TaskStatusBadge'
@@ -36,8 +37,11 @@ interface FormValues {
   description: string
   parent_task_id: string
   priority: string
+  task_type: string
+  estimate_hours: string
   assignee_id: string
   release_id: string
+  milestone_id: string
   start_date: string
   due_date: string
 }
@@ -47,8 +51,11 @@ const EMPTY: FormValues = {
   description: '',
   parent_task_id: '',
   priority: '',
+  task_type: '',
+  estimate_hours: '',
   assignee_id: '',
   release_id: '',
+  milestone_id: '',
   start_date: '',
   due_date: '',
 }
@@ -59,8 +66,11 @@ function fromTask(task: TaskDetail): FormValues {
     description: task.description ?? '',
     parent_task_id: task.parent_task_id ?? '',
     priority: task.priority,
+    task_type: task.task_type ?? '',
+    estimate_hours: task.estimate_hours ? String(Number(task.estimate_hours)) : '',
     assignee_id: task.assignee_id ?? '',
     release_id: task.release_id ?? '',
+    milestone_id: task.milestone_id ?? '',
     start_date: task.start_date ?? '',
     due_date: task.due_date ?? '',
   }
@@ -116,10 +126,20 @@ export function TaskDialog({
     queryFn: () => listFieldOptions('task_priority'),
     enabled: open,
   })
+  const typeQuery = useQuery({
+    queryKey: ['field-options', 'task_type'],
+    queryFn: () => listFieldOptions('task_type'),
+    enabled: open,
+  })
   const membersQuery = useQuery({
     queryKey: ['project-members', projectId],
     queryFn: () => listProjectMembers(projectId),
     enabled: open && canManage,
+  })
+  const milestonesQuery = useQuery({
+    queryKey: ['milestones', projectId],
+    queryFn: () => listMilestones(projectId),
+    enabled: open,
   })
   const releasesQuery = useQuery({
     queryKey: ['releases', projectId],
@@ -155,6 +175,16 @@ export function TaskDialog({
     }
   }, [open, editing, priorities, values.priority])
 
+  const types = useMemo(() => typeQuery.data ?? [], [typeQuery.data])
+  useEffect(() => {
+    // New task: start on "Task", or the first type the organization has.
+    if (open && !editing && values.task_type === '' && types.length > 0) {
+      const preferred = types.find((t) => t.code === 'Task') ?? types[0]
+      setValues((v) => ({ ...v, task_type: preferred.code }))
+      setInitial((v) => ({ ...v, task_type: preferred.code }))
+    }
+  }, [open, editing, types, values.task_type])
+
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
     queryClient.invalidateQueries({ queryKey: ['requirements', projectId] })
@@ -177,8 +207,11 @@ export function TaskDialog({
         if (values.description) req.description = values.description
         if (values.parent_task_id) req.parent_task_id = values.parent_task_id
         if (values.priority) req.priority = values.priority
+        if (values.task_type) req.task_type = values.task_type
+        if (values.estimate_hours) req.estimate_hours = values.estimate_hours
         if (values.assignee_id) req.assignee_id = values.assignee_id
         if (values.release_id) req.release_id = values.release_id
+        if (values.milestone_id) req.milestone_id = values.milestone_id
         if (values.start_date) req.start_date = values.start_date
         if (values.due_date) req.due_date = values.due_date
         return createTask(projectId, req)
@@ -188,8 +221,11 @@ export function TaskDialog({
       if (values.description !== initial.description) req.description = values.description || null
       if (values.parent_task_id !== initial.parent_task_id) req.parent_task_id = values.parent_task_id || null
       if (values.priority !== initial.priority) req.priority = values.priority
+      if (values.task_type !== initial.task_type) req.task_type = values.task_type
+      if (values.estimate_hours !== initial.estimate_hours) req.estimate_hours = values.estimate_hours || null
       if (values.assignee_id !== initial.assignee_id) req.assignee_id = values.assignee_id || null
       if (values.release_id !== initial.release_id) req.release_id = values.release_id || null
+      if (values.milestone_id !== initial.milestone_id) req.milestone_id = values.milestone_id || null
       if (values.start_date !== initial.start_date) req.start_date = values.start_date || null
       if (values.due_date !== initial.due_date) req.due_date = values.due_date || null
       return updateTask(taskId!, req)
@@ -338,6 +374,32 @@ export function TaskDialog({
                   </Select>
                 )}
               </FormField>
+              <FormField id="task-type" label="Type" error={fieldErrors.task_type}>
+                {(f) => (
+                  <Select {...f} value={values.task_type} disabled={readOnly} onChange={(e) => set('task_type', e.target.value)}>
+                    {types.map((t) => (
+                      <option key={t.id} value={t.code}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+              <FormField id="task-estimate" label="Estimate (hours)" error={fieldErrors.estimate_hours}>
+                {(f) => (
+                  <Input
+                    {...f}
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={10000}
+                    step="0.25"
+                    value={values.estimate_hours}
+                    disabled={readOnly}
+                    onChange={(e) => set('estimate_hours', e.target.value)}
+                  />
+                )}
+              </FormField>
               <FormField id="task-assignee" label="Assignee" error={fieldErrors.assignee_id}>
                 {(f) => (
                   <Select {...f} value={values.assignee_id} disabled={readOnly || !canManage} onChange={(e) => set('assignee_id', e.target.value)}>
@@ -359,6 +421,21 @@ export function TaskDialog({
                         {r.name}
                       </option>
                     ))}
+                  </Select>
+                )}
+              </FormField>
+              <FormField id="task-milestone" label="Milestone" error={fieldErrors.milestone_id}>
+                {(f) => (
+                  <Select {...f} value={values.milestone_id} disabled={readOnly} onChange={(e) => set('milestone_id', e.target.value)}>
+                    <option value="">None</option>
+                    {/* Open milestones, and the one the task is already in. */}
+                    {(milestonesQuery.data ?? [])
+                      .filter((m) => !m.completed_at || m.id === initial.milestone_id)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.completed_at ? `${m.name} (completed)` : m.name}
+                        </option>
+                      ))}
                   </Select>
                 )}
               </FormField>

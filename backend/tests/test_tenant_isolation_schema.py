@@ -97,3 +97,36 @@ def test_the_application_role_cannot_bypass_row_level_security(owner_engine) -> 
             )
         ).scalar_one()
     assert (role.rolsuper, role.rolbypassrls, owned) == (False, False, 0)
+
+
+# Tables with a project_id whose rows are not work on the project, so an archived
+# project does not lock them (ADR-140).
+PROJECT_TABLES_NOT_LOCKED_BY_ARCHIVE = {
+    "access_rules": "organization-managed rules that may name a project",
+    "dashboards": "how people view a project, not its records",
+    "import_sessions": "short-lived uploads; committing one writes locked tables",
+}
+
+
+def test_every_project_table_is_locked_when_the_project_is_archived(owner_engine) -> None:
+    """A new table of a project's records must get the archive guard triggers."""
+    with owner_engine.connect() as conn:
+        with_project = set(
+            conn.execute(
+                text(
+                    "select table_name from information_schema.columns "
+                    "where table_schema = 'public' and column_name = 'project_id'"
+                )
+            ).scalars()
+        )
+        guards = conn.execute(
+            text(
+                "select c.relname, count(*) from pg_trigger t "
+                "join pg_class c on c.oid = t.tgrelid "
+                "where t.tgname like 'archived_guard%' group by c.relname"
+            )
+        ).all()
+    locked = {name for name, _ in guards}
+
+    assert with_project - locked == set(PROJECT_TABLES_NOT_LOCKED_BY_ARCHIVE)
+    assert {name for name, count in guards if count != 3} == set(), "insert, update and delete"

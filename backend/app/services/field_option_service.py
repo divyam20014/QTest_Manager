@@ -9,11 +9,13 @@ from app.core.errors import ConflictError, NotFoundError, ValidationAppError
 from app.core.field_standards import (
     DEFECT_SEVERITY_ADDITIONS,
     TASK_PRIORITY_DEFAULTS,
+    TASK_TYPE_DEFAULTS,
     TEST_CASE_SEVERITY_DEFAULTS,
     TEST_TYPE_DEFAULTS,
 )
 from app.models.defect import Defect
 from app.models.field_customization import FieldOption
+from app.models.task import Task
 from app.models.test_case import TestCase
 from app.schemas.field_customization import (
     FieldKey,
@@ -55,6 +57,7 @@ def seed_defaults_for_tenant(db: Session, tenant_id: UUID) -> None:
         "test_case_severity": list(TEST_CASE_SEVERITY_DEFAULTS),
         "test_type": list(TEST_TYPE_DEFAULTS),
         "task_priority": list(TASK_PRIORITY_DEFAULTS),
+        "task_type": list(TASK_TYPE_DEFAULTS),
     }
     for field_key, codes in option_sets.items():
         for order, code in enumerate(codes):
@@ -187,8 +190,10 @@ def delete_option(db: Session, tenant_id: UUID, actor_user_id: UUID, option_id: 
         "test_case_priority": TestCase.priority,
         "test_case_severity": TestCase.severity,
         "test_type": TestCase.test_type,
+        "task_priority": Task.priority,
+        "task_type": Task.task_type,
     }[option.field_key]
-    in_use_model = Defect if option.field_key.startswith("defect_") else TestCase
+    in_use_model = in_use_column.class_
     in_use = (
         db.execute(
             select(in_use_model.id)

@@ -14,7 +14,9 @@ import { Tabs } from '@/components/ui/tabs'
 import { useAuth } from '@/lib/auth'
 import { coveragePercent, HEALTH_LABEL, HEALTH_TONE, taskHealth } from '@/lib/taskRollup'
 import { taskLabel } from '@/lib/taskTree'
+import { TaskDependencies } from '@/routes/tasks/TaskDependencies'
 import { TaskDialog } from '@/routes/tasks/TaskDialog'
+import { formatHours } from '@/lib/planning'
 import {
   ActivitySection,
   DefectsSection,
@@ -87,6 +89,26 @@ export function TaskDetail() {
           <>
             <span className="font-mono text-xs text-[var(--muted-foreground)]">{task.display_id}</span>
             <TaskStatusBadge status={task.status} />
+            {task.task_type && <Badge tone="info">{task.task_type}</Badge>}
+            {task.sprint_name && (
+              <Link
+                to={`/projects/${projectId}/tasks?view=sprints&sprint=${task.sprint_id}`}
+                className="text-xs underline underline-offset-2"
+              >
+                Sprint: {task.sprint_name}
+              </Link>
+            )}
+            {task.milestone_name && (
+              <Link
+                to={`/projects/${projectId}/test-plans?section=milestones`}
+                className="text-xs underline underline-offset-2"
+              >
+                Milestone: {task.milestone_name}
+              </Link>
+            )}
+            {task.estimate_hours != null && (
+              <span className="text-xs text-[var(--muted-foreground)]">Estimate {formatHours(task.estimate_hours)}</span>
+            )}
             {task.is_overdue && <Badge tone="critical">Overdue</Badge>}
             {task.is_requirements_home && <Badge tone="info">Default for requirements</Badge>}
             {health && <Badge tone={HEALTH_TONE[health]}>{HEALTH_LABEL[health]}</Badge>}
@@ -139,6 +161,8 @@ export function TaskDetail() {
           <RollupCards rollup={rollup} scope={scope} />
         )}
       </section>
+
+      <TaskDependencies key={task.id} task={task} canManage={canManage} />
 
       <Tabs
         items={[
